@@ -1,0 +1,12 @@
+/* 设置页各标签页共用的版式 */
+.tab-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 18px;
+}
+.tab-head h2 { font-size: 17px; font-weight: 600; color: var(--t-max); margin-bottom: 4px; }
+.tab-desc { font-size: 13px; color: var(--t-dim); line-height: 1.6; max-width: 640px; }
+.tab-foot { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.form-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0 20px;
+}
+.section-title { font-size: 13.5px; font-weight: 600; color: var(--t-strong); margin: 22px 0 10px; }

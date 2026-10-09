@@ -1,0 +1,144 @@
+/* 全局基础样式：重置、滚动条，以及设置页 / 引导页共用的一小套表单件。
+   颜色一律引用 design-tokens.css 的令牌。 */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background-color: var(--n-0);
+  color: var(--t-body);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--n-6); border-radius: 3px; }
+
+/* 全局旋转动画：供各页面内联 style="animation:spin ..." 使用
+   (scoped <style> 内的 @keyframes 会被重命名带 hash，内联引用匹配不到，故在此提供全局版本) */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 按钮 ---------- */
+.lc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 14px;
+  border: 1px solid var(--n-6); border-radius: 8px;
+  background: transparent; color: var(--t-strong);
+  font: inherit; font-size: 13px; line-height: 1; white-space: nowrap;
+  cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.lc-btn:hover:not(:disabled) { background: var(--n-4); border-color: var(--n-8); }
+.lc-btn:disabled { opacity: .5; cursor: not-allowed; }
+.lc-btn.primary { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-fg); font-weight: 600; }
+.lc-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-bg-hover); }
+.lc-btn.danger { color: var(--danger); border-color: var(--danger-dim); }
+.lc-btn.danger:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger); }
+.lc-btn.ghost { border-color: transparent; color: var(--t-dim); }
+.lc-btn.ghost:hover:not(:disabled) { color: var(--t-max); background: var(--n-4); border-color: transparent; }
+.lc-btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px; }
+
+/* ---------- 输入件 ---------- */
+.lc-input, .lc-select, .lc-textarea {
+  width: 100%; height: 36px; padding: 0 10px;
+  background: var(--n-3); color: var(--t-max);
+  border: 1px solid var(--n-5); border-radius: 8px;
+  font: inherit; font-size: 13px; outline: none;
+  transition: border-color .15s ease;
+}
+.lc-textarea { height: auto; min-height: 72px; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.lc-input:focus, .lc-select:focus, .lc-textarea:focus { border-color: var(--accent-line); }
+.lc-input::placeholder, .lc-textarea::placeholder { color: var(--t-dim); opacity: .8; }
+.lc-input:disabled, .lc-select:disabled { opacity: .6; cursor: not-allowed; }
+.lc-input.sm, .lc-select.sm { height: 30px; font-size: 12px; border-radius: 6px; }
+
+.lc-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.lc-field > label, .lc-label { font-size: 12.5px; color: var(--t-strong); }
+.lc-field .lc-help { font-size: 12px; color: var(--t-dim); line-height: 1.5; }
+.lc-required { color: var(--danger); margin-left: 2px; }
+
+/* ---------- 开关 ---------- */
+.lc-switch {
+  position: relative; width: 36px; height: 20px; flex: none;
+  border: 0; border-radius: 999px; background: var(--n-7); cursor: pointer;
+  transition: background .15s ease;
+}
+.lc-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--t-max); transition: transform .15s ease;
+}
+.lc-switch.on { background: var(--accent-text); }
+.lc-switch.on::after { transform: translateX(16px); background: var(--n-0); }
+.lc-switch:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- 卡片 / 表格 ---------- */
+.lc-card {
+  background: var(--n-2); border: 1px solid var(--n-5); border-radius: var(--radius-lg);
+  padding: 18px;
+}
+.lc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lc-table th {
+  text-align: left; font-weight: 500; font-size: 12px; color: var(--t-dim);
+  padding: 8px 10px; border-bottom: 1px solid var(--n-5); white-space: nowrap;
+}
+.lc-table td { padding: 10px; border-bottom: 1px solid var(--line-1); vertical-align: middle; color: var(--t-body); }
+.lc-table tr:last-child td { border-bottom: 0; }
+.lc-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.lc-table-wrap { overflow-x: auto; }
+
+.lc-tag {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px;
+  border-radius: 999px; font-size: 11px; line-height: 1;
+  background: var(--n-4); color: var(--t-dim);
+}
+.lc-tag.ok { background: var(--success-dim); color: var(--success); }
+.lc-tag.warn { background: var(--warning-dim); color: var(--warning); }
+.lc-tag.err { background: var(--danger-dim); color: var(--danger); }
+.lc-tag.accent { background: var(--chip-bg); color: var(--chip-fg); font-weight: 600; }
+
+.lc-empty { padding: 36px 12px; text-align: center; color: var(--t-dim); font-size: 13px; }
+.lc-error-text { color: var(--danger); font-size: 12.5px; line-height: 1.5; }
+
+/* ---------- 弹层 ---------- */
+.lc-mask {
+  position: fixed; inset: 0; z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--scrim); padding: 20px;
+}
+.lc-dialog {
+  width: 520px; max-width: 100%; max-height: calc(100vh - 40px);
+  display: flex; flex-direction: column;
+  background: var(--n-2); border: 1px solid var(--n-6); border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px var(--shadow-3);
+}
+.lc-dialog-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--line-1);
+  font-size: 15px; font-weight: 600; color: var(--t-max);
+}
+.lc-dialog-body { padding: 20px; overflow-y: auto; }
+.lc-dialog-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 20px; border-top: 1px solid var(--line-1);
+}
+.lc-x {
+  width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--t-dim); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.lc-x:hover { background: var(--n-4); color: var(--t-max); }

@@ -1,0 +1,101 @@
+/*
+ * 工具节点（切片 / 拼图 / 水印 / 改尺寸）共用的外壳。
+ *
+ * 这四个节点长得一样：一行标题 + 一组参数 + 结果缩略图 + 一个执行按钮，
+ * 样式抄自多平台导出那份（它先做的），只是抽出来一份。
+ *
+ * 执行按钮用描边而不是实心：实心 = 调用付费模型，描边 = 本机处理/免费。
+ * 这几个节点全程本机像素处理，没有成本。
+ *
+ * 注意：引用它的 <style scoped> 里，@import 必须是第一条 —— CSS 规定 @import
+ * 之前不能有任何规则，否则整条 import 被忽略、所有样式静默失效。踩过一次。
+ */
+.cv-node {
+  width: 280px; height: 300px; display: flex; flex-direction: column;
+  background: var(--n-3); border: 1.5px solid var(--n-5);
+  border-radius: 10px; overflow: hidden; color: var(--t-body);
+  box-shadow: 0 4px 16px var(--shadow-2);
+}
+.cv-node.selected { border-color: var(--accent-text); }
+
+.cv-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--n-5); }
+.cv-title { font-size: 12.5px; font-weight: 600; color: var(--t-max); white-space: nowrap; }
+/* 标题和状态标签在英文下更长：让「无成本」这句先被截断，鼠标悬停看全文 */
+.cv-free { margin-left: auto; font-size: 9.5px; color: var(--t-dim); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-tag { font-size: 10px; padding: 1px 6px; border-radius: 100px; border: 1px solid var(--n-5); flex: none; white-space: nowrap; }
+.cv-tag.running { color: var(--accent-text); border-color: var(--accent-text); }
+.cv-tag.error { color: #e06a5c; border-color: #e06a5c; }
+.cv-tag.done { color: var(--t-dim); }
+
+.cv-body { padding: 9px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+.cv-label { font-size: 10px; color: var(--t-dim); }
+.cv-row { display: flex; align-items: center; gap: 6px; }
+.cv-row .cv-label { flex: none; width: 46px; }
+
+.cv-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-gbtn {
+  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 5px;
+  color: var(--t-dim); font-size: 11px; padding: 3px 7px; cursor: pointer;
+}
+.cv-gbtn:hover { border-color: var(--accent-line); }
+.cv-gbtn.on { border-color: var(--accent-text); color: var(--accent-text); }
+
+.cv-select {
+  flex: 1; min-width: 0; background: var(--n-2); border: 1px solid var(--n-5);
+  border-radius: 5px; color: var(--t-body); font-size: 11px; padding: 3px 5px; outline: none;
+}
+.cv-select:focus { border-color: var(--accent-text); }
+.cv-num {
+  width: 56px; background: var(--n-2); border: 1px solid var(--n-5); border-radius: 5px;
+  color: var(--t-body); font-size: 11px; padding: 3px 5px; outline: none;
+}
+.cv-num:focus { border-color: var(--accent-text); }
+.cv-range { flex: 1; min-width: 0; accent-color: var(--accent-text); }
+.cv-val { font-size: 10px; color: var(--t-dim); width: 34px; text-align: right; flex: none; }
+.cv-color {
+  width: 26px; height: 22px; padding: 0; border: 1px solid var(--n-5);
+  border-radius: 5px; background: var(--n-2); cursor: pointer;
+}
+
+/* 水印锚点：九宫格点阵，点哪格贴哪儿 */
+.cv-anchors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.cv-anchor {
+  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 4px;
+  color: var(--t-dim); font-size: 10px; padding: 3px 0; cursor: pointer;
+}
+.cv-anchor:hover { border-color: var(--accent-line); }
+.cv-anchor.on { border-color: var(--accent-text); color: var(--accent-text); }
+
+.cv-err { font-size: 11px; color: #e06a5c; line-height: 1.6; }
+.cv-empty { font-size: 11px; color: var(--t-dim); line-height: 1.6; padding: 4px 0; flex: 1 1 auto; display: flex; align-items: center; justify-content: center; text-align: center; }
+.cv-help {margin-left:2px;width:14px;height:14px;border-radius:50%;border:1px solid var(--n-6);color:var(--t-dim);font-size:10px;line-height:12px;text-align:center;cursor:help;flex:none;}
+.cv-help:hover { color: var(--accent-text); border-color: var(--accent-text); }
+.cv-note { font-size: 10px; color: var(--t-dim); line-height: 1.6; }
+
+.cv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.cv-cell {
+  padding: 0; border: 1px solid var(--n-5); border-radius: 5px; overflow: hidden;
+  background: var(--n-2); cursor: pointer; display: flex; flex-direction: column;
+}
+.cv-cell:hover { border-color: var(--accent-text); }
+.cv-cell img { width: 100%; height: 40px; object-fit: cover; display: block; }
+.cv-cap { font-size: 8.5px; color: var(--t-dim); padding: 2px 1px; line-height: 1.2; }
+
+.cv-preview {
+  border: 1px solid var(--n-5); border-radius: 6px; overflow: hidden;
+  background: var(--n-2); cursor: pointer; display: block; padding: 0; width: 100%;
+}
+.cv-preview img { width: 100%; max-height: 120px; object-fit: contain; display: block; }
+
+.cv-actions { display: flex; gap: 6px; margin-top: auto; }
+.cv-run {
+  flex: 1; background: transparent; color: var(--accent-text); border: 1.5px solid var(--accent-edge);
+  border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 0; cursor: pointer;
+}
+.cv-run:disabled { opacity: .6; cursor: not-allowed; }
+.cv-dl {
+  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 6px;
+  color: var(--t-body); font-size: 11.5px; padding: 4px 9px; cursor: pointer;
+}
+.cv-dl:hover { border-color: var(--accent-text); color: var(--accent-text); }
