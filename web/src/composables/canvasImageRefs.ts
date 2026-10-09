@@ -35,10 +35,12 @@ export interface ImageRef {
   /** 界面与 @ 里显示的名字：别名优先，否则「图N」（跟界面语言走） */
   label: string
   /**
-   * 语义位（首帧/尾帧）。有值时 @ 直接用它指代，不再说「第 N 张参考图」——
-   * 首尾帧那条路送出去的必须正好两张，说位置比说编号准。
+   * 语义位（首帧/尾帧）的显示名，跟界面语言走。有值时 @ 直接用它指代，不再说
+   * 「第 N 张参考图」—— 首尾帧那条路送出去的必须正好两张，说位置比说编号准。
    */
   semantic?: string
+  /** 语义位本身，与语言无关 */
+  slot?: FrameSlot
   /** 超出该模型参考图上限，不会真的送给模型 */
   overCap: boolean
 }
@@ -55,6 +57,34 @@ const defaultRefName = (index: number, locale?: LocaleCode) =>
  */
 const mentionSafe = (s: string) => s.trim().replace(/\s+/g, '_')
 
+/** 首尾帧模式下的两个语义位 */
+export type FrameSlot = 'first' | 'last'
+
+/**
+ * 语义位在节点数据里存的写法，与界面语言无关。
+ *
+ * 提示词是存在画布里的：存「@首帧」的话，换成英文界面它就成了认不出来的悬空指代。
+ * 所以落库的是这两个固定 token，文本框里显示的才是当前语言的名字
+ * （见 mentionsToDisplay / mentionsToStored）。
+ */
+const FRAME_TOKEN: Record<FrameSlot, string> = { first: 'first_frame', last: 'last_frame' }
+const FRAME_LABEL_KEY: Record<FrameSlot, string> = { first: 'executor.firstFrame', last: 'executor.lastFrame' }
+const FRAME_SLOTS = Object.keys(FRAME_TOKEN) as FrameSlot[]
+
+const frameText = (slot: FrameSlot, locale?: LocaleCode) =>
+  locale ? t(FRAME_LABEL_KEY[slot], {}, { locale }) : t(FRAME_LABEL_KEY[slot])
+/** 语义位在文本框里显示的 @ 名字（当前界面语言） */
+const frameLabel = (slot: FrameSlot, locale?: LocaleCode) => mentionSafe(frameText(slot, locale))
+
+/** 一个 @ 名字是不是在指某个语义位：固定 token，或任一语言下的显示名（老画布里存的是后者） */
+function frameSlotOf(name: string): FrameSlot | null {
+  for (const slot of FRAME_SLOTS) {
+    if (name === FRAME_TOKEN[slot]) return slot
+    if (SUPPORTED_LOCALES.some(l => frameLabel(slot, l.code) === name)) return slot
+  }
+  return null
+}
+
 /**
  * 一张图在提示词里可以被怎么称呼。
  *
@@ -62,7 +92,8 @@ const mentionSafe = (s: string) => s.trim().replace(/\s+/g, '_')
  * 「@图1」切到英文界面后不该变成认不出来的悬空指代。起了别名的只认别名。
  */
 function refAliases(ref: ImageRef): string[] {
-  if (ref.name || ref.semantic) return [ref.label]
+  if (ref.name) return [ref.label]
+  if (ref.slot) return [FRAME_TOKEN[ref.slot], ...SUPPORTED_LOCALES.map(l => frameLabel(ref.slot!, l.code))]
   return [...SUPPORTED_LOCALES.map(l => defaultRefName(ref.index, l.code)), ref.label]
 }
 
@@ -90,27 +121,28 @@ export function applyImageOrder(raw: RawImageRef[], order?: string[] | null): Ra
  *
  * @param cap 该模型的参考图上限。超出的照样列出来但标灰 —— 让人 @ 一张根本
  *            不会送出去的图，比不显示更糟。
- * @param semantics 语义位名字，按序号给（首尾帧模式下是 ['首帧','尾帧']）
+ * @param slots 语义位，按序号给（首尾帧模式下是 ['first','last']）
  */
 export function buildImageRefs(
   raw: RawImageRef[],
   names?: Record<string, string> | null,
   cap?: number | null,
-  semantics?: string[] | null,
+  slots?: FrameSlot[] | null,
 ): ImageRef[] {
   const limit = cap && cap > 0 ? cap : Infinity
   return raw.map((r, i) => {
     const key = refKey(r.sourceId, r.slot)
     const name = (names && names[key]) || ''
-    const semantic = semantics && semantics[i] ? semantics[i] : undefined
+    const slot = slots && slots[i] ? slots[i] : undefined
     return {
       key,
       url: r.url,
       sourceId: r.sourceId,
       index: i + 1,
       name,
-      label: name || (semantic ? mentionSafe(semantic) : '') || defaultRefName(i + 1),
-      semantic,
+      label: name || (slot ? frameLabel(slot) : '') || defaultRefName(i + 1),
+      semantic: slot ? frameText(slot) : undefined,
+      slot,
       overCap: i >= limit,
     }
   })
@@ -174,11 +206,27 @@ export function resolveMentions(text: string, refs: ImageRef[]): string {
     const ref = byLabel.get(name)
     // 认不出来就原样留着：宁可把 @xxx 原封不动发出去，也不要瞎猜成某张图
     if (!ref) return whole
-    // 首帧/尾帧是位置不是编号，两种语种下都直接用它
-    if (ref.semantic) return ref.semantic
+    // 首帧/尾帧是位置不是编号，直接说位置；语种同样跟提示词走
+    if (ref.slot) return frameText(ref.slot, locale)
     return ref.name
       ? t('gen.refs.nthNamed', { n: ref.index, name: ref.name }, { locale })
       : t('gen.refs.nth', { n: ref.index }, { locale })
+  })
+}
+
+/** 文本框里显示的提示词 → 落库的写法：语义位的 @ 名字（任一语言）换成固定 token */
+export function mentionsToStored(text: string): string {
+  return String(text || '').replace(MENTION_RE, (whole, name: string) => {
+    const slot = frameSlotOf(name)
+    return slot ? `@${FRAME_TOKEN[slot]}` : whole
+  })
+}
+
+/** 落库的提示词 → 文本框里显示的写法：语义位换成当前界面语言的名字 */
+export function mentionsToDisplay(text: string): string {
+  return String(text || '').replace(MENTION_RE, (whole, name: string) => {
+    const slot = frameSlotOf(name)
+    return slot ? `@${frameLabel(slot)}` : whole
   })
 }
 

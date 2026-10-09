@@ -16,15 +16,26 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-defineProps<{
+const props = defineProps<{
   open: boolean
   url: string
   type: 'image' | 'video'
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+// Esc 关闭：只在开着的时候监听
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.stopPropagation(); emit('close') }
+}
+watch(() => props.open, (open) => {
+  if (open) window.addEventListener('keydown', onKeydown, true)
+  else window.removeEventListener('keydown', onKeydown, true)
+}, { immediate: true })
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 </script>
 
 <style scoped>

@@ -11,7 +11,7 @@
       <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
-    <div class="cv-body nodrag" @mousedown.stop @click.stop>
+    <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <!-- 水印图就存在这个节点里，不用另外拉一个图片节点连过来 -->
       <div v-if="uploading" class="cv-mark-empty">{{ t('common.uploading') }}</div>
       <div v-else-if="markUrl" class="cv-mark-row">

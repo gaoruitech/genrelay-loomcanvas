@@ -33,7 +33,7 @@
             @click="select(tp)"
           >
             <span class="card-top">
-              <span class="card-name">{{ tp.label }}</span>
+              <span class="card-name">{{ providerTypeLabel(tp) }}</span>
               <span v-if="isGaorui(tp)" class="lc-tag accent">{{ t('setup.recommended') }}</span>
             </span>
             <span class="card-desc">{{ t('setup.cards.' + providerFamily(tp)) }}</span>
@@ -42,7 +42,7 @@
 
         <form v-if="selected" class="lc-card form" @submit.prevent="submit">
           <div class="form-title">
-            <span>{{ t('setup.formTitle', { name: selected.label }) }}</span>
+            <span>{{ t('setup.formTitle', { name: providerTypeLabel(selected) }) }}</span>
             <a v-if="isGaorui(selected)" :href="GAORUI_URL" target="_blank" rel="noopener noreferrer" class="get-key">
               {{ t('setup.getKey') }}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -87,7 +87,7 @@ import { loadModels } from '@/utils/canvasModels'
 import { useAppStore } from '@/stores/app'
 import { skipSetup } from '@/router'
 import { SUPPORTED_LOCALES } from '@/locales'
-import { GAORUI_URL, isGaorui, providerFamily, sortProviderTypes } from '@/utils/providerMeta'
+import { GAORUI_URL, isGaorui, providerFamily, sortProviderTypes, providerTypeLabel, providerFieldLabel } from '@/utils/providerMeta'
 import ProviderForm from '@/components/settings/ProviderForm.vue'
 import { initialProviderForm, missingProviderField, providerPayload } from '@/components/settings/providerForm'
 import type { LocaleCode, ProviderType } from '@/types'
@@ -135,7 +135,7 @@ async function submit() {
   if (!tp || busy.value) return
   const missing = missingProviderField(tp, form.value)
   if (missing) {
-    error.value = t('settings.providers.fieldRequired', { field: missing.label })
+    error.value = t('settings.providers.fieldRequired', { field: providerFieldLabel(tp, missing) })
     return
   }
   busy.value = true

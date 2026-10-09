@@ -1,3 +1,4 @@
+import { localizedModelDesc } from '@/utils/builtinContent'
 import { computed, shallowRef } from 'vue'
 import { modelsApi, runsApi, unwrap } from './api'
 import { i18n, t } from '@/locales'
@@ -208,6 +209,41 @@ export function isModelSupported(modelId: string): boolean {
   return modelId in adapters.value
 }
 
+/**
+ * 让节点参数跟模型声明对齐：没设过的取模型默认值；模型不支持的值回落到默认值或
+ * 第一个可选项；模型压根没有的那一项清掉。
+ *
+ * 执行器是直接拿 data 里的参数去提交的 —— 换模型后留着上一个模型的分辨率、数量，
+ * 界面上已经没有对应的选项，用户看不见也改不了，却照样会被送出去。
+ */
+export function alignParams(a: ModelAdapter, data: Record<string, any>): Record<string, any> {
+  const o = a.options
+  const lists: Record<string, ModelOption<any>[] | undefined> = {
+    resolution: o.resolutions,
+    aspectRatio: o.aspectRatios,
+    duration: o.durations,
+    imgMode: o.imgModes,
+    count: o.counts,
+  }
+  const patch: Record<string, any> = {}
+  for (const [k, v] of Object.entries(a.defaults)) {
+    if (data[k] === undefined) patch[k] = v
+  }
+  for (const [k, list] of Object.entries(lists)) {
+    const cur = k in patch ? patch[k] : data[k]
+    const def = a.defaults[k]
+    const has = (v: any) => !!list?.some(x => String(x.value) === String(v))
+    let next = cur
+    if (list?.length) {
+      if (!has(cur)) next = has(def) ? def : list[0].value
+    } else {
+      next = k === 'duration' && o.fixedDuration ? o.fixedDuration : def
+    }
+    if (next !== cur) patch[k] = next
+  }
+  return patch
+}
+
 /** 通用模型下拉用：不含「视频编辑」专用模型 */
 export function listAdapters(outputType?: CanvasMediaType): ModelAdapter[] {
   const all = Object.values(adapters.value).filter(a => !a.videoEdit)
@@ -248,7 +284,7 @@ function toFlat(a: ModelAdapter): FlatModelOption {
     value: modelKeyOf(a.id),
     label: a.label,
     modelId: a.id,
-    desc: a.spec.desc,
+    desc: localizedModelDesc(a.id, a.spec.desc),
     tag: a.spec.tag,
     icon: a.outputType === 'video' ? ICON_FILM : ICON_IMG,
   }

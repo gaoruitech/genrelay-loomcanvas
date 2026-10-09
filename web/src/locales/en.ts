@@ -10,6 +10,7 @@ import setup from './modules/setup'
 
 export default {
   common: {
+    copyName: '{name} copy',
     ok: 'OK',
     cancel: 'Cancel',
     confirm: 'Confirm',
@@ -86,10 +87,20 @@ export default {
     estimate: 'Estimated cost',
     estimateTip: 'Estimated cost of one run with the current settings',
     actual: 'Actual cost',
-    free: 'Runs locally, no cost',
+    free: 'Local, free',
   },
 
   models: {
+    catalogDesc: {
+      'nano-banana-pro': 'High-quality image generation and editing',
+      'nano-banana-2': 'Image generation and editing',
+      'nano-banana-2.1': 'Newer image model',
+      'nano-banana-2-lite': 'Lightweight image model, 1K only',
+      'omni-flash': 'Text or image to video, 6-10 s',
+      'omni-flash-edit': 'Rewrite an existing video from a prompt',
+      'sora-2-openai-12s': 'Text or single image to video, fixed 12 s',
+      'grok-imagine-video-1.5-preview': 'Text to video with reference images, 4-15 s',
+    },
     auto: 'Auto',
     seconds: '{n}s',
     imgModeFrames: 'First & last frame',

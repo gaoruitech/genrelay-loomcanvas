@@ -1,4 +1,5 @@
-import type { ProviderType } from '@/types'
+import type { ProviderField, ProviderType } from '@/types'
+import { i18n } from '@/locales'
 
 /** 「高睿 API」申请 Key 的地址 */
 export const GAORUI_URL = 'https://gaorui.cc'
@@ -26,4 +27,26 @@ export function sortProviderTypes(types: ProviderType[]): ProviderType[] {
     .map((tp, i) => ({ tp, i }))
     .sort((a, b) => (ORDER[providerFamily(a.tp)] - ORDER[providerFamily(b.tp)]) || (a.i - b.i))
     .map(x => x.tp)
+}
+
+/*
+ * 接入类型和它的表单字段，名字是后端声明里带的（固定一种语言）。
+ * 内置的三种类型在语言文件里各有一份译文（settings.providerTypes.<类型>），按界面语言取；
+ * 语言文件里没有的（以后新加的接入）才用后端给的原文。
+ */
+function localized(key: string, fallback: string): string {
+  const { te, t } = i18n.global
+  return te(key) ? t(key) : fallback
+}
+
+export function providerTypeLabel(tp: Pick<ProviderType, 'type' | 'label'>): string {
+  return localized(`settings.providerTypes.${tp.type}.label`, tp.label)
+}
+
+export function providerFieldLabel(tp: Pick<ProviderType, 'type'>, f: ProviderField): string {
+  return localized(`settings.providerTypes.${tp.type}.fields.${f.key}.label`, f.label)
+}
+
+export function providerFieldHelp(tp: Pick<ProviderType, 'type'>, f: ProviderField): string {
+  return localized(`settings.providerTypes.${tp.type}.fields.${f.key}.help`, f.help || '')
 }

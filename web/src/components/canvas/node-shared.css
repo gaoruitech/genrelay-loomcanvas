@@ -698,45 +698,6 @@
 .cv-run-bottom:disabled { background: var(--n-5); color: var(--t-dim); cursor: not-allowed; }
 .cv-run-bottom svg { width: 13px; height: 13px; }
 
-.cv-points {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--accent-text);
-}
-.cv-points svg { width: 11px; height: 11px; opacity: 0.9; }
-.cv-points.estimate { color: var(--warning); }
-.cv-points.estimate svg { opacity: 0.85; }
-
-.cv-total-points {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--accent-text);
-  padding: 6px 10px;
-  background: var(--accent-ghost);
-  border: 1px solid var(--accent-line);
-  border-radius: 6px;
-  margin-top: 4px;
-}
-.cv-total-points-label { color: var(--t-dim); }
-.cv-total-points-value { font-weight: 600; }
-.cv-total-points-value svg { width: 11px; height: 11px; margin-right: 2px; vertical-align: -1px; }
-.cv-total-points.estimate {
-  color: var(--warning);
-  background: rgba(255, 170, 0, 0.08);
-  border-color: rgba(255, 170, 0, 0.25);
-}
-.cv-total-points-sub {
-  font-size: 10px;
-  color: var(--t-dim);
-  text-align: right;
-  padding: 2px 4px 0;
-}
-
 .cv-image-wrap {
   position: relative;
   width: 100%;

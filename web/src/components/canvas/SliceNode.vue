@@ -11,7 +11,7 @@
       <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
-    <div class="cv-body nodrag" @mousedown.stop @click.stop>
+    <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <div class="cv-presets">
         <button
           v-for="p in SLICE_PRESETS" :key="p.key"
@@ -32,12 +32,12 @@
 
       <div v-if="items.length" class="cv-grid">
         <button
-          v-for="it in items" :key="it.key"
-          class="cv-cell" :title="`${it.label} · ${it.width}×${it.height}`"
+          v-for="(it, i) in items" :key="it.key"
+          class="cv-cell" :title="`${cellLabel(i)} · ${it.width}×${it.height}`"
           @click="download(it)"
         >
-          <img :src="canvasImageThumb(it.url, 120)" :alt="it.label" />
-          <span class="cv-cap">{{ it.label }}</span>
+          <img :src="canvasImageThumb(it.url, 120)" :alt="cellLabel(i)" />
+          <span class="cv-cap">{{ cellLabel(i) }}</span>
         </button>
       </div>
       <div v-else class="cv-empty">{{ t('tools.slice.empty') }}</div>
@@ -99,6 +99,9 @@ const rows = computed(() => Number(props.data.rows) || 3)
 const count = computed(() => sliceCount(cols.value, rows.value))
 const items = computed<SliceItem[]>(() => props.data.sliceItems || [])
 const displayError = computed(() => props.data.validationError || props.data.errorMsg || '')
+
+// 格子的名字按顺序在前端出（后端返回的 label 是固定一种语言的），切语言跟着变
+const cellLabel = (i: number) => t('tools.slice.cell', { n: i + 1 })
 
 /** 换了份数，之前切的那批就对不上了，一起清掉 —— 留着会让人以为那是新份数的产物 */
 function setGrid(c: number, r: number) {

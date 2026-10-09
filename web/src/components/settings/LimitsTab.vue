@@ -52,17 +52,18 @@ const { t } = useI18n()
 
 type LimitKey = 'concurrency' | 'imageTimeoutMinutes' | 'videoTimeoutMinutes' | 'maxRetries' | 'retentionDays'
 
+// 范围与后端 services/settings.js 的校验一致：这里放得比后端宽，填进去就只能等后端报错
 const FIELDS: { key: LimitKey; min: number; max: number }[] = [
-  { key: 'concurrency', min: 1, max: 64 },
-  { key: 'maxRetries', min: 0, max: 10 },
-  { key: 'imageTimeoutMinutes', min: 1, max: 240 },
-  { key: 'videoTimeoutMinutes', min: 1, max: 720 },
+  { key: 'concurrency', min: 1, max: 32 },
+  { key: 'maxRetries', min: 0, max: 5 },
+  { key: 'imageTimeoutMinutes', min: 1, max: 120 },
+  { key: 'videoTimeoutMinutes', min: 1, max: 240 },
   { key: 'retentionDays', min: 0, max: 3650 },
 ]
 
 const { form, loading, loadError, saving, load, save } = useAdminSettings(
   FIELDS.map(f => f.key),
-  { concurrency: 4, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 0, retentionDays: 0 },
+  { concurrency: 4, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 2, retentionDays: 0 },
 )
 onMounted(load)
 

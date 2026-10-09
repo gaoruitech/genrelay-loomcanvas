@@ -56,7 +56,7 @@
             <img
               v-if="w.thumbnailType === 'image' && hasCover(w)"
               loading="lazy"
-              :src="https(w.thumbnail)"
+              :src="canvasImageThumb(https(w.thumbnail))"
               alt=""
               @error="onCoverError(w.id)"
             />
@@ -184,6 +184,7 @@ import LibraryDialog from '@/components/canvas/LibraryDialog.vue'
 import ListSkeleton from '@/components/ListSkeleton.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
 import { ensureHttps } from '@/utils/mediaUrl'
+import { canvasImageThumb } from '@/utils/canvasMedia'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -391,7 +392,7 @@ async function handleDuplicate(w: WorkflowSummary) {
   if (!w || duplicating.value) return
   duplicating.value = true
   try {
-    const res = await workflowApi.duplicate(w.id)
+    const res = await workflowApi.duplicate(w.id, t('common.copyName', { name: w.name }))
     if (res.data.result === 0) {
       MessagePlugin.success(t('views.list.duplicated'))
       fetchList()

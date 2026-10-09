@@ -5,6 +5,7 @@ import type {
   UsageSummaryRow, UsageRecord,
 } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
+import { localizeTemplates } from '@/utils/builtinContent'
 
 export type { ApiResponse } from '@/types'
 
@@ -186,8 +187,9 @@ export const workflowApi = {
   download: (url: string, filename: string) =>
     api.post('/workflow/download', { url, filename }, { responseType: 'blob', timeout: 180000 }),
 
-  duplicate: (id: string) =>
-    api.post<ApiResponse<WorkflowDetail>>(`/workflow/${id}/duplicate`),
+  /** name：副本的名字，由前端按界面语言起；不传时后端用默认名 */
+  duplicate: (id: string, name?: string) =>
+    api.post<ApiResponse<WorkflowDetail>>(`/workflow/${id}/duplicate`, { name }),
 
   remove: (id: string) =>
     api.delete<ApiResponse<{ id: string }>>(`/workflow/${id}`),
@@ -228,8 +230,9 @@ export const canvasShareApi = {
       '/canvas-share/publish', data
     ),
 
-  copy: (token: string) =>
-    api.post<ApiResponse<{ workflowId: string }>>(`/canvas-share/${encodeURIComponent(token)}/copy`),
+  /** name：复制出来的画布叫什么，由前端按界面语言起；不传时后端用默认名 */
+  copy: (token: string, name?: string) =>
+    api.post<ApiResponse<{ workflowId: string }>>(`/canvas-share/${encodeURIComponent(token)}/copy`, { name }),
 
   mine: () =>
     api.get<ApiResponse<{ list: CanvasShareSummary[] }>>('/canvas-share/mine'),
@@ -280,7 +283,12 @@ export const userAssetApi = {
 }
 
 export const canvasTemplateApi = {
-  list: () => api.get<ApiResponse>('/canvas/templates'),
+  /** 内置模板的标题 / 说明 / 预填提示词换成当前界面语言的写法（见 utils/builtinContent） */
+  list: async () => {
+    const res = await api.get<ApiResponse>('/canvas/templates')
+    if (Array.isArray(res.data?.data)) res.data.data = localizeTemplates(res.data.data)
+    return res
+  },
 }
 
 // 多平台导出：本机像素处理（尺寸/白底净化/纯白检测），不调模型

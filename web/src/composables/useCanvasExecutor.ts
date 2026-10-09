@@ -44,6 +44,12 @@ const LOCAL_TYPES = new Set([EXPORT_TYPE, ...TOOL_TYPES])
 
 const NODE_KIND_OUTPUT = 'output'
 
+/** 生成节点的名字，只用于提示语 */
+const GEN_LABEL_KEY: Record<string, string> = {
+  'image-gen': 'nodes.title.imageGen', 'image-edit': 'nodes.title.imageEdit',
+  'video-gen': 'nodes.title.videoGen', 'video-edit': 'nodes.title.videoEdit',
+}
+
 /** 工具节点的名字，只用于提示语 */
 const TOOL_LABEL_KEY: Record<string, string> = {
   'slice': 'nodes.title.slice', 'collage': 'nodes.title.collage',
@@ -307,7 +313,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       const first = refsOf(imageEdges.filter(e => !isLastFrameHandle(e.targetHandle as string)))[0]
       const last = refsOf(lastEdges)[0]
       const picked = [first, last].filter(Boolean) as RawImageRef[]
-      return buildImageRefs(picked, node.data?.imageNames, 2, [t('executor.firstFrame'), t('executor.lastFrame')])
+      return buildImageRefs(picked, node.data?.imageNames, 2, ['first', 'last'])
     }
 
     const adapter = getAdapter((node.data?.model as string) || '')
@@ -395,7 +401,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         validationError: validationMsg,
         validationStamp: Date.now(),
       })
-      MessagePlugin.error(`[${node.data?.label || node.type}] ${validationMsg}`)
+      MessagePlugin.error(`[${t(GEN_LABEL_KEY[node.type as string] || 'nodes.title.generic')}] ${validationMsg}`)
       return false
     }
     // 校验通过：清掉之前残留的校验提示
@@ -1059,12 +1065,13 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
 
   // 把一组目标 gen/analysis 节点作为一个 DAG 一起跑：
   // 无依赖关系的并发、有依赖的自动排队，整体受 MAX_CONCURRENT 限制。
-  async function runNodeSet(ids: Iterable<string>): Promise<void> {
+  // forceId：用户亲手点了运行的那个节点，已有产物也要重跑（否则按钮点了没反应，也攒不出历史版本）
+  async function runNodeSet(ids: Iterable<string>, forceId?: string): Promise<void> {
     const runSet = new Set<string>()
     for (const id of ids) {
       const n = findNode(id)
-      // 已有可复用产物且未过期的节点不重跑（与旧逻辑一致）
-      if (n && !isAlreadyDone(n)) runSet.add(id)
+      // 上游已有可复用产物且未过期的节点不重跑
+      if (n && (id === forceId || !isAlreadyDone(n))) runSet.add(id)
     }
     if (runSet.size === 0) return
     // 标记排队态；已在跑的节点（来自另一条并发分支）不要覆盖它的状态
@@ -1077,12 +1084,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
   // 运行某个目标（成品，或直接就是 gen 节点）及其所有需要重跑的上游
   async function runSubtree(targetId: string): Promise<void> {
     const plan = topoSortForTarget(targetId)
-    if (plan.length === 0) {
-      const t = findNode(targetId)
-      if (t && (GEN_TYPES.has(t.type as string) || TEXT_OUT_TYPES.has(t.type as string)
-        || LOCAL_TYPES.has(t.type as string))) plan.push(targetId)
-    }
-    await runNodeSet(plan)
+    const target = findNode(targetId)
+    const runnable = !!target && (GEN_TYPES.has(target.type as string) || TEXT_OUT_TYPES.has(target.type as string)
+      || LOCAL_TYPES.has(target.type as string))
+    if (runnable && !plan.includes(targetId)) plan.push(targetId)
+    await runNodeSet(plan, runnable ? targetId : undefined)
   }
 
   // 运行全部：把所有成品节点的上游合并成一个 DAG 一起跑，共享同一个 MAX_CONCURRENT 名额池

@@ -11,7 +11,7 @@
       <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
-    <div class="cv-body nodrag" @mousedown.stop @click.stop>
+    <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <div class="cv-presets">
         <button
           v-for="p in COLLAGE_PRESETS" :key="p.key"

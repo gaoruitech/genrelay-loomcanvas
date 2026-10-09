@@ -10,7 +10,7 @@
  *   { type, b64, mime? }      inline base64
  */
 const sharp = require('sharp')
-const { getStorage, newKey } = require('../storage')
+const { getStorage, newKey, thumbKeyFor } = require('../storage')
 const { safeFetch, safeFetchStream } = require('../utils/safeFetch')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
 const { RunError } = require('./core')
@@ -19,12 +19,54 @@ const MAX_IMAGE_BYTES = 60 * 1024 * 1024
 const MAX_VIDEO_BYTES = 1024 * 1024 * 1024
 const THUMB_EDGE = 512
 
+const THUMB_MAX_PIXELS = 120 * 1000 * 1000
+const THUMB_MAX_SOURCE_BYTES = 60 * 1024 * 1024
+
 async function makeThumbnail(buffer) {
-  return sharp(buffer, { failOn: 'none' })
+  return sharp(buffer, { failOn: 'none', limitInputPixels: THUMB_MAX_PIXELS })
     .rotate()
     .resize(THUMB_EDGE, THUMB_EDGE, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 78 })
     .toBuffer()
+}
+
+/**
+ * Write the thumbnail of a stored image at its derived key (see thumbKeyFor).
+ * Resolves the thumbnail's { key, url }, or null when the image gets none.
+ */
+async function storeThumbnail(sourceKey, buffer) {
+  const key = thumbKeyFor(sourceKey)
+  if (!key) return null
+  const thumb = await makeThumbnail(buffer)
+  return getStorage().put(key, thumb, { contentType: 'image/webp' })
+}
+
+const pendingThumbs = new Map()
+
+/**
+ * Make sure the derived thumbnail `thumbKey` exists, generating it from its
+ * source image when it does not (files stored before thumbnails had derived
+ * keys, tool outputs). Resolves 'ok', 'missing' (no such source image) or
+ * 'unsupported' (the source exists but cannot be thumbnailed).
+ */
+function ensureThumbnail(thumbKey, sourceKey) {
+  const running = pendingThumbs.get(thumbKey)
+  if (running) return running
+  const job = (async () => {
+    const storage = getStorage()
+    if (await storage.exists(thumbKey)) return 'ok'
+    if (!(await storage.exists(sourceKey))) return 'missing'
+    try {
+      const buffer = await storage.getBuffer(sourceKey)
+      if (buffer.length > THUMB_MAX_SOURCE_BYTES || kindOfMime(sniffMime(buffer)) !== 'image') return 'unsupported'
+      await storage.put(thumbKey, await makeThumbnail(buffer), { contentType: 'image/webp' })
+      return 'ok'
+    } catch {
+      return 'unsupported'
+    }
+  })().finally(() => pendingThumbs.delete(thumbKey))
+  pendingThumbs.set(thumbKey, job)
+  return job
 }
 
 async function storeImage(buffer) {
@@ -33,21 +75,19 @@ async function storeImage(buffer) {
   const storage = getStorage()
   let width = 0
   let height = 0
-  let thumb = null
   try {
     const meta = await sharp(buffer, { failOn: 'none' }).metadata()
     width = meta.width || 0
     height = meta.height || 0
-    thumb = await makeThumbnail(buffer)
   } catch {
     // A format sharp cannot decode still gets stored; it just has no thumbnail.
   }
   const main = await storage.put(newKey('outputs', mime), buffer, { contentType: mime })
   const out = { type: 'image', url: main.url, key: main.key, thumbnailUrl: '', thumbKey: '', width, height }
+  const thumb = width ? await storeThumbnail(main.key, buffer).catch(() => null) : null
   if (thumb) {
-    const t = await storage.put(newKey('thumbs', 'image/webp'), thumb, { contentType: 'image/webp' })
-    out.thumbnailUrl = t.url
-    out.thumbKey = t.key
+    out.thumbnailUrl = thumb.url
+    out.thumbKey = thumb.key
   }
   return out
 }
@@ -130,4 +170,4 @@ async function transferOutput(output, { signal, timeoutMs = 300000 } = {}) {
   }
 }
 
-module.exports = { transferOutput, makeThumbnail, storeImage }
+module.exports = { transferOutput, makeThumbnail, storeThumbnail, ensureThumbnail, storeImage }

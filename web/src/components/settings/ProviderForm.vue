@@ -2,12 +2,12 @@
   <div class="pf">
     <div v-if="showName" class="lc-field">
       <label :for="uid + '-name'">{{ t('settings.providers.name') }}</label>
-      <input :id="uid + '-name'" v-model="form.name" class="lc-input" :placeholder="type.label" :disabled="disabled" />
+      <input :id="uid + '-name'" v-model="form.name" class="lc-input" :placeholder="providerTypeLabel(type)" :disabled="disabled" />
     </div>
 
     <div v-for="f in type.fields" :key="f.key" class="lc-field">
       <label :for="uid + '-' + f.key">
-        {{ f.label }}<span v-if="f.required && !secretAlreadySet(f)" class="lc-required">*</span>
+        {{ providerFieldLabel(type, f) }}<span v-if="f.required && !secretAlreadySet(f)" class="lc-required">*</span>
       </label>
       <input
         :id="uid + '-' + f.key"
@@ -19,7 +19,7 @@
         :disabled="disabled"
       />
       <span v-if="f.secret && secretAlreadySet(f)" class="lc-help">{{ t('settings.providers.secretKeep') }}</span>
-      <span v-else-if="f.help" class="lc-help">{{ f.help }}</span>
+      <span v-else-if="providerFieldHelp(type, f)" class="lc-help">{{ providerFieldHelp(type, f) }}</span>
     </div>
 
     <div v-if="showBaseUrl" class="lc-field">
@@ -46,6 +46,7 @@
 import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ProviderField, ProviderInstance, ProviderType } from '@/types'
+import { providerTypeLabel, providerFieldLabel, providerFieldHelp } from '@/utils/providerMeta'
 
 const props = withDefaults(defineProps<{
   type: ProviderType

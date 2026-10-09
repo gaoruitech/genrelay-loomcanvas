@@ -87,6 +87,32 @@ export default {
       retentionDaysHelp: '超过这个天数的结果文件会被清理，0 表示永久保留。',
       outOfRange: '{field}需要是 {min} 到 {max} 之间的整数',
     },
+    providerTypes: {
+      gaorui: {
+        label: '高睿 API',
+        fields: {
+          apiKey: { label: 'API Key' },
+          baseUrl: { label: '接口地址' },
+        },
+      },
+      'openai-compatible': {
+        label: 'OpenAI 兼容接口',
+        fields: {
+          baseUrl: { label: '接口地址' },
+          apiKey: { label: 'API Key' },
+          models: { label: '对话模型', help: '逗号分隔；与下一项都留空时自动从 /v1/models 读取' },
+          imageModels: { label: '图片模型', help: '逗号分隔' },
+        },
+      },
+      gemini: {
+        label: 'Google Gemini',
+        fields: {
+          apiKey: { label: 'API Key' },
+          baseUrl: { label: '接口地址' },
+          models: { label: '模型', help: '逗号分隔；留空时自动读取可用模型。名称含 image 的按图片模型处理，其余按对话模型处理' },
+        },
+      },
+    },
     appearance: {
       title: '外观',
       desc: '站点名称和 Logo 显示在顶栏；默认主题和语言只对没有自己选过的浏览器生效。',
@@ -224,6 +250,32 @@ export default {
       retentionDays: 'Result retention (days)',
       retentionDaysHelp: 'Result files older than this are cleaned up. 0 keeps them forever.',
       outOfRange: '{field} must be a whole number between {min} and {max}',
+    },
+    providerTypes: {
+      gaorui: {
+        label: 'Gaorui API',
+        fields: {
+          apiKey: { label: 'API key' },
+          baseUrl: { label: 'Base URL' },
+        },
+      },
+      'openai-compatible': {
+        label: 'OpenAI-compatible',
+        fields: {
+          baseUrl: { label: 'Base URL' },
+          apiKey: { label: 'API key' },
+          models: { label: 'Chat models', help: 'Comma-separated. Leave this and the next field empty to read the list from /v1/models.' },
+          imageModels: { label: 'Image models', help: 'Comma-separated.' },
+        },
+      },
+      gemini: {
+        label: 'Google Gemini',
+        fields: {
+          apiKey: { label: 'API key' },
+          baseUrl: { label: 'Base URL' },
+          models: { label: 'Models', help: 'Comma-separated. Leave empty to read the available models. Names containing "image" are treated as image models, the rest as chat models.' },
+        },
+      },
     },
     appearance: {
       title: 'Appearance',

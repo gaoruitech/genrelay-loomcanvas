@@ -206,18 +206,25 @@ module.exports = {
 **文件**
 
 - `POST /api/files/upload` 对图片返回 `thumbnailUrl`。
+- 缩略图的地址由原图地址直接推出，不需要另外记录：存储 key 为 `<uploads|outputs|tools>/…/<名字>.<扩展名>` 的图片，缩略图 key 是 `thumbs/of/<uploads|outputs|tools>/…/<名字>_<扩展名>.webp`（最长边 512 的 webp）。例如 `/files/outputs/2025/01/ab12.png` → `/files/thumbs/of/outputs/2025/01/ab12_png.webp`。只有 png / jpg / webp / bmp / avif 有缩略图；视频、GIF 没有。
+  - 上传和运行结果转存时会顺手生成；本地存储下 `GET /files/thumbs/of/…` 发现文件不在（老文件、工具节点的产物）就从原图现做一份、落盘、以后直接读。原图不存在返回 404；原图存在但做不出缩略图时 302 到原图。
+  - 画布节点数据里只存原图地址。前端显示小图时：本地存储的地址（`/files/…`）按上面的规则推出缩略图地址，所以刷新、复制节点、分享页都有缩略图；对象存储和外链地址用接口返回的 `thumbnailUrl`（只在当前页面内存里记着，刷新后退回原图）。
 - 文件地址可以是站内相对地址（`/files/...`）；`/files/*` 不需要登录。
 - 没有公网地址时，本地存储里的参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）会报错并提示设置 `PUBLIC_URL` 或改用对象存储。
 
 **画布**
 
 - `PUT /api/workflow/:id` 只带 `{ name }` 时只改名；保存 `settings.bg`；返回 `updatedAt`。
+- `POST /api/workflow/:id/duplicate` 和 `POST /api/canvas-share/:token/copy` 可带 `{ name }` 指定新画布的名字（前端按界面语言起名）；不带时后端用默认名。
+- 打包下载（`download-zip`）里的文件名是 `<序号>-<节点类型>.<扩展名>`，例如 `02-image-edit.png`，与界面语言无关。
 - `POST /api/workflow/download` `{ url, filename }` 代理下载跨域文件；`POST /api/workflow/:id/download-zip` `{ urls? }`，不带 `urls` 表示整张画布。
-- 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`）。
+- 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`、`video-in`）。
+- 视频生成节点的提示词里，指代首帧 / 尾帧的 `@` 存的是固定写法 `@first_frame` / `@last_frame`，与界面语言无关；文本框里显示成当前语言的名字（`@首帧`、`@First_frame`），提交给模型前再换成自然语言。老画布里存的 `@首帧` / `@尾帧` 照样认。
+- 后端内置内容（接入类型及其表单字段、内置模板、内置模型的一句话说明、切片和多平台导出的各项名字）在接口里是固定一种语言的原文，各自带稳定标识（接入 `type`、字段 `key`、模板 `key`、模型标识、导出项 `key`）；前端按标识在语言文件里取当前语言的写法，语言文件里没有的才显示接口给的原文。接口返回的错误信息 `message` 目前只有中文。
 
 **分享链接**
 
-- `POST /api/canvas-share/publish` `{ workflowId, title?, description?, expiresInDays? }` → `{ id, token, updated, expiresAt }`，不带 `expiresInDays` 表示永不过期。
+- `POST /api/canvas-share/publish` `{ workflowId, title?, description?, expiresInDays? }` → `{ id, token, updated, expiresAt }`。`expiresInDays: 0` 表示永不过期；不带这个字段时，新链接永不过期，对同一张画布再次发布则沿用原来的有效期（原来的已经过期就清掉）。
 - `GET /api/canvas-share/:token` 公开只读；不存在、已过期、已撤销统一返回 404。
 - `GET /api/canvas-share/mine` 保留已撤销和已过期的链接；`DELETE /api/canvas-share/:id` 第一次撤销，对已撤销的再删一次才从列表移除；撤销后的 token 不复用。
 

@@ -54,7 +54,7 @@
           <div class="lc-field">
             <label>{{ t('settings.providers.type') }}</label>
             <select v-model="dialog.typeId" class="lc-select" :disabled="!!dialog.existing || saving" @change="onTypeChange">
-              <option v-for="tp in types" :key="tp.type" :value="tp.type">{{ tp.label }}</option>
+              <option v-for="tp in types" :key="tp.type" :value="tp.type">{{ providerTypeLabel(tp) }}</option>
             </select>
             <span v-if="dialogType && isGaorui(dialogType)" class="lc-help">
               <a :href="GAORUI_URL" target="_blank" rel="noopener noreferrer">{{ t('setup.getKey') }}</a>
@@ -116,7 +116,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { useAppStore } from '@/stores/app'
-import { GAORUI_URL, isGaorui } from '@/utils/providerMeta'
+import { GAORUI_URL, isGaorui, providerTypeLabel, providerFieldLabel } from '@/utils/providerMeta'
 import ProviderForm from './ProviderForm.vue'
 import { initialProviderForm, missingProviderField, providerPayload } from './providerForm'
 import type { ProviderInstance, ProviderTestResult, ProviderType } from '@/types'
@@ -145,7 +145,8 @@ async function load() {
 onMounted(load)
 
 function typeLabel(type: string): string {
-  return types.value.find(x => x.type === type)?.label || type
+  const tp = types.value.find(x => x.type === type)
+  return tp ? providerTypeLabel(tp) : type
 }
 
 /** 接入变了：启动信息里的 hasProvider 和画布用的模型清单都要跟着刷新 */
@@ -220,7 +221,7 @@ async function save() {
   if (!d || !tp) return
   const missing = missingProviderField(tp, d.form, d.existing)
   if (missing) {
-    dialogError.value = t('settings.providers.fieldRequired', { field: missing.label })
+    dialogError.value = t('settings.providers.fieldRequired', { field: providerFieldLabel(tp, missing) })
     return
   }
   saving.value = true

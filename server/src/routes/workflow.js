@@ -191,12 +191,16 @@ router.put('/:id', wrap(async (req, res) => {
   ok(res, serialize(doc))
 }))
 
-/** POST /api/workflow/:id/duplicate - media is shared by reference, not copied */
+/**
+ * POST /api/workflow/:id/duplicate { name? } - media is shared by reference, not copied.
+ * The client may name the copy (it knows the UI language); otherwise a default is used.
+ */
 router.post('/:id/duplicate', wrap(async (req, res) => {
   const src = await loadWorkflow(req.params.id)
+  const wanted = req.body && typeof req.body.name === 'string' ? req.body.name.trim() : ''
   const doc = await Workflow.create({
     userId: LOCAL_USER,
-    name: `${src.name || DEFAULT_NAME} 副本`.slice(0, MAX_NAME_LEN),
+    name: (wanted || `${src.name || DEFAULT_NAME} 副本`).slice(0, MAX_NAME_LEN),
     nodes: src.nodes || [],
     edges: src.edges || [],
     viewport: src.viewport || DEFAULT_VIEWPORT,
@@ -226,15 +230,10 @@ const MAX_ZIP_ITEMS = 100
 const ZIP_ITEM_TIMEOUT_MS = 120 * 1000
 const ZIP_TOTAL_TIMEOUT_MS = 10 * 60 * 1000
 
-const ZIP_NODE_LABEL = {
-  'image': '图片',
-  'video': '视频',
-  'image-collection': '图片集合',
-  'image-gen': '图片生成',
-  'image-edit': '图片编辑',
-  'video-gen': '视频生成',
-  'video-edit': '视频编辑',
-  'output': '成品',
+/** Entry names carry the node type as it is (image-gen, slice, ...): the same in every UI language. */
+function zipLabel(node) {
+  const type = node && typeof node.type === 'string' ? node.type : ''
+  return /^[a-z][a-z-]{0,30}$/.test(type) ? type : 'node'
 }
 
 function zipExt(url, kind) {
@@ -262,7 +261,7 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
   const items = []
   const seen = new Set()
   for (const node of doc.nodes || []) {
-    const label = ZIP_NODE_LABEL[node && node.type] || '节点'
+    const label = zipLabel(node)
     for (const m of collectNodeMedia(node)) {
       if (seen.has(m.url) || (wanted && !wanted.has(m.url))) continue
       seen.add(m.url)
@@ -307,7 +306,7 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
       } catch (err) {
         if (abort.signal.aborted) break
         // One missing file should not ruin the archive: leave a note in its place.
-        archive.append(`下载失败：${it.url}\n`, { name: `${no}-${it.label}-失败.txt` })
+        archive.append(`Download failed: ${it.url}\n`, { name: `${no}-${it.label}-failed.txt` })
       }
     }
     if (abort.signal.aborted) { archive.abort(); res.destroy(); return }

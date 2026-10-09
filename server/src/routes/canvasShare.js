@@ -191,14 +191,14 @@ router.get('/:ref', wrap(async (req, res) => {
   })
 }))
 
-/** POST /api/canvas-share/:token/copy - copy the snapshot into a new canvas of mine */
+/** POST /api/canvas-share/:token/copy { name? } - copy the snapshot into a new canvas of mine */
 router.post('/:ref/copy', requireAuth, wrap(async (req, res) => {
   const { doc } = await findReadable(req)
   const snap = doc.snapshot || {}
   const nodes = cleanNodes(snap.nodes)
   const wf = await Workflow.create({
     userId: LOCAL_USER,
-    name: `${doc.title || '未命名画布'} (副本)`.slice(0, 80),
+    name: (text(req.body && req.body.name, 80) || `${doc.title || '未命名画布'} (副本)`).slice(0, 80),
     nodes,
     edges: structuredClone(Array.isArray(snap.edges) ? snap.edges : []),
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },

@@ -86,6 +86,8 @@ const filters = computed<{ value: FilterKey; label: string }[]>(() => [
 const props = defineProps<{
   open: boolean
   nodes: any[]
+  /** 用来判断哪些节点直接连进了成品节点（「仅成品」筛选） */
+  edges?: any[]
   workflowId: string
   workflowName: string
 }>()
@@ -117,7 +119,7 @@ function thumbOf(it: CanvasMediaItem): string {
 // 每次打开都按当前画布重新扫一遍：节点可能刚跑出新结果
 watch(() => props.open, (open) => {
   if (!open) return
-  items.value = collectCanvasMedia(props.nodes)
+  items.value = collectCanvasMedia(props.nodes, props.edges)
   // 默认全选，但不超过上限 —— 一进来就是红字提示很劝退
   selected.value = new Set(items.value.slice(0, MAX_ZIP_ITEMS).map((it) => it.url))
   filter.value = 'all'

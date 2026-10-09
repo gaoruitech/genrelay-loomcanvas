@@ -10,6 +10,7 @@ import setup from './modules/setup'
 
 export default {
   common: {
+    copyName: '{name} 副本',
     ok: '确定',
     cancel: '取消',
     confirm: '确认',
@@ -90,6 +91,16 @@ export default {
   },
 
   models: {
+    catalogDesc: {
+      'nano-banana-pro': '高质量图片生成与编辑',
+      'nano-banana-2': '图片生成与编辑',
+      'nano-banana-2.1': '新版图片模型',
+      'nano-banana-2-lite': '轻量图片模型，仅 1K',
+      'omni-flash': '文生视频 / 图生视频，6-10 秒',
+      'omni-flash-edit': '按提示词改写一段已有视频',
+      'sora-2-openai-12s': '文生视频 / 单图生视频，固定 12 秒',
+      'grok-imagine-video-1.5-preview': '文生视频 / 多图参考，4-15 秒',
+    },
     auto: '自适应',
     seconds: '{n} 秒',
     imgModeFrames: '首尾帧',

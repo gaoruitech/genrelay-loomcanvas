@@ -9,11 +9,11 @@ const express = require('express')
 const multer = require('multer')
 const sharp = require('sharp')
 const { getConfig } = require('../config')
-const { getStorage, newKey, isValidKey, mimeForKey } = require('../storage')
+const { getStorage, newKey, isValidKey, mimeForKey, thumbSourceKey } = require('../storage')
 const { safeFetch } = require('../utils/safeFetch')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
 const { ok, wrap, badRequest, ApiError } = require('../utils/http')
-const { makeThumbnail } = require('../runner/transfer')
+const { storeThumbnail, ensureThumbnail } = require('../runner/transfer')
 
 /** Images larger than this get a separate webp thumbnail; smaller ones are their own thumbnail. */
 const THUMB_MIN_EDGE = 512
@@ -43,10 +43,9 @@ async function ingest(buffer, { allow = ['image', 'video', 'audio'] } = {}) {
   if (kind === 'image') {
     out.thumbnailUrl = saved.url
     if (Math.max(out.width, out.height) > THUMB_MIN_EDGE) {
-      try {
-        const thumb = await makeThumbnail(buffer)
-        out.thumbnailUrl = (await getStorage().put(newKey('thumbs', 'image/webp'), thumb, { contentType: 'image/webp' })).url
-      } catch { /* the original doubles as its thumbnail */ }
+      // On failure, or for a format without thumbnails, the original doubles as its thumbnail.
+      const thumb = await storeThumbnail(saved.key, buffer).catch(() => null)
+      if (thumb) out.thumbnailUrl = thumb.url
     }
   }
   return { url: saved.url, key: saved.key, ...out }
@@ -105,11 +104,20 @@ const ONE_YEAR = 365 * 24 * 3600 * 1000
  */
 function staticRouter() {
   const router = express.Router()
-  router.get('/*', (req, res, next) => {
+  router.get('/*', async (req, res, next) => {
     const storage = getStorage()
     if (storage.driver !== 'local') return next()
     const key = req.params[0]
     if (!isValidKey(key)) return res.status(404).end()
+    // Derived thumbnails (thumbs/of/...) are generated on first request and
+    // then served from disk like any other file.
+    const sourceKey = thumbSourceKey(key)
+    if (sourceKey) {
+      const state = await ensureThumbnail(key, sourceKey).catch(() => 'unsupported')
+      if (state === 'missing') return res.status(404).end()
+      // Not thumbnailable: the browser gets the image itself instead of a broken picture.
+      if (state !== 'ok') return res.redirect(302, `/files/${sourceKey}`)
+    }
     res.sendFile(key, {
       root: storage.root,
       dotfiles: 'deny',

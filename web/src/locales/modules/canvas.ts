@@ -137,6 +137,10 @@ export default {
       deleted: '已删除该组',
       deletedWith: '已删除该组及其中 {n} 个节点',
     },
+    clipboard: {
+      copied: '已复制 {n} 个节点，按 Ctrl+V 粘贴',
+      pasted: '已粘贴 {n} 个节点',
+    },
     fork: {
       forked: '已分叉出一个新节点',
       noResult: '这个节点还没有可延续的结果',
@@ -322,6 +326,10 @@ export default {
       released: 'Removed {n} node(s) from their group',
       deleted: 'Group deleted',
       deletedWith: 'Deleted the group and its {n} node(s)',
+    },
+    clipboard: {
+      copied: 'Copied {n} node(s). Press Ctrl+V to paste.',
+      pasted: 'Pasted {n} node(s)',
     },
     fork: {
       forked: 'Forked into a new node',

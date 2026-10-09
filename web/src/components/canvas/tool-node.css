@@ -73,7 +73,11 @@
 .cv-help:hover { color: var(--accent-text); border-color: var(--accent-text); }
 .cv-note { font-size: 10px; color: var(--t-dim); line-height: 1.6; }
 
-.cv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+/* 结果多了（九宫格切片）只让这一块滚动，下面的运行 / 下载按钮始终留在节点里 */
+.cv-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+  flex: 0 1 auto; min-height: 56px; overflow-y: auto;
+}
 .cv-cell {
   padding: 0; border: 1px solid var(--n-5); border-radius: 5px; overflow: hidden;
   background: var(--n-2); cursor: pointer; display: flex; flex-direction: column;
@@ -88,7 +92,7 @@
 }
 .cv-preview img { width: 100%; max-height: 120px; object-fit: contain; display: block; }
 
-.cv-actions { display: flex; gap: 6px; margin-top: auto; }
+.cv-actions { display: flex; gap: 6px; margin-top: auto; flex: none; }
 .cv-run {
   flex: 1; background: transparent; color: var(--accent-text); border: 1.5px solid var(--accent-edge);
   border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 0; cursor: pointer;

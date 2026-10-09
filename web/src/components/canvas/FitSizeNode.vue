@@ -11,7 +11,7 @@
       <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
-    <div class="cv-body nodrag" @mousedown.stop @click.stop>
+    <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <div class="cv-row">
         <span class="cv-label">{{ t('tools.fitSize.ratio') }}</span>
         <ChipSelect class="cv-chip" :model-value="ratio" :options="RATIO_OPTIONS" @update:model-value="(v) => patch({ ratio: String(v) })" />

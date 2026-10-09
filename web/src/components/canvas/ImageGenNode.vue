@@ -196,7 +196,6 @@
       @close="detailOpen = false"
     />
 
-    <MediaLightbox :open="lightboxOpen" :url="data.imageUrl || ''" type="image" @close="lightboxOpen = false" />
   </div>
 </template>
 
@@ -208,19 +207,15 @@ import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import NodeImageRefs from '@/components/canvas/NodeImageRefs.vue'
 import MentionPicker from '@/components/canvas/MentionPicker.vue'
 import { useMentionInput } from '@/composables/useMentionInput'
-import { CANVAS_IMAGE_EDITOR_KEY } from '@/composables/canvasImageEditorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
 import { formatEstimate } from '@/utils/cost'
 import type { Cost } from '@/types'
 import {
-  defaultModelId, getAdapter, listFlatModels, modelKeyOf,
-  type ModelAdapter, type ModelOption,
+  defaultModelId, getAdapter, listFlatModels, modelKeyOf, alignParams,
 } from '@/utils/canvasModels'
 import ChipSelect from './ChipSelect.vue'
 import ImageParamsChip from './ImageParamsChip.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
-import MediaLightbox from './MediaLightbox.vue'
-import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 
 import { CANVAS_BRAND_KIT_KEY } from '@/composables/canvasBrandKitKey'
@@ -261,15 +256,6 @@ const props = defineProps<{
 
 const { updateNodeData, onPaneClick, onNodeClick, onMoveStart } = useVueFlow()
 const executor = inject(CANVAS_EXECUTOR_KEY)
-// 分享页的只读节点拿不到这个 provide，按钮自然不出现
-const imageEditor = inject(CANVAS_IMAGE_EDITOR_KEY, undefined)
-
-// 结果落地（生成新节点 / 替换当前）由画布统一处理，这里只发起
-function openImageEditor() {
-  if (!imageEditor || !props.data.imageUrl) return
-  void imageEditor.open({ url: props.data.imageUrl, nodeId: props.id })
-}
-
 const { t } = useI18n()
 
 // 模型清单来自后端、异步加载，下拉和默认模型都放在 computed 里跟着它变
@@ -290,7 +276,11 @@ watch(fallbackModel, (id) => {
 const brandKitCtx = inject(CANVAS_BRAND_KIT_KEY, undefined)
 const brandKitList = computed(() => brandKitCtx?.list.value || [])
 const brandKitId = computed<string>({
-  get: () => props.data.brandKitId || '',
+  // 挂着的品牌包已经被删了就显示「不套用」（执行器同样会当没挂），而不是露出一串 id
+  get: () => {
+    const id = props.data.brandKitId || ''
+    return brandKitList.value.some((k: any) => k.id === id) ? id : ''
+  },
   set: (v) => updateNodeData(props.id, { brandKitId: v }),
 })
 const brandKitRefCount = computed(() => {
@@ -384,12 +374,7 @@ function selectImage(url: string) {
 }
 
 const detailOpen = ref(false)
-const lightboxOpen = ref(false)
 function onDetail() { detailOpen.value = true }
-function onDownload() {
-  if (!props.data.imageUrl) return
-  downloadCanvasAsset(props.data.imageUrl, `${props.id}_${Date.now()}`, 'image')
-}
 
 // ===== 上下面板（同一个开关，点击图片切换）=====
 const panelOpen = ref(false)
@@ -436,22 +421,8 @@ function openExpand() {
   })
 }
 
-// 面板打开时把外层 .vue-flow__node 提到顶层，避免被相邻节点盖住
-let restoreZIndex: (() => void) | null = null
-watch(panelOpen, (v) => {
-  if (!v) {
-    expanded.value = false
-    restoreZIndex?.()
-    restoreZIndex = null
-    return
-  }
-  const el = document.querySelector(`.vue-flow__node[data-id="${props.id}"]`) as HTMLElement | null
-  if (!el) return
-  const old = el.style.zIndex
-  el.style.zIndex = '1000'
-  restoreZIndex = () => { el.style.zIndex = old }
-})
-onBeforeUnmount(() => restoreZIndex?.())
+// 面板收起时连带关掉放大编辑。面板开着时节点要压在别的节点上面，见 styles/base.css
+watch(panelOpen, (v) => { if (!v) expanded.value = false })
 
 function close() { panelOpen.value = false }
 
@@ -525,45 +496,9 @@ watch(() => props.data.validationStamp, (val) => {
 })
 onBeforeUnmount(() => { if (shakeTimer) window.clearTimeout(shakeTimer) })
 
-/**
- * 让节点参数跟模型声明对齐：没设过的取模型默认值；模型不支持的值回落到默认值或
- * 第一个可选项；模型压根没有的那一项清掉。
- *
- * 执行器是直接拿 data 里的参数去提交的 —— 换模型后留着上一个模型的分辨率、数量，
- * 界面上已经没有对应的选项，用户看不见也改不了，却照样会被送出去。
- */
-function alignParams(a: ModelAdapter): Record<string, any> {
-  const data = props.data as Record<string, any>
-  const o = a.options
-  const lists: Record<string, ModelOption<any>[] | undefined> = {
-    resolution: o.resolutions,
-    aspectRatio: o.aspectRatios,
-    duration: o.durations,
-    imgMode: o.imgModes,
-    count: o.counts,
-  }
-  const patch: Record<string, any> = {}
-  for (const [k, v] of Object.entries(a.defaults)) {
-    if (data[k] === undefined) patch[k] = v
-  }
-  for (const [k, list] of Object.entries(lists)) {
-    const cur = k in patch ? patch[k] : data[k]
-    const def = a.defaults[k]
-    const has = (v: any) => !!list?.some(x => String(x.value) === String(v))
-    let next = cur
-    if (list?.length) {
-      if (!has(cur)) next = has(def) ? def : list[0].value
-    } else {
-      next = k === 'duration' && o.fixedDuration ? o.fixedDuration : def
-    }
-    if (next !== cur) patch[k] = next
-  }
-  return patch
-}
-
 watch(adapter, (a) => {
   if (!a) return
-  const patch = alignParams(a)
+  const patch = alignParams(a, props.data)
   if (Object.keys(patch).length > 0) updateNodeData(props.id, patch)
 }, { immediate: true })
 

@@ -4,7 +4,7 @@
       <div class="lib-header">
         <div class="lib-tabs">
           <button
-            v-for="tab in TABS"
+            v-for="tab in visibleTabs"
             :key="tab.key"
             :class="['lib-tab', { active: activeTab === tab.key }]"
             @click="switchTab(tab.key)"
@@ -377,6 +377,10 @@ async function runPending() {
 }
 
 // ===== 素材库 =====
+// 公共素材是部署方预置的（canvasassets 集合），界面上没有录入入口。
+// 一张都没有时不显示这个标签页 —— 否则资源库一打开永远是个空页。
+const visibleTabs = computed(() => TABS.filter((tab) =>
+  tab.key !== 'material' || !materialCatsLoaded.value || materialCats.value.length > 0))
 const materialCats = ref<CanvasAssetCategory[]>([])
 const materialCode = ref<string>('')
 const materialList = ref<CanvasAssetItem[]>([])
@@ -389,8 +393,10 @@ const hasMoreMaterial = computed(() => materialList.value.length < materialTotal
 // 切分类时旧请求可能还没回来，回来了也不能覆盖新分类的列表
 let materialSeq = 0
 
-async function initMaterial() {
-  if (!materialCatsLoaded.value) {
+/** 分类只拉一次。弹窗一打开就拉（不管落在哪个标签页），标签栏才知道要不要显示「素材库」 */
+let materialCatsJob: Promise<void> | null = null
+function loadMaterialCats(): Promise<void> {
+  materialCatsJob ||= (async () => {
     try {
       const res = await canvasAssetApi.categories()
       if (res.data.result === 0 && res.data.data) {
@@ -398,8 +404,17 @@ async function initMaterial() {
       }
     } catch { /* 静默：拉不到分类就显示空态 */ }
     materialCatsLoaded.value = true
+  })()
+  return materialCatsJob
+}
+
+async function initMaterial() {
+  await loadMaterialCats()
+  if (materialCats.value.length === 0) {
+    // 这个实例没有预置公共素材：标签页本身已经隐藏（见 visibleTabs），人落到「我的资产」
+    if (activeTab.value === 'material') switchTab('my-asset')
+    return
   }
-  if (materialCats.value.length === 0) return
   // 默认选中第一个分类
   if (!materialCode.value) materialCode.value = materialCats.value[0].code
   if (materialList.value.length === 0) loadMaterial(true)
@@ -710,7 +725,7 @@ async function copyToMine(item: CanvasShareSummary) {
   if (copyingId.value) return
   copyingId.value = item.id
   try {
-    const res = await canvasShareApi.copy(item.token)
+    const res = await canvasShareApi.copy(item.token, t('common.copyName', { name: item.title || t('library.unnamed') }))
     if (res.data.result === 0 && res.data.data?.workflowId) {
       MessagePlugin.success(t('library.share.copiedToMine'))
       close()
@@ -751,6 +766,7 @@ watch(() => props.modelValue, (open) => {
   if (!open) { pending.value = null; return }
   activeTab.value = initialTabKey()
   searchText.value = ''
+  void loadMaterialCats()
   loadTab(activeTab.value)
 }, { immediate: true })
 </script>

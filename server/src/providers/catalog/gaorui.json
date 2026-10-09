@@ -83,7 +83,7 @@
   },
   {
     "id": "omni-flash-edit",
-    "label": "Omni Flash 视频编辑",
+    "label": "Omni Flash Edit",
     "desc": "按提示词改写一段已有视频",
     "kind": "video",
     "acceptsImage": true,

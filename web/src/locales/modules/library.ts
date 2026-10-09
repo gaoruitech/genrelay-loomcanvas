@@ -108,6 +108,18 @@ export default {
       removed: '已删除',
       removeFailed: '删除失败',
     },
+    builtinTemplates: {
+      'text-to-image': {
+        title: '文生图',
+        description: '一段文字生成一张图片：最基础的起步流程。',
+        texts: { prompt: '一只坐在窗台上的橘猫，午后阳光，胶片质感' },
+      },
+      'image-to-video': {
+        title: '图生视频',
+        description: '先出一张图，再用这张图和一段运镜描述生成视频。',
+        texts: { prompt: '雪山脚下的木屋，清晨薄雾，电影感构图', motion: '镜头缓慢向前推进，薄雾流动，炊烟升起' },
+      },
+    },
     guide: {
       cardTitle: '开始你的第一块画布',
       cardSub: '从模板套一条现成流水线，或先看两分钟教程。',
@@ -132,7 +144,8 @@ export default {
           items: [
             '在「设置」里添加模型接入：选一种接入类型，填 API Key（有的类型还要填接口地址），然后做一次连通性测试。',
             'API Key 加密保存在你自己的服务端，界面上只显示末四位。',
-            '可选的模型和它们的价格都来自接入；在设置里可以启用或停用某个模型，改显示名称和价格。',
+            '可选的模型来自接入；价格要你自己在「设置 → 模型」里填，没填的显示「成本未知」。同一页还能启用或停用某个模型、改显示名称和排序。',
+            '设置一共五页：模型接入、模型、限制（并发数、重试次数、图片 / 视频超时、结果保留天数）、外观（站点名称、Logo、默认主题和语言）、用量。',
             '还没有可用模型时，生成节点会提示「还没有可用的模型」，这时去设置里连接即可。',
           ],
         },
@@ -152,6 +165,7 @@ export default {
             '移动节点时会出现对齐参考线；框选多个：按住 Shift 拖出方框。',
             '拖文件进画布：把本地图片 / 视频直接拖进来（可一次拖多个），落在鼠标位置自动建节点并上传。',
             '粘贴图片：从别处复制的图片按 Ctrl+V 直接贴到画布上；在输入框里粘贴文字不受影响。',
+            '复制节点：选中后 Ctrl+C、再 Ctrl+V，连同它们之间的连线一起贴出来；Ctrl+D 或右键「复制节点」是原地复制一份。',
             '撤销 / 重做：Ctrl+Z / Ctrl+Shift+Z，顶栏也有按钮。',
           ],
         },
@@ -194,7 +208,8 @@ export default {
           items: [
             '运行前：生成节点的运行按钮旁会显示按当前参数跑一次的预估成本，例如「≈ ¥0.12」。',
             '模型没有配置价格时显示「成本未知」—— 仍然可以运行，只是这里算不出金额。',
-            '运行后：节点上显示这一次的实际成本；成品节点会汇总它上游整条链路的成本。',
+            '运行后：这一次的实际成本记在节点的任务详情和历史版本里（大语言模型、视频分析节点直接显示在节点底部）。',
+            '成品节点会汇总它上游整条链路的成本：跑过的节点按实际成本算，还没跑的按预估算。',
             '按钮约定：实心按钮 = 调用付费模型；描边按钮 = 本机处理，免费。',
             '用量统计：在「设置 → 用量」里按天或按模型查看汇总，也能翻每一次运行的明细。',
           ],
@@ -203,9 +218,9 @@ export default {
         run: {
           title: '成品与运行',
           items: [
-            '成品节点：汇总一条链路的产物，统一预览和下载；「运行此分支」一键跑它上游的整条链。',
+            '成品节点：把连进来的产物汇总成一个九宫格，点开看大图；「运行此分支」一键跑它上游的整条链。要下载就用「批量下载」，里面可以只筛成品。',
             '运行全部（顶栏）：按连线先后自动从头跑到尾，自动排队，上游失败时下游不跑。画布里要有「成品」节点收口。',
-            '单节点：点节点自己的运行按钮，会连它需要更新的上游一起跑。',
+            '单节点：点节点自己的运行按钮，会连它需要更新的上游一起跑；已经出过结果的节点再点一次就是重跑，旧结果进历史版本。',
             '批量运行（更多 ⋯）：选一个「图片」节点当变量位，逐张换图让下游整条链重跑。运行期间页面要一直开着，一次最多 100 份素材。',
             '改了上游内容后，下游会标「输入已更新」，重新运行才生效。刷新页面后会接着等结果，不会重复提交。',
           ],
@@ -257,8 +272,8 @@ export default {
         lib: {
           title: '资源库与我的资产',
           items: [
-            '点工具条上的「素材库」打开资源库，里面有 5 个标签页：素材库、我的资产、画布模板、文本模板、我的分享。',
-            '素材库是内置素材；我的资产是你自己上传和存下来的图片、视频，分为产品图、品牌素材、参考、成品四类。',
+            '点工具条上的「素材库」打开资源库，里面有 4 个标签页：我的资产、画布模板、文本模板、我的分享。部署方预置了公共素材时，最前面还会多一个「素材库」。',
+            '我的资产是你自己上传和存下来的图片、视频，分为产品图、品牌素材、参考、成品四类。',
             '画布模板：一键套用整套流水线；文本模板：选一段现成的提示词放进画布。',
             '成品回收：在生成节点上右键「存入我的资产」，它会出现在「我的资产 → 成品」，下次直接复用。',
           ],
@@ -285,7 +300,7 @@ export default {
           title: '快捷键',
           items: [
             'Ctrl+Z 撤销　·　Ctrl+Shift+Z / Ctrl+Y 重做',
-            'Ctrl+A 全选　·　Ctrl+D 复制选中　·　Delete / Backspace 删除选中',
+            'Ctrl+A 全选　·　Ctrl+C / Ctrl+V 复制粘贴节点　·　Ctrl+D 复制选中　·　Delete / Backspace 删除选中',
             'Ctrl+S 保存　·　Ctrl+0 适应视图　·　Ctrl+F 节点搜索',
             'Ctrl+G 成组　·　Ctrl+Shift+G 解散 / 移出组　·　Shift + 拖动 框选　·　Esc 关闭菜单',
           ],
@@ -414,6 +429,18 @@ export default {
       removed: 'Deleted',
       removeFailed: 'Couldn\'t delete the brand kit',
     },
+    builtinTemplates: {
+      'text-to-image': {
+        title: 'Text to image',
+        description: 'Generate an image from a piece of text: the simplest flow to start with.',
+        texts: { prompt: 'An orange cat sitting on a windowsill, afternoon sunlight, film look' },
+      },
+      'image-to-video': {
+        title: 'Image to video',
+        description: 'Generate an image first, then turn it into a video with a camera movement description.',
+        texts: { prompt: 'A wooden cabin at the foot of a snowy mountain, morning mist, cinematic composition', motion: 'The camera slowly pushes forward, mist drifting, smoke rising from the chimney' },
+      },
+    },
     guide: {
       cardTitle: 'Start your first canvas',
       cardSub: 'Start from a ready-made template, or take the two-minute tour first.',
@@ -438,7 +465,8 @@ export default {
           items: [
             'Add a provider in Settings: pick a provider type, enter the API key (some types also need a base URL), then run the connection test.',
             'API keys are stored encrypted on your own server. The interface only ever shows the last four characters.',
-            'The available models and their prices come from the provider. In Settings you can enable or disable a model and change its display name and price.',
+            'The available models come from the provider. Prices are yours to fill in under Settings → Models; a model without one shows "Cost unknown". On the same page you can enable or disable a model and change its display name and order.',
+            'Settings has five pages: Providers, Models, Limits (concurrency, retries, image / video timeouts, how long results are kept), Appearance (site name, logo, default theme and language) and Usage.',
             'When no model is available, generation nodes show "No models available yet". Connect a provider in Settings to fix that.',
           ],
         },
@@ -458,6 +486,7 @@ export default {
             'Alignment guides appear while you move a node. To box-select several nodes, hold Shift and drag.',
             'Drop files: drag images or videos from your computer onto the canvas (several at once is fine). A node is created at the pointer and the file is uploaded.',
             'Paste images: press Ctrl+V to drop a copied image onto the canvas. Pasting text into an input works as usual.',
+            'Copy nodes: select them, press Ctrl+C, then Ctrl+V. The connections between them are pasted too. Ctrl+D, or "Duplicate node" in the right-click menu, makes a copy in place.',
             'Undo / redo: Ctrl+Z / Ctrl+Shift+Z, or the buttons in the top bar.',
           ],
         },
@@ -500,7 +529,8 @@ export default {
           items: [
             'Before a run: next to the Run button, a generation node shows the estimated cost of one run with the current parameters, for example "≈ ¥0.12".',
             'If the model has no price configured, you see "Cost unknown". You can still run it; the amount just can\'t be calculated.',
-            'After a run: the node shows the actual cost of that run, and an Output node adds up the cost of everything upstream of it.',
+            'After a run: the actual cost of that run is kept in the node\'s run details and history (Language model and Video analysis nodes show it at the bottom of the node).',
+            'An Output node adds up the cost of everything upstream of it: actual cost for nodes that have run, the estimate for those that have not.',
             'Button convention: a solid button calls a paid model; an outline button runs locally and is free.',
             'Usage: Settings → Usage shows totals by day or by model, plus a record of every run.',
           ],
@@ -509,9 +539,9 @@ export default {
         run: {
           title: 'Outputs and running',
           items: [
-            'Output node: collects what a chain produced so you can preview and download it in one place. "Run this branch" runs the whole chain upstream of it.',
+            'Output node: collects everything connected to it into one grid; click a tile to see it full size. "Run this branch" runs the whole chain upstream of it. To download, use Batch download, which can filter to outputs only.',
             'Run all (top bar): runs everything in wiring order, queues automatically, and skips downstream nodes when an upstream one fails. The canvas needs at least one Output node.',
-            'Single node: a node\'s own Run button also runs any upstream nodes that need updating.',
+            'Single node: a node\'s own Run button also runs any upstream nodes that need updating. Clicking it on a node that already has a result runs it again; the old result moves to its history.',
             'Batch run (More ⋯): pick an Image node as the variable, then swap images in one by one and re-run the chain below it. Keep the page open while it runs; up to 100 source files per batch.',
             'After you change something upstream, downstream nodes are marked "Inputs changed" until you run them again. If you reload the page, it keeps waiting for the result and does not submit the job twice.',
           ],
@@ -563,8 +593,8 @@ export default {
         lib: {
           title: 'Library and my assets',
           items: [
-            'Click "Asset library" on the toolbar to open the library. It has 5 tabs: Stock assets, My assets, Canvas templates, Text templates, My share links.',
-            'Stock assets are built in. My assets are the images and videos you uploaded or saved, in four categories: product shots, brand assets, references and outputs.',
+            'Click "Asset library" on the toolbar to open the library. It has 4 tabs: My assets, Canvas templates, Text templates, My share links. If the person who runs this instance has preloaded shared assets, a "Stock assets" tab appears in front.',
+            'My assets are the images and videos you uploaded or saved, in four categories: product shots, brand assets, references and outputs.',
             'Canvas templates apply a whole pipeline in one click. Text templates drop a ready-made prompt onto the canvas.',
             'Keep a result: right-click a generation node and choose "Save to my assets". It appears under My assets → Outputs, ready to reuse.',
           ],
@@ -591,7 +621,7 @@ export default {
           title: 'Shortcuts',
           items: [
             'Ctrl+Z undo  ·  Ctrl+Shift+Z / Ctrl+Y redo',
-            'Ctrl+A select all  ·  Ctrl+D duplicate selection  ·  Delete / Backspace delete selection',
+            'Ctrl+A select all  ·  Ctrl+C / Ctrl+V copy and paste nodes  ·  Ctrl+D duplicate selection  ·  Delete / Backspace delete selection',
             'Ctrl+S save  ·  Ctrl+0 fit view  ·  Ctrl+F find nodes',
             'Ctrl+G group  ·  Ctrl+Shift+G ungroup / move out  ·  Shift + drag box-select  ·  Esc close menus',
           ],

@@ -213,7 +213,8 @@ test('LoomCanvas API end to end', async (t) => {
     uploaded = await data('POST', '/api/files/upload', form)
     assert.match(uploaded.key, /^uploads\/\d{4}\/\d{2}\/[0-9a-f]{32}\.png$/)
     assert.deepEqual([uploaded.mime, uploaded.width, uploaded.height, uploaded.size], ['image/png', 1024, 768, png.length])
-    assert.match(uploaded.thumbnailUrl, /^\/files\/thumbs\/.+\.webp$/)
+    // The thumbnail URL is derived from the image's own key.
+    assert.equal(uploaded.thumbnailUrl, `/files/thumbs/of/${uploaded.key.replace(/\.png$/, '_png.webp')}`)
 
     const bad = new FormData()
     bad.append('file', new Blob(['<html><script>alert(1)</script>'], { type: 'image/png' }), 'x.png')
@@ -227,6 +228,20 @@ test('LoomCanvas API end to end', async (t) => {
     assert.match(res.headers.get('content-security-policy'), /sandbox/)
     assert.equal((await res.arrayBuffer()).byteLength, 8)
     assert.equal((await fetch(base + '/files/uploads/2025/01/' + '0'.repeat(32) + '.png')).status, 404)
+
+    // Derived thumbnails are generated on first request when the file is not there
+    // (deleted, or the image was stored before it had one), then served from disk.
+    const thumbFile = path.join(tmpDir, uploaded.thumbnailUrl.slice('/files/'.length))
+    fs.rmSync(thumbFile)
+    const lazy = await fetch(base + uploaded.thumbnailUrl)
+    assert.deepEqual([lazy.status, lazy.headers.get('content-type')], [200, 'image/webp'])
+    const lazyMeta = await sharp(Buffer.from(await lazy.arrayBuffer())).metadata()
+    assert.deepEqual([lazyMeta.format, lazyMeta.width, lazyMeta.height], ['webp', 512, 384])
+    assert.ok(fs.existsSync(thumbFile), 'cached on disk')
+    // No source image: 404. Keys that are not derived thumbnails are never generated.
+    assert.equal((await fetch(base + '/files/thumbs/of/uploads/2025/01/' + '0'.repeat(32) + '_png.webp')).status, 404)
+    assert.equal((await fetch(base + '/files/thumbs/of/thumbs/of/' + uploaded.key.replace(/\.png$/, '_png_webp.webp'))).status, 404)
+    assert.equal((await fetch(base + '/files/thumbs/of/' + uploaded.key.replace(/\.png$/, '_mp4.webp'))).status, 404)
 
     // Remote fetch: guarded, and the payload must really be an image.
     assert.equal((await call('POST', '/api/files/fetch', { url: 'http://169.254.169.254/latest/meta-data' })).status, 400)
@@ -417,6 +432,12 @@ test('LoomCanvas API end to end', async (t) => {
     assert.deepEqual([mine.length, mine[0].revoked], [1, true], 'revoked links stay listed')
     const fresh = await data('POST', '/api/canvas-share/publish', { workflowId })
     assert.notEqual(fresh.token, pub.token, 'a revoked token is never reused')
+    // Re-publishing: an explicit expiry replaces the old one, 0 means "never", omitting it keeps it.
+    const dated = await data('POST', '/api/canvas-share/publish', { workflowId, expiresInDays: 7 })
+    assert.equal(dated.token, fresh.token)
+    assert.ok(new Date(dated.expiresAt).getTime() > Date.now())
+    assert.equal((await data('POST', '/api/canvas-share/publish', { workflowId })).expiresAt, dated.expiresAt)
+    assert.equal((await data('POST', '/api/canvas-share/publish', { workflowId, expiresInDays: 0 })).expiresAt, null)
     assert.equal((await call('POST', '/api/canvas-share/publish', { workflowId, expiresInDays: -1 })).status, 400)
   })
 

@@ -132,7 +132,12 @@ const { nodes, edges } = useVueFlow()
 const status = computed(() => props.data.status || 'idle')
 const MAX = 9
 
-// 沿上游 image 边递归收集「全部」图片（image / image-collection / image-gen / image-edit）
+// 出一组图的节点：生成类（数量 > 1）、切片、多平台导出；其余工具节点只出一张
+const MULTI_IMAGE_TYPES = ['image-gen', 'image-edit', 'slice', 'platform-export']
+const SINGLE_IMAGE_TYPES = ['collage', 'watermark', 'fit-size']
+
+// 沿上游 image 边递归收集「全部」图片（图片 / 图片集合 / 生成类 / 工具节点），
+// 口径与执行器的 getImageOutputs 一致：下游能拿到什么，这里就显示什么
 function collectImages(startId: string, visited: Set<string>): string[] {
   if (visited.has(startId)) return []
   visited.add(startId)
@@ -140,10 +145,11 @@ function collectImages(startId: string, visited: Set<string>): string[] {
   if (!n) return []
   const d = n.data || {}
   if (n.type === 'image') return d.imageUrl ? [d.imageUrl] : []
-  if (n.type === 'image-gen' || n.type === 'image-edit') {
+  if (MULTI_IMAGE_TYPES.includes(n.type as string)) {
     if (Array.isArray(d.imageUrls) && d.imageUrls.length) return d.imageUrls
     return d.imageUrl ? [d.imageUrl] : []
   }
+  if (SINGLE_IMAGE_TYPES.includes(n.type as string)) return d.imageUrl ? [d.imageUrl] : []
   if (n.type === 'image-collection') {
     const res: string[] = Array.isArray(d.imageUrls) ? [...d.imageUrls] : []
     for (const e of edges.value.filter(
@@ -205,9 +211,12 @@ const cols = computed(() => {
 
 const hasUpstream = computed(() => edges.value.some((e) => e.target === props.id))
 
-// 本分支是否正在运行：沿上游找任一 gen/分析节点处于 running/queued 即为「运行中」。
+// 本分支是否正在运行：沿上游找任一会「运行」的节点处于 running/queued 即为「运行中」。
 // 只禁用本分支的按钮，不再全局禁用 —— 这样多条分支可以同时点、同时跑。
-const BRANCH_RUN_TYPES = ['image-gen', 'image-edit', 'video-gen', 'video-edit', 'video-analysis']
+const BRANCH_RUN_TYPES = [
+  'image-gen', 'image-edit', 'video-gen', 'video-edit', 'video-analysis', 'llm',
+  ...MULTI_IMAGE_TYPES, ...SINGLE_IMAGE_TYPES,
+]
 const branchRunning = computed(() => {
   const visited = new Set<string>()
   let active = false

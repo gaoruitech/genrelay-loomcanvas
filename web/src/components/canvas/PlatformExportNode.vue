@@ -11,7 +11,7 @@
       <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
-    <div class="cv-body nodrag" @mousedown.stop @click.stop>
+    <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <div class="cv-group">
         <button
           v-for="g in GROUPS" :key="g.value"
@@ -25,11 +25,11 @@
       <div v-if="items.length" class="cv-grid">
         <button
           v-for="it in items" :key="it.key"
-          class="cv-cell" :title="`${it.label} · ${it.width}×${it.height}`"
+          class="cv-cell" :title="`${itemLabel(it)} · ${it.width}×${it.height}`"
           @click="download(it)"
         >
-          <img :src="canvasImageThumb(it.url, 120)" :alt="it.label" />
-          <span class="cv-cap">{{ it.label }}</span>
+          <img :src="canvasImageThumb(it.url, 120)" :alt="itemLabel(it)" />
+          <span class="cv-cap">{{ itemLabel(it) }}</span>
         </button>
       </div>
       <div v-else class="cv-empty">{{ t('tools.platformExport.empty') }}</div>
@@ -89,7 +89,13 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+// 尺寸的名字按 key 在前端出（后端返回的 label 是固定一种语言的）；认不出的 key 才用后端给的
+function itemLabel(it: ExportItem): string {
+  const key = `tools.platformExport.items.${it.key}`
+  return te(key) ? t(key) : it.label
+}
 
 const GROUPS = computed(() => [
   { value: 'domestic' as const, label: t('tools.platformExport.domestic') },
@@ -167,7 +173,11 @@ async function downloadAll() {
 .cv-help {margin-left:2px;width:14px;height:14px;border-radius:50%;border:1px solid var(--n-6);color:var(--t-dim);font-size:10px;line-height:12px;text-align:center;cursor:help;flex:none;}
 .cv-help:hover { color: var(--accent-text); border-color: var(--accent-text); }
 
-.cv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+/* 结果多了（九宫格切片）只让这一块滚动，下面的运行 / 下载按钮始终留在节点里 */
+.cv-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+  flex: 0 1 auto; min-height: 56px; overflow-y: auto;
+}
 .cv-cell {
   padding: 0; border: 1px solid var(--n-5); border-radius: 5px; overflow: hidden;
   background: var(--n-2); cursor: pointer; display: flex; flex-direction: column;
@@ -179,7 +189,7 @@ async function downloadAll() {
 .cv-white { font-size: 10px; color: var(--t-dim); line-height: 1.6; }
 .cv-white.bad { color: #d8a03a; }
 
-.cv-actions { display: flex; gap: 6px; margin-top: auto; }
+.cv-actions { display: flex; gap: 6px; margin-top: auto; flex: none; }
 .cv-run {
   flex: 1; background: transparent; color: var(--accent-text); border: 1.5px solid var(--accent-edge);
   border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 0; cursor: pointer;

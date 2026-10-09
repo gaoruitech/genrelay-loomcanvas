@@ -244,7 +244,7 @@
         <div v-else class="proj-menu-scroll">
           <button v-for="w in projList" :key="w.id" class="proj-item" :class="{ cur: w.id === currentId }" @click="switchToCanvas(w.id)">
             <span class="proj-thumb">
-              <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="ensureHttps(w.thumbnail)" alt="" loading="lazy" />
+              <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
               <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
             </span>
             <span class="proj-info">
@@ -275,7 +275,7 @@
               <template v-else>
                 <button v-for="w in otherCanvases" :key="w.id" class="proj-item" @click="importCanvas(w)">
                   <span class="proj-thumb">
-                    <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="ensureHttps(w.thumbnail)" alt="" loading="lazy" />
+                    <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
                     <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </span>
                   <span class="proj-info">
@@ -726,6 +726,7 @@
     <BatchDownloadDialog
       :open="batchOpen"
       :nodes="nodes"
+      :edges="edges"
       :workflow-id="currentId || ''"
       :workflow-name="workflowName"
       @close="batchOpen = false"
@@ -786,6 +787,7 @@ import { ref, computed, onMounted, onBeforeUnmount, provide, watch, type Ref, ne
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureHttps } from '@/utils/mediaUrl'
+import { canvasImageThumb } from '@/utils/canvasMedia'
 // SelectionMode.Partial：框选判定放宽成「碰到就算」。vue-flow 默认的 Full 要求
 // 节点被完整框住，压到一半不算选中 —— 用户会以为框选坏了。同类画布工具普遍用 Partial。
 import { VueFlow, useVueFlow, SelectionMode, type Node, type Edge, type Connection, addEdge } from '@vue-flow/core'
@@ -922,6 +924,7 @@ const viewport = ref<Viewport>({ x: 0, y: 0, zoom: 1 })
 
 const {
   updateNodeData, updateNode, removeNodes, setViewport, screenToFlowCoordinate, getNodes, fitView,
+  onNodesInitialized,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
 } = useVueFlow()
@@ -1487,7 +1490,8 @@ const contextNodeInfo = computed(() => {
 const contextImageUrl = computed(() => {
   const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
   const u = (n?.data as any)?.imageUrl
-  return typeof u === 'string' && /^https?:\/\//i.test(u) ? u : ''
+  // 没配 PUBLIC_URL 时本地存储给的是站内相对地址（/files/...），同样能编辑
+  return typeof u === 'string' && (/^https?:\/\//i.test(u) || u.startsWith('/files/')) ? u : ''
 })
 
 // 查看原图 / 原视频（大图预览）
@@ -1765,6 +1769,77 @@ function duplicateNodesById(ids: string[]) {
   }
 }
 
+/* ==================== 节点剪贴板（Ctrl+C / Ctrl+V） ==================== */
+// 只在本页内存里：复制的是节点本身和它们之间的连线，不进系统剪贴板 ——
+// 系统剪贴板留给文字和图片（粘贴图片见 onCanvasPaste）。
+let nodeClipboard: { nodes: { id: string; type: string; position: { x: number; y: number }; data: any }[]; edges: any[] } | null = null
+let pasteRound = 0
+
+/** 把选中的节点记进剪贴板；没选中任何普通节点返回 0 */
+function copySelection(): number {
+  // 组本身不复制（复制出来是个空框）；组里的节点按绝对坐标记，粘出来是散节点
+  const sel = getSelectedNodes.value.filter((n: any) => n.type !== 'frame')
+  if (!sel.length) return 0
+  const ids = new Set(sel.map((n: any) => n.id))
+  nodeClipboard = {
+    nodes: sel.map((n: any) => ({
+      id: n.id,
+      type: n.type,
+      position: { x: n.computedPosition?.x ?? n.position?.x ?? 0, y: n.computedPosition?.y ?? n.position?.y ?? 0 },
+      data: dupData(n.data),
+    })),
+    edges: edges.value
+      .filter((e) => ids.has(e.source) && ids.has(e.target))
+      .map((e) => ({ source: e.source, sourceHandle: e.sourceHandle, target: e.target, targetHandle: e.targetHandle })),
+  }
+  pasteRound = 0
+  return sel.length
+}
+
+/**
+ * 给同一拍里刚加进来的节点接线。
+ *
+ * 必须整体换一个新数组（和套模板、加载其他画布同一种写法），不能用 addEdge：
+ * addEdge 是往原数组里 push，vue-flow 立刻就校验这条线，而新节点要到下一拍才进它的
+ * 仓库 —— 线的两端「不存在」，被悄悄丢掉。
+ */
+function appendEdges(conns: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }[]) {
+  if (!conns.length) return
+  edges.value = [
+    ...edges.value,
+    ...conns.map((c) => ({ id: `e_${genId()}`, ...c, type: 'glow' }) as Edge),
+  ]
+}
+
+/** 把剪贴板里的节点贴回画布：每贴一次往右下多错开一格，贴完选中新节点 */
+function pasteNodes(): boolean {
+  const clip = nodeClipboard
+  if (!clip || !clip.nodes.length) return false
+  hist.record()
+  pasteRound++
+  const shift = 40 * pasteRound
+  const idMap = new Map<string, string>()
+  const fresh: Node[] = clip.nodes.map((n) => {
+    const id = genId()
+    idMap.set(n.id, id)
+    return {
+      id,
+      type: n.type,
+      position: { x: n.position.x + shift, y: n.position.y + shift },
+      data: JSON.parse(JSON.stringify(n.data)),
+    } as Node
+  })
+  nodes.value = [...nodes.value, ...fresh]
+  appendEdges(clip.edges.map((e) => ({ ...e, source: idMap.get(e.source)!, target: idMap.get(e.target)! })))
+  const freshIds = new Set(fresh.map((n) => n.id))
+  nextTick(() => {
+    removeSelectedNodes(getSelectedNodes.value)
+    addSelectedNodes(getNodes.value.filter((n: any) => freshIds.has(n.id)))
+  })
+  MessagePlugin.success(t('canvas.clipboard.pasted', { n: fresh.length }))
+  return true
+}
+
 /** 复制/分叉共用：剥掉运行时字段，再摘掉版本历史 —— 那是原节点的账，
  *  复制品顶着别人的历史，切过去看到的图和它自己的参数对不上。 */
 function dupData(data: any) {
@@ -1861,11 +1936,11 @@ function continueFromContext() {
   ]
 
   // 参考图接上；原节点的文本类上游也照搬，省得用户重连一遍提示词
-  const conns: any[] = [{ source: refId, sourceHandle: 'image-out', target: genNodeId, targetHandle: 'image-in', type: 'glow' }]
+  const conns = [{ source: refId, sourceHandle: 'image-out', target: genNodeId, targetHandle: 'image-in' }]
   for (const e of edges.value.filter((e) => e.target === src.id && e.targetHandle === 'text-in')) {
-    conns.push({ source: e.source, sourceHandle: e.sourceHandle, target: genNodeId, targetHandle: e.targetHandle, type: 'glow' })
+    conns.push({ source: e.source, sourceHandle: e.sourceHandle as string, target: genNodeId, targetHandle: e.targetHandle as string })
   }
-  for (const c of conns) edges.value = addEdge(c, edges.value) as Edge[]
+  appendEdges(conns)
 
   MessagePlugin.success(t('canvas.fork.continued'))
 }
@@ -1919,11 +1994,30 @@ function stripNodeData(d: any) {
   return out
 }
 
+/**
+ * 落库只留「重建画布需要的」那几个字段。
+ *
+ * vue-flow 会往节点和连线对象上挂一堆运行时状态：节点上有 selected / dragging /
+ * computedPosition / handleBounds，连线上更是挂着两端节点的完整副本（sourceNode / targetNode）。
+ * 原样存的话，一条线就带两份节点数据，画布体积成倍涨（保存有体积上限），
+ * 而且光是点选一下节点指纹就变了，白白触发一次保存。
+ */
+const NODE_SAVE_FIELDS = ['id', 'type', 'position', 'parentNode', 'extent', 'dimensions', 'style', 'selectable'] as const
+function nodeForSave(n: any) {
+  const out: Record<string, any> = {}
+  for (const k of NODE_SAVE_FIELDS) if (n[k] !== undefined) out[k] = n[k]
+  out.data = stripNodeData(n.data)
+  return out
+}
+function edgeForSave(e: any) {
+  return { id: e.id, type: e.type, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }
+}
+
 function buildSavePayload() {
   return {
     name: workflowName.value?.trim() || t('canvas.untitled'),
-    nodes: nodes.value.map((n) => ({ ...n, data: stripNodeData(n.data) })),
-    edges: edges.value,
+    nodes: nodes.value.map(nodeForSave),
+    edges: edges.value.map(edgeForSave),
     viewport: viewport.value,
     // 画布外观。后端 PUT 是显式白名单透传，那边不加对应的一行这里存了也白存
     settings: { bg: bgSettings.value },
@@ -1971,7 +2065,12 @@ function defaultModelFor(kind: string): string | null {
 function nodeDefaults(kind: NodeKind): Record<string, any> {
   const base = JSON.parse(JSON.stringify(NODE_DEFAULTS[kind] || {}))
   const model = defaultModelFor(kind)
-  if (model !== null) base.model = model
+  if (model !== null) {
+    base.model = model
+    // 勾了「新建节点时自动套用」的品牌包：能挂品牌包的正是这几种生成节点
+    const kit = brandKits.defaultKit.value
+    if (kit) base.brandKitId = kit.id
+  }
   return base
 }
 
@@ -1986,17 +2085,45 @@ function templateNodeData(kind: NodeKind, raw: any): Record<string, any> {
   return data
 }
 
+/**
+ * 没指定落点的新节点（工具条、素材库加的）放在哪。
+ *
+ * 在当前视野里从左上往右下一格格找，落在第一块不压着已有节点的空地上 ——
+ * 原来固定放在左上角，那里已经有节点时新节点就整个盖在它上面。
+ * 视野里摆满了才退回「从左上角逐个错开」，至少每个都露着头。
+ */
+function freeSpot(): { x: number; y: number } {
+  const zoom = viewport.value.zoom || 1
+  const toFlow = (sx: number, sy: number) => ({ x: (sx - viewport.value.x) / zoom, y: (sy - viewport.value.y) / zoom })
+  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  const paneW = pane?.clientWidth || 1200
+  const paneH = pane?.clientHeight || 800
+  // 新节点还没量过尺寸，按常见节点大小留地方；组是一大片底板，不算占位
+  const BOX_W = 300, BOX_H = 320, GAP = 24
+  const boxes = getNodes.value.filter((n: any) => n.type !== 'frame').map(nodeBox)
+  const hits = (p: { x: number; y: number }) => boxes.some((b) =>
+    p.x < b.right + GAP && p.x + BOX_W + GAP > b.left && p.y < b.bottom + GAP && p.y + BOX_H + GAP > b.top)
+  // 左边 90px 让给浮动工具条
+  for (let sy = 40; sy + BOX_H * zoom <= paneH; sy += (BOX_H + GAP) * zoom) {
+    for (let sx = 90; sx + BOX_W * zoom <= paneW; sx += (BOX_W + GAP) * zoom) {
+      const p = toFlow(sx, sy)
+      if (!hits(p)) return p
+    }
+  }
+  const STEP = 30
+  const p = toFlow(200, 120)
+  const taken = () => boxes.some((b) => Math.abs(b.left - p.x) < STEP / 2 && Math.abs(b.top - p.y) < STEP / 2)
+  while (taken()) { p.x += STEP; p.y += STEP }
+  return p
+}
+
 function addNode(kind: NodeKind, dataOverride?: Record<string, any>, position?: { x: number; y: number }) {
   hist.record()
   const id = genId()
-  const offset = (nodes.value.length % 8) * 30
   const node: Node = {
     id,
     type: kind,
-    position: position ?? {
-      x: 200 + offset - viewport.value.x / viewport.value.zoom,
-      y: 120 + offset - viewport.value.y / viewport.value.zoom,
-    },
+    position: position ?? freeSpot(),
     data: { ...nodeDefaults(kind), ...(dataOverride || {}) },
   }
   nodes.value.push(node)
@@ -2106,7 +2233,11 @@ function onCanvasPaste(e: ClipboardEvent) {
     .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
     .map(it => it.getAsFile())
     .filter((f): f is File => !!f)
-  if (imgs.length === 0) return
+  if (imgs.length === 0) {
+    // 系统剪贴板里没有图片：焦点在画布上（不是在输入框里打字）就贴节点剪贴板
+    if (!isTypingTarget(e.target) && !anyOverlayOpen() && pasteNodes()) e.preventDefault()
+    return
+  }
   e.preventDefault()
   // 落在当前视口中心：把画布可视区中点换算成画布坐标
   const el = document.querySelector('.vf-wrap') as HTMLElement | null
@@ -2512,8 +2643,10 @@ async function loadOtherCanvasInto(id: string) {
     hist.record()
     const idMap = new Map<string, string>()
     for (const n of srcNodes) idMap.set(n.id, genId())
-    const baseX = -viewport.value.x / viewport.value.zoom + 120
-    const baseY = -viewport.value.y / viewport.value.zoom + 80
+    const origin = insertOrigin()
+    const roots = srcNodes.filter((n: any) => !(n.parentNode && idMap.has(n.parentNode)))
+    const baseX = origin.x - Math.min(...roots.map((n: any) => n.position?.x || 0))
+    const baseY = origin.y - Math.min(...roots.map((n: any) => n.position?.y || 0))
     const newNodes = srcNodes.map((n: any) => {
       const isChild = !!n.parentNode && idMap.has(n.parentNode)
       const data: any = JSON.parse(JSON.stringify(stripNodeData(n.data)))
@@ -2529,8 +2662,7 @@ async function loadOtherCanvasInto(id: string) {
       if (isChild) { nn.parentNode = idMap.get(n.parentNode); nn.extent = n.extent }
       if (n.dimensions) nn.dimensions = n.dimensions
       if (n.style) nn.style = n.style
-      const isGen = n.type === 'image-gen' || n.type === 'image-edit' || n.type === 'video-gen'
-      if (isGen) {
+      if (GEN_MEDIA_TYPES.includes(n.type)) {
         if (data.imageUrl || data.videoUrl) data.status = 'done'
         else if (data.errorMsg) data.status = 'error'
       }
@@ -2545,6 +2677,7 @@ async function loadOtherCanvasInto(id: string) {
       }) as Edge)
     nodes.value = [...nodes.value, ...newNodes]
     edges.value = [...edges.value, ...newEdges]
+    fitToNodes = newNodes.map((n) => n.id)
     MessagePlugin.success(t('canvas.project.imported', { name: w.name, n: newNodes.length }))
   } catch (e: any) {
     MessagePlugin.error(apiErrorMessage(e, t('common.loadFailed')))
@@ -2643,9 +2776,10 @@ function applyTemplate(tpl: { title?: string; graph?: { nodes?: any[]; edges?: a
   const idMap = new Map<string, string>()
   for (const n of g.nodes) idMap.set(n.id, genId())
 
-  // 基准点：当前视口左上角在画布坐标系中的位置 + 一点内边距（与 addNode 保持一致）
-  const baseX = -viewport.value.x / viewport.value.zoom + 120
-  const baseY = -viewport.value.y / viewport.value.zoom + 80
+  // 基准点：空画布放视野左上，否则接在现有内容下方（见 insertOrigin）；模板自身的最小坐标对到基准点上
+  const origin = insertOrigin()
+  const baseX = origin.x - Math.min(...g.nodes.map((n: any) => n.position?.x || 0))
+  const baseY = origin.y - Math.min(...g.nodes.map((n: any) => n.position?.y || 0))
 
   const newNodes: Node[] = g.nodes.map((n: any) => ({
     id: idMap.get(n.id)!,
@@ -2703,12 +2837,13 @@ function applyTemplate(tpl: { title?: string; graph?: { nodes?: any[]; edges?: a
     nodes.value = [...nodes.value, ...newNodes]
   }
   edges.value = [...edges.value, ...newEdges]
+  fitToNodes = newNodes.map((n) => n.id)
   templateDialogOpen.value = false
   MessagePlugin.success(t('canvas.tpl.added', { title: tpl.title || '' }))
 }
 
 // ============ 分享链接 ============
-// 分享 = 给当前画布存一份只读快照并发一个链接；有效期可选，0 表示永久（提交时不带 expiresInDays）
+// 分享 = 给当前画布存一份只读快照并发一个链接；有效期可选，0 表示永久
 type ShareExpiry = 0 | 1 | 7 | 30
 const shareOpen = ref(false)
 const publishing = ref(false)
@@ -2760,7 +2895,8 @@ async function handlePublish() {
       workflowId: currentId.value,
       title: shareForm.value.title.trim() || undefined,
       description: shareForm.value.description.trim() || undefined,
-      expiresInDays: shareForm.value.expiresInDays || undefined,
+      // 永久也要明说（0）：同一张画布再次发布时，不带这个字段表示「沿用原来的有效期」
+      expiresInDays: shareForm.value.expiresInDays,
     })
     const data = res.data.data
     if (res.data.result === 0 && data?.token) {
@@ -2804,6 +2940,39 @@ async function copyShareLink() {
   }
 }
 
+/**
+ * 没存过视口的画布（新建的、从模板或接口建的）第一次打开时，把内容框进视野：
+ * 视口停在默认的原点上，靠近原点的节点正好压在左侧浮动工具条底下。
+ * 要等节点量完尺寸才能算包围盒，所以挂在 onNodesInitialized 上；
+ * 存过视口的画布不走这里，原样还原用户上次看的位置。
+ */
+let fitOnInit = false
+// 套模板 / 加载其他画布插进来的那批节点：量完尺寸后把视野移过去
+let fitToNodes: string[] | null = null
+onNodesInitialized(() => {
+  if (fitOnInit) {
+    fitOnInit = false
+    fitToNodes = null
+    fitView({ padding: 0.15, maxZoom: 1 })
+  } else if (fitToNodes) {
+    const ids = fitToNodes
+    fitToNodes = null
+    fitView({ nodes: ids, padding: 0.25, maxZoom: 1, duration: 300 })
+  }
+})
+
+/**
+ * 一整批节点（模板、另一张画布）插到哪：画布是空的就放在视野左上；
+ * 已经有内容就接在现有内容的正下方 —— 原来一律放视野左上，会整片压在现有节点上。
+ */
+function insertOrigin(): { x: number; y: number } {
+  const boxes = getNodes.value.map(nodeBox)
+  if (!boxes.length) {
+    return { x: -viewport.value.x / viewport.value.zoom + 120, y: -viewport.value.y / viewport.value.zoom + 80 }
+  }
+  return { x: Math.min(...boxes.map((b) => b.left)), y: Math.max(...boxes.map((b) => b.bottom)) + 80 }
+}
+
 async function loadWorkflow(id: string) {
   loading.value = true
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
@@ -2819,8 +2988,7 @@ async function loadWorkflow(id: string) {
       //  - 其它（只有 taskId）→ 留空，由 resumeIncompleteTasks 接管为 running
       nodes.value = (w.nodes || []).map((n: any) => {
         const data = stripNodeData(n.data)
-        const isGen = n.type === 'image-gen' || n.type === 'image-edit' || n.type === 'video-gen'
-        if (isGen) {
+        if (GEN_MEDIA_TYPES.includes(n.type)) {
           if (data.imageUrl || data.videoUrl) {
             data.status = 'done'
           } else if (data.errorMsg) {
@@ -2840,6 +3008,7 @@ async function loadWorkflow(id: string) {
       // 老画布没有 settings，normalizeCanvasBg 会兜底到「跟随主题」= 改动前的行为
       bgSettings.value = normalizeCanvasBg((w as any).settings?.bg)
       const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
+      fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
       viewport.value = vp
       // 把 zoom 钳制在 [0.2, 2]，防止历史脏数据把节点撑爆
       setViewport({ x: vp.x, y: vp.y, zoom: Math.min(2, Math.max(0.2, vp.zoom || 1)) })
@@ -3030,6 +3199,13 @@ function onCanvasKeydown(e: KeyboardEvent) {
   // Ctrl+Y：Windows 上重做的另一套习惯
   if (mod && key === 'y') { e.preventDefault(); doRedo(); return }
   if (mod && key === 'a') { e.preventDefault(); addSelectedNodes(getNodes.value); return }
+  // Ctrl+C：页面上选着文字时让浏览器照常复制文字，否则复制选中的节点（粘贴走 paste 事件）
+  if (mod && key === 'c') {
+    if (window.getSelection()?.toString()) return
+    const n = copySelection()
+    if (n) MessagePlugin.success(t('canvas.clipboard.copied', { n }))
+    return
+  }
   if (mod && key === 'd') {
     e.preventDefault()
     duplicateNodesById(getSelectedNodes.value.map((n: any) => n.id))
@@ -3185,6 +3361,16 @@ onBeforeUnmount(() => {
 @keyframes tbSavePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 .tb-right { display: flex; align-items: center; gap: 8px; }
+/* 编辑器按桌面设计；窄屏（手机）上至少让顶栏的按钮够得着：
+   名称和保存状态让出位置，按钮区放不下就自己横向滚动，不把按钮挤出屏幕 */
+@media (max-width: 760px) {
+  .canvas-topbar { padding: 8px 10px; gap: 8px; }
+  .tb-left { min-width: 0; flex: 1 1 0; gap: 6px; }
+  .tb-doc-ic, .tb-save { display: none; }
+  .tb-name { min-width: 0; width: 100%; padding: 6px; }
+  .tb-right { flex: 0 1 auto; min-width: 0; overflow-x: auto; gap: 6px; }
+  .tb-right .tb-btn { flex: none; }
+}
 .tb-btn {
   display: inline-flex;
   align-items: center;

@@ -54,7 +54,6 @@
         :elements-selectable="false"
         :nodes-focusable="false"
         :edges-focusable="false"
-        fit-view-on-init
       >
         <!-- 分享时定的画布外观跟着快照一起走，编辑页和这里是同一套渲染 -->
         <Background
@@ -130,7 +129,20 @@ const viewport = ref({ x: 0, y: 0, zoom: 1 })
 /* ===== 画布外观（跟着分享快照走；老分享没有这个字段就落到「跟随主题」） ===== */
 // 十字图案的瓦片尺寸要按实时缩放算，所以这里取的是 vue-flow 的实时视口，
 // 不是上面那个只用于 default-viewport 的初始值
-const { viewport: liveViewport } = useVueFlow()
+const { viewport: liveViewport, fitView, onNodesInitialized, onMoveStart } = useVueFlow()
+
+/**
+ * 打开时把整张画布框进视野，最多放到 100% —— 自带的 fit-view-on-init 没有上限，
+ * 两三个节点的画布会被放大到 4 倍，一屏只剩半个节点。
+ * 图片加载完节点会变高，所以稍后再框一次；这期间看的人已经自己拖动过就不再动它。
+ */
+let userMoved = false
+const fitAll = () => fitView({ padding: 0.15, maxZoom: 1 })
+onMoveStart(({ event }) => { if (event?.sourceEvent) userMoved = true })
+onNodesInitialized(() => {
+  fitAll()
+  window.setTimeout(() => { if (!userMoved) fitAll() }, 900)
+})
 const bgSettings = ref<CanvasBgSettings>({ ...DEFAULT_CANVAS_BG })
 const bgIsAuto = computed(() => bgSettings.value.color === 'auto')
 const flowStyle = computed(() => (bgIsAuto.value ? {} : { background: bgSettings.value.color }))
@@ -184,7 +196,7 @@ async function handleCopy() {
   if (!detail.value || copying.value) return
   copying.value = true
   try {
-    const res = await canvasShareApi.copy(shareToken())
+    const res = await canvasShareApi.copy(shareToken(), t('common.copyName', { name: detail.value.title || t('views.share.fallbackTitle') }))
     if (res.data.result === 0 && res.data.data?.workflowId) {
       MessagePlugin.success(t('views.share.copied'))
       router.push(`/canvas/${res.data.data.workflowId}`)
