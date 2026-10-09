@@ -1,0 +1,34 @@
+'use strict'
+
+const mongoose = require('mongoose')
+const { LOCAL_USER } = require('../constants')
+
+const MAX_REF_IMAGES = 5
+
+/**
+ * Brand kit: a reusable "direction" attached to generation nodes - fixed
+ * reference images, a prompt prefix, a negative prompt and default
+ * ratio/model - so every image starts from the same place.
+ */
+const brandKitSchema = new mongoose.Schema({
+  userId: { type: String, default: LOCAL_USER, index: true },
+  name: { type: String, required: true, trim: true, maxlength: 40 },
+  // Media URLs only, never inline base64 (kits are referenced from many nodes).
+  refImages: {
+    type: [String],
+    default: [],
+    validate: { validator: (v) => !Array.isArray(v) || v.length <= MAX_REF_IMAGES, message: `固定参考图最多 ${MAX_REF_IMAGES} 张` },
+  },
+  promptPrefix: { type: String, default: '', maxlength: 1000 },
+  // Appended to the prompt as text; most image APIs have no negative-prompt parameter.
+  negativePrompt: { type: String, default: '', maxlength: 500 },
+  defaultRatio: { type: String, default: '', maxlength: 20 },
+  defaultModel: { type: String, default: '', maxlength: 200 },
+  isDefault: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false },
+}, { timestamps: true })
+
+brandKitSchema.index({ userId: 1, isDeleted: 1, updatedAt: -1 })
+
+module.exports = mongoose.model('BrandKit', brandKitSchema)
+module.exports.MAX_REF_IMAGES = MAX_REF_IMAGES

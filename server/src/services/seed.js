@@ -1,0 +1,89 @@
+'use strict'
+
+/**
+ * First-boot content: a couple of starter canvas templates and prompt
+ * snippets. Runs once per seed version (tracked in `settings`), so anything
+ * the user later edits or deletes is never brought back.
+ */
+const Setting = require('../models/Setting')
+const Template = require('../models/Template')
+const TextTemplate = require('../models/TextTemplate')
+const { LOCAL_USER } = require('../constants')
+
+const SEED_KEY = '_seedVersion'
+const SEED_VERSION = 1
+
+const node = (id, type, x, y, data = {}) => ({ id, type, position: { x, y }, data })
+const edge = (source, target) => ({ id: `e-${source}-${target}`, source, target })
+
+const TEMPLATES = [
+  {
+    key: 'text-to-image',
+    title: '文生图',
+    description: '一段文字生成一张图片：最基础的起步流程。',
+    order: 10,
+    graph: {
+      nodes: [
+        node('prompt', 'text', 0, 0, { text: '一只坐在窗台上的橘猫，午后阳光，胶片质感' }),
+        node('gen', 'image-gen', 420, 0),
+      ],
+      edges: [edge('prompt', 'gen')],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      group: false,
+    },
+  },
+  {
+    key: 'image-to-video',
+    title: '图生视频',
+    description: '先出一张图，再用这张图和一段运镜描述生成视频。',
+    order: 20,
+    graph: {
+      nodes: [
+        node('prompt', 'text', 0, 0, { text: '雪山脚下的木屋，清晨薄雾，电影感构图' }),
+        node('image', 'image-gen', 420, 0),
+        node('motion', 'text', 420, 360, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
+        node('video', 'video-gen', 860, 120),
+      ],
+      edges: [edge('prompt', 'image'), edge('image', 'video'), edge('motion', 'video')],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      group: false,
+    },
+  },
+]
+
+const TEXT_TEMPLATES = [
+  { key: 'product-white-zh', lang: 'zh', category: '产品图', order: 10, title: '白底产品图', content: '将产品置于纯白背景中央，柔和的棚拍光线，底部有自然的浅阴影，画面干净，突出材质细节，高清商业摄影。' },
+  { key: 'product-scene-zh', lang: 'zh', category: '产品图', order: 20, title: '场景产品图', content: '把产品放进贴合其用途的生活场景中，自然光，浅景深，背景虚化，色调温暖，构图留出文案空间。' },
+  { key: 'portrait-zh', lang: 'zh', category: '人物', order: 10, title: '自然光人像', content: '半身人像，窗边自然光，肤质真实，表情放松，背景简洁，85mm 镜头，浅景深。' },
+  { key: 'camera-push-zh', lang: 'zh', category: '视频运镜', order: 10, title: '缓慢推近', content: '镜头缓慢向主体推近，主体保持稳定，背景有轻微的视差移动，节奏平稳。' },
+  { key: 'camera-orbit-zh', lang: 'zh', category: '视频运镜', order: 20, title: '环绕展示', content: '镜头围绕主体水平环绕半圈，主体始终位于画面中心，光线保持一致，运动流畅。' },
+  { key: 'product-white-en', lang: 'en', category: 'Product', order: 10, title: 'White background product shot', content: 'The product centered on a pure white background, soft studio lighting, a subtle natural shadow underneath, clean composition, crisp material detail, commercial photography.' },
+  { key: 'product-scene-en', lang: 'en', category: 'Product', order: 20, title: 'Lifestyle product shot', content: 'Place the product in a lifestyle scene that fits its use, natural light, shallow depth of field, blurred background, warm tones, leave room for copy.' },
+  { key: 'portrait-en', lang: 'en', category: 'People', order: 10, title: 'Natural light portrait', content: 'Half-body portrait, natural window light, realistic skin texture, relaxed expression, simple background, 85mm lens, shallow depth of field.' },
+  { key: 'camera-push-en', lang: 'en', category: 'Camera moves', order: 10, title: 'Slow push in', content: 'The camera slowly pushes in toward the subject, the subject stays steady, slight parallax in the background, even pacing.' },
+  { key: 'camera-orbit-en', lang: 'en', category: 'Camera moves', order: 20, title: 'Orbit', content: 'The camera orbits half a circle around the subject, keeping it centered, consistent lighting, smooth motion.' },
+]
+
+async function seed() {
+  const marker = await Setting.findOne({ key: SEED_KEY }).lean()
+  if (marker && Number(marker.value) >= SEED_VERSION) return false
+
+  for (const t of TEMPLATES) {
+    await Template.updateOne(
+      { key: t.key },
+      { $setOnInsert: { ...t, userId: LOCAL_USER, builtin: true, isActive: true } },
+      { upsert: true }
+    )
+  }
+  for (const t of TEXT_TEMPLATES) {
+    await TextTemplate.updateOne(
+      { key: t.key, builtin: true },
+      { $setOnInsert: { ...t, userId: LOCAL_USER, builtin: true, isActive: true } },
+      { upsert: true }
+    )
+  }
+  await Setting.updateOne({ key: SEED_KEY }, { $set: { value: SEED_VERSION, userId: LOCAL_USER } }, { upsert: true })
+  return true
+}
+
+module.exports = { seed, TEMPLATES, TEXT_TEMPLATES }

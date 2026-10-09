@@ -1,0 +1,27 @@
+{
+  "name": "loomcanvas-server",
+  "version": "0.1.0",
+  "description": "LoomCanvas backend: self-hosted infinite canvas for AI image and video generation",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "main": "src/index.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "multer": "^2.0.2",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.1.4"
+  }
+}
