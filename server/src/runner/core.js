@@ -12,15 +12,24 @@
  *  - every step has a hard total deadline (submit, poll, download, chat);
  *    a provider that never answers cannot hold a slot forever;
  *  - only errors that are safe to repeat are retried, a bounded number of times;
- *  - on shutdown, in-flight runs go back to `queued` so the next process
- *    resumes them (re-polling the upstream task when one was already created).
+ *  - nothing is ever sent to an upstream twice. On shutdown, a run goes back to
+ *    `queued` only when repeating it is known to be harmless: it has an upstream
+ *    task to re-poll, or nothing was sent for it yet. A run caught in between
+ *    (request sent, no task id back - every synchronous provider and every chat)
+ *    fails with `run.interrupted`; the same goes for runs found mid-flight after
+ *    a crash;
+ *  - billing.onFailed is called for every run that billing.beforeRun allowed
+ *    and that did not succeed, including the ones failed at start-up after a
+ *    crash. That call is at-least-once: a crash between the hook and the record
+ *    update repeats it at the next start, so hooks should key on ctx.runId.
  *
  * Failure reasons are catalog messages (see ../i18n): a run stores the message
  * code and its parameters, and whoever reads the run later renders them in
  * their own language.
  *
  * Injected dependencies:
- *   store    { claim(id), get(id), update(id, patch), cancelQueued(id), recover() }
+ *   store    { claim(id), get(id), update(id, patch), cancelQueued(id),
+ *              recover() -> { queued: id[], interrupted: run[] } }
  *   resolve  async (run) -> { provider, cfg, request, sync? }
  *   transfer async (output, { signal, kind }) -> stored output
  *   billing  { beforeRun, afterRun, onFailed }
@@ -55,6 +64,31 @@ const MAX_CONSECUTIVE_POLL_ERRORS = 5
 /** What a failed run tells the user: the error's own message when it has one. */
 function failureMessage(err) {
   return messageOf(err) || msg('run.failed')
+}
+
+/** Billing context of a run, as the hooks receive it. */
+function billingContext(run) {
+  return {
+    runId: String(run._id || run.id),
+    userId: run.userId,
+    kind: run.kind,
+    model: run.modelId,
+    providerType: run.providerType,
+    workflowId: run.workflowId || '',
+    nodeId: run.nodeId || '',
+    params: run.params || {},
+    count: run.count || 1,
+  }
+}
+
+/**
+ * The request as one provider call sees it: with that call's abort signal, and
+ * with media helpers bound to the same signal, so loading reference media stops
+ * with the call (deadline, cancel, shutdown).
+ */
+function forCall(request, signal) {
+  const { mediaFor, ...rest } = request
+  return typeof mediaFor === 'function' ? { ...rest, signal, media: mediaFor(signal) } : { ...rest, signal }
 }
 
 function abortableSleep(ms, signal) {
@@ -106,11 +140,25 @@ class Runner {
     this.stopping = false
   }
 
-  /** Recover unfinished runs from the store and start working. */
+  /**
+   * Recover unfinished runs from the store and start working. Runs the last
+   * process left mid-flight without an upstream task are failed here (nobody
+   * knows whether the upstream took them), after telling the billing hook.
+   */
   async start() {
-    const ids = await this.store.recover()
-    for (const id of ids) this.enqueue(id)
-    return ids.length
+    const { queued, interrupted } = await this.store.recover()
+    for (const run of interrupted) {
+      const error = new RunError('INTERRUPTED', 'run.interrupted')
+      // Hook first, record second: a crash in between repeats the hook rather than losing it.
+      if (run.billingStarted) await this._hook('onFailed', billingContext(run), error)
+      await this.store.update(String(run._id || run.id), {
+        status: STATUS.FAILED,
+        ...storedError(failureMessage(error)),
+        finishedAt: new Date(this.now()),
+      })
+    }
+    for (const id of queued) this.enqueue(id)
+    return queued.length
   }
 
   enqueue(id) {
@@ -125,7 +173,8 @@ class Runner {
     const limit = Math.max(1, Number(this.settings().concurrency) || 1)
     while (!this.stopping && this.active.size < limit && this.queue.length) {
       const id = this.queue.shift()
-      const entry = { ctl: new AbortController(), reason: null, promise: null }
+      // `sent`: something of this run may have reached the upstream in this process.
+      const entry = { ctl: new AbortController(), reason: null, promise: null, sent: false }
       this.active.set(id, entry)
       entry.promise = this._execute(id, entry)
         .catch((err) => this.log.error(`[runner] run ${id} crashed:`, err))
@@ -154,7 +203,7 @@ class Runner {
     return this.store.get(key)
   }
 
-  /** Stop taking work and put in-flight runs back to `queued`. */
+  /** Stop taking work; in-flight runs go back to `queued` or fail (see the rules at the top). */
   async shutdown() {
     this.stopping = true
     this.queue.length = 0
@@ -179,17 +228,7 @@ class Runner {
     let run = await this.store.claim(id, { status: STATUS.RUNNING, startedAt: new Date(this.now()) })
     if (!run) return // already taken, finished or canceled
     const signal = entry.ctl.signal
-    const ctx = {
-      runId: String(id),
-      userId: run.userId,
-      kind: run.kind,
-      model: run.modelId,
-      providerType: run.providerType,
-      workflowId: run.workflowId || '',
-      nodeId: run.nodeId || '',
-      params: run.params || {},
-      count: run.count || 1,
-    }
+    const ctx = { ...billingContext(run), runId: String(id) }
     let billed = !!run.billingStarted
     try {
       if (signal.aborted) throw signal.reason
@@ -215,8 +254,8 @@ class Runner {
       }
 
       const result = run.kind === 'chat'
-        ? await this._chat(run, target, signal)
-        : await this._generate(id, run, target, signal)
+        ? await this._chat(run, target, signal, entry)
+        : await this._generate(id, run, target, signal, entry)
 
       await this.store.update(id, {
         ...result,
@@ -228,11 +267,17 @@ class Runner {
         finishedAt: new Date(this.now()),
       })
       await this._hook('afterRun', ctx, result)
-    } catch (err) {
+    } catch (caught) {
+      let err = caught
       if (entry.reason === 'shutdown') {
-        // Back to the queue; externalId (if any) is kept so the next process polls instead of resubmitting.
-        await this.store.update(id, { status: STATUS.QUEUED }).catch((e) => this.log.error('[runner] requeue failed:', e.message))
-        return
+        const current = await this.store.get(id).catch(() => null)
+        if ((current && current.externalId) || !entry.sent) {
+          // Back to the queue: the next process polls the upstream task, or starts from scratch.
+          await this.store.update(id, { status: STATUS.QUEUED }).catch((e) => this.log.error('[runner] requeue failed:', e.message))
+          return
+        }
+        // Sent, and no task id to ask about: running it again could bill it twice.
+        err = new RunError('INTERRUPTED', 'run.interrupted')
       }
       const canceled = entry.reason === 'cancel'
       if (!canceled && !(err && err.userFacing)) {
@@ -247,11 +292,12 @@ class Runner {
     }
   }
 
-  async _chat(run, { provider, cfg, request }, signal) {
+  async _chat(run, { provider, cfg, request }, signal, entry) {
     if (typeof provider.chat !== 'function') throw new RunError('UNSUPPORTED', 'run.chat_unsupported')
     const cfgTimeout = this.settings().chatTimeoutMs
+    entry.sent = true
     const out = await withDeadline(
-      (sig) => provider.chat(cfg, { ...request, signal: sig }),
+      (sig) => provider.chat(cfg, forCall(request, sig)),
       cfgTimeout, signal, 'run.timeout_chat'
     )
     const text = out && typeof out.text === 'string' ? out.text : ''
@@ -262,7 +308,7 @@ class Runner {
     return result
   }
 
-  async _generate(id, run, target, signal) {
+  async _generate(id, run, target, signal, entry) {
     const { provider, cfg, request } = target
     const s = this.settings()
     const pollTimeout = s.pollTimeoutMs[run.kind] || s.pollTimeoutMs.image
@@ -274,6 +320,7 @@ class Runner {
       // A synchronous provider does all its work inside submit(), so it gets
       // the generation deadline instead of the short submit deadline.
       const budget = target.sync ? pollTimeout : s.submitTimeoutMs
+      entry.sent = true
       const res = await this._submit(provider, cfg, request, budget, s.retries, signal, target.sync)
       if (res && Array.isArray(res.outputs) && res.outputs.length) {
         outputs = res.outputs
@@ -307,7 +354,7 @@ class Runner {
     for (let attempt = 0; ; attempt++) {
       try {
         return await withDeadline(
-          (sig) => provider.submit(cfg, { ...request, signal: sig }),
+          (sig) => provider.submit(cfg, forCall(request, sig)),
           deadline - this.now(), signal, timeoutKey
         )
       } catch (err) {
@@ -335,7 +382,7 @@ class Runner {
       let res
       try {
         res = await withDeadline(
-          (sig) => provider.poll(cfg, { ...request, signal: sig }),
+          (sig) => provider.poll(cfg, forCall(request, sig)),
           Math.min(POLL_CALL_TIMEOUT_MS, deadline - this.now()), signal, 'run.timeout_generate'
         )
         errors = 0

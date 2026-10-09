@@ -51,7 +51,7 @@ export interface BatchItem {
 }
 
 interface ExecutorLike {
-  runAll: () => Promise<void>
+  runAll: (opts?: { skipRerunConfirm?: boolean }) => Promise<void>
   markDownstreamStale: (id: string) => void
 }
 
@@ -246,7 +246,8 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
           }
           await nextTick()
 
-          await executor.runAll()
+          // 这一批是用户在批量运行弹窗里亲手发起的，下游刚被标成待更新 —— 不再逐轮弹重跑确认
+          await executor.runAll({ skipRerunConfirm: true })
 
           // 钱已经花了就要记上，哪怕这一轮最后判了失败
           it.cost = roundCost()

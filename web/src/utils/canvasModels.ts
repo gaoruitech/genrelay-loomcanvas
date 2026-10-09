@@ -48,7 +48,7 @@ export interface AdapterTask {
 }
 
 export interface AdapterPollResult {
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'canceled'
   progress: number
   fileUrl?: string
   /** 一次运行的全部产物（多数模型只有一个） */
@@ -101,6 +101,11 @@ export function listChatModels(): ModelSpec[] {
   return specs.value.filter(s => s.kind === 'chat')
 }
 
+/** 能读视频的对话类模型（视频分析节点用）：不是每个对话模型都收视频，后端对不收的会直接拒绝 */
+export function listVideoChatModels(): ModelSpec[] {
+  return listChatModels().filter(s => s.acceptsVideo === true)
+}
+
 // ====================== 通用适配器 ======================
 
 function runToPollResult(run: Run): AdapterPollResult {
@@ -117,8 +122,9 @@ function runToPollResult(run: Run): AdapterPollResult {
         cost: run.cost,
       }
     case 'failed':
-    case 'canceled':
       return { status: 'failed', progress, error: run.error || '', cost: run.cost }
+    case 'canceled':
+      return { status: 'canceled', progress, cost: run.cost }
     case 'queued':
       return { status: 'pending', progress }
     default:

@@ -1,6 +1,7 @@
 'use strict'
 
 /** /api/workflow - canvases: list, create, read, save, delete, duplicate, zip export. */
+const { Transform } = require('stream')
 const express = require('express')
 const archiver = require('archiver')
 const Workflow = require('../models/Workflow')
@@ -228,6 +229,8 @@ router.delete('/:id', wrap(async (req, res) => {
 /* ------------------------------------------------------------ zip export */
 
 const MAX_ZIP_ITEMS = 100
+/** Cap on one archive as a whole; the per-item cap alone would allow 100 x 1 GB. */
+const limits = { zipTotalBytes: 4 * 1024 * 1024 * 1024 }
 const ZIP_ITEM_TIMEOUT_MS = 120 * 1000
 const ZIP_TOTAL_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -292,17 +295,34 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
   })
   archive.pipe(res)
 
+  let room = limits.zipTotalBytes
   try {
     for (let i = 0; i < items.length && !abort.signal.aborted; i++) {
       const it = items[i]
       const no = String(i + 1).padStart(2, '0')
       try {
-        const { stream } = await openStream(it.url, { maxBytes: ZIP_ITEM_MAX_BYTES, signal: abort.signal, timeoutMs: ZIP_ITEM_TIMEOUT_MS })
+        // A file whose size is not known up front may use what is left and no more.
+        const { stream, size } = await openStream(it.url, { maxBytes: Math.min(ZIP_ITEM_MAX_BYTES, Math.max(1, room)), signal: abort.signal, timeoutMs: ZIP_ITEM_TIMEOUT_MS })
+        if (size !== null && size > room) {
+          stream.destroy()
+          archive.append(`Skipped, the archive would exceed its size limit: ${it.url}\n`, { name: `${no}-${it.label}-skipped.txt` })
+          continue
+        }
         // Append one entry at a time and wait for it, so only one download is open.
         await new Promise((resolve, reject) => {
-          stream.once('error', reject)
+          // Counts what goes in. Running over the limit in the middle of an entry
+          // (only possible when the size was not known) ends the whole archive.
+          const counted = new Transform({
+            transform(chunk, _enc, done) {
+              room -= chunk.length
+              if (room < 0) abort.abort(new Error('zip size limit'))
+              done(room < 0 ? new Error('zip size limit') : null, chunk)
+            },
+          })
+          stream.once('error', (err) => counted.destroy(err))
+          counted.once('error', reject)
           archive.once('entry', resolve)
-          archive.append(stream, { name: `${no}-${it.label}.${zipExt(it.url, it.kind)}` })
+          archive.append(stream.pipe(counted), { name: `${no}-${it.label}.${zipExt(it.url, it.kind)}` })
         })
       } catch (err) {
         if (abort.signal.aborted) break
@@ -318,3 +338,4 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
 }))
 
 module.exports = router
+module.exports.limits = limits

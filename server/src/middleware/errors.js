@@ -35,6 +35,11 @@ function classify(err) {
     return { status: 400, message: has(key) ? msg(key, first.properties) : msg('validation.failed') }
   }
   if (err && err.code === 11000) return { status: 409, message: msg('common.duplicate') }
+  // Anything else Express or the body parser refused about the request itself
+  // (bad percent-encoding in the path, an unsupported charset or encoding...).
+  if (err && (err.expose === true || err instanceof URIError) && err.status >= 400 && err.status < 500) {
+    return { status: err.status, message: msg('common.bad_request') }
+  }
   return null
 }
 

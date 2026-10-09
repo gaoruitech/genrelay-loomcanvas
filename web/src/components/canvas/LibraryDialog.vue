@@ -102,7 +102,13 @@
               <div class="lib-thumb" @mouseenter="onThumbEnter" @mouseleave="onThumbLeave">
                 <img v-if="item.nodeType !== 'VIDEO'" :src="https(item.thumbnailUrl || item.mediaUrl)" alt="" loading="lazy" />
                 <template v-else>
-                  <video :src="item.mediaUrl ? https(item.mediaUrl) : undefined" :poster="item.thumbnailUrl ? https(item.thumbnailUrl) : undefined" muted loop playsinline preload="none" />
+                  <!-- 没有单独的封面图时接口把 thumbnailUrl 填成视频地址本身，拿它当 poster 是张裂图，
+                       卡片就是一块空底色：这种情况改成只取元数据，让浏览器显示首帧 -->
+                  <video
+                    :src="item.mediaUrl ? https(item.mediaUrl) : undefined"
+                    :poster="hasOwnPoster(item) ? https(item.thumbnailUrl) : undefined"
+                    muted loop playsinline :preload="hasOwnPoster(item) ? 'none' : 'metadata'"
+                  />
                   <span class="play-overlay"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg></span>
                 </template>
                 <div class="thumb-overlay"><button class="add-btn" @click="addMyAsset(item)">{{ t('library.addToCanvas') }}</button></div>
@@ -307,6 +313,9 @@ const { t, locale } = useI18n()
 
 // 网格里一屏几十张：后端给了 thumbnailUrl 就用它，没有才退回原图
 const https = (u: string) => (u ? ensureHttps(u) : u)
+/** 视频资产有没有一张真正的封面图（而不是被填成了视频地址本身） */
+const hasOwnPoster = (item: { thumbnailUrl?: string; mediaUrl?: string }) =>
+  !!item.thumbnailUrl && item.thumbnailUrl !== item.mediaUrl
 
 // 素材库视频：鼠标悬停自动播放，移开暂停并回到首帧
 const onThumbEnter = (e: MouseEvent) => {
@@ -834,6 +843,19 @@ watch(() => props.modelValue, (open) => {
   padding: 16px 20px 20px;
   overflow-y: auto;
 }
+/* 手机宽度：一行放不下四个标签页加搜索框，标签页会折成三行、搜索框和关闭按钮被挤出弹窗。
+   改成两行 —— 搜索和关闭在上，标签页单独一行、放不下就横向滑 */
+@media (max-width: 720px) {
+  .lib-mask { padding: 12px; }
+  .lib-dialog { height: calc(100vh - 24px); }
+  .lib-header { flex-wrap: wrap; gap: 10px; padding: 12px; }
+  .lib-actions { order: 1; flex: 1; justify-content: flex-end; min-width: 0; }
+  .lib-search { flex: 1; width: auto; min-width: 0; }
+  .lib-tabs { order: 2; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .lib-tabs::-webkit-scrollbar { display: none; }
+  .lib-tab { flex: none; white-space: nowrap; padding: 8px 12px; }
+  .lib-body { padding: 12px; }
+}
 .lib-body::-webkit-scrollbar { width: 6px; }
 .lib-body::-webkit-scrollbar-thumb { background: var(--n-5); border-radius: 3px; }
 
@@ -938,9 +960,11 @@ watch(() => props.modelValue, (open) => {
   padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
   z-index: 1;
 }
-.st-active { background: var(--accent-line); color: var(--accent-text); }
-.st-expired { background: rgba(150,150,150,0.2); color: var(--t-body); }
-.st-revoked { background: var(--danger-dim); color: var(--danger); }
+/* 半透明底色下面垫一层缩略图区的底色：标签压在封面图上，只有半透明的话
+   红字落在红图、深图上就读不出来了。没有封面时看起来与原来一样。 */
+.st-active { background: linear-gradient(var(--accent-line), var(--accent-line)), var(--n-0); color: var(--accent-text); }
+.st-expired { background: linear-gradient(rgba(150,150,150,0.2), rgba(150,150,150,0.2)), var(--n-0); color: var(--t-body); }
+.st-revoked { background: linear-gradient(var(--danger-dim), var(--danger-dim)), var(--n-0); color: var(--danger); }
 
 .btn-del {
   position: absolute; top: 8px; right: 8px;

@@ -59,8 +59,8 @@ async function load() {
   const rows = await Setting.find({ userId: LOCAL_USER }).lean()
   cache.clear()
   for (const row of rows) {
+    if (!Object.hasOwn(DEFINITIONS, row.key)) continue
     const def = DEFINITIONS[row.key]
-    if (!def) continue
     // A stored value that no longer validates falls back to the default.
     try { cache.set(row.key, def.parse(row.value, row.key)) } catch { /* use default */ }
   }
@@ -79,9 +79,9 @@ async function update(patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw badRequest('validation.body_object')
   const parsed = {}
   for (const [key, value] of Object.entries(patch)) {
-    const def = DEFINITIONS[key]
-    if (!def) throw badRequest('settings.unknown_key', { key: String(key).slice(0, 40) })
-    parsed[key] = def.parse(value, key)
+    // Own keys only: "constructor" and friends exist on every object.
+    if (!Object.hasOwn(DEFINITIONS, key)) throw badRequest('settings.unknown_key', { key: String(key).slice(0, 40) })
+    parsed[key] = DEFINITIONS[key].parse(value, key)
   }
   for (const [key, value] of Object.entries(parsed)) {
     await Setting.updateOne({ key }, { $set: { value, userId: LOCAL_USER } }, { upsert: true })

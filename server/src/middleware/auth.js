@@ -7,6 +7,7 @@
  * ACCESS_PASSWORD set    -> POST /api/auth/login exchanges it for a JWT, and
  *                           every API route except the public ones needs it.
  */
+const net = require('net')
 const jwt = require('jsonwebtoken')
 const { getConfig } = require('../config')
 const { deriveKey, safeEqual } = require('../utils/crypto')
@@ -66,30 +67,60 @@ function requireAuth(req, _res, next) {
   next(new ApiError(401, 'auth.login_required', {}, 401))
 }
 
-/* ---- login rate limit: in memory, per client address ---- */
+/* ---- login rate limit: in memory ---- */
 
-const WINDOW_MS = 10 * 60 * 1000
-const MAX_ATTEMPTS = 10
-const attempts = new Map() // ip -> { count, resetAt }
+/**
+ * Attempts per window: `perClient` for one client, `global` for everybody
+ * together. The global ceiling is what bounds guessing from many addresses at
+ * once; reaching it locks new logins out for the rest of the window (sessions
+ * that are already signed in keep working).
+ */
+const LOGIN_LIMITS = Object.freeze({ windowMs: 10 * 60 * 1000, perClient: 10, global: 300 })
+const attempts = new Map() // client -> { count, resetAt }
+const everyone = { count: 0, resetAt: 0 }
+
+/**
+ * Who an address counts as. IPv6 is cut to its /64: a single host is routinely
+ * handed a whole /64, so per-address counting would give it 2^64 tries.
+ */
+function clientKey(ip) {
+  const addr = String(ip || '').split('%')[0].toLowerCase()
+  if (net.isIP(addr) === 4) return addr
+  if (net.isIP(addr) !== 6) return 'unknown'
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(addr)
+  if (mapped) return mapped[1]
+  const [head, tail = ''] = addr.split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const groups = addr.includes('::') ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right] : left
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`
+}
 
 function loginRateLimit(req, _res, next) {
   const now = Date.now()
-  if (attempts.size > 5000) {
-    for (const [ip, a] of attempts) if (a.resetAt <= now) attempts.delete(ip)
+  if (everyone.resetAt <= now) {
+    everyone.count = 0
+    everyone.resetAt = now + LOGIN_LIMITS.windowMs
+    for (const [key, a] of attempts) if (a.resetAt <= now) attempts.delete(key)
   }
-  const ip = req.ip || 'unknown'
-  let entry = attempts.get(ip)
+  const tooMany = () => next(new ApiError(429, 'auth.too_many_attempts', {}, 429))
+  // Checked first, so the table below cannot grow past the global ceiling either.
+  if (everyone.count >= LOGIN_LIMITS.global) return tooMany()
+  const key = clientKey(req.ip)
+  let entry = attempts.get(key)
   if (!entry || entry.resetAt <= now) {
-    entry = { count: 0, resetAt: now + WINDOW_MS }
-    attempts.set(ip, entry)
+    entry = { count: 0, resetAt: now + LOGIN_LIMITS.windowMs }
+    attempts.set(key, entry)
   }
-  if (entry.count >= MAX_ATTEMPTS) {
-    return next(new ApiError(429, 'auth.too_many_attempts', {}, 429))
-  }
+  if (entry.count >= LOGIN_LIMITS.perClient) return tooMany()
   // Counted before the check, so parallel guesses cannot outrun the limit.
   entry.count += 1
-  req.loginSucceeded = () => attempts.delete(ip)
+  everyone.count += 1
+  req.loginSucceeded = () => {
+    everyone.count = Math.max(0, everyone.count - entry.count)
+    attempts.delete(key)
+  }
   next()
 }
 
-module.exports = { authRequired, checkPassword, issueToken, isAuthed, requireAuth, loginRateLimit }
+module.exports = { authRequired, checkPassword, issueToken, isAuthed, requireAuth, loginRateLimit, clientKey, LOGIN_LIMITS }

@@ -2,7 +2,9 @@
 
 /**
  * S3-compatible driver (AWS S3, Cloudflare R2, MinIO, ...).
- * The SDK is an optional dependency, loaded only when this driver is selected:
+ * The SDK is an optional dependency (installed by `npm ci`, also in the Docker
+ * image) and is loaded only when this driver is selected. If it was left out
+ * (npm ci --omit=optional):
  *   npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
  * Objects must be publicly readable through S3_PUBLIC_BASE_URL (a CDN or the
  * public bucket URL); this driver does not sign URLs.

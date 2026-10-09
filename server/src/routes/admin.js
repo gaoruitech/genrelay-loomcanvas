@@ -436,4 +436,22 @@ router.get('/usage/records', wrap(async (req, res) => {
   })
 }))
 
+/** A record in one of these states is history; anything else is still being worked on. */
+const FINISHED = [RUN_STATUS.SUCCEEDED, RUN_STATUS.FAILED, RUN_STATUS.CANCELED]
+
+/**
+ * DELETE /api/admin/usage/records?before=<date> -> { deleted }
+ * Removes the usage records created before that moment ("2025-01-31" = before
+ * the start of that day, UTC). Queued and running records are kept whatever
+ * their age, and so are the generated files: canvases may still show them.
+ */
+router.delete('/usage/records', wrap(async (req, res) => {
+  const raw = req.query.before
+  if (raw === undefined || raw === '') throw badRequest('validation.required', { field: 'before' })
+  if (typeof raw !== 'string') throw badRequest('validation.bad_date', { field: 'before' })
+  const before = parseDate(raw, 'before')
+  const r = await Run.deleteMany({ userId: LOCAL_USER, status: { $in: FINISHED }, createdAt: { $lt: before } })
+  ok(res, { deleted: r.deletedCount || 0 })
+}))
+
 module.exports = router

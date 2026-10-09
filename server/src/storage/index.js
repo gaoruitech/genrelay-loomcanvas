@@ -4,6 +4,7 @@
  * Storage facade. Every driver implements:
  *   put(key, buffer|stream, { contentType }) -> { key, size, url }
  *   getStream(key) / getBuffer(key) / exists(key) / delete(key)
+ *   size(key)        -> bytes, without reading the file (optional: local only)
  *   urlFor(key)      -> URL a browser can load
  *   keyFromUrl(url)  -> key when the URL points at this storage, else null
  */

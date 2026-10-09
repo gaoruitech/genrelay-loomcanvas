@@ -4,6 +4,7 @@
  * Environment configuration. Everything the server reads from the environment
  * is parsed and validated here, once, so the rest of the code can trust it.
  */
+const net = require('net')
 const path = require('path')
 
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env'), quiet: true })
@@ -23,6 +24,42 @@ function int(name, dft, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
     throw new ConfigError(`${name} must be an integer between ${min} and ${max}, got "${raw}"`)
   }
   return n
+}
+
+const TRUST_PROXY_NAMES = new Set(['loopback', 'linklocal', 'uniquelocal'])
+
+function isSubnet(v) {
+  const [addr, prefix, ...rest] = v.split('/')
+  const family = net.isIP(addr)
+  if (!family || rest.length) return false
+  if (prefix === undefined) return true
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128)
+}
+
+/**
+ * TRUST_PROXY: how many reverse proxies sit in front (1, 2...), or which
+ * addresses they connect from. There is deliberately no "trust everything":
+ * with it any client could pick its own address in X-Forwarded-For and walk
+ * around the login rate limit.
+ */
+function trustProxy(name) {
+  const raw = str(name)
+  if (!raw) return false
+  if (/^\d+$/.test(raw)) {
+    const hops = Number(raw)
+    if (hops > 10) throw new ConfigError(`${name} must be at most 10 proxies, got "${raw}"`)
+    return hops || false
+  }
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  for (const item of list) {
+    if (!TRUST_PROXY_NAMES.has(item) && !isSubnet(item)) {
+      throw new ConfigError(
+        `${name} must be the number of reverse proxies in front of the server (e.g. 1) or a comma-separated list of ` +
+        `their addresses (IP, CIDR, loopback, linklocal, uniquelocal); got "${item}"`
+      )
+    }
+  }
+  return list
 }
 
 function build() {
@@ -58,7 +95,7 @@ function build() {
     publicUrl,
     accessPassword: str('ACCESS_PASSWORD'),
     corsOrigins: str('CORS_ORIGIN').split(',').map((s) => s.trim()).filter(Boolean),
-    trustProxy: str('TRUST_PROXY'),
+    trustProxy: trustProxy('TRUST_PROXY'),
     // Hosts exempt from the private-address block of the downloader, for
     // upstreams on the local network that return result links pointing at themselves.
     ssrfAllowHosts: str('SSRF_ALLOW_HOSTS').split(',').map((s) => s.trim()).filter(Boolean),

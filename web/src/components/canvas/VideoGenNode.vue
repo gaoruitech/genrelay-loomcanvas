@@ -45,6 +45,7 @@
         <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
       </span>
       <span v-if="isRunning" class="cv-frame-running">{{ progress }}%</span>
+      <button v-if="canCancel" class="cv-frame-cancel nodrag" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
     </div>
 
     <!-- 底部面板：点击时向下滑出 —— 多条选择 + 提示词 + 参数 + 运行 -->
@@ -291,6 +292,7 @@ const props = defineProps<{
     videoUrl?: string
     videoUrls?: string[]
     taskId?: string
+    runPending?: boolean
     // 历次运行的产物，新的在最前；resultIndex 指向当前展示的是第几版
     results?: any[]
     resultIndex?: number
@@ -581,8 +583,11 @@ const progress = computed(() => props.data.progress || 0)
 const displayError = computed(() => props.data.validationError || props.data.errorMsg || '')
 const isRunning = computed(() => status.value === 'running' || status.value === 'queued')
 // 角上常驻状态标（顶部面板撤掉后，用户仍能一眼看出状态）
+// 任务已经提交到后端、还没出结果时才有东西可取消（排队等上游、正在提交的那一小段没有）
+const canCancel = computed(() => status.value === 'running' && props.data.runPending === true)
 const statusLabel = computed(() => {
   if (status.value === 'stale') return t('nodes.status.stale')
+  if (status.value === 'canceled') return t('nodes.status.canceled')
   if (status.value === 'queued') return t('nodes.status.queued')
   if (status.value === 'running') return `${progress.value}%`
   if (status.value === 'error') return t('nodes.status.error')
@@ -592,7 +597,7 @@ const statusLabel = computed(() => {
 const statusClass = computed(() => {
   if (status.value === 'error') return 'error'
   if (status.value === 'running' || status.value === 'queued') return 'running'
-  if (status.value === 'stale') return 'stale'
+  if (status.value === 'stale' || status.value === 'canceled') return 'stale'
   return 'done'
 })
 
@@ -615,6 +620,9 @@ watch(adapter, (a) => {
 async function handleRun() {
   if (!executor) return
   await executor.runSubtree(props.id)
+}
+function handleCancel() {
+  void executor?.cancelNode(props.id)
 }
 </script>
 

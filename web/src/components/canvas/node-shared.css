@@ -650,6 +650,23 @@
   font-weight: 600;
   pointer-events: none;
 }
+/* 运行中的取消按钮：压在进度遮罩上，靠下居中 */
+.cv-frame-cancel {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--n-2);
+  color: var(--t-body);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cv-frame-cancel:hover { border-color: var(--danger); color: var(--danger); }
 
 /* 顶部面板：下载 / 详情 / 成本 / 状态，向上滑出 */
 .cv-top-panel {

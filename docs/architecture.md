@@ -1,35 +1,46 @@
 # LoomCanvas 架构与接口约定
 
-本文是前后端共同遵守的约定。改接口先改这里。
+> English readers: this page is the Chinese design contract between the frontend and the backend. The endpoint reference in English is [api.md](api.md); the other pages are listed in [README.md](README.md).
+
+本文是前后端共同遵守的约定。改接口先改这里。逐个接口的请求、返回和错误码另见 [api.md](api.md)（英文），文档索引见 [README.zh-CN.md](README.zh-CN.md)。
 
 ## 1. 仓库结构
 
 ```
 loomcanvas/
-├─ server/            Node.js 20 + Express + Mongoose（CommonJS）
-│  └─ src/
-│     ├─ index.js           启动入口
-│     ├─ config.js          读取环境变量
-│     ├─ routes/            HTTP 接口
-│     ├─ models/            Mongoose 模型
-│     ├─ providers/         模型接入（插件）
-│     │  ├─ index.js        注册表
-│     │  ├─ gaorui.js / openaiCompatible.js / gemini.js
-│     │  └─ catalog/*.json  各接入的模型声明
-│     ├─ runner/            任务执行器（排队、轮询、转存、记账）
-│     ├─ storage/           存储驱动：local / s3 / oss
-│     ├─ billing/           计费钩子（默认空实现）
-│     ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
-│     └─ utils/
+├─ server/            Node.js 20.9+ + Express + Mongoose（CommonJS）
+│  ├─ src/
+│  │  ├─ index.js           启动入口
+│  │  ├─ app.js             Express 装配（中间件顺序、路由、静态前端）
+│  │  ├─ config.js          读取环境变量
+│  │  ├─ constants.js
+│  │  ├─ routes/            HTTP 接口
+│  │  ├─ models/            Mongoose 模型
+│  │  ├─ providers/         模型接入（插件）
+│  │  │  ├─ index.js        注册表
+│  │  │  ├─ gaorui.js / openaiCompatible.js / gemini.js
+│  │  │  └─ catalog/*.json  各接入的模型声明
+│  │  ├─ runner/            任务执行器（排队、轮询、转存、记账）
+│  │  ├─ storage/           存储驱动：local / s3 / oss
+│  │  ├─ billing/           计费钩子（默认空实现）
+│  │  ├─ services/          设置、素材读取、图片工具、内置内容、结果清理
+│  │  ├─ middleware/        登录、语言、错误处理、安全响应头
+│  │  ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
+│  │  └─ utils/
+│  └─ test/                 node:test 测试
 ├─ web/               Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  └─ src/
-│     ├─ views/             CanvasList / Canvas / ShareView / Settings / Setup
+│     ├─ views/             CanvasList / Canvas / CanvasShareView / Settings / Setup / NotFound
 │     ├─ components/canvas/ 画布节点与对话框
+│     ├─ components/settings/ 设置页的各个标签页
 │     ├─ composables/       执行器、批量、历史等
 │     ├─ utils/             api.ts、canvasModels.ts 等
-│     └─ locales/           zh-CN.ts、en.ts
+│     └─ locales/           zh-CN.ts、en.ts、modules/*.ts
+├─ scripts/                 仓库级检查（版本号、依赖协议）
 ├─ docs/
+├─ Dockerfile
 ├─ docker-compose.yml
+├─ package.json             整个仓库的便捷脚本
 └─ .env.example
 ```
 
@@ -38,18 +49,20 @@ loomcanvas/
 - 所有接口前缀 `/api`。
 - 返回统一为 `{ "result": 0, "message": "...", "data": ... }`；`result` 非 0 表示失败，同时使用合适的 HTTP 状态码。失败时多一个 `code`（这条信息的稳定标识，见第 10 节「服务端文字的语言」）。
 - 第一版是单用户。所有数据表带 `userId` 字段，固定写入常量 `local`，为以后多用户留位置。
-- 登录：环境变量 `ACCESS_PASSWORD` 为空时不需要登录；非空时除 `/api/app/bootstrap`、`/api/auth/login`、分享只读接口外都要带 `Authorization: Bearer <token>`。
-- 文件地址：本地存储驱动下，文件通过 `/files/<key>` 访问；接口返回的都是可直接访问的完整或站内相对地址。
+- 登录：环境变量 `ACCESS_PASSWORD` 为空时不需要登录；非空时除 `/api/app/bootstrap`、`/api/auth/login`、分享只读接口外都要带 `Authorization: Bearer <token>`。凭证有效期 30 天，改了口令即全部失效。登录有限流：每个客户端每 10 分钟 10 次（IPv6 按 /64 网段计），所有客户端合计每 10 分钟 300 次；合计达到上限后，这个时间窗内不再接受新的登录，已登录的不受影响。计数在进程内存里。
+- 请求体大小：JSON 默认 1 MB，`/api/workflow` 下 6 MB，`/api/auth` 和 `/api/canvas-share` 下 64 KB。需要登录的接口先验凭证、再解析请求体。
+- 请求本身格式不对（路径里的百分号编码有误、不支持的字符集等）返回 4xx，`code` 为 `common.bad_request`，不返回 500。
+- 文件地址：本地存储驱动下，文件通过 `/files/<key>` 访问，接口返回的永远是站内相对地址 `/files/<key>`，与 `PUBLIC_URL` 无关；对象存储驱动返回桶的公开地址前缀下的完整地址。
 - 上游 Key 用 `SECRET_KEY` 做 AES-256-GCM 加密后入库；任何接口都不返回明文，只返回 `hasKey` 和 `keyTail`（末四位）。
 
 ## 3. 基础接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/app/bootstrap` | `{ authRequired, authed, site:{name,logoUrl,defaultTheme,defaultLocale}, hasProvider, version }` |
+| GET | `/api/app/bootstrap` | `{ authRequired, authed, site:{name,logoUrl,defaultTheme,defaultLocale}, hasProvider, limits:{maxUploadMb}, version }`。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
 | POST | `/api/auth/login` | `{ password }` → `{ token }` |
-| POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height? }` |
-| POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上 |
+| POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height?, thumbnailUrl? }`（后三项只有图片有） |
+| POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上。只接受图片：地址指向本实例存储时也一样，存储里的视频返回 400（`file.image_only`） |
 
 ## 4. 模型与运行（新接口）
 
@@ -59,19 +72,22 @@ loomcanvas/
 {
   "id": "gaorui:nano-banana-2.1",      // <接入实例标识>:<模型标识>，全局唯一
   "providerId": "…",                    // 接入实例的数据库 id
+  "providerName": "高睿 API",            // 接入实例的名称
+  "providerType": "gaorui",             // 接入类型
   "label": "Nano Banana 2.1",
   "desc": "新版图片模型",                // 可选，下拉副标题
   "tag": "推荐",                         // 可选
   "kind": "image",                      // image | video | chat
   "acceptsImage": true,
-  "acceptsVideo": false,
+  "acceptsVideo": false,                // 能否输入视频；对话模型见 4.3
   "videoEdit": false,                   // 是否出现在「视频编辑」节点
   "maxReferenceImages": 8,
   "options": {
     "aspectRatios": ["auto","1:1","16:9"],
     "resolutions": ["1K","2K","4K"],    // 可选
     "durations": [5,10],                // 可选，秒
-    "counts": [1,2,3,4]                 // 可选
+    "counts": [1,2,3,4],                // 可选
+    "imgModes": ["multi","frames"]      // 可选：multi 多图参考 / frames 首尾帧
   },
   "defaults": { "aspectRatio": "1:1", "resolution": "1K", "count": 1 },
   "pricing": {                          // 可选；没有就显示「成本未知」
@@ -89,7 +105,7 @@ loomcanvas/
 | --- | --- | --- |
 | GET | `/api/models` | 返回所有已启用接入下已启用的模型 `ModelSpec[]`，可带 `?kind=image` |
 | POST | `/api/runs/estimate` | `{ model, params, count }` → `{ unitCost, totalCost, currency, unknown }` |
-| POST | `/api/runs` | 见下 → `{ runId }` |
+| POST | `/api/runs` | 见下 → `{ runId }`。排队中和进行中的运行合计已有 500 个时返回 429（`run.queue_full`） |
 | GET | `/api/runs/:id` | → `Run` |
 | POST | `/api/runs/status` | `{ ids: [] }` → `Run[]`（批量轮询） |
 | POST | `/api/runs/:id/cancel` | 取消排队或进行中的运行 |
@@ -115,11 +131,13 @@ Run：
   "id": "…",
   "status": "queued",            // queued | running | archiving | succeeded | failed | canceled
   "progress": 0,                  // 0-100
-  "outputs": [ { "type": "image", "url": "…", "thumbnailUrl": "…" } ],
+  "outputs": [ { "type": "image", "url": "…", "thumbnailUrl": "…", "width": 1024, "height": 1024 } ],  // 宽高只有图片有
+  "text": "",                     // 对话类运行的结果
   "error": "",                    // 给用户看的失败原因，按请求的语言给出
   "errorCode": "",                // 失败原因的稳定标识，如 run.timeout_generate
   "cost": { "amount": 0.12, "currency": "CNY", "unknown": false },
-  "model": "…", "kind": "image",
+  "model": "…", "modelLabel": "…", "kind": "image",
+  "workflowId": "…", "nodeId": "…",
   "createdAt": "…", "startedAt": "…", "finishedAt": "…"
 }
 ```
@@ -130,6 +148,10 @@ Run：
 | --- | --- | --- |
 | POST | `/api/llm/tasks` | `{ model, prompt, systemPrompt?, imageUrls?, videoUrl? }` → `{ taskId }` |
 | GET | `/api/llm/tasks/:id` | → `{ status, text, error, errorCode, cost }`，status 同 Run |
+
+- 对话模型的 `acceptsVideo` 是有意义的：OpenAI 兼容接口和高睿 API 的对话模型为 `true`（视频以 `video_url` 内容片段发送），Gemini 的对话模型为 `false`。
+- `POST /api/llm/tasks` 带 `videoUrl` 而模型没有 `acceptsVideo` 时返回 400（`model.no_video_input`）。视频分析节点只列出 `acceptsVideo` 的对话模型。
+- 未完成运行的 500 个上限对 `POST /api/llm/tasks` 同样适用（429，`run.queue_full`）。
 
 ## 5. 管理接口（设置页）
 
@@ -143,6 +165,7 @@ Run：
 | PUT | `/api/admin/models/:modelId` | `{ enabled?, label?, sort?, defaults?, pricing? }` |
 | GET/PUT | `/api/admin/settings` | 站点名称、Logo、默认主题和语言、并发数、超时、重试次数、结果保留天数 |
 | GET | `/api/admin/usage` | `?from&to&groupBy=day|model` → 汇总；`/api/admin/usage/records` 分页明细 |
+| DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。删除这一刻之前创建、已结束（成功、失败、已取消）的用量记录（`2025-01-31` 表示这一天 UTC 零点之前）；排队中、运行中的不动，生成的文件不删。缺 `before` 返回 400 `validation.required`，日期不对返回 400 `validation.bad_date` |
 
 ## 6. 沿用主站路径的画布接口
 
@@ -159,10 +182,14 @@ Run：
 ## 7. 任务执行器
 
 - 进程内队列，并发数来自设置（默认 4）。
-- 运行记录落库在 `runs`；进程启动时把 `queued` 的重新入队，`running` 且有外部任务号的继续轮询。
-- 每一步都有总时长上限：提交 60 秒，轮询总时长按模型类型（图片 10 分钟、视频 30 分钟，可在设置里改），结果下载 5 分钟。超时一律判失败，不允许无限等待。
+- 运行记录落库在 `runs`；进程启动时把 `queued` 的重新入队，`running` / `archiving` 且有外部任务号的继续轮询（不重新提交），没有外部任务号的以 `run.interrupted` 判失败。
+- 未完成的运行（`queued`、`running`、`archiving`）最多 500 个，超出时提交接口返回 429（`run.queue_full`）。
+- 每一步都有总时长上限：提交 60 秒（`submitTimeoutSec`），轮询总时长按模型类型（图片 10 分钟 `imageTimeoutMinutes`、视频 30 分钟 `videoTimeoutMinutes`），对话 5 分钟（`chatTimeoutSec`），结果下载 5 分钟（`downloadTimeoutSec`）。这些都是设置项，括号里是键名。超时一律判失败，不允许无限等待。
 - 结果文件下载后转存到存储层，图片生成缩略图。
-- 进程收到退出信号时，把手上的运行放回 `queued`。
+- 任何请求都不会向上游发两次。进程收到退出信号时，手上的运行只有在两种情况下放回 `queued`：已经有外部任务号（下次启动继续轮询，不重新提交），或者还什么都没发出去。请求已经发出、还没有外部任务号的运行以 `run.interrupted` 判失败，不会再发一次；同步型接入（OpenAI 兼容接口的图片、Gemini）的每一次运行和每一次对话都属于这种情况。
+- 运行存储的约定：`recover()` 返回 `{ queued, interrupted }`。`queued` 是要入队的运行 id（按创建时间从早到晚），`interrupted` 是上一个进程留下的、卡在中途又没有外部任务号的运行，由执行器判失败。
+- 被 `beforeRun` 放行、最后没有成功的运行都会调用 `billing.onFailed`，包括上面因中断而失败的。启动时处理 `interrupted` 的顺序是先调钩子、再更新记录，中间再崩溃会在下一次启动时重复调用，所以这一处是「至少一次」，钩子应按 `ctx.runId` 做到幂等。
+- 传给接入插件的 `media` 工具与每一次调用的中止信号绑定：取消、超时、进程退出时，参考素材的加载一并停下。
 
 ## 8. 计费钩子
 
@@ -183,13 +210,16 @@ module.exports = {
   label: 'Gaorui API',                  // 自带的名字；语言文件里有 provider.gaorui.label 时用语言文件的
   fields: [ { key: 'apiKey', label: 'API Key', secret: true, required: true } ],
   defaultBaseUrl: 'https://gaorui.cc',
+  sync: false,                          // submit 直接给出结果的同步型接入设为 true
   async listModels(cfg) { /* 返回 ModelSpec[]（不含 providerId 和前缀，由注册表补） */ },
   async test(cfg) { /* 连通性测试 → { ok, modelCount? }；失败就抛错 */ },
   async submit(cfg, run) { /* → { externalId } 或 { outputs }（同步接口直接给结果） */ },
   async poll(cfg, run) { /* → { status, progress, outputs?, error? }；error 填上游的原话 */ },
-  async chat(cfg, req) { /* 对话类 → { text } */ },
+  async chat(cfg, req) { /* 对话类 → { text, usage?: { inputTokens, outputTokens } } */ },
 }
 ```
+
+五个函数都必须存在（用不到的也要写出来并在里面抛错），否则注册时报错。完整说明见 [writing-a-provider.zh-CN.md](writing-a-provider.zh-CN.md)，计费钩子见 [billing-hook.zh-CN.md](billing-hook.zh-CN.md)。
 
 ## 10. 补充约定（联调后确定）
 
@@ -203,7 +233,8 @@ module.exports = {
 - 价格表的键：`by: "resolution"` 用分辨率，`by: "duration"` 用秒数字符串，`by: "resolution_duration"` 用 `"<分辨率>:<秒>"`，例如 `720p:5`。
 - 同步型接入（`submit` 直接给出结果）受生成总时长限制，不受 60 秒提交限制。
 - 提交失败只在"上游确定没收到"时重试（连接被拒、域名解析失败、429、503）；超时和连接重置不重试，避免重复产生计费任务。
-- 进程崩溃后，停在 `running` 且没有外部任务号的运行直接判失败，不重新提交。
+- 进程崩溃后，停在 `running` 且没有外部任务号的运行以 `run.interrupted` 判失败，不重新提交。进程正常退出（收到退出信号）时，请求已经发出而没有外部任务号的运行同样以 `run.interrupted` 判失败；只有还什么都没发出去的才回到 `queued`，由下一个进程提交（见第 7 节）。
+- 上游错误信息里如果带着这次请求的凭据，展示和入库之前先换成 `***`。
 
 **文件**
 
@@ -211,14 +242,15 @@ module.exports = {
 - 缩略图的地址由原图地址直接推出，不需要另外记录：存储 key 为 `<uploads|outputs|tools>/…/<名字>.<扩展名>` 的图片，缩略图 key 是 `thumbs/of/<uploads|outputs|tools>/…/<名字>_<扩展名>.webp`（最长边 512 的 webp）。例如 `/files/outputs/2025/01/ab12.png` → `/files/thumbs/of/outputs/2025/01/ab12_png.webp`。只有 png / jpg / webp / bmp / avif 有缩略图；视频、GIF 没有。
   - 上传和运行结果转存时会顺手生成；本地存储下 `GET /files/thumbs/of/…` 发现文件不在（老文件、工具节点的产物）就从原图现做一份、落盘、以后直接读。原图不存在返回 404；原图存在但做不出缩略图时 302 到原图。
   - 画布节点数据里只存原图地址。前端显示小图时：本地存储的地址（`/files/…`）按上面的规则推出缩略图地址，所以刷新、复制节点、分享页都有缩略图；对象存储和外链地址用接口返回的 `thumbnailUrl`（只在当前页面内存里记着，刷新后退回原图）。
-- 文件地址可以是站内相对地址（`/files/...`）；`/files/*` 不需要登录。
+- 本地存储下文件地址永远是站内相对地址（`/files/...`），不带 `PUBLIC_URL`，所以换主机、换端口、改 `PUBLIC_URL` 后画布照常可用；早期版本存下的 `PUBLIC_URL/files/...` 和回环地址仍被认作本实例的文件。`/files/*` 不需要登录；不是图片、视频、音频的文件带 `Content-Disposition: attachment`。
+- `PUBLIC_URL` 只在把本地存储里的文件交给上游时用来拼出绝对地址，可以不填。
 - 没有公网地址时，本地存储里的参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）会报错并提示设置 `PUBLIC_URL` 或改用对象存储。
 
 **画布**
 
 - `PUT /api/workflow/:id` 只带 `{ name }` 时只改名；保存 `settings.bg`；返回 `updatedAt`。
 - `POST /api/workflow/:id/duplicate` 和 `POST /api/canvas-share/:token/copy` 可带 `{ name }` 指定新画布的名字（前端按界面语言起名）；不带时后端用默认名。
-- 打包下载（`download-zip`）里的文件名是 `<序号>-<节点类型>.<扩展名>`，例如 `02-image-edit.png`，与界面语言无关。
+- 打包下载（`download-zip`）里的文件名是 `<序号>-<节点类型>.<扩展名>`，例如 `02-image-edit.png`，与界面语言无关。上限：100 个文件，单个 1 GiB，总大小 4 GiB；放不下的换成 `<序号>-<节点类型>-skipped.txt`。
 - `POST /api/workflow/download` `{ url, filename }` 代理下载跨域文件；`POST /api/workflow/:id/download-zip` `{ urls? }`，不带 `urls` 表示整张画布。
 - 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`、`video-in`）。
 - 视频生成节点的提示词里，指代首帧 / 尾帧的 `@` 存的是固定写法 `@first_frame` / `@last_frame`，与界面语言无关；文本框里显示成当前语言的名字（`@首帧`、`@First_frame`），提交给模型前再换成自然语言。老画布里存的 `@首帧` / `@尾帧` 照样认。
@@ -238,12 +270,22 @@ module.exports = {
 **分享链接**
 
 - `POST /api/canvas-share/publish` `{ workflowId, title?, description?, expiresInDays? }` → `{ id, token, updated, expiresAt }`。`expiresInDays: 0` 表示永不过期；不带这个字段时，新链接永不过期，对同一张画布再次发布则沿用原来的有效期（原来的已经过期就清掉）。
-- `GET /api/canvas-share/:token` 公开只读；不存在、已过期、已撤销统一返回 404。
+- `GET /api/canvas-share/:token` 公开只读；不存在、已过期、已撤销统一返回 404。它和 `POST /api/canvas-share/:token/copy` 只认链接里的 token，数据库 id 不行，登录与否都一样。
+- 快照里不带运行状态、运行号和任务号、失败详情和成本：发布时去掉，公开读取时再去一遍，复制出来的画布里也没有。去掉的节点字段是 `status`、`progress`、`validationError`、`validationStamp`、`errorMsg`、`taskId`、`taskIds`、`runId`、`runPending`、`generatedCount`、`cost`、`estimatedCost`，以及 `results[]` 每一项里的 `cost`、`taskId`、`runId`。模型标识（含接入标识前缀）和提示词保留。
 - `GET /api/canvas-share/mine` 保留已撤销和已过期的链接；`DELETE /api/canvas-share/:id` 第一次撤销，对已撤销的再删一次才从列表移除；撤销后的 token 不复用。
 
 **设置与用量**
 
-- `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultTheme`、`defaultLocale`、`concurrency`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`maxRetries`、`retentionDays`。
-- `GET /api/admin/usage` → `{ items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`。
+- `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultTheme`、`defaultLocale`、`concurrency`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。各项的默认值和范围见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
+- `GET /api/admin/usage` → `{ groupBy, timezone, totals, items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`，`totals` 与 `items` 的每一项形状相同。可带 `tz`（IANA 时区名，默认 `UTC`）决定按天分组时一天的起止。
 - 接入的新增和修改：字段直接放在请求体顶层；修改时不带密钥表示保持不变，`baseUrl: ''` 表示恢复默认地址。
 - 只有真正的登录失败才返回 401（前端收到 401 会清除登录状态）。
+
+**安全响应头**
+
+- 每个页面带 `Content-Security-Policy`：`script-src 'self'` 加上构建出的 `index.html` 里内联主题脚本的 sha256，脚本不允许 `'unsafe-inline'` 和 `'unsafe-eval'`；`img-src` / `media-src` / `connect-src` 有意对任何 http(s) 来源开放（画布要显示和下载对象存储、CDN、外链里的结果）；另有 `frame-ancestors 'self'`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
+- 接口响应带 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` 和 `Cache-Control: no-store`。
+- 所有响应带 `X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy`、`Cross-Origin-Opener-Policy`、`Permissions-Policy`。
+- 应用不设置 HSTS，交给终结 TLS 的反向代理。
+- 前端构建打开了 `__INTLIFY_JIT_COMPILATION__`（`web/vite.config.ts`），vue-i18n 不需要 eval。前端构建产物如果不由本服务端提供，那台服务器要自己发送等效的 CSP。
+- `TRUST_PROXY` 只接受代理层数（1 到 10）或逗号分隔的 IP / CIDR / `loopback` / `linklocal` / `uniquelocal`；`true` 和主机名在启动时报配置错误。

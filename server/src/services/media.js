@@ -59,13 +59,20 @@ async function loadImage(url, opts = {}) {
   return out
 }
 
-/** Open a media URL as a stream (zip export). Resolves { stream, mime }. */
+/**
+ * Open a media URL as a stream (zip export, download proxy).
+ * Resolves { stream, mime, size } - size is null when it is not known up front.
+ */
 async function openStream(url, { maxBytes, signal, timeoutMs } = {}) {
   const key = ownKey(url)
-  if (key) return { stream: await getStorage().getStream(key), mime: mimeForKey(key) }
+  if (key) {
+    const storage = getStorage()
+    const size = typeof storage.size === 'function' ? await storage.size(key) : null
+    return { stream: await storage.getStream(key), mime: mimeForKey(key), size }
+  }
   if (typeof url !== 'string' || url.startsWith('/')) throw new MediaError('media.bad_url', { what: msg('noun.file') })
   const res = await safeFetchStream(url, { maxBytes, signal, timeoutMs })
-  return { stream: res.stream, mime: res.contentType }
+  return { stream: res.stream, mime: res.contentType, size: res.contentLength }
 }
 
 /** Can a third-party service on the internet load this URL? */

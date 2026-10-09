@@ -1,0 +1,22 @@
+{
+  "name": "loomcanvas",
+  "version": "0.1.0",
+  "description": "Self-hosted infinite canvas for AI image and video creation",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "install:all": "npm ci --prefix server && npm ci --prefix web",
+    "start": "npm --prefix server start",
+    "typecheck": "npm --prefix web run typecheck",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix web run build",
+    "i18n:check": "npm --prefix web run i18n:check",
+    "versions:check": "node scripts/check-versions.mjs",
+    "licenses:check": "node scripts/licenses.mjs",
+    "licenses:write": "node scripts/licenses.mjs --write",
+    "check": "npm run versions:check && npm run licenses:check && npm run i18n:check && npm run test && npm run build"
+  }
+}

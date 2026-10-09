@@ -17,6 +17,7 @@
         <span v-else-if="status === 'queued'" class="cv-tag running">{{ t('nodes.status.queued') }}</span>
         <span v-else-if="status === 'running'" class="cv-tag running">{{ t('nodeui.analysis.statusRunning') }}</span>
         <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
+        <span v-else-if="status === 'canceled'" class="cv-tag stale">{{ t('nodes.status.canceled') }}</span>
         <span v-else-if="status === 'done' || !!data.text" class="cv-tag done">{{ t('nodes.status.done') }}</span>
       </div>
     </div>
@@ -25,7 +26,7 @@
       <!-- 模型选择：设置里已启用的对话类模型 -->
       <div class="va-section">
         <ChipSelect v-if="modelOpts.length" :label="t('nodes.field.model')" :model-value="model" :options="modelOpts" @update:model-value="v => selectModel(String(v))" />
-        <div v-else class="va-hint">{{ t('executor.noChatModel') }}</div>
+        <div v-else class="va-hint">{{ t('executor.noVideoChatModel') }}</div>
       </div>
       <!-- 分析结果（可编辑，作为 text-out 喂给下游） -->
       <div class="va-section">
@@ -58,6 +59,7 @@
       <span v-if="actualText" class="va-cost" :title="t('cost.actual')">{{ actualText }}</span>
       <div class="va-run-wrap">
         <span v-if="!actualText && estimateText" class="va-est" :title="t('cost.estimateTip')">{{ estimateText }}</span>
+        <button v-if="canCancel" class="va-cancel-btn nodrag" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
         <button
           class="va-run-btn nodrag"
           :disabled="isRunning"
@@ -68,14 +70,6 @@
           <span v-if="isRunning">{{ progress }}%</span>
           <span v-else>{{ t('nodeui.analysis.run') }}</span>
         </button>
-        <div v-if="confirmOpen" ref="confirmEl" class="va-confirm nodrag" @mousedown.stop @click.stop @wheel.stop>
-          <div class="va-confirm-text">{{ t('nodeui.analysis.confirmOverwrite') }}</div>
-          <div class="va-confirm-actions">
-            <button class="va-confirm-btn cancel" @click="confirmOpen = false">{{ t('common.cancel') }}</button>
-            <button class="va-confirm-btn ok" @click="confirmRun">{{ t('common.ok') }}</button>
-          </div>
-          <span class="va-confirm-arrow" />
-        </div>
       </div>
     </div>
 
@@ -115,7 +109,7 @@ import { useI18n } from 'vue-i18n'
 import ChipSelect from './ChipSelect.vue'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
-import { listChatModels } from '@/utils/canvasModels'
+import { listVideoChatModels } from '@/utils/canvasModels'
 import { localizedModelDesc } from '@/utils/builtinContent'
 import { formatCost, formatEstimate } from '@/utils/cost'
 import type { Cost } from '@/types'
@@ -130,6 +124,7 @@ const props = defineProps<{
     cost?: Cost | null
     estimatedCost?: Cost | null
     taskId?: string
+    runPending?: boolean
     model?: string
     validationError?: string
     validationStamp?: number
@@ -144,15 +139,14 @@ const executor = inject(CANVAS_EXECUTOR_KEY)
 const status = computed(() => props.data.status || 'idle')
 const progress = computed(() => props.data.progress || 0)
 const isRunning = computed(() => status.value === 'running' || status.value === 'queued')
+// 任务已经提交到后端、还没出结果时才有东西可取消
+const canCancel = computed(() => status.value === 'running' && props.data.runPending === true)
 const charCount = computed(() => (props.data.text || '').length)
-const hasContent = computed(() => !!props.data.text)
 
 const expanded = ref(false)
-const confirmOpen = ref(false)
-const confirmEl = ref<HTMLElement | null>(null)
 
-// 可选模型：设置里已启用的对话类模型
-const modelOpts = computed(() => listChatModels().map(m => ({ value: m.id, label: m.label || m.id, desc: localizedModelDesc(m.id, m.desc), tag: m.tag })))
+// 可选模型：设置里已启用、且能读视频的对话类模型
+const modelOpts = computed(() => listVideoChatModels().map(m => ({ value: m.id, label: m.label || m.id, desc: localizedModelDesc(m.id, m.desc), tag: m.tag })))
 // 当前生效的模型：存的那个还在清单里就用它，否则落到第一个（与执行器的回退一致）
 const model = computed(() => {
   const chosen = props.data.model || ''
@@ -190,33 +184,21 @@ watch(() => props.data.validationStamp, (val) => {
   shakeTimer = window.setTimeout(() => { shaking.value = false; shakeTimer = null }, 1000)
 })
 
-// 点击外部关闭确认气泡
-function onDocMouseDown(e: MouseEvent) {
-  const el = confirmEl.value
-  if (el && !el.contains(e.target as Node)) confirmOpen.value = false
-}
-watch(confirmOpen, (open) => {
-  if (open) window.addEventListener('mousedown', onDocMouseDown)
-  else window.removeEventListener('mousedown', onDocMouseDown)
-})
 onBeforeUnmount(() => {
   if (shakeTimer) window.clearTimeout(shakeTimer)
-  window.removeEventListener('mousedown', onDocMouseDown)
 })
 
-// 已有数据时先弹小气泡确认，首次直接运行
+// 已有结果时的重跑确认由执行器统一处理（见 useRerunConfirm），这里只管发起
 function onClickRun() {
   if (isRunning.value) return
-  if (hasContent.value) confirmOpen.value = true
-  else doRun()
-}
-function confirmRun() {
-  confirmOpen.value = false
-  doRun()
+  void doRun()
 }
 async function doRun() {
   if (!executor) return
   await executor.runSubtree(props.id)
+}
+function handleCancel() {
+  void executor?.cancelNode(props.id)
 }
 </script>
 
@@ -264,56 +246,23 @@ async function doRun() {
 }
 .va-run-btn:hover:not(:disabled) { background: var(--btn-bg-hover); }
 .va-run-btn:disabled { opacity: 0.6; cursor: default; }
+.va-cancel-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--t-body);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.va-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
 
 .va-run-wrap { position: relative; display: inline-flex; align-items: center; gap: 8px; }
 .va-est {
   font-size: 12px;
   color: var(--warning);
   white-space: nowrap;
-}
-.va-confirm {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  right: 0;
-  z-index: 20;
-  width: 200px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--n-5);
-  border: 1px solid var(--line-2);
-  box-shadow: 0 8px 24px var(--shadow-2);
-}
-.va-confirm-text { font-size: 12px; line-height: 1.5; color: var(--t-strong); margin-bottom: 10px; }
-.va-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.va-confirm-btn {
-  padding: 3px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-.va-confirm-btn.cancel {
-  background: transparent;
-  border-color: var(--line-2);
-  color: var(--t-body);
-}
-.va-confirm-btn.cancel:hover { background: var(--film-2); }
-.va-confirm-btn.ok {
-  background: linear-gradient(135deg, #5b7cfa, #7a5bfa);
-  color: var(--t-max);
-  border: none;
-}
-.va-confirm-btn.ok:hover { opacity: 0.88; }
-.va-confirm-arrow {
-  position: absolute;
-  top: 100%;
-  right: 22px;
-  width: 10px;
-  height: 10px;
-  background: var(--n-5);
-  border-right: 1px solid var(--line-2);
-  border-bottom: 1px solid var(--line-2);
-  transform: translateY(-50%) rotate(45deg);
 }
 
 .va-expand {

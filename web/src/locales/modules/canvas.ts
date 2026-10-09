@@ -188,6 +188,14 @@ export default {
       confirm: '保存并离开',
       cancel: '留下继续编辑',
     },
+    rerun: {
+      title: '重新运行？',
+      bodyOne: '这个节点已经有结果了。再运行一次会向上游重新提交任务，并再计一次费用。',
+      bodyMany: '有 {n} 个节点已经有结果了。再运行一次，每个节点都会向上游重新提交任务，并各自再计一次费用。',
+      replacesText: '大语言模型和视频分析节点里现有的文字会被新结果替换。',
+      dontAsk: '本次会话不再询问',
+      confirm: '重新运行',
+    },
   },
   en: {
     untitled: 'Untitled canvas',
@@ -377,6 +385,14 @@ export default {
       body: 'This canvas has unsaved changes. They’ll be saved before you leave.',
       confirm: 'Save and leave',
       cancel: 'Keep editing',
+    },
+    rerun: {
+      title: 'Run again?',
+      bodyOne: 'This node already has a result. Running it again submits a new task to the provider and is billed again.',
+      bodyMany: '{n} nodes already have a result. Running them again submits a new task to the provider for each one, and each is billed again.',
+      replacesText: 'The text currently in LLM and video analysis nodes will be replaced by the new result.',
+      dontAsk: 'Don’t ask again this session',
+      confirm: 'Run again',
     },
   },
 }

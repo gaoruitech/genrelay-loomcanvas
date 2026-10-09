@@ -21,6 +21,13 @@ const { LOCAL_USER } = require('../constants')
 
 let runner = null
 
+/**
+ * Runs that are queued or in flight at the same time. Past this, new ones are
+ * refused instead of piling up in the queue (and at the upstream).
+ */
+const limits = { unfinishedRuns: 500 }
+const UNFINISHED = ['queued', 'running', 'archiving']
+
 /** core.js `resolve`: a stored run -> the plugin call it needs. */
 async function resolveRun(run) {
   let target
@@ -43,7 +50,8 @@ async function resolveRun(run) {
     videoUrl: (run.videoUrls || [])[0] || '',
     params: run.params || {},
     externalId: run.externalId || '',
-    media: createMediaHelpers(),
+    // Built per provider call, bound to that call's abort signal (see core.js forCall).
+    mediaFor: (signal) => createMediaHelpers(signal),
   }
   const provider = run.kind === 'chat'
     ? {
@@ -89,6 +97,13 @@ async function createRun(input) {
   if (wantsChat !== (spec.kind === 'chat')) {
     throw new ApiError(400, wantsChat ? 'model.not_chat' : 'model.chat_only')
   }
+  // Said up front, rather than quietly answering about a video the model never saw.
+  if (wantsChat && (input.videoUrls || []).length && !spec.acceptsVideo) {
+    throw new ApiError(400, 'model.no_video_input')
+  }
+  if ((await Run.countDocuments({ userId: LOCAL_USER, status: { $in: UNFINISHED } })) >= limits.unfinishedRuns) {
+    throw new ApiError(429, 'run.queue_full', { max: limits.unfinishedRuns })
+  }
   const params = { ...spec.defaults, ...input.params }
   const count = Number.isInteger(params.count) && params.count > 0 ? params.count : 1
   const est = estimateCost(spec, params, count)
@@ -104,7 +119,7 @@ async function createRun(input) {
     prompt: input.prompt || '',
     systemPrompt: input.systemPrompt || '',
     imageUrls: (input.imageUrls || []).slice(0, Math.max(spec.maxReferenceImages || 0, spec.acceptsImage ? 1 : 0)),
-    videoUrls: spec.acceptsVideo || spec.kind === 'chat' ? (input.videoUrls || []).slice(0, 1) : [],
+    videoUrls: spec.acceptsVideo ? (input.videoUrls || []).slice(0, 1) : [],
     params,
     count,
     workflowId: input.workflowId || '',
@@ -146,4 +161,4 @@ function serializeRun(run, locale) {
   }
 }
 
-module.exports = { getRunner, createRun, serializeRun, resolveRun }
+module.exports = { getRunner, createRun, serializeRun, resolveRun, limits }

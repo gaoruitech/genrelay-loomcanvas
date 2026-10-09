@@ -145,6 +145,7 @@ test('LoomCanvas API end to end', async (t) => {
   await t.test('auth: everything but bootstrap/login/share-read needs a token', async () => {
     const boot = await call('GET', '/api/app/bootstrap')
     assert.deepEqual([boot.status, boot.body.data.authRequired, boot.body.data.authed, boot.body.data.hasProvider], [200, true, false, false])
+    assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
     for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
       const r = await call(m, p, m === 'POST' ? {} : undefined)
       assert.equal(r.status, 401, `${m} ${p}`)
@@ -417,12 +418,19 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal(read.status, 200)
     assert.equal(read.body.data.nodes[0].data.imageUrl, uploaded.url)
     assert.equal('status' in read.body.data.nodes[0].data, false, 'run-time state is stripped from the snapshot')
+    assert.deepEqual(Object.keys(read.body.data).filter((k) => ['userId', 'workflowId', 'sourceWorkflowId', 'revoked'].includes(k)), [], 'owner-only fields stay private')
+    // A snapshot stored before costs and run ids were stripped is cleaned when it is read.
+    await mongoose.connection.collection('shares').updateOne({ token: pub.token }, { $set: { 'snapshot.nodes.0.data.cost': { amount: 9 }, 'snapshot.nodes.0.data.taskIds': ['x'] } })
+    const legacy = (await call('GET', `/api/canvas-share/${pub.token}`, undefined, { auth: false })).body.data.nodes[0].data
+    assert.deepEqual(['cost' in legacy, 'taskIds' in legacy, legacy.imageUrl], [false, false, uploaded.url])
     // The snapshot is independent of later edits.
     await data('PUT', `/api/workflow/${workflowId}`, { nodes: [] })
     assert.equal((await call('GET', `/api/canvas-share/${pub.token}`, undefined, { auth: false })).body.data.nodes.length, 1)
 
-    // The database id is not a public link; other owner endpoints need a token.
+    // The database id is not a link, signed in or not; other owner endpoints need a token.
     assert.equal((await call('GET', `/api/canvas-share/${pub.id}`, undefined, { auth: false })).status, 404)
+    assert.equal((await call('GET', `/api/canvas-share/${pub.id}`)).status, 404)
+    assert.equal((await call('POST', `/api/canvas-share/${pub.id}/copy`)).status, 404)
     assert.equal((await call('POST', `/api/canvas-share/${pub.token}/copy`, undefined, { auth: false })).status, 401)
     assert.equal((await call('DELETE', `/api/canvas-share/${pub.id}`, undefined, { auth: false })).status, 401)
 
@@ -515,9 +523,7 @@ test('LoomCanvas API end to end', async (t) => {
     const submitsBefore = upstream.state.calls.filter((c) => c.method === 'POST' && c.url === '/v1/nano-banana').length
 
     // What index.js does at boot.
-    const ids = await require('../src/runner/mongoStore').createMongoStore().recover()
-    assert.deepEqual(ids.sort(), [String(resumable._id), String(archiving._id)].sort())
-    for (const id of ids) getRunner().enqueue(id)
+    assert.equal(await getRunner().start(), 2)
 
     assert.equal((await waitRun(`/api/runs/${lost._id}`)).status, 'failed')
     for (const doc of [resumable, archiving]) {
@@ -555,5 +561,25 @@ test('LoomCanvas API end to end', async (t) => {
     await data('DELETE', `/api/admin/providers/${providerId}`)
     assert.deepEqual(await data('GET', '/api/models'), [])
     assert.equal(await mongoose.connection.collection('modeloverrides').countDocuments(), 0, 'overrides go with their provider')
+  })
+
+  await t.test('usage: records older than a date can be cleared, unfinished ones are kept', async () => {
+    const runs = mongoose.connection.collection('runs')
+    const total = await runs.countDocuments()
+    const old = new Date('2020-03-01T12:00:00Z')
+    const first = await runs.find().sort({ _id: 1 }).limit(2).toArray()
+    await runs.updateOne({ _id: first[0]._id }, { $set: { createdAt: old, status: 'succeeded' } })
+    await runs.updateOne({ _id: first[1]._id }, { $set: { createdAt: old, status: 'queued' } })
+
+    assert.deepEqual([(await call('DELETE', '/api/admin/usage/records')).status, (await call('DELETE', '/api/admin/usage/records')).body.code], [400, 'validation.required'])
+    assert.equal((await call('DELETE', '/api/admin/usage/records?before=garbage')).body.code, 'validation.bad_date')
+    assert.equal((await call('DELETE', '/api/admin/usage/records?before[$gt]=2000-01-01')).status, 400)
+    assert.equal((await call('DELETE', '/api/admin/usage/records?before=2030-01-01', undefined, { auth: false })).status, 401)
+    assert.equal(await runs.countDocuments(), total, 'nothing removed by the rejected calls')
+
+    assert.deepEqual(await data('DELETE', '/api/admin/usage/records?before=2020-03-01'), { deleted: 0 }, 'a bare date is the start of that day')
+    assert.deepEqual(await data('DELETE', '/api/admin/usage/records?before=2020-03-02'), { deleted: 1 })
+    assert.equal(await runs.countDocuments(), total - 1)
+    assert.ok(await runs.findOne({ _id: first[1]._id }), 'the queued record of the same age is still there')
   })
 })

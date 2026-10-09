@@ -4,6 +4,7 @@
 const express = require('express')
 const Provider = require('../models/Provider')
 const settings = require('../services/settings')
+const { getConfig } = require('../config')
 const { ok, wrap, ApiError, badRequest } = require('../utils/http')
 const { authRequired, isAuthed, checkPassword, issueToken, loginRateLimit } = require('../middleware/auth')
 const { LOCAL_USER } = require('../constants')
@@ -26,6 +27,8 @@ router.get('/app/bootstrap', wrap(async (req, res) => {
     },
     // Only meaningful to someone who is allowed in; anonymous callers get false.
     hasProvider: authed ? !!(await Provider.exists({ userId: LOCAL_USER, enabled: true })) : false,
+    // So the browser can refuse a file that is too large before uploading it.
+    limits: { maxUploadMb: Math.floor(getConfig().maxUploadBytes / (1024 * 1024)) },
     version,
   })
 }))

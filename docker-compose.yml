@@ -11,7 +11,11 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # STORAGE_DRIVER=oss needs EXTRA_NPM_PACKAGES=ali-oss in .env, then `docker compose build`.
+        EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}
     restart: unless-stopped
     depends_on:
       mongodb:
@@ -20,7 +24,9 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/loomcanvas
       # Refuses to start when empty: set it in .env
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      # Empty is fine: files are addressed relative to whatever address the app is opened at.
+      # Set it to the public address when an upstream has to download reference files from here.
+      PUBLIC_URL: ${PUBLIC_URL:-}
       ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       STORAGE_LOCAL_DIR: /app/data/files
@@ -35,13 +41,21 @@ services:
       OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-}
       OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:-}
       OSS_PUBLIC_BASE_URL: ${OSS_PUBLIC_BASE_URL:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      SSRF_ALLOW_HOSTS: ${SSRF_ALLOW_HOSTS:-}
+      # Path of a billing hook module inside the container (mount the file, e.g. into /app/data).
+      BILLING_HOOK: ${BILLING_HOOK:-}
       WEB_DIST: /app/web-dist
       PORT: 3000
     ports:
       - "${PORT:-3000}:3000"
     volumes:
       - app_data:/app/data
+    # On stop the server puts in-flight runs back in the queue; it gives itself 20 seconds for that.
     stop_grace_period: 30s
 
 volumes:

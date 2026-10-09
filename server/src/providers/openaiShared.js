@@ -19,7 +19,9 @@ function chatSpec(id) {
     label: id,
     kind: 'chat',
     acceptsImage: true,
-    acceptsVideo: false,
+    // chatCompletion() below sends a video as a `video_url` part. Whether a given
+    // model understands it is the upstream's call; if not, its error is shown.
+    acceptsVideo: true,
     videoEdit: false,
     maxReferenceImages: 8,
     options: {},

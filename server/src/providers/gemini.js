@@ -38,7 +38,8 @@ function requireKey(cfg) {
   if (!cfg.apiKey) throw new ProviderError('provider.api_key_missing')
 }
 
-const isImageModel = (id) => /image|imagen|banana/i.test(id)
+/** Image models by name: "…-image", "imagen-…", and the "nano-banana" aliases. */
+const isImageModel = (id) => /image|banana/i.test(id)
 
 function imageSpec(id) {
   return {
@@ -60,6 +61,7 @@ function chatSpec(id) {
     label: id,
     kind: 'chat',
     acceptsImage: true,
+    // chat() sends text and images only; a video is refused, not dropped.
     acceptsVideo: false,
     videoEdit: false,
     maxReferenceImages: 8,
@@ -157,7 +159,7 @@ module.exports = {
   fields: [
     { key: 'apiKey', label: 'API Key', secret: true, required: true },
     { key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE_URL },
-    { key: 'models', label: 'Models', type: 'textarea', placeholder: DEFAULT_MODELS, help: 'Comma-separated. Leave empty to detect the available models; names containing "image" are treated as image models, the rest as chat models.' },
+    { key: 'models', label: 'Models', type: 'textarea', placeholder: DEFAULT_MODELS, help: 'Comma-separated. Leave empty to detect the available models; names containing "image" or "banana" are treated as image models, the rest as chat models.' },
   ],
   defaultBaseUrl: DEFAULT_BASE_URL,
   sync: true,
@@ -203,6 +205,7 @@ module.exports = {
 
   async chat(cfg, req) {
     requireKey(cfg)
+    if (req.videoUrl) throw new ProviderError('model.no_video_input')
     const parts = await userParts(req)
     if (!parts.length) throw new ProviderError('run.prompt_required')
     const body = { contents: [{ role: 'user', parts }] }

@@ -144,6 +144,12 @@ export const adminApi = {
     api.get<ApiResponse<{ list: UsageRecord[]; total: number; page: number; pageSize: number }>>(
       '/admin/usage/records', { params }
     ),
+  /**
+   * 清掉早于某一刻的用量记录。before 是 `YYYY-MM-DD`（那一天 UTC 零点之前）或完整的 ISO 时间。
+   * 只删已结束的（成功 / 失败 / 已取消），排队中和运行中的不动；生成的文件不删。
+   */
+  clearUsageRecords: (before: string) =>
+    api.delete<ApiResponse<{ deleted: number }>>('/admin/usage/records', { params: { before } }),
 }
 
 // ====================== 画布 ======================

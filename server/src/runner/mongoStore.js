@@ -3,7 +3,6 @@
 /** Run store backed by the `runs` collection. Contract: see memoryStore.js. */
 const Run = require('../models/Run')
 const { STATUS } = require('./core')
-const { msg, storedError } = require('../i18n')
 
 function createMongoStore() {
   return {
@@ -40,12 +39,10 @@ function createMongoStore() {
         { ...interrupted, externalId: { $nin: ['', null] } },
         { $set: { status: STATUS.QUEUED } }
       )
-      await Run.updateMany(
-        interrupted,
-        { $set: { status: STATUS.FAILED, ...storedError(msg('run.interrupted')), finishedAt: new Date() } }
-      )
+      // What is still mid-flight now has no upstream task; the runner fails those.
+      const lost = await Run.find(interrupted).lean()
       const queued = await Run.find({ status: STATUS.QUEUED }).sort({ createdAt: 1 }).select('_id').lean()
-      return queued.map((r) => String(r._id))
+      return { queued: queued.map((r) => String(r._id)), interrupted: lost }
     },
   }
 }

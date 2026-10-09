@@ -71,6 +71,8 @@ function apiRouter() {
     // Already ours: nothing to fetch.
     const own = getStorage().keyFromUrl(url)
     if (own) {
+      // Images only, like the remote case - and a stored video is not read into memory to say so.
+      if (!mimeForKey(own).startsWith('image/')) throw badRequest('file.image_only')
       if (!(await getStorage().exists(own))) throw new ApiError(404, 'file.not_found')
       const buffer = await getStorage().getBuffer(own)
       const mime = sniffMime(buffer) || mimeForKey(own)
@@ -109,6 +111,7 @@ function staticRouter() {
     if (storage.driver !== 'local') return next()
     const key = req.params[0]
     if (!isValidKey(key)) return res.status(404).end()
+    const type = mimeForKey(key)
     // Derived thumbnails (thumbs/of/...) are generated on first request and
     // then served from disk like any other file.
     const sourceKey = thumbSourceKey(key)
@@ -127,8 +130,10 @@ function staticRouter() {
       headers: {
         // The type comes from the extension we chose at write time, and the
         // browser is told not to second-guess it or run anything from here.
-        'Content-Type': mimeForKey(key),
+        'Content-Type': type,
         'X-Content-Type-Options': 'nosniff',
+        // Whatever is not an image, a video or audio is downloaded, never displayed.
+        ...(/^(image|video|audio)\//.test(type) ? {} : { 'Content-Disposition': 'attachment' }),
         'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
         'Access-Control-Allow-Origin': '*',
         'Cross-Origin-Resource-Policy': 'cross-origin',

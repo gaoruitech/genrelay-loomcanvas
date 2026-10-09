@@ -2,7 +2,10 @@
 **/dist
 **/data
 .git
+.github
 .env
 .env.*
 *.log
 docs
+scripts
+server/test

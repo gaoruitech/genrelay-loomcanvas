@@ -1,8 +1,11 @@
 {
   "name": "loomcanvas-web",
   "version": "0.1.0",
+  "description": "LoomCanvas web app",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=20.9.0" },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping').ok\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The end-to-end tests use this database server (each run creates and drops its own databases).
+      TEST_MONGODB_URI: mongodb://127.0.0.1:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            web/package-lock.json
+      - name: Install dependencies
+        run: npm run install:all
+      - name: Versions, licenses, i18n, server tests, web build
+        run: npm run check
+
+  docker:
+    name: docker image + compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SECRET_KEY: ci-only-secret-key-0123456789
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start
+        run: docker compose -p loomcanvas-ci up -d --build --wait --wait-timeout 180
+      - name: The app answers and serves the web build
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/app/bootstrap | grep -q '"result":0'
+          curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="app">'
+      - name: Runs as a non-root user
+        run: test "$(docker compose -p loomcanvas-ci exec -T app id -u)" != "0"
+      - name: Logs
+        if: always()
+        run: docker compose -p loomcanvas-ci logs --no-color --tail 100
+      - name: Stop
+        if: always()
+        run: docker compose -p loomcanvas-ci down -v

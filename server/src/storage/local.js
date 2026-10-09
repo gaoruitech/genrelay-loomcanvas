@@ -49,6 +49,11 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     return fs.promises.readFile(pathFor(key))
   }
 
+  /** Size in bytes, known without reading the file. Optional in the driver contract. */
+  async function size(key) {
+    return (await fs.promises.stat(pathFor(key))).size
+  }
+
   async function exists(key) {
     try { await fs.promises.access(pathFor(key)); return true } catch { return false }
   }
@@ -57,13 +62,20 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     await fs.promises.rm(pathFor(key), { force: true })
   }
 
+  /**
+   * Always site-relative. The address people open the app at is not baked
+   * into what canvases store, so they keep working when the host, the port or
+   * PUBLIC_URL changes. Where an absolute address is needed (handing a file to
+   * an upstream), services/media.js adds PUBLIC_URL at that moment.
+   */
   function urlFor(key) {
-    return `${publicUrl}/files/${key}`
+    return `/files/${key}`
   }
 
   /**
    * Map a URL back to a key when it points at this storage:
-   * a site-relative /files/<key>, or an absolute URL on PUBLIC_URL / loopback.
+   * a site-relative /files/<key>, or an absolute URL on PUBLIC_URL / loopback
+   * (what earlier versions stored when PUBLIC_URL was set).
    */
   function keyFromUrl(url) {
     if (typeof url !== 'string' || !url) return null
@@ -84,7 +96,7 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     return isValidKey(key) ? key : null
   }
 
-  return { driver: 'local', root, put, getStream, getBuffer, exists, delete: remove, urlFor, keyFromUrl, pathFor }
+  return { driver: 'local', root, put, getStream, getBuffer, size, exists, delete: remove, urlFor, keyFromUrl, pathFor }
 }
 
 module.exports = { createLocalStorage }

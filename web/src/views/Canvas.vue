@@ -824,6 +824,7 @@ import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { useAppStore } from '@/stores/app'
 import { useCanvasExecutor } from '@/composables/useCanvasExecutor'
+import { confirmRerun } from '@/composables/useRerunConfirm'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { CANVAS_PICKER_KEY, type PickerOptions, type PickerItem } from '@/composables/canvasPickerKey'
 import { useTokenColor } from '@/utils/tokenColor'
@@ -945,6 +946,7 @@ const executor = useCanvasExecutor({
   getBrandKit: brandKits.getBrandKit,
   getWorkflowId: () => currentId.value,
   persist: () => doSave(true),
+  confirmRerun,
 })
 provide(CANVAS_EXECUTOR_KEY, executor)
 // 切换界面语言：后端给出的运行失败原因跟着换
@@ -1231,6 +1233,9 @@ const otherMenuGroups = computed(() => canvasMenuGroups.value.filter(g => g.item
 
 // 顶栏「更多」菜单
 const moreMenu = ref({ open: false, x: 0, y: 0 })
+// 右键菜单 / 顶栏「更多」菜单的宽度，夹进视口时用。与样式里 .add-context-menu 的 width 是同一个数
+const ADD_MENU_W = 344
+
 // 菜单弹出的位置，外观面板要贴着它开
 const lastMenuPos = ref({ x: 0, y: 0 })
 
@@ -1238,7 +1243,7 @@ function toggleMoreMenu(e: MouseEvent) {
   closeMenus()
   if (moreMenu.value.open) { moreMenu.value.open = false; return }
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.max(12, Math.min(rect.left, window.innerWidth - 300 - 12))
+  const x = Math.max(12, Math.min(rect.left, window.innerWidth - ADD_MENU_W - 12))
   const y = rect.bottom + 8
   moreMenu.value = { open: true, x, y }
   lastMenuPos.value = { x, y }
@@ -1474,6 +1479,8 @@ function onNodeContextMenu({ event, node }: { event: any; node: Node }) {
 
 // ===== 右键菜单里的「查看原图 / 下载原图 / 任务详情」（仅对有产物的生成节点显示）=====
 const GEN_MEDIA_TYPES = ['image-gen', 'image-edit', 'video-gen', 'video-edit']
+/** 输出文字的任务节点：没有媒体产物，但同样有任务号和失败原因 */
+const TEXT_TASK_TYPES = ['llm', 'video-analysis']
 // 右键目标若是带产物的生成节点，解析出媒体信息；否则返回 null（不显示这几项）
 const contextNodeInfo = computed(() => {
   const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
@@ -1552,7 +1559,7 @@ function onPaneContextMenu(event: MouseEvent) {
    * 会跑到离鼠标老远的地方。
    */
   const flow = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - 320))
+  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - ADD_MENU_W - 8))
   const y = Math.max(8, Math.min(event.clientY, window.innerHeight - 360))
   addMenu.value = { open: true, x, y, flowX: flow.x, flowY: flow.y }
   lastMenuPos.value = { x, y }
@@ -3000,6 +3007,8 @@ async function loadWorkflow(id: string) {
       //  - 已有产物 → status='done'
       //  - 已落库错误 → status='error'（避免再被 resumeIncompleteTasks 轮询一次才显示失败）
       //  - 其它（只有 taskId）→ 留空，由 resumeIncompleteTasks 接管为 running
+      // 文本任务节点（大语言模型 / 视频分析）成功时会清掉 errorMsg，所以存着 errorMsg
+      // 就是最近一次运行失败了；有没有文字由节点自己显示，这里只还原失败态。
       nodes.value = (w.nodes || []).map((n: any) => {
         const data = stripNodeData(n.data)
         if (GEN_MEDIA_TYPES.includes(n.type)) {
@@ -3008,6 +3017,8 @@ async function loadWorkflow(id: string) {
           } else if (data.errorMsg) {
             data.status = 'error'
           }
+        } else if (TEXT_TASK_TYPES.includes(n.type) && data.errorMsg) {
+          data.status = 'error'
         }
         // 有一版的组存过 style.pointerEvents:'none'（那时组做成穿透的）。
         // 留着会让老画布里的组点不动也拖不了，读进来就清掉。
@@ -3818,6 +3829,8 @@ onBeforeUnmount(() => {
   gap: 2px;
 }
 .add-grid .add-btn { min-width: 0; padding: 7px 9px; font-size: 12.5px; gap: 8px; }
+/* 一组里只有一项时占满整行：「圈成一组（先按住 Shift 框选）」这种带说明的标签半行放不下 */
+.add-grid .add-btn:only-child { grid-column: 1 / -1; }
 .add-grid .add-btn span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3830,8 +3843,10 @@ onBeforeUnmount(() => {
   padding: 3px 8px 1px;
   letter-spacing: 0.4px;
 }
+/* 宽度按英文界面里最长的那几项（Load another canvas / Multi-platform export）定，
+   窄了它们会被截成省略号；手机上再让一步，不许超出视口。改这个数要同步 ADD_MENU_W。 */
 .add-context-menu {
-  width: 300px;
+  width: min(344px, calc(100vw - 16px));
   position: fixed;
   z-index: 200;
   display: flex;

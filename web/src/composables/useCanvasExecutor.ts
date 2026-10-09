@@ -2,7 +2,7 @@ import { ref, computed, watch, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
-  getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels,
+  getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels, listVideoChatModels,
   type AdapterPollResult,
 } from '@/utils/canvasModels'
 import { llmApi, runsApi, unwrap, platformExportApi, canvasToolApi } from '@/utils/api'
@@ -35,6 +35,9 @@ const TEXT_OUT_TYPES = new Set([ANALYSIS_TYPE, LLM_TYPE])
 function runFailure(message: string, runId: string): Error {
   return Object.assign(new Error(message), { runId })
 }
+/** 这次运行被用户取消了。不是失败：节点回到中性的「已取消」，不标红、不提示 */
+class RunCanceled extends Error {}
+
 /**
  * 多平台导出。与 video-analysis / llm 一样不走模型适配器，但它更特殊：
  * 整个处理在后端本机做（换尺寸、白底净化、纯白检测），不调任何模型，
@@ -101,7 +104,7 @@ function isTransientPollError(err: any): boolean {
   return code === 'ECONNABORTED' || code === 'ERR_NETWORK' || code === 'ETIMEDOUT'
 }
 
-export type NodeStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'stale'
+export type NodeStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'stale' | 'canceled'
 
 interface CollectedInputs {
   text: string | null
@@ -125,12 +128,23 @@ interface ExecutorOptions {
    * 这时候刷新或关页面，已经在跑（也已经计费）的任务就再也接不回来了。
    */
   persist?: () => Promise<unknown> | void
+  /**
+   * 这次运行会重新提交已经有结果的付费节点（生成 / 大语言模型 / 视频分析）时先问用户。
+   * 一次触发只问一次，不管牵连几个节点；返回 false 整次运行不开始。
+   * 不传就不问。
+   */
+  confirmRerun?: (info: { count: number; textCount: number }) => Promise<boolean>
+}
+
+export interface RunOptions {
+  /** 调用方自己已经让用户确认过这一批（批量运行），不再弹重跑确认 */
+  skipRerunConfirm?: boolean
 }
 
 // 同时真正在执行(submit/poll)的节点上限。多条生成并发时用它兜底，避免一次打出过多请求触发上游限流。
 const MAX_CONCURRENT = 10
 
-export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId, persist }: ExecutorOptions) {
+export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
   // ============ 并发调度状态 ============
   // 多条生成可同时进行：不再用单一全局锁，改为「按依赖就绪即执行 + 并发上限」的 DAG 调度。
   // inflight：节点 → 正在跑的 Promise。既做「同一节点只跑一次」的去重（防共享上游被重复触发重复计费），
@@ -511,6 +525,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
           emitProgress()
           return { taskId, fileUrls: outputUrls(polled), cost: polled.cost }
         }
+        if (polled.status === 'canceled') throw new RunCanceled()
         if (polled.status === 'failed') {
           throw polled.error ? runFailure(polled.error, taskId) : new Error(t('executor.genFailed'))
         }
@@ -576,10 +591,13 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       const fileUrls: string[] = []
       let firstError: string | null = null
       let firstErrorRunId = ''
+      let canceled = 0
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
+        } else if (s.reason instanceof RunCanceled) {
+          canceled++
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
           firstErrorRunId = s.reason?.runId || ''
@@ -587,6 +605,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       }
       const totalCost = sumCosts(costs)
 
+      // 一张没出、且都是被取消的（不是失败）
+      if (fileUrls.length === 0 && canceled && !firstError) {
+        markCanceled(nodeId)
+        return false
+      }
       // 全军覆没 —— 标 error
       if (fileUrls.length === 0) {
         updateNodeData(nodeId, {
@@ -601,7 +624,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
 
       // 部分失败 —— 标 done 但 toast 提示
       if (firstError) {
-        const failCount = settled.filter(s => s.status === 'rejected').length
+        const failCount = settled.filter(s => s.status === 'rejected').length - canceled
         MessagePlugin.warning(t('executor.partialFailed', { n: failCount, reason: firstError }))
       }
 
@@ -662,10 +685,10 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       MessagePlugin.error(`[${t('nodes.title.videoAnalysis')}] ${t('executor.connectPrompt')}`)
       return false
     }
-    const model = resolveChatModel(node)
+    const model = resolveChatModel(node, listVideoChatModels())
     if (!model) {
-      updateNodeData(nodeId, { status: 'idle', validationError: t('executor.noChatModel'), validationStamp: Date.now() })
-      MessagePlugin.error(`[${t('nodes.title.videoAnalysis')}] ${t('executor.noChatModel')}`)
+      updateNodeData(nodeId, { status: 'idle', validationError: t('executor.noVideoChatModel'), validationStamp: Date.now() })
+      MessagePlugin.error(`[${t('nodes.title.videoAnalysis')}] ${t('executor.noVideoChatModel')}`)
       return false
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
@@ -678,9 +701,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (submitRes.data.result !== 0) throw new Error(submitRes.data.message || t('executor.submitFailed'))
       const taskId = submitRes.data.data?.taskId
       if (!taskId) throw new Error(t('executor.noRunId'))
+      markTextTaskPending(nodeId, taskId)
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.runFailed'), errorRunId: err?.runId || '' })
+      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
+      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.runFailed'), errorRunId: err?.runId || '', runPending: false })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -721,9 +746,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (submitRes.data.result !== 0) throw new Error(submitRes.data.message || t('executor.submitFailed'))
       const taskId = submitRes.data.data?.taskId
       if (!taskId) throw new Error(t('executor.noRunId'))
+      markTextTaskPending(nodeId, taskId)
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.genFailed'), errorRunId: err?.runId || '' })
+      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
+      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.genFailed'), errorRunId: err?.runId || '', runPending: false })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -886,10 +913,9 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
   }
 
-  /** 节点选定的对话模型；没选过就用清单里的第一个 */
-  function resolveChatModel(node: Node): string {
+  /** 节点选定的对话模型；没选过、或选的那个已经不在清单里，就用清单里的第一个 */
+  function resolveChatModel(node: Node, list = listChatModels()): string {
     const chosen = (node.data?.model as string) || ''
-    const list = listChatModels()
     if (chosen && list.some(m => m.id === chosen)) return chosen
     return list[0]?.id || ''
   }
@@ -903,10 +929,19 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     return out
   }
 
+  /**
+   * 任务号一拿到就落到节点上并立刻存一次（与生成节点同一个道理，见 ExecutorOptions.persist）。
+   * runPending：这次任务还没出结果。文本节点跑完后 taskId 一直留着，重跑时节点上也还留着
+   * 上一版的文字，刷新后要不要接回来只能靠这个标记判断。
+   */
+  function markTextTaskPending(nodeId: string, taskId: string) {
+    updateNodeData(nodeId, { taskId, runPending: true })
+    void Promise.resolve(persist?.()).catch(() => {})
+  }
+
   // 视频分析 / 大语言模型共用：轮询 /api/llm/tasks/:id，succeeded 时把 text 写入 data.text。
   // 沿用瞬时错误重试策略（后端重启 / 502 / 网络中断不判失败）。
   async function pollTextTask(nodeId: string, taskId: string): Promise<boolean> {
-    updateNodeData(nodeId, { taskId })
     let attempts = 0
     while (attempts < POLL_MAX_ATTEMPTS) {
       await sleep(POLL_INTERVAL_MS)
@@ -916,7 +951,9 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         const r = await llmApi.get(taskId)
         if (r.data.result !== 0 || !r.data.data) throw new Error(r.data.message || t('executor.queryFailed'))
         task = r.data.data
-      } catch (err) {
+      } catch (err: any) {
+        // 后端明确说没有这个任务（记录被清理了）：再问几次也一样，直接判失败
+        if (err?.response?.status === 404) throw err
         // 后端重启 / 502 / 网络中断等瞬时错误：不判失败，继续重试等后端恢复
         if (isTransientPollError(err)) continue
         if (attempts > 3) throw err
@@ -931,15 +968,41 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
           text,
           cost: task.cost || null,
           errorMsg: '',
+          runPending: false,
         })
         return true
       }
-      if (task.status === 'failed' || task.status === 'canceled') {
+      if (task.status === 'canceled') throw new RunCanceled()
+      if (task.status === 'failed') {
         throw task.error ? runFailure(task.error, taskId) : new Error(t('executor.genFailed'))
       }
       updateNodeData(nodeId, { progress: Math.min(99, Number(task.progress) || 0) })
     }
     throw new Error(t('executor.pollTimeout'))
+  }
+
+  // ============ 取消 ============
+
+  /** 节点这次运行被取消后的样子：不是失败，不留错误信息；上一版结果（如果有）原样留着 */
+  function markCanceled(nodeId: string) {
+    updateNodeData(nodeId, { status: 'canceled', progress: 0, errorMsg: '', errorRunId: '', runPending: false })
+  }
+
+  /**
+   * 取消节点正在跑的运行。一个节点可能同时有好几个（「数量」大于 1），全部取消。
+   * 这里只负责告诉后端；节点状态由轮询那边收尾 —— 后端把运行标成 canceled，
+   * 下一次轮询（最多 POLL_INTERVAL_MS 之后）读到就停，已经出完的那几张照常留下。
+   */
+  async function cancelNode(nodeId: string): Promise<void> {
+    const d = findNode(nodeId)?.data || {}
+    if (d.runPending !== true) return
+    const ids: string[] = Array.isArray(d.taskIds) && d.taskIds.length ? d.taskIds : (d.taskId ? [d.taskId] : [])
+    if (!ids.length) return
+    const settled = await Promise.allSettled(ids.map(id => runsApi.cancel(id).then(unwrap)))
+    const failed = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected')
+    if (failed && settled.every(s => s.status === 'rejected')) {
+      MessagePlugin.error(submitErrorMessage(failed.reason) || t('executor.cancelFailed'))
+    }
   }
 
   /**
@@ -1027,6 +1090,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     return !!(d.imageUrl || d.videoUrl || (TEXT_OUT_TYPES.has(n.type as string) && d.text))
   }
 
+  // 付费节点（要向上游提交任务的那几类）上是否已经有一份结果。与 isAlreadyDone 不同：
+  // 被标成 stale 的结果也算 —— 重跑它一样是在已有结果的节点上再花一次钱。
+  function holdsPaidResult(n: Node): boolean {
+    const d = n.data || {}
+    if (GEN_TYPES.has(n.type as string)) return !!(d.imageUrl || d.videoUrl)
+    return TEXT_OUT_TYPES.has(n.type as string) && !!d.text
+  }
+
   // 某节点在「运行集合」内的直接上游 gen/analysis 依赖：
   // 沿入边向上，穿过 image / image-collection / text / video 等中转节点，遇到 gen 节点即算作依赖并停止穿透
   //（该 gen 节点自身的上游由它自己负责）。
@@ -1090,7 +1161,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
   // 把一组目标 gen/analysis 节点作为一个 DAG 一起跑：
   // 无依赖关系的并发、有依赖的自动排队，整体受 MAX_CONCURRENT 限制。
   // forceId：用户亲手点了运行的那个节点，已有产物也要重跑（否则按钮点了没反应，也攒不出历史版本）
-  async function runNodeSet(ids: Iterable<string>, forceId?: string): Promise<void> {
+  async function runNodeSet(ids: Iterable<string>, forceId?: string, opts: RunOptions = {}): Promise<void> {
     const runSet = new Set<string>()
     for (const id of ids) {
       const n = findNode(id)
@@ -1098,6 +1169,15 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (n && (id === forceId || !isAlreadyDone(n))) runSet.add(id)
     }
     if (runSet.size === 0) return
+    // 所有运行入口（节点上的运行按钮、成品节点、运行全部）都汇到这里，重跑确认只放这一处：
+    // 这一批里已经有结果、又要重新提交到上游的付费节点，合起来只问一次
+    if (confirmRerun && !opts.skipRerunConfirm) {
+      const reruns = [...runSet].map(findNode).filter((n): n is Node => !!n && holdsPaidResult(n))
+      if (reruns.length) {
+        const textCount = reruns.filter(n => TEXT_OUT_TYPES.has(n.type as string)).length
+        if (!(await confirmRerun({ count: reruns.length, textCount }))) return
+      }
+    }
     // 标记排队态；已在跑的节点（来自另一条并发分支）不要覆盖它的状态
     for (const id of runSet) {
       if (!inflight.has(id)) updateNodeData(id, { status: 'queued' })
@@ -1116,7 +1196,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
   }
 
   // 运行全部：把所有成品节点的上游合并成一个 DAG 一起跑，共享同一个 MAX_CONCURRENT 名额池
-  async function runAll(): Promise<void> {
+  async function runAll(opts: RunOptions = {}): Promise<void> {
     const outputs = nodes.value.filter(n => n.type === NODE_KIND_OUTPUT)
     if (outputs.length === 0) {
       MessagePlugin.warning(t('executor.noOutputNode'))
@@ -1124,7 +1204,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
     const all: string[] = []
     for (const out of outputs) all.push(...topoSortForTarget(out.id))
-    await runNodeSet(all)
+    await runNodeSet(all, undefined, opts)
   }
 
   // ============ 恢复轮询已有 task ============
@@ -1133,6 +1213,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
   async function attachTask(nodeId: string): Promise<boolean> {
     const node = findNode(nodeId)
     if (!node) return false
+    if (TEXT_OUT_TYPES.has(node.type as string)) return await attachTextTask(node)
     if (!GEN_TYPES.has(node.type as string)) return false
     // 优先用 taskIds 数组(多任务),回退到单个 taskId(历史数据)
     const stored: string[] = Array.isArray(node.data?.taskIds) && node.data.taskIds.length > 0
@@ -1172,6 +1253,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
           emitProgress()
           return { fileUrls: outputUrls(polled), cost: polled.cost }
         }
+        if (polled.status === 'canceled') throw new RunCanceled()
         if (polled.status === 'failed') {
           throw polled.error ? runFailure(polled.error, tid) : new Error(t('executor.genFailed'))
         }
@@ -1188,16 +1270,23 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       const costs: Array<Cost | undefined> = []
       let firstError: string | null = null
       let firstErrorRunId = ''
+      let canceled = 0
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
+        } else if (s.reason instanceof RunCanceled) {
+          canceled++
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
           firstErrorRunId = s.reason?.runId || ''
         }
       }
       const totalCost = sumCosts(costs) || node.data?.cost || null
+      if (fileUrls.length === 0 && canceled && !firstError) {
+        markCanceled(nodeId)
+        return false
+      }
       if (fileUrls.length === 0) {
         updateNodeData(nodeId, {
           status: 'error',
@@ -1208,7 +1297,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         return false
       }
       if (firstError) {
-        const failCount = settled.filter(s => s.status === 'rejected').length
+        const failCount = settled.filter(s => s.status === 'rejected').length - canceled
         MessagePlugin.warning(t('executor.partialFailed', { n: failCount, reason: firstError }))
       }
       const field = adapter.outputType === 'image' ? 'imageUrl' : 'videoUrl'
@@ -1242,17 +1331,42 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
   }
 
+  /** 大语言模型 / 视频分析节点：接回刷新前提交的那个任务，只轮询、不重新提交 */
+  async function attachTextTask(node: Node): Promise<boolean> {
+    const nodeId = node.id
+    const taskId = (node.data?.taskId as string) || ''
+    if (!taskId) return false
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    try {
+      return await pollTextTask(nodeId, taskId)
+    } catch (err: any) {
+      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
+      updateNodeData(nodeId, {
+        status: 'error',
+        errorMsg: submitErrorMessage(err) || t('executor.resumeFailed'),
+        errorRunId: err?.runId || '',
+        runPending: false,
+      })
+      return false
+    }
+  }
+
   /**
-   * 扫描所有 gen 节点，把刷新前还没出结果的任务并发接回来轮询。
+   * 扫描所有 gen 节点和文本任务节点，把刷新前还没出结果的任务并发接回来轮询。
    * 「还没出结果」以 runPending 为准；没有这个标记的老数据按原来的判法：
    * 有 taskId 且无结果、无失败记录。
    */
   function resumeIncompleteTasks() {
     const candidates = nodes.value.filter((n) => {
-      if (!GEN_TYPES.has(n.type as string)) return false
       const d = n.data || {}
       if (!d.taskId) return false
+      // 文本任务节点只认标记：跑完后 taskId 仍留在节点上，文字又可以被用户清空或改写，
+      // 按「有任务号、没结果」去猜会把早就结束的任务再取一遍、盖掉用户改过的内容
+      if (TEXT_OUT_TYPES.has(n.type as string)) return d.runPending === true
+      if (!GEN_TYPES.has(n.type as string)) return false
       if (d.runPending === true) return true
+      // 标记明确是「已结束」（成功、失败、取消都会写 false）就不用再猜了
+      if (d.runPending === false) return false
       if (d.imageUrl || d.videoUrl) return false
       // 已落库的失败任务不再轮询，直接保留 error 态展示
       if (d.errorMsg) return false
@@ -1397,6 +1511,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     runSubtree,
     runAll,
     attachTask,
+    cancelNode,
     resumeIncompleteTasks,
     refreshRunErrors,
     collectImageRefs,

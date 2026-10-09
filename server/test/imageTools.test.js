@@ -170,4 +170,19 @@ test('canvas graph helpers', () => {
   cleaned[1].data.imageUrls.push('mutated')
   assert.equal(nodes[1].data.imageUrls.length, 2, 'deep copy')
   assert.equal(nodes[1].data.status, 'done', 'source untouched')
+
+  // What a published canvas must not carry: run ids, what the runs cost, failure details.
+  const [shared] = cleanNodes([{
+    id: 'g', type: 'image-gen',
+    data: {
+      model: 'acme:img-1', prompt: 'p', imageUrl: 'https://x/a.png',
+      taskId: 'a'.repeat(24), taskIds: ['a'.repeat(24)], runPending: true, generatedCount: 3, errorMsg: 'boom', errorRunId: 'b'.repeat(24),
+      cost: { amount: 1.5, currency: 'CNY', unknown: false }, estimatedCost: { amount: 1.5, currency: 'CNY', unknown: false },
+      results: [{ id: 'r1', at: 1, urls: ['https://x/a.png'], cost: { amount: 1.5, currency: 'CNY' }, model: 'acme:img-1', prompt: 'p' }, 'junk', null],
+    },
+  }])
+  assert.deepEqual(shared.data, {
+    model: 'acme:img-1', prompt: 'p', imageUrl: 'https://x/a.png',
+    results: [{ id: 'r1', at: 1, urls: ['https://x/a.png'], model: 'acme:img-1', prompt: 'p' }, 'junk', null],
+  })
 })

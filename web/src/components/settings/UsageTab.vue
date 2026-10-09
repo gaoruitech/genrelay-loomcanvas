@@ -38,7 +38,14 @@
       </div>
     </div>
 
-    <h3 class="section-title">{{ t('settings.usage.records') }}</h3>
+    <div class="records-head">
+      <h3 class="section-title">{{ t('settings.usage.records') }}</h3>
+      <form class="clear" @submit.prevent="askClear">
+        <label class="clear-label" for="usage-clear-before">{{ t('settings.usage.clearLabel') }}</label>
+        <input id="usage-clear-before" v-model="clearBefore" class="lc-input sm" type="date" :max="todayText" />
+        <button class="lc-btn sm danger" type="submit" :disabled="!clearBefore || clearing">{{ t('settings.usage.clear') }}</button>
+      </form>
+    </div>
     <div class="lc-card lc-table-wrap">
       <table class="lc-table">
         <thead>
@@ -70,12 +77,28 @@
       <span>{{ t('settings.usage.pageOf', { page, pages }) }}</span>
       <button class="lc-btn sm" :disabled="page >= pages || recordsLoading" @click="goPage(page + 1)">{{ t('settings.usage.next') }}</button>
     </div>
+
+    <!-- 清理确认：删掉就找不回来，必须先说清楚再动手 -->
+    <div v-if="clearConfirm" class="lc-mask" @click.self="closeClear">
+      <div class="lc-dialog confirm">
+        <div class="lc-dialog-head"><span>{{ t('settings.usage.clearTitle') }}</span></div>
+        <div class="lc-dialog-body">
+          <p>{{ t('settings.usage.clearText', { date: clearConfirm }) }}</p>
+          <p class="clear-warn">{{ t('settings.usage.clearWarn') }}</p>
+        </div>
+        <div class="lc-dialog-foot">
+          <button class="lc-btn" :disabled="clearing" @click="closeClear">{{ t('common.cancel') }}</button>
+          <button class="lc-btn danger" :disabled="clearing" @click="confirmClear">{{ t('settings.usage.clearConfirm') }}</button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { formatCost, formatMoney } from '@/utils/cost'
 import SummaryTable from './UsageSummaryTable.vue'
@@ -171,6 +194,35 @@ function formatTime(iso: string): string {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'medium' }).format(d)
 }
 
+// ---- 清理早于某天的记录 ----
+const todayText = isoDate(today)
+const clearBefore = ref('')
+/** 正在确认的那个日期；空串表示确认框没开 */
+const clearConfirm = ref('')
+const clearing = ref(false)
+
+function askClear() {
+  if (clearBefore.value) clearConfirm.value = clearBefore.value
+}
+function closeClear() {
+  if (!clearing.value) clearConfirm.value = ''
+}
+async function confirmClear() {
+  const before = clearConfirm.value
+  if (!before) return
+  clearing.value = true
+  try {
+    const data = unwrap(await adminApi.clearUsageRecords(before))
+    clearConfirm.value = ''
+    MessagePlugin.success(t('settings.usage.cleared', { n: Number(data?.deleted) || 0 }))
+    reload()
+  } catch (err) {
+    MessagePlugin.error(apiErrorMessage(err, t('common.operationFailed')))
+  } finally {
+    clearing.value = false
+  }
+}
+
 function statusClass(s: RunStatus): string {
   if (s === 'succeeded') return 'ok'
   if (s === 'failed') return 'err'
@@ -193,6 +245,13 @@ onMounted(reload)
 .total-note { margin-top: 4px; font-size: 12px; color: var(--t-dim); }
 .summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
 .section-title.first { margin-top: 0; }
+.records-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.clear { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.clear .lc-input { width: 140px; }
+.clear-label { font-size: 12px; color: var(--t-dim); }
+.confirm { width: 440px; }
+.confirm p { line-height: 1.6; }
+.clear-warn { margin-top: 8px; color: var(--danger); }
 .nowrap { white-space: nowrap; }
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 12px; font-size: 12.5px; color: var(--t-dim); }
 .err { margin-bottom: 12px; }

@@ -37,7 +37,8 @@ const MAX_RESPONSE_BYTES = 80 * 1024 * 1024
 /** Pull a human-readable message out of the usual error body shapes. */
 function messageFromBody(body) {
   if (!body) return ''
-  if (typeof body === 'string') return body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+  // Cut first: this is text from another server, and it can be megabytes of "<".
+  if (typeof body === 'string') return body.slice(0, 4000).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
   if (typeof body !== 'object') return ''
   const e = body.error
   const candidates = [
@@ -51,6 +52,25 @@ function messageFromBody(body) {
     if (typeof c === 'string' && c.trim()) return c.trim().slice(0, 300)
   }
   return ''
+}
+
+const SECRET_HEADERS = new Set(['authorization', 'x-goog-api-key', 'x-api-key', 'api-key'])
+
+/**
+ * Some upstreams repeat the key they were sent in their error message. That
+ * text is shown to the user and stored with the run, so the credentials of
+ * this request are blanked out of it first.
+ */
+function redactSecrets(text, headers) {
+  let out = String(text || '')
+  for (const [name, value] of Object.entries(headers || {})) {
+    if (!SECRET_HEADERS.has(name.toLowerCase()) || typeof value !== 'string') continue
+    const bare = value.replace(/^Bearer\s+/i, '')
+    for (const secret of [value, bare]) {
+      if (secret.length >= 6) out = out.split(secret).join('***')
+    }
+  }
+  return out
 }
 
 /**
@@ -83,12 +103,13 @@ async function request({ method = 'GET', url, headers = {}, data, params, signal
     if (AMBIGUOUS.has(code)) {
       throw new ProviderError('upstream.interrupted', { code }, { transient: true, code })
     }
-    throw new ProviderError('upstream.request_failed', {}, { code, cause: err })
+    // Not `cause: err`: an axios error carries the request, Authorization header included.
+    throw new ProviderError('upstream.request_failed', {}, { code, cause: new Error(String(err.message || code)) })
   }
 
   if (res.status >= 200 && res.status < 300) return res.data
 
-  const detail = messageFromBody(res.data)
+  const detail = redactSecrets(messageFromBody(res.data), headers)
   const status = res.status
   if (status === 401 || status === 403) {
     throw new ProviderError(detail ? 'upstream.auth_rejected_detail' : 'upstream.auth_rejected', { status, detail }, { status })
@@ -122,4 +143,4 @@ function parseModelList(text) {
   return [...seen]
 }
 
-module.exports = { request, ProviderError, messageFromBody, trimBase, openaiBase, parseModelList }
+module.exports = { request, ProviderError, messageFromBody, redactSecrets, trimBase, openaiBase, parseModelList }

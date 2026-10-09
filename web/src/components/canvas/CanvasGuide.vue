@@ -134,6 +134,11 @@ watch(open, (v) => { if (v) nextTick(() => { if (bodyEl.value) bodyEl.value.scro
 .cg-cbtn.primary { background: var(--btn-bg, var(--accent-text)); color: var(--btn-fg, #111); border-color: transparent; font-weight: 600; }
 .cg-card-dismiss { margin-top: 14px; border: 0; background: none; color: var(--t-dim); font-size: 12px; cursor: pointer; }
 .cg-card-dismiss:hover { color: var(--t-body); }
+/* 手机宽度下屏幕正中放不下：卡片会盖住左侧工具条的下半截。让开工具条那一列，按钮上下排 */
+@media (max-width: 520px) {
+  .cg-card { left: 76px; right: 12px; width: auto; max-width: none; transform: translateY(-50%); padding: 20px 16px; }
+  .cg-card-actions { flex-direction: column; }
+}
 
 /* 抽屉 */
 .cg-drawer {

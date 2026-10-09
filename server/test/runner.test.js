@@ -157,7 +157,7 @@ test('a task that never finishes hits the poll deadline', async () => {
     async submit() { return { externalId: 'slow' } },
     async poll() { polls++; return { status: 'running', progress: 10 } },
   }
-  const { store, runner } = setup({ provider, settings: baseSettings({ pollTimeoutMs: { image: 80, video: 80 } }) })
+  const { store, runner } = setup({ provider, settings: baseSettings({ pollTimeoutMs: { image: 300, video: 300 } }) })
   const id = newRun(store)
   runner.enqueue(id)
   const run = await settled(store, id)
@@ -360,9 +360,109 @@ test('recover(): interrupted runs with an upstream task resume, without one they
     { id: 'd', kind: 'image', status: 'queued', createdAt: new Date(0) },
     { id: 'e', kind: 'image', status: 'succeeded', createdAt: new Date(4) },
   ])
-  assert.deepEqual(await store.recover(), ['d', 'a', 'c'])
-  assert.equal((await store.get('b')).status, 'failed')
+  const found = await store.recover()
+  assert.deepEqual(found.queued, ['d', 'a', 'c'])
+  assert.deepEqual(found.interrupted.map((r) => r.id), ['b'], 'left for the runner to fail')
   assert.equal((await store.get('e')).status, 'succeeded')
+})
+
+test('start(): runs lost in a crash are failed, and the billing hook hears about the ones it had allowed', async () => {
+  const { store, runner, billing } = setup({
+    provider: { async submit() { throw new Error('must not resubmit') }, async poll() {}, async chat() {} },
+    runs: [
+      { id: 'billed', kind: 'image', modelId: 'p:m', status: 'running', externalId: '', billingStarted: true },
+      { id: 'unbilled', kind: 'image', modelId: 'p:m', status: 'running', externalId: '', billingStarted: false },
+    ],
+  })
+  assert.equal(await runner.start(), 0)
+  for (const id of ['billed', 'unbilled']) {
+    const run = await store.get(id)
+    assert.deepEqual([run.status, run.errorCode], ['failed', 'run.interrupted'], id)
+    assert.ok(run.finishedAt)
+  }
+  assert.deepEqual(billing.calls, [['onFailed', 'billed', 'INTERRUPTED']])
+})
+
+test('shutdown: a run that was sent but has no upstream task id fails instead of being sent again', async () => {
+  let entered = 0
+  const hang = (_cfg, req) => { entered++; return new Promise((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason))) }
+  // A synchronous provider and a chat: neither ever has a task id to ask about later.
+  const { store, runner, billing } = setup({
+    provider: { submit: hang, chat: hang, async poll() {} },
+    sync: true,
+    settings: baseSettings({ pollTimeoutMs: { image: 5000, video: 5000 }, chatTimeoutMs: 5000 }),
+  })
+  const image = newRun(store)
+  const chat = newRun(store, { kind: 'chat' })
+  runner.enqueue(image)
+  runner.enqueue(chat)
+  await until(() => entered === 2)
+  await runner.shutdown()
+
+  for (const id of [image, chat]) {
+    const run = await store.get(id)
+    assert.deepEqual([run.status, run.errorCode], ['failed', 'run.interrupted'], `run ${id}`)
+  }
+  assert.deepEqual(billing.calls.filter((c) => c[0] === 'onFailed').map((c) => [c[1], c[2]]).sort(), [[image, 'INTERRUPTED'], [chat, 'INTERRUPTED']].sort())
+
+  // The next process leaves them alone.
+  const restarted = setup({ provider: { submit: hang, chat: hang, async poll() {} } })
+  restarted.runner.store = store
+  assert.equal(await restarted.runner.start(), 0)
+  assert.equal(entered, 2)
+})
+
+test('shutdown: a run that has not been sent anywhere yet goes back to the queue', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const billing = recordingBilling()
+  const allow = billing.beforeRun
+  let asked = false
+  billing.beforeRun = async (...args) => { asked = true; await gate; return allow(...args) }
+  let submits = 0
+  const { store, runner } = setup({ billing, provider: { async submit() { submits++; return { externalId: 'x' } }, async poll() { return { status: 'running' } } } })
+  const id = newRun(store)
+  runner.enqueue(id)
+  await until(() => asked)
+  const stopping = runner.shutdown()
+  release()
+  await stopping
+  const run = await store.get(id)
+  assert.deepEqual([run.status, submits], ['queued', 0])
+  assert.deepEqual(billing.calls.map((c) => c[0]), ['beforeRun'], 'no failure hook for a run that is merely parked')
+})
+
+test('media helpers handed to a provider are bound to the signal of that call', async () => {
+  const bound = []
+  let seen = null
+  const store = createMemoryStore()
+  const runner = new Runner({
+    store,
+    resolve: async () => ({
+      provider: {
+        async submit(_cfg, req) {
+          seen = req
+          await new Promise((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason)))
+        },
+        async poll() {},
+      },
+      cfg: {},
+      request: { model: 'm', mediaFor: (signal) => { bound.push(signal); return { signal } } },
+    }),
+    transfer: async (o) => o,
+    billing: recordingBilling(),
+    settings: baseSettings({ submitTimeoutMs: 5000 }),
+    logger: silent,
+    pollIntervalMs: [5, 10],
+  })
+  const id = newRun(store)
+  runner.enqueue(id)
+  await until(() => seen)
+  assert.equal(seen.media.signal, seen.signal)
+  assert.equal('mediaFor' in seen, false)
+  assert.equal(seen.signal.aborted, false)
+  await runner.cancel(id)
+  assert.equal(bound[0].aborted, true, 'cancelling the run aborts whatever the helpers were loading')
 })
 
 test('the poll deadline counts from the original submission, across restarts', async () => {

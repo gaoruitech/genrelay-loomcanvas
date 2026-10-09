@@ -5,7 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const express = require('express')
 const { getConfig } = require('./config')
-const { securityHeaders, noStore, cors } = require('./middleware/security')
+const { securityHeaders, noStore, cors, buildContentSecurityPolicy, inlineScriptHashes } = require('./middleware/security')
 const { requireAuth } = require('./middleware/auth')
 const { locale } = require('./middleware/locale')
 const { apiNotFound, errorHandler } = require('./middleware/errors')
@@ -17,13 +17,15 @@ function createApp() {
   const app = express()
   app.disable('x-powered-by')
   app.set('etag', false)
-  if (config.trustProxy) {
-    // Needed behind a reverse proxy so req.ip (login rate limit) is the client's address.
-    const n = Number(config.trustProxy)
-    app.set('trust proxy', Number.isInteger(n) ? n : config.trustProxy)
-  }
+  // Needed behind a reverse proxy so req.ip (login rate limit) is the client's address.
+  if (config.trustProxy) app.set('trust proxy', config.trustProxy)
 
-  app.use(securityHeaders)
+  const indexHtml = config.webDist ? path.join(config.webDist, 'index.html') : ''
+  if (indexHtml && !fs.existsSync(indexHtml)) {
+    throw new Error(`WEB_DIST is set to ${config.webDist} but there is no index.html in it`)
+  }
+  const scriptHashes = indexHtml ? inlineScriptHashes(fs.readFileSync(indexHtml, 'utf8')) : []
+  app.use(securityHeaders(buildContentSecurityPolicy({ scriptHashes })))
   app.use(locale)
 
   // Stored files (local driver). Public: share links and upstream models load them.
@@ -32,16 +34,19 @@ function createApp() {
   const api = express.Router()
   api.use(cors(config.corsOrigins))
   api.use(noStore)
-  // Canvas saves carry the whole graph; everything else is small.
-  api.use('/workflow', express.json({ limit: '6mb' }))
-  api.use(express.json({ limit: '1mb' }))
 
   // --- public ---
+  // What anybody may send is small: a password, the fields of a share link.
+  api.use(['/auth', '/canvas-share'], express.json({ limit: '64kb' }))
   api.use(require('./routes/base')) // bootstrap, login
   api.use('/canvas-share', require('./routes/canvasShare')) // public read; the rest guards itself
 
   // --- everything below needs a token when ACCESS_PASSWORD is set ---
+  // Bodies are parsed after this check, so only a signed-in client gets megabytes read and parsed.
   api.use(requireAuth)
+  // Canvas saves carry the whole graph; everything else is small.
+  api.use('/workflow', express.json({ limit: '6mb' }))
+  api.use(express.json({ limit: '1mb' }))
   api.use('/files', files.apiRouter())
   api.use(require('./routes/runs')) // models, runs, llm tasks
   api.use('/admin', require('./routes/admin'))
@@ -56,10 +61,6 @@ function createApp() {
 
   // Optional: serve the built frontend, with SPA fallback for client-side routes.
   if (config.webDist) {
-    const indexHtml = path.join(config.webDist, 'index.html')
-    if (!fs.existsSync(indexHtml)) {
-      throw new Error(`WEB_DIST is set to ${config.webDist} but there is no index.html in it`)
-    }
     app.use(express.static(config.webDist, { index: false, maxAge: '1h' }))
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) return next()

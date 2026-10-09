@@ -1,9 +1,9 @@
 'use strict'
 
 /**
- * Alibaba Cloud OSS driver. The SDK is an optional dependency, loaded only
- * when this driver is selected:
- *   npm install ali-oss
+ * Alibaba Cloud OSS driver. The SDK is not installed by default; it is loaded
+ * only when this driver is selected:
+ *   npm install ali-oss        (Docker: --build-arg EXTRA_NPM_PACKAGES=ali-oss)
  * Objects must be publicly readable through OSS_PUBLIC_BASE_URL (bucket domain
  * or CDN); this driver does not sign URLs.
  */
@@ -22,7 +22,10 @@ function createOssStorage(cfg) {
   let OSS
   try { OSS = require('ali-oss') } catch (err) {
     if (err.code === 'MODULE_NOT_FOUND') {
-      throw new Error('STORAGE_DRIVER=oss needs the "ali-oss" package. Run: npm install ali-oss')
+      throw new Error(
+        'STORAGE_DRIVER=oss needs the "ali-oss" package. Run: npm install ali-oss (in server/). ' +
+        'With Docker: set EXTRA_NPM_PACKAGES=ali-oss in .env and rebuild the image (docker compose build)'
+      )
     }
     throw err
   }

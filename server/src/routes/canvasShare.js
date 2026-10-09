@@ -17,9 +17,9 @@ const Share = require('../models/Share')
 const { pickThumbnail, cleanNodes } = require('../services/canvasGraph')
 const { CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
 const { randomToken } = require('../utils/crypto')
-const { requireAuth, isAuthed } = require('../middleware/auth')
+const { requireAuth } = require('../middleware/auth')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
-const { requireObjectId, isObjectId, pageParams, text } = require('../utils/validate')
+const { requireObjectId, pageParams, text } = require('../utils/validate')
 const { t } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 
@@ -160,32 +160,28 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
 }))
 
 /**
- * Find a share by link token. The database id is accepted too, but only from
- * the owner, so ids seen elsewhere never work as public links.
+ * Find an active share by its link token - and by nothing else. Database ids
+ * are never a way in, signed in or not: on an instance without a password
+ * "signed in" is everybody.
  */
 async function findReadable(req) {
-  const ref = String(req.params.ref || '')
-  if (TOKEN_RE.test(ref)) {
-    const doc = await Share.findOne({ token: ref }).lean()
-    if (doc && isActive(doc)) return { doc, owner: false }
-  }
-  if (isObjectId(ref) && isAuthed(req)) {
-    const doc = await Share.findOne({ _id: ref, userId: LOCAL_USER, isDeleted: false }).lean()
-    if (doc) return { doc, owner: true }
-  }
+  const token = String(req.params.token || '')
+  const doc = TOKEN_RE.test(token) ? await Share.findOne({ token }).lean() : null
   // One message for every failure: do not reveal whether a link ever existed.
-  throw notFound(GONE)
+  if (!doc || !isActive(doc)) throw notFound(GONE)
+  return doc
 }
 
 /** GET /api/canvas-share/:token - PUBLIC, read-only snapshot */
-router.get('/:ref', wrap(async (req, res) => {
-  const { doc, owner } = await findReadable(req)
-  if (!owner) Share.updateOne({ _id: doc._id }, { $inc: { 'stats.viewCount': 1 } }, { timestamps: false }).catch(() => {})
+router.get('/:token', wrap(async (req, res) => {
+  const doc = await findReadable(req)
+  Share.updateOne({ _id: doc._id }, { $inc: { 'stats.viewCount': 1 } }, { timestamps: false }).catch(() => {})
   const snap = doc.snapshot || {}
   ok(res, {
-    ...summary(doc, { owner }),
+    ...summary(doc, { owner: false }),
     description: doc.description || '',
-    nodes: snap.nodes || [],
+    // Cleaned again on the way out: snapshots stored by earlier versions kept more.
+    nodes: cleanNodes(snap.nodes),
     edges: snap.edges || [],
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },
     settings: snap.settings || {},
@@ -193,8 +189,8 @@ router.get('/:ref', wrap(async (req, res) => {
 }))
 
 /** POST /api/canvas-share/:token/copy { name? } - copy the snapshot into a new canvas of mine */
-router.post('/:ref/copy', requireAuth, wrap(async (req, res) => {
-  const { doc } = await findReadable(req)
+router.post('/:token/copy', requireAuth, wrap(async (req, res) => {
+  const doc = await findReadable(req)
   const snap = doc.snapshot || {}
   const nodes = cleanNodes(snap.nodes)
   const wf = await Workflow.create({

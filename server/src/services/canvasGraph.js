@@ -72,17 +72,35 @@ function collectNodeMedia(node) {
   return out
 }
 
-// Run-time / task state that must not travel with a published or copied canvas.
-const TRANSIENT_FIELDS = new Set(['status', 'progress', 'validationError', 'validationStamp', 'taskId', 'runId', 'errorMsg'])
+// What must not travel with a published or copied canvas: run-time / task
+// state (incl. the ids of the runs behind a node), failure details, and what
+// the owner's runs cost.
+const PRIVATE_FIELDS = new Set([
+  'status', 'progress', 'validationError', 'validationStamp', 'errorMsg', 'errorRunId',
+  'taskId', 'taskIds', 'runId', 'runPending', 'generatedCount',
+  'cost', 'estimatedCost',
+])
+/** The same, inside each entry of a node's result history. */
+const PRIVATE_RESULT_FIELDS = new Set(['cost', 'taskId', 'runId'])
 
-/** Deep copy of the nodes with transient task state removed. */
+function stripKeys(obj, keys) {
+  for (const key of Object.keys(obj)) {
+    if (keys.has(key)) delete obj[key]
+  }
+}
+
+/** Deep copy of the nodes with everything in PRIVATE_FIELDS removed. */
 function cleanNodes(nodes) {
   if (!Array.isArray(nodes)) return []
   return nodes.map((node) => {
     const copy = structuredClone(node)
-    if (copy && copy.data && typeof copy.data === 'object') {
-      for (const key of Object.keys(copy.data)) {
-        if (TRANSIENT_FIELDS.has(key)) delete copy.data[key]
+    const data = copy && copy.data
+    if (data && typeof data === 'object') {
+      stripKeys(data, PRIVATE_FIELDS)
+      if (Array.isArray(data.results)) {
+        for (const entry of data.results) {
+          if (entry && typeof entry === 'object') stripKeys(entry, PRIVATE_RESULT_FIELDS)
+        }
       }
     }
     return copy

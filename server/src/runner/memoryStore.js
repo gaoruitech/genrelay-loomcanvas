@@ -5,7 +5,6 @@
  * runner tests; also documents exactly what the runner needs from a store.
  */
 const { STATUS } = require('./core')
-const { msg, storedError } = require('../i18n')
 
 function createMemoryStore(initial = []) {
   const runs = new Map()
@@ -61,20 +60,23 @@ function createMemoryStore(initial = []) {
 
     /**
      * Called once at boot. Interrupted runs that already have an upstream task
-     * go back to the queue (they will resume polling); interrupted runs without
-     * one fail, because nobody knows whether the upstream accepted them.
-     * Returns the ids to enqueue, oldest first.
+     * go back to the queue (they will resume polling). Interrupted runs without
+     * one are returned as `interrupted` and left as they are: nobody knows
+     * whether the upstream accepted them, so the runner fails them.
+     * Resolves { queued: ids to enqueue, oldest first; interrupted: runs }.
      */
     async recover() {
+      const interrupted = []
       for (const run of runs.values()) {
         if (run.status !== STATUS.RUNNING && run.status !== STATUS.ARCHIVING) continue
         if (run.externalId) run.status = STATUS.QUEUED
-        else Object.assign(run, { status: STATUS.FAILED, ...storedError(msg('run.interrupted')), finishedAt: new Date() })
+        else interrupted.push(clone(run))
       }
-      return [...runs.values()]
+      const queued = [...runs.values()]
         .filter((r) => r.status === STATUS.QUEUED)
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((r) => r.id)
+      return { queued, interrupted }
     },
   }
 }

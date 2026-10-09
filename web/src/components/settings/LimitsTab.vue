@@ -51,6 +51,7 @@ import { useAdminSettings } from '@/composables/useAdminSettings'
 const { t } = useI18n()
 
 type LimitKey = 'concurrency' | 'imageTimeoutMinutes' | 'videoTimeoutMinutes' | 'maxRetries' | 'retentionDays'
+  | 'submitTimeoutSec' | 'chatTimeoutSec' | 'downloadTimeoutSec'
 
 // 范围与后端 services/settings.js 的校验一致：这里放得比后端宽，填进去就只能等后端报错
 const FIELDS: { key: LimitKey; min: number; max: number }[] = [
@@ -58,12 +59,18 @@ const FIELDS: { key: LimitKey; min: number; max: number }[] = [
   { key: 'maxRetries', min: 0, max: 5 },
   { key: 'imageTimeoutMinutes', min: 1, max: 120 },
   { key: 'videoTimeoutMinutes', min: 1, max: 240 },
+  { key: 'chatTimeoutSec', min: 10, max: 3600 },
+  { key: 'submitTimeoutSec', min: 5, max: 600 },
+  { key: 'downloadTimeoutSec', min: 10, max: 3600 },
   { key: 'retentionDays', min: 0, max: 3650 },
 ]
 
 const { form, loading, loadError, saving, load, save } = useAdminSettings(
   FIELDS.map(f => f.key),
-  { concurrency: 4, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 2, retentionDays: 0 },
+  {
+    concurrency: 4, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 2, retentionDays: 0,
+    submitTimeoutSec: 60, chatTimeoutSec: 300, downloadTimeoutSec: 300,
+  },
 )
 onMounted(load)
 

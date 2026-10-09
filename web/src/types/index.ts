@@ -20,6 +20,8 @@ export interface BootstrapInfo {
   }
   hasProvider: boolean
   version?: string
+  /** 服务端的硬限制；老版本后端没有这一项 */
+  limits?: { maxUploadMb?: number }
 }
 
 export interface UploadedFile {
@@ -172,6 +174,9 @@ export interface AdminSettings {
   videoTimeoutMinutes: number
   maxRetries: number
   retentionDays: number
+  submitTimeoutSec: number
+  chatTimeoutSec: number
+  downloadTimeoutSec: number
 }
 
 export interface UsageSummaryRow {

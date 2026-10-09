@@ -13,6 +13,7 @@ module.exports = {
   'common.route_not_found': 'This API endpoint does not exist',
   'common.body_too_large': 'The request is too large',
   'common.body_not_json': 'The request body is not valid JSON',
+  'common.bad_request': 'The request is malformed',
   'common.duplicate': 'An identical record already exists',
   'common.name_required': 'Please enter a name',
   'common.nothing_to_update': 'Nothing to update',
@@ -94,7 +95,7 @@ module.exports = {
   'provider.openai-compatible.field.models.help': 'Comma-separated. Leave this and the next field empty to read the list from /v1/models.',
   'provider.openai-compatible.field.imageModels.label': 'Image models',
   'provider.openai-compatible.field.imageModels.help': 'Comma-separated.',
-  'provider.gemini.field.models.help': 'Comma-separated. Leave empty to detect the available models; names containing "image" are treated as image models, the rest as chat models.',
+  'provider.gemini.field.models.help': 'Comma-separated. Leave empty to detect the available models; names containing "image" or "banana" are treated as image models, the rest as chat models.',
 
   /* ---- models ---- */
   'model.bad_id': 'The model ID has the wrong format',
@@ -104,6 +105,7 @@ module.exports = {
   'model.provider_missing': 'The provider for this model no longer exists. Check your settings',
   'model.provider_disabled': 'The provider for this model is disabled',
   'model.not_chat': 'This is not a chat model',
+  'model.no_video_input': 'This model cannot take a video. Choose a model that accepts video input',
   'model.chat_only': 'Chat models have to be called through the chat endpoint',
 
   // One-line descriptions of built-in models: model.<provider type>.<model id>.desc
@@ -157,7 +159,8 @@ module.exports = {
   'run.failed': 'The run failed. Try again later or check the server log',
   'run.canceled': 'Canceled',
   'run.restarting': 'The server is restarting',
-  'run.interrupted': 'The server was interrupted and it is unknown whether the task was submitted. Please try again',
+  'run.queue_full': 'There are already {max} unfinished runs. Wait for some to finish or cancel them',
+  'run.interrupted': 'The server stopped while this task was being sent, and it is unknown whether the upstream received it. It was not sent again, to avoid a duplicate charge. Please check the upstream and run it again if needed',
   'run.no_provider': 'No provider is configured for this model',
   'run.chat_unsupported': 'This provider does not support chat models',
   'run.billing_error': 'The billing check failed, so this run was not started',

@@ -1,24 +1,40 @@
-import { filesApi, unwrap } from './api'
+import { filesApi, unwrap, apiErrorMessage } from './api'
 import { registerThumb } from './canvasMedia'
 import { t } from '@/locales'
+import { useAppStore } from '@/stores/app'
 
-const MAX_BYTES = 20 * 1024 * 1024
-const MAX_VIDEO_BYTES = 200 * 1024 * 1024
+/**
+ * 上传大小只有一个上限，在服务端（MAX_UPLOAD_MB），随启动信息下发。
+ * 前端先按它拦一道，省得把注定被拒的大文件传完才报错；老版本后端不下发这个数，
+ * 那就不预检，等服务端的 413 自己说。
+ */
+function assertUploadSize(file: File | Blob): void {
+  const mb = Number(useAppStore().bootstrap?.limits?.maxUploadMb)
+  if (!(mb > 0)) return
+  if (file.size > mb * 1024 * 1024) throw new Error(t('upload.tooLarge', { mb }))
+}
 
 /** 校验图片文件 —— 不通过则抛错（提示已本地化，可直接 toast） */
 export function assertImageFile(file: File): void {
   if (!file.type.startsWith('image/')) throw new Error(t('upload.notImage'))
-  if (file.size > MAX_BYTES) throw new Error(t('upload.imageTooLarge', { mb: MAX_BYTES / 1024 / 1024 }))
+  assertUploadSize(file)
 }
 
 /** 校验视频文件 */
 export function assertVideoFile(file: File): void {
   if (!file.type.startsWith('video/')) throw new Error(t('upload.notVideo'))
-  if (file.size > MAX_VIDEO_BYTES) throw new Error(t('upload.videoTooLarge', { mb: MAX_VIDEO_BYTES / 1024 / 1024 }))
+  assertUploadSize(file)
 }
 
 async function uploadFile(file: File | Blob, onProgress?: (pct: number) => void, filename?: string): Promise<string> {
-  const data = unwrap(await filesApi.upload(file, onProgress, filename))
+  assertUploadSize(file)
+  let data
+  try {
+    data = unwrap(await filesApi.upload(file, onProgress, filename))
+  } catch (err) {
+    // 服务端拒绝时（413 超限、415 类型不对……）把它给用户看的那句话带出来，而不是「Request failed with status code 413」
+    throw new Error(apiErrorMessage(err, t('upload.failed')))
+  }
   if (!data?.url) throw new Error(t('upload.noUrl'))
   return data.url
 }

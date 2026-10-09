@@ -15,6 +15,11 @@ export default defineConfig({
       dts: false,
     }),
   ],
+  define: {
+    // vue-i18n 默认用 new Function 编译文案，会被服务端下发的 CSP（script-src 不含 'unsafe-eval'）拦掉，
+    // 整个应用白屏。打开这个开关后改为解释执行编译结果，不需要 eval。
+    __INTLIFY_JIT_COMPILATION__: true,
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

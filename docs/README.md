@@ -1,0 +1,43 @@
+# LoomCanvas documentation
+
+[简体中文](README.zh-CN.md)
+
+> Status: early development. Interfaces may change before the first tagged release.
+
+## Using it
+
+| Page | What it covers |
+| --- | --- |
+| [Getting started](getting-started.md) | From zero to your first generated image. |
+| [User guide](user-guide.md) | The canvas: nodes, wiring, running, results, brand kits, templates, assets, share links, shortcuts. |
+| [FAQ](faq.md) | Problems people run into, and licensing pointers. |
+
+## Running it
+
+| Page | What it covers |
+| --- | --- |
+| [Deployment](deployment.md) | Docker Compose, running without Docker, reverse proxy and HTTPS, backups, upgrades. |
+| [Configuration](configuration.md) | Environment variables, admin settings, in-canvas settings, storage drivers, fixed limits. |
+| [Providers](providers.md) | The built-in provider types, their models, how media reaches upstreams, pricing and usage. |
+| [Security](security.md) | Hardening a deployment, what is public, what LoomCanvas does not do. |
+
+## Extending it
+
+| Page | What it covers |
+| --- | --- |
+| [Development](development.md) | Repository layout, dev setup, scripts, adding nodes, strings and migrations, conventions. |
+| [Writing a provider](writing-a-provider.md) | The provider plugin interface, with a worked example and tests. |
+| [Billing hook](billing-hook.md) | Metering or limiting runs with your own module. |
+| [HTTP API](api.md) | Endpoint reference. |
+| [Architecture and API contract](architecture.md) | The design contract between frontend and backend (Chinese). |
+
+## Project
+
+| Page | What it covers |
+| --- | --- |
+| [README](../README.md) | Overview and quick start. |
+| [CHANGELOG](../CHANGELOG.md) | What changed. |
+| [CONTRIBUTING](../CONTRIBUTING.md) | How to contribute. |
+| [SECURITY](../SECURITY.md) | How to report a vulnerability. |
+| [LICENSE](../LICENSE), [COMMERCIAL](../COMMERCIAL.md), [CLA](../CLA.md), [TRADEMARK](../TRADEMARK.md) | Licensing. |
+| [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) | Third-party software and its licenses. |

@@ -11,6 +11,7 @@ module.exports = {
   'common.not_found': '资源不存在',
   'common.route_not_found': '接口不存在',
   'common.body_too_large': '请求体过大',
+  'common.bad_request': '请求格式不正确',
   'common.body_not_json': '请求体不是合法的 JSON',
   'common.duplicate': '已存在相同的记录',
   'common.name_required': '名称不能为空',
@@ -93,7 +94,7 @@ module.exports = {
   'provider.openai-compatible.field.models.help': '逗号分隔；与下一项都留空时自动从 /v1/models 读取',
   'provider.openai-compatible.field.imageModels.label': '图片模型',
   'provider.openai-compatible.field.imageModels.help': '逗号分隔',
-  'provider.gemini.field.models.help': '逗号分隔；留空时自动读取可用模型。名称含 image 的按图片模型处理，其余按对话模型处理',
+  'provider.gemini.field.models.help': '逗号分隔；留空时自动读取可用模型。名称含 image 或 banana 的按图片模型处理，其余按对话模型处理',
 
   /* ---- 模型 ---- */
   'model.bad_id': '模型标识格式不正确',
@@ -102,6 +103,7 @@ module.exports = {
   'model.disabled': '该模型已被停用',
   'model.provider_missing': '该模型所属的接入不存在，请到设置里检查',
   'model.provider_disabled': '该模型所属的接入已停用',
+  'model.no_video_input': '该模型不能输入视频，请换一个支持视频输入的模型',
   'model.not_chat': '该模型不是对话模型',
   'model.chat_only': '对话模型请通过对话接口调用',
 
@@ -155,8 +157,9 @@ module.exports = {
   'run.prompt_or_image_required': '请填写提示词或接入参考图',
   'run.failed': '运行失败，请稍后重试或查看服务端日志',
   'run.canceled': '已取消',
+  'run.queue_full': '已有 {max} 个未完成的运行，请等待完成或取消一部分后再提交',
   'run.restarting': '服务正在重启',
-  'run.interrupted': '服务中断，任务提交状态未知，请重试',
+  'run.interrupted': '服务在提交这个任务时停止了，无法确认上游是否已经收到。为避免重复计费没有再次提交，请到上游确认后按需重新运行',
   'run.no_provider': '找不到该模型的接入配置',
   'run.chat_unsupported': '该接入不支持对话模型',
   'run.billing_error': '计费检查失败，本次运行未执行',

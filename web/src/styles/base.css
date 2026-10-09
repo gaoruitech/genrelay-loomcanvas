@@ -151,8 +151,19 @@ a:hover { text-decoration: underline; }
   --td-brand-color-hover: var(--btn-bg-hover);
   --td-brand-color-active: var(--btn-bg-hover);
   --td-brand-color-focus: var(--accent-line);
+  /* 与 body 同一套字体。TDesign 默认把中文字体排在最前，英文界面里的弯引号（Don’t）
+     会落到中文字体上，画成全角、后面空出一大截。 */
+  --td-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', Helvetica, Arial, sans-serif;
 }
 .t-button--variant-base.t-button--theme-primary { color: var(--btn-fg); }
+
+/* 重跑确认（composables/useRerunConfirm）：弹窗挂在 body 上，样式只能写在全局 */
+.cv-rerun-line { margin: 0 0 8px; line-height: 1.6; }
+.cv-rerun-skip {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 6px;
+  font-size: 13px; color: var(--t-body); cursor: pointer; user-select: none;
+}
+.cv-rerun-skip input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
 /* 生成节点展开面板（提示词 / 参数 / 历史版本）时，整个节点提到其它节点上面，
    否则面板会被下方的节点盖住。写成样式而不是改 style.zIndex：vue-flow 每次重渲染
