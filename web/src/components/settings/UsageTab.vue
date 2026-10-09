@@ -6,9 +6,17 @@
         <p class="tab-desc">{{ t('settings.usage.desc') }}</p>
       </div>
       <form class="range" @submit.prevent="reload">
-        <input v-model="from" class="lc-input sm" type="date" :max="to" :aria-label="t('settings.usage.from')" />
-        <span class="range-sep">–</span>
-        <input v-model="to" class="lc-input sm" type="date" :min="from" :aria-label="t('settings.usage.to')" />
+        <t-date-range-picker
+          v-model="range"
+          class="lc-date"
+          value-type="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          allow-input
+          :clearable="false"
+          :placeholder="[t('settings.usage.from'), t('settings.usage.to')]"
+          :presets="rangePresets"
+          :popup-props="DATE_POPUP"
+        />
         <button class="lc-btn sm" type="submit" :disabled="loading">{{ t('settings.usage.query') }}</button>
       </form>
     </div>
@@ -41,9 +49,22 @@
     <div class="records-head">
       <h3 class="section-title">{{ t('settings.usage.records') }}</h3>
       <form class="clear" @submit.prevent="askClear">
-        <label class="clear-label" for="usage-clear-before">{{ t('settings.usage.clearLabel') }}</label>
-        <input id="usage-clear-before" v-model="clearBefore" class="lc-input sm" type="date" :max="todayText" />
-        <button class="lc-btn sm danger" type="submit" :disabled="!clearBefore || clearing">{{ t('settings.usage.clear') }}</button>
+        <!-- TDesign 的输入框不接 id，没法用 for 关联；把控件包在 label 里，点文字同样能聚焦 -->
+        <label class="clear-label">
+          <span>{{ t('settings.usage.clearLabel') }}</span>
+          <t-date-picker
+            v-model="clearBefore"
+            class="lc-date"
+            value-type="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            allow-input
+            clearable
+            :placeholder="t('settings.usage.clearPlaceholder')"
+            :disable-date="{ after: todayText }"
+            :popup-props="DATE_POPUP"
+          />
+        </label>
+        <button class="lc-btn sm danger" type="submit" :disabled="!clearBeforeValid || clearing">{{ t('settings.usage.clear') }}</button>
       </form>
     </div>
     <div class="lc-card lc-table-wrap">
@@ -114,8 +135,29 @@ function isoDate(d: Date): string {
 }
 
 const today = new Date()
-const to = ref(isoDate(today))
-const from = ref(isoDate(new Date(today.getTime() - 29 * 86400000)))
+const todayText = isoDate(today)
+const daysAgo = (n: number) => isoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - n))
+const to = ref(todayText)
+const from = ref(daysAgo(29))
+
+/** 日历弹层挂在 body 上，靠这个类名套用整站的配色（见 base.css） */
+const DATE_POPUP = { overlayClassName: 'lc-date-popup' }
+
+/** 起止日期合成一个范围控件；请求参数仍然是 from / to 两个 YYYY-MM-DD */
+const range = computed<string[]>({
+  get: () => [from.value, to.value],
+  set: (v) => {
+    const [a, b] = v || []
+    if (!a || !b) return
+    // 手敲时可能把起止写反
+    ;[from.value, to.value] = a <= b ? [a, b] : [b, a]
+  },
+})
+const rangePresets = computed<Record<string, [string, string]>>(() => ({
+  [t('settings.usage.presetLast7')]: [daysAgo(6), todayText],
+  [t('settings.usage.presetLast30')]: [daysAgo(29), todayText],
+  [t('settings.usage.presetThisMonth')]: [isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), todayText],
+}))
 
 const byDay = ref<UsageSummaryRow[]>([])
 const byModel = ref<UsageSummaryRow[]>([])
@@ -195,14 +237,15 @@ function formatTime(iso: string): string {
 }
 
 // ---- 清理早于某天的记录 ----
-const todayText = isoDate(today)
 const clearBefore = ref('')
+/** 日历里未来的日子点不了，但输入框能手敲：这里再挡一次 */
+const clearBeforeValid = computed(() => /^\d{4}-\d{2}-\d{2}$/.test(clearBefore.value || '') && clearBefore.value <= todayText)
 /** 正在确认的那个日期；空串表示确认框没开 */
 const clearConfirm = ref('')
 const clearing = ref(false)
 
 function askClear() {
-  if (clearBefore.value) clearConfirm.value = clearBefore.value
+  if (clearBeforeValid.value) clearConfirm.value = clearBefore.value
 }
 function closeClear() {
   if (!clearing.value) clearConfirm.value = ''
@@ -237,8 +280,7 @@ onMounted(reload)
 @import './tab-shared.css';
 
 .range { display: flex; align-items: center; gap: 8px; flex: none; }
-.range .lc-input { width: 140px; }
-.range-sep { color: var(--t-dim); }
+.range .lc-date { width: 232px; }
 .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .total-label { font-size: 12px; color: var(--t-dim); margin-bottom: 6px; }
 .total-value { font-size: 22px; font-weight: 600; color: var(--t-max); font-variant-numeric: tabular-nums; }
@@ -247,8 +289,8 @@ onMounted(reload)
 .section-title.first { margin-top: 0; }
 .records-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .clear { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.clear .lc-input { width: 140px; }
-.clear-label { font-size: 12px; color: var(--t-dim); }
+.clear .lc-date { width: 140px; }
+.clear-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--t-dim); }
 .confirm { width: 440px; }
 .confirm p { line-height: 1.6; }
 .clear-warn { margin-top: 8px; color: var(--danger); }

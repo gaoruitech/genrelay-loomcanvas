@@ -15,19 +15,12 @@
             <input v-model.trim="currency" class="lc-input" maxlength="3" placeholder="CNY" :disabled="saving" />
           </div>
           <div class="lc-field">
-            <label>{{ t('settings.pricing.unit') }}</label>
-            <select v-model="unit" class="lc-select" :disabled="saving">
-              <option v-for="u in UNITS" :key="u" :value="u">{{ t('settings.pricing.units.' + u) }}</option>
-            </select>
+            <label for="pr-unit">{{ t('settings.pricing.unit') }}</label>
+            <LcSelect id="pr-unit" v-model="unit" :options="unitOptions" :disabled="saving" />
           </div>
           <div class="lc-field">
-            <label>{{ t('settings.pricing.by') }}</label>
-            <select v-model="by" class="lc-select" :disabled="saving" @change="onByChange">
-              <option value="">{{ t('settings.pricing.byNone') }}</option>
-              <option value="resolution">{{ t('settings.pricing.byResolution') }}</option>
-              <option value="duration">{{ t('settings.pricing.byDuration') }}</option>
-              <option value="resolution_duration">{{ t('settings.pricing.byResolutionDuration') }}</option>
-            </select>
+            <label for="pr-by">{{ t('settings.pricing.by') }}</label>
+            <LcSelect id="pr-by" v-model="by" :options="byOptions" :disabled="saving" @change="onByChange" />
           </div>
         </div>
 
@@ -69,6 +62,7 @@
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import LcSelect from '@/components/LcSelect.vue'
 import type { AdminModel, ModelPricing } from '@/types'
 
 const props = defineProps<{ model: AdminModel; saving?: boolean }>()
@@ -81,6 +75,13 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const UNITS: ModelPricing['unit'][] = ['per_image', 'per_video', 'per_second', 'per_1m_tokens']
+const unitOptions = computed(() => UNITS.map(u => ({ value: u, label: t('settings.pricing.units.' + u) })))
+const byOptions = computed<{ value: NonNullable<ModelPricing['by']>; label: string }[]>(() => [
+  { value: '', label: t('settings.pricing.byNone') },
+  { value: 'resolution', label: t('settings.pricing.byResolution') },
+  { value: 'duration', label: t('settings.pricing.byDuration') },
+  { value: 'resolution_duration', label: t('settings.pricing.byResolutionDuration') },
+])
 
 function defaultUnit(): ModelPricing['unit'] {
   if (props.model.kind === 'video') return 'per_video'

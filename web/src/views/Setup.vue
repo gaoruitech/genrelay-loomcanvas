@@ -4,9 +4,14 @@
       <header class="setup-head">
         <div class="setup-brand">{{ app.siteName }}</div>
         <div class="setup-tools">
-          <select class="lc-select sm lang" :value="app.locale" :aria-label="t('app.language')" @change="onLocale">
-            <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
-          </select>
+          <LcSelect
+            class="lang"
+            size="sm"
+            :model-value="app.locale"
+            :options="LOCALE_OPTIONS"
+            :aria-label="t('app.language')"
+            @update:model-value="app.setLocale"
+          />
         </div>
       </header>
 
@@ -86,11 +91,12 @@ import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { useAppStore } from '@/stores/app'
 import { skipSetup } from '@/router'
-import { SUPPORTED_LOCALES } from '@/locales'
+import { LOCALE_OPTIONS } from '@/locales'
+import LcSelect from '@/components/LcSelect.vue'
 import { GAORUI_URL, isGaorui, providerFamily, sortProviderTypes, providerTypeLabel, providerFieldLabel } from '@/utils/providerMeta'
 import ProviderForm from '@/components/settings/ProviderForm.vue'
 import { initialProviderForm, missingProviderField, providerPayload } from '@/components/settings/providerForm'
-import type { LocaleCode, ProviderType } from '@/types'
+import type { ProviderType } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -124,10 +130,6 @@ function select(tp: ProviderType) {
   selected.value = tp
   form.value = initialProviderForm(tp)
   error.value = ''
-}
-
-function onLocale(e: Event) {
-  app.setLocale((e.target as HTMLSelectElement).value as LocaleCode)
 }
 
 async function submit() {

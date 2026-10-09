@@ -55,7 +55,7 @@ a:hover { text-decoration: underline; }
 .lc-btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px; }
 
 /* ---------- 输入件 ---------- */
-.lc-input, .lc-select, .lc-textarea {
+.lc-input, .lc-textarea {
   width: 100%; height: 36px; padding: 0 10px;
   background: var(--n-3); color: var(--t-max);
   border: 1px solid var(--n-5); border-radius: 8px;
@@ -63,10 +63,10 @@ a:hover { text-decoration: underline; }
   transition: border-color .15s ease;
 }
 .lc-textarea { height: auto; min-height: 72px; padding: 8px 10px; resize: vertical; line-height: 1.5; }
-.lc-input:focus, .lc-select:focus, .lc-textarea:focus { border-color: var(--accent-line); }
+.lc-input:focus, .lc-textarea:focus { border-color: var(--accent-line); }
 .lc-input::placeholder, .lc-textarea::placeholder { color: var(--t-dim); opacity: .8; }
-.lc-input:disabled, .lc-select:disabled { opacity: .6; cursor: not-allowed; }
-.lc-input.sm, .lc-select.sm { height: 30px; font-size: 12px; border-radius: 6px; }
+.lc-input:disabled { opacity: .6; cursor: not-allowed; }
+.lc-input.sm { height: 30px; font-size: 12px; border-radius: 6px; }
 
 .lc-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .lc-field > label, .lc-label { font-size: 12.5px; color: var(--t-strong); }
@@ -143,10 +143,41 @@ a:hover { text-decoration: underline; }
 }
 .lc-x:hover { background: var(--n-4); color: var(--t-max); }
 
-/* ---------- TDesign（只用了 Message / Dialog 两个插件） ----------
+/* ---------- 下拉菜单 ----------
+   画布节点上的 ChipSelect 与表单里的 LcSelect 共用的弹出面板；
+   菜单 Teleport 到 body 上，所以写在全局。定位由 composables/useFloatingMenu 给出。 */
+.lc-menu {
+  overflow-y: auto;
+  background: var(--n-4);
+  border: 1px solid var(--n-6);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 14px 40px var(--shadow-2);
+}
+.lc-menu::-webkit-scrollbar { width: 6px; }
+.lc-menu::-webkit-scrollbar-thumb { background: var(--n-7); border-radius: 3px; }
+.lc-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--t-body);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.lc-menu-item:hover { background: var(--n-5); }
+.lc-menu-item.active {
+  color: var(--accent-text);
+  background: var(--accent-dim);
+}
+
+/* ---------- TDesign（Message / Dialog 两个插件，加设置页的日期选择） ----------
    品牌色不接过来的话，确认弹窗的主按钮是 TDesign 默认的蓝，跟整站的主操作色对不上。
-   三个选择器都要写：TDesign 自己在 :root[theme-mode] 上定义这组变量，只写 :root 压不过。 */
-:root, :root[theme-mode='light'], :root[theme-mode='dark'] {
+   三个选择器都要写：TDesign 自己在 :root[theme-mode] 上定义这组变量，只写 :root 压不过。
+   前面多带一个 html：TDesign 每个组件的样式都自带一份令牌定义，按需加载的那几份（设置页的日期选择）
+   排在本文件之后，同等优先级的话后来的赢，品牌色会被改回默认的蓝。 */
+html:root, html:root[theme-mode='light'], html:root[theme-mode='dark'] {
   --td-brand-color: var(--btn-bg);
   --td-brand-color-hover: var(--btn-bg-hover);
   --td-brand-color-active: var(--btn-bg-hover);
@@ -155,7 +186,51 @@ a:hover { text-decoration: underline; }
      会落到中文字体上，画成全角、后面空出一大截。 */
   --td-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', Helvetica, Arial, sans-serif;
 }
-.t-button--variant-base.t-button--theme-primary { color: var(--btn-fg); }
+/* 同样多带一个 html：按钮样式在按需加载的 chunk 里还有一份，会排到本文件后面 */
+html .t-button--variant-base.t-button--theme-primary { color: var(--btn-fg); }
+
+/* 日期选择：输入框（.lc-date）对齐 .lc-input.sm，日历弹层（.lc-date-popup，挂在 body 上）对齐 .lc-menu。
+   只在这两个范围内把 TDesign 的令牌接到整站令牌上，不动上面两个插件的外观。
+   TDesign 的复合令牌（--td-font-body-*、--td-comp-size-*）在 :root 上就已经算成了具体值，
+   改它引用的那一层不起作用，必须直接覆盖复合令牌本身。 */
+.lc-date, .lc-date-popup {
+  --td-text-color-primary: var(--t-max);
+  --td-text-color-secondary: var(--t-body);
+  --td-text-color-placeholder: var(--t-dim);
+  --td-text-color-disabled: var(--n-9);
+  --td-text-color-anti: var(--btn-fg);
+  --td-brand-color-light: var(--accent-dim);
+  --td-brand-color-focus: var(--accent-ghost);
+  --td-border-level-2-color: var(--n-5);
+  --td-component-border: var(--n-6);
+  --td-component-stroke: var(--line-1);
+  --td-bg-color-container-hover: var(--n-5);
+  --td-bg-color-container-active: var(--n-6);
+  --td-bg-color-component: var(--n-5);
+  --td-bg-color-component-hover: var(--n-6);
+  --td-bg-color-component-disabled: var(--n-3);
+  --td-bg-color-specialcomponent: transparent;
+  --td-radius-small: 4px;
+  --td-radius-default: 6px;
+  --td-radius-medium: 12px;
+}
+.lc-date {
+  --td-bg-color-container: var(--n-3);
+  --td-brand-color: var(--accent-line);
+  --td-comp-size-m: 30px;
+  --td-font-size-body-medium: 12px;
+  --td-font-body-medium: 12px / 20px var(--td-font-family);
+}
+.lc-date-popup {
+  --td-bg-color-container: var(--n-4);
+  --td-shadow-2: 0 14px 40px var(--shadow-2);
+}
+.lc-date-popup .t-popup__content { border: 1px solid var(--n-6); }
+/* 窄屏：范围选择的两个月并排有 560px 宽，手机上放不下，改成上下叠放，超出部分在弹层内滚动 */
+@media (max-width: 600px) {
+  .lc-date-popup .t-date-range-picker__panel-content-wrapper { flex-direction: column; }
+  .lc-date-popup .t-popup__content { max-height: 56vh; overflow-y: auto; }
+}
 
 /* 重跑确认（composables/useRerunConfirm）：弹窗挂在 body 上，样式只能写在全局 */
 .cv-rerun-line { margin: 0 0 8px; line-height: 1.6; }

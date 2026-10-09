@@ -20,7 +20,7 @@
       <div
         v-if="open"
         ref="menuEl"
-        class="chip-menu nodrag nowheel"
+        class="lc-menu chip-menu nodrag nowheel"
         :style="menuStyle"
         @mousedown.stop
         @wheel.stop
@@ -29,7 +29,7 @@
           <div
             v-for="o in (options || [])"
             :key="String(o.value)"
-            class="chip-item"
+            class="lc-menu-item chip-item"
             :class="{ active: String(o.value) === String(modelValue), rich: !!(o.desc || o.tag || o.icon) }"
             @click.stop="select(o.value)"
           >
@@ -53,7 +53,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, type CSSProperties } from 'vue'
+import { ref, computed } from 'vue'
+import { useFloatingMenu } from '@/composables/useFloatingMenu'
 
 interface Option {
   value: string | number
@@ -76,68 +77,12 @@ const emit = defineEmits<{
   (e: 'update:modelValue', v: string | number): void
 }>()
 
-// 模块级单例：全局只允许一个 chip 同时展开
-const ACTIVE_ID = ((): { value: string | null } => {
-  const w = window as any
-  if (!w.__cvChipActive) w.__cvChipActive = ref<string | null>(null)
-  return w.__cvChipActive
-})()
-
-let _seq = 0
-const myId = `cs-${++_seq}-${Math.random().toString(36).slice(2, 7)}`
-
 const root = ref<HTMLDivElement | null>(null)
 const btn = ref<HTMLButtonElement | null>(null)
 const menuEl = ref<HTMLDivElement | null>(null)
-const open = computed(() => ACTIVE_ID.value === myId)
 
-// 菜单跟随按钮位置（视口坐标系）
-const menuPos = ref({ top: 0, left: 0 })
-const menuStyle = computed<CSSProperties>(() => ({
-  position: 'fixed',
-  top: `${menuPos.value.top}px`,
-  left: `${menuPos.value.left}px`,
-  zIndex: 9999,
-}))
-
-function updateMenuPos() {
-  const b = btn.value
-  if (!b) return
-  const rect = b.getBoundingClientRect()
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const SAFE = 8
-  // 默认放在按钮下方
-  let top = rect.bottom + 6
-  let left = rect.left
-  // 菜单已挂载 → 根据实际尺寸做翻转 / 横向收缩，避免出屏被裁
-  const menu = menuEl.value
-  if (menu) {
-    const mh = menu.offsetHeight
-    const mw = menu.offsetWidth
-    // 下方放不下且上方放得下 → 翻到按钮上方
-    if (top + mh > vh - SAFE && rect.top - mh - 6 >= SAFE) {
-      top = rect.top - mh - 6
-    }
-    // 横向溢出右边 → 向左对齐到视口右边
-    if (left + mw > vw - SAFE) {
-      left = vw - mw - SAFE
-    }
-    if (left < SAFE) left = SAFE
-  }
-  menuPos.value = { top, left }
-}
-
-watch(open, async (v) => {
-  if (!v) return
-  updateMenuPos()
-  await nextTick()
-  updateMenuPos()
-})
-
-function onWinChange() {
-  if (open.value) updateMenuPos()
-}
+// 定位、互斥展开、点外面关闭：与表单下拉 LcSelect 共用同一套弹层逻辑
+const { open, menuStyle, toggle, close } = useFloatingMenu({ trigger: btn, menu: menuEl, root })
 
 const shownValue = computed(() => {
   if (props.displayValue !== undefined) return props.displayValue
@@ -145,36 +90,10 @@ const shownValue = computed(() => {
   return found ? found.label : String(props.modelValue ?? '')
 })
 
-function toggle() { ACTIVE_ID.value = open.value ? null : myId }
-function close() { if (open.value) ACTIVE_ID.value = null }
-
 function select(v: string | number) {
   emit('update:modelValue', v)
   close()
 }
-
-function onDocMousedown(e: MouseEvent) {
-  if (!open.value) return
-  const t = e.target as Node
-  // 菜单已经 Teleport 到 body，单纯判 root.contains 会把"点菜单内部"也算成外面
-  if (root.value && root.value.contains(t)) return
-  if (menuEl.value && menuEl.value.contains(t)) return
-  close()
-}
-
-// capture 阶段：先于 Vue Flow 的 pane mousedown 触发，
-// 避免被 stopPropagation 屏蔽导致点外面关不上
-onMounted(() => {
-  document.addEventListener('mousedown', onDocMousedown, true)
-  window.addEventListener('scroll', onWinChange, true)
-  window.addEventListener('resize', onWinChange)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', onDocMousedown, true)
-  window.removeEventListener('scroll', onWinChange, true)
-  window.removeEventListener('resize', onWinChange)
-  if (open.value) close()
-})
 </script>
 
 <style scoped>
@@ -224,37 +143,13 @@ onBeforeUnmount(() => {
 }
 .chip-chevron.rotated { transform: rotate(180deg); }
 
-/* Teleport 到 body 后的菜单 —— position/top/left/z-index 都由内联 menuStyle 提供 */
+/* Teleport 到 body 后的菜单 —— position/top/left/z-index 都由内联 menuStyle 提供；
+   面板与菜单项的基础外观在 base.css 的 .lc-menu / .lc-menu-item，与表单下拉共用 */
 .chip-menu {
   min-width: 150px;
   max-height: 62vh;
-  overflow-y: auto;
-  background: var(--n-4);
-  border: 1px solid var(--n-6);
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: 0 14px 40px var(--shadow-2);
 }
-/* 细滚动条 */
-.chip-menu::-webkit-scrollbar { width: 6px; }
-.chip-menu::-webkit-scrollbar-thumb { background: var(--n-7); border-radius: 3px; }
-
-.chip-item {
-  display: flex;
-  align-items: center;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--t-body);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease;
-}
-.chip-item:hover { background: var(--n-5); }
-.chip-item.active {
-  color: var(--accent-text);
-  background: var(--accent-dim);
-}
+.chip-item { white-space: nowrap; }
 
 /* ===== 富行：图标 + 标题 + 描述 + 标签（模型下拉） ===== */
 .chip-item.rich {

@@ -47,9 +47,7 @@
 
         <div class="lc-field preset">
           <label for="st-preset">{{ t('settings.storage.field.preset') }}</label>
-          <select id="st-preset" v-model="form.preset" class="lc-select" :disabled="busy" @change="onPresetChange">
-            <option v-for="p in PRESET_KEYS" :key="p" :value="p">{{ t('settings.storage.preset.' + p) }}</option>
-          </select>
+          <LcSelect id="st-preset" v-model="form.preset" :options="presetOptions" :disabled="busy" @change="onPresetChange" />
         </div>
         <ul class="hints" data-testid="storage-hints">
           <li v-for="(line, i) in presetHints" :key="i">{{ line }}</li>
@@ -93,11 +91,7 @@
           </div>
           <div class="lc-field">
             <label for="st-acl">{{ t('settings.storage.field.acl') }}</label>
-            <select id="st-acl" v-model="form.acl" class="lc-select" :disabled="busy">
-              <option value="">{{ t('settings.storage.acl.none') }}</option>
-              <option value="private">private</option>
-              <option value="public-read">public-read</option>
-            </select>
+            <LcSelect id="st-acl" v-model="form.acl" :options="aclOptions" :disabled="busy" />
             <span class="lc-help">{{ t('settings.storage.help.acl') }}</span>
           </div>
         </div>
@@ -204,12 +198,20 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
+import LcSelect from '@/components/LcSelect.vue'
 import type { StoragePreset, StorageS3Form, StorageStatus, StorageTestResult } from '@/types'
 
 const { t, tm, rt } = useI18n()
 
 const PRESET_KEYS: StoragePreset[] = ['aws', 'r2', 'oss', 'minio', 'custom']
 const DELIVERIES = ['proxy', 'redirect'] as const
+const presetOptions = computed(() => PRESET_KEYS.map(p => ({ value: p, label: t('settings.storage.preset.' + p) })))
+/** private / public-read 是 S3 的取值本身，不翻译 */
+const aclOptions = computed<{ value: StorageS3Form['acl']; label: string }[]>(() => [
+  { value: '', label: t('settings.storage.acl.none') },
+  { value: 'private', label: 'private' },
+  { value: 'public-read', label: 'public-read' },
+])
 
 /** 各家的地址写法与默认值。占位里的示例是格式，不是能直接用的值。 */
 const PRESETS: Record<StoragePreset, {

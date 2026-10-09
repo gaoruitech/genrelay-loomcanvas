@@ -10,6 +10,9 @@ export const SUPPORTED_LOCALES: { code: LocaleCode; label: string }[] = [
   { code: 'en', label: 'English' },
 ]
 
+/** 语言下拉用的选项（顶栏、引导页、外观设置） */
+export const LOCALE_OPTIONS = SUPPORTED_LOCALES.map(l => ({ value: l.code, label: l.label }))
+
 /** 把任意语言标识归到我们支持的两种之一；认不出来返回 null */
 export function normalizeLocale(v?: string | null): LocaleCode | null {
   if (!v) return null

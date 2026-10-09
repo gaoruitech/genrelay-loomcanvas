@@ -28,10 +28,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // 第三方库拆成独立 vendor chunk：跨部署可被浏览器长期缓存，且按需加载
+        // 第三方库拆成独立 vendor chunk：跨部署可被浏览器长期缓存，且按需加载。
+        // tdesign 不在这里归并：强行并成一个 chunk 的话，只有设置页用到的日期选择（连同它带进来的
+        // 下拉、弹层、dayjs，约 350 kB）和全部组件的样式都会进首屏。交给 rollup 自动分配后，
+        // 首屏只带 Message / Dialog，日期选择跟着设置页按需加载。
         manualChunks(id) {
           if (!id.includes('node_modules')) return
-          if (id.includes('tdesign')) return 'vendor-tdesign'
           if (id.includes('@vue-flow')) return 'vendor-vueflow'
           if (
             id.includes('/vue/') ||

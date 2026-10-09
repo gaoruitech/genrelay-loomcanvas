@@ -52,10 +52,14 @@
         </div>
         <div class="lc-dialog-body">
           <div class="lc-field">
-            <label>{{ t('settings.providers.type') }}</label>
-            <select v-model="dialog.typeId" class="lc-select" :disabled="!!dialog.existing || saving" @change="onTypeChange">
-              <option v-for="tp in types" :key="tp.type" :value="tp.type">{{ providerTypeLabel(tp) }}</option>
-            </select>
+            <label for="pv-type">{{ t('settings.providers.type') }}</label>
+            <LcSelect
+              id="pv-type"
+              v-model="dialog.typeId"
+              :options="typeOptions"
+              :disabled="!!dialog.existing || saving"
+              @change="onTypeChange"
+            />
             <span v-if="dialogType && isGaorui(dialogType)" class="lc-help">
               <a :href="GAORUI_URL" target="_blank" rel="noopener noreferrer">{{ t('setup.getKey') }}</a>
             </span>
@@ -189,6 +193,7 @@ const dialog = ref<DialogState | null>(null)
 const dialogError = ref('')
 const saving = ref(false)
 const dialogType = computed(() => types.value.find(x => x.type === dialog.value?.typeId) || null)
+const typeOptions = computed(() => types.value.map(tp => ({ value: tp.type, label: providerTypeLabel(tp) })))
 
 function openAdd() {
   const first = types.value[0]

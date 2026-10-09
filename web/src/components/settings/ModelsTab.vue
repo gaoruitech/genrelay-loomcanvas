@@ -6,10 +6,7 @@
         <p class="tab-desc">{{ t('settings.models.desc') }}</p>
       </div>
       <div class="head-tools">
-        <select v-model="kindFilter" class="lc-select sm kind-filter" :aria-label="t('settings.models.kind')">
-          <option value="">{{ t('common.all') }}</option>
-          <option v-for="k in KINDS" :key="k" :value="k">{{ t('settings.models.kinds.' + k) }}</option>
-        </select>
+        <LcSelect v-model="kindFilter" class="kind-filter" size="sm" :options="kindOptions" :aria-label="t('settings.models.kind')" />
         <input v-model="keyword" class="lc-input sm search" :placeholder="t('common.search')" />
       </div>
     </div>
@@ -94,12 +91,17 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { formatMoney } from '@/utils/cost'
+import LcSelect from '@/components/LcSelect.vue'
 import PricingEditor from './PricingEditor.vue'
 import type { AdminModel, ModelKind, ModelPricing } from '@/types'
 
 const { t } = useI18n()
 
 const KINDS: ModelKind[] = ['image', 'video', 'chat']
+const kindOptions = computed<{ value: ModelKind | ''; label: string }[]>(() => [
+  { value: '', label: t('common.all') },
+  ...KINDS.map(k => ({ value: k, label: t('settings.models.kinds.' + k) })),
+])
 
 const models = ref<AdminModel[]>([])
 const loading = ref(true)

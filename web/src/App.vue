@@ -1,25 +1,28 @@
 <template>
-  <!-- 连不上服务端 -->
-  <div v-if="!app.bootstrap" class="app-center">
-    <div class="app-notice">
-      <h1>{{ t('app.bootstrapFailed') }}</h1>
-      <p>{{ t('app.bootstrapHint') }}</p>
-      <p v-if="app.bootstrapError" class="app-notice-detail">{{ app.bootstrapError }}</p>
-      <button class="lc-btn primary" :disabled="retrying" @click="retry">{{ t('common.retry') }}</button>
+  <!-- TDesign 组件（日期选择、确认弹窗）的内置文案跟随界面语言 -->
+  <t-config-provider :global-config="TDESIGN_LOCALES[app.locale]">
+    <!-- 连不上服务端 -->
+    <div v-if="!app.bootstrap" class="app-center">
+      <div class="app-notice">
+        <h1>{{ t('app.bootstrapFailed') }}</h1>
+        <p>{{ t('app.bootstrapHint') }}</p>
+        <p v-if="app.bootstrapError" class="app-notice-detail">{{ app.bootstrapError }}</p>
+        <button class="lc-btn primary" :disabled="retrying" @click="retry">{{ t('common.retry') }}</button>
+      </div>
     </div>
-  </div>
 
-  <!-- 分享只读页：任何人都能看，不需要口令 -->
-  <router-view v-else-if="route.meta.public" />
+    <!-- 分享只读页：任何人都能看，不需要口令 -->
+    <router-view v-else-if="route.meta.public" />
 
-  <PasswordScreen v-else-if="!app.authed" />
+    <PasswordScreen v-else-if="!app.authed" />
 
-  <div v-else class="app-shell">
-    <AppTopBar v-if="!route.meta.bare && !app.immersive" />
-    <main class="app-main">
-      <router-view />
-    </main>
-  </div>
+    <div v-else class="app-shell">
+      <AppTopBar v-if="!route.meta.bare && !app.immersive" />
+      <main class="app-main">
+        <router-view />
+      </main>
+    </div>
+  </t-config-provider>
 </template>
 
 <script setup lang="ts">
@@ -29,6 +32,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { loadModels } from '@/utils/canvasModels'
 import { ensureSetup } from '@/router'
+import { TDESIGN_LOCALES } from '@/locales/tdesign'
 import AppTopBar from '@/components/AppTopBar.vue'
 import PasswordScreen from '@/components/PasswordScreen.vue'
 

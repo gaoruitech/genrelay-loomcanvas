@@ -20,15 +20,15 @@
     </nav>
 
     <div class="tools">
-      <select
+      <LcSelect
         class="lang"
-        :value="app.locale"
-        :title="t('app.language')"
+        size="sm"
+        auto-width
+        :model-value="app.locale"
+        :options="LOCALE_OPTIONS"
         :aria-label="t('app.language')"
-        @change="onLocale"
-      >
-        <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
-      </select>
+        @update:model-value="app.setLocale"
+      />
 
       <button class="icon-btn" :title="themeTitle" :aria-label="themeTitle" @click="app.toggleTheme()">
         <svg v-if="app.resolvedTheme === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -54,8 +54,8 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { SUPPORTED_LOCALES } from '@/locales'
-import type { LocaleCode } from '@/types'
+import { LOCALE_OPTIONS } from '@/locales'
+import LcSelect from '@/components/LcSelect.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -63,10 +63,6 @@ const app = useAppStore()
 
 const themeTitle = computed(() =>
   app.resolvedTheme === 'dark' ? t('app.themeToLight') : t('app.themeToDark'))
-
-function onLocale(e: Event) {
-  app.setLocale((e.target as HTMLSelectElement).value as LocaleCode)
-}
 </script>
 
 <style scoped>
@@ -99,13 +95,8 @@ function onLocale(e: Event) {
 .nav-link:hover { background: var(--n-3); color: var(--t-max); text-decoration: none; }
 .nav-link.active { background: var(--accent-dim); color: var(--accent-text); }
 .tools { display: flex; align-items: center; gap: 6px; }
-.lang {
-  height: 30px; padding: 0 8px; border-radius: 8px;
-  background: transparent; color: var(--t-body); border: 1px solid var(--n-5);
-  font: inherit; font-size: 12.5px; cursor: pointer; outline: none;
-}
-.lang:hover { border-color: var(--n-8); }
-.lang option { background: var(--n-2); color: var(--t-body); }
+/* 顶栏上的语言下拉：透明底，圆角跟旁边的图标按钮一致 */
+.lang :deep(.lcs-trigger) { background: transparent; color: var(--t-body); border-radius: 8px; font-size: 12.5px; }
 .icon-btn {
   display: grid; place-items: center; width: 30px; height: 30px;
   border: 0; border-radius: 8px; background: transparent; color: var(--t-dim); cursor: pointer;

@@ -7,7 +7,10 @@ import { useAppStore } from '@/stores/app'
 import { loadModels } from '@/utils/canvasModels'
 
 // tdesign 组件按需引入(由 unplugin-vue-components 自动处理模板中的 <t-xxx>)；
-// 仅程序化调用的插件需手动引样式（resolver 只扫描模板）
+// 仅程序化调用的插件需手动引样式（resolver 只扫描模板）。
+// 第一行是 TDesign 的基础令牌（尺寸、间距、颜色）：各组件自己的样式里不带，必须单独引一次，
+// 而且要排在本项目的样式之前，base.css 里对品牌色的覆盖才压得住。
+import 'tdesign-vue-next/es/style/index.css'
 import 'tdesign-vue-next/es/message/style/css'
 import 'tdesign-vue-next/es/dialog/style/css'
 

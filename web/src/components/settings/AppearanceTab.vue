@@ -37,17 +37,11 @@
       <div class="form-grid">
         <div class="lc-field">
           <label for="ap-theme">{{ t('settings.appearance.defaultTheme') }}</label>
-          <select id="ap-theme" v-model="form.defaultTheme" class="lc-select" :disabled="saving">
-            <option value="dark">{{ t('settings.appearance.themeDark') }}</option>
-            <option value="light">{{ t('settings.appearance.themeLight') }}</option>
-            <option value="system">{{ t('settings.appearance.themeSystem') }}</option>
-          </select>
+          <LcSelect id="ap-theme" v-model="form.defaultTheme" :options="themeOptions" :disabled="saving" />
         </div>
         <div class="lc-field">
           <label for="ap-locale">{{ t('settings.appearance.defaultLocale') }}</label>
-          <select id="ap-locale" v-model="form.defaultLocale" class="lc-select" :disabled="saving">
-            <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
-          </select>
+          <LcSelect id="ap-locale" v-model="form.defaultLocale" :options="LOCALE_OPTIONS" :disabled="saving" />
         </div>
       </div>
       <p class="lc-help">{{ t('settings.appearance.defaultsHelp') }}</p>
@@ -63,14 +57,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { apiErrorMessage } from '@/utils/api'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { useAdminSettings } from '@/composables/useAdminSettings'
 import { useAppStore } from '@/stores/app'
-import { SUPPORTED_LOCALES } from '@/locales'
+import { LOCALE_OPTIONS } from '@/locales'
+import LcSelect from '@/components/LcSelect.vue'
 
 const { t } = useI18n()
 const app = useAppStore()
@@ -80,6 +75,12 @@ const { form, loading, loadError, saving, load, save } = useAdminSettings(
   { siteName: '', logoUrl: '', defaultTheme: 'dark', defaultLocale: 'zh-CN' },
 )
 onMounted(load)
+
+const themeOptions = computed(() => [
+  { value: 'dark', label: t('settings.appearance.themeDark') },
+  { value: 'light', label: t('settings.appearance.themeLight') },
+  { value: 'system', label: t('settings.appearance.themeSystem') },
+])
 
 const error = ref('')
 const uploading = ref(false)
