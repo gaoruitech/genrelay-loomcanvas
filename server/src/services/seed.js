@@ -11,10 +11,13 @@ const TextTemplate = require('../models/TextTemplate')
 const { LOCAL_USER } = require('../constants')
 
 const SEED_KEY = '_seedVersion'
-const SEED_VERSION = 1
+const SEED_VERSION = 2
 
 const node = (id, type, x, y, data = {}) => ({ id, type, position: { x, y }, data })
-const edge = (source, target) => ({ id: `e-${source}-${target}`, source, target })
+// 连线必须带连接点：画布靠它区分文字输入、图片输入和各自的输出
+const edge = (source, sourceHandle, target, targetHandle) => ({
+  id: `e-${source}-${target}`, source, sourceHandle, target, targetHandle,
+})
 
 const TEMPLATES = [
   {
@@ -27,7 +30,7 @@ const TEMPLATES = [
         node('prompt', 'text', 0, 0, { text: '一只坐在窗台上的橘猫，午后阳光，胶片质感' }),
         node('gen', 'image-gen', 420, 0),
       ],
-      edges: [edge('prompt', 'gen')],
+      edges: [edge('prompt', 'text-out', 'gen', 'text-in')],
       viewport: { x: 0, y: 0, zoom: 1 },
       group: false,
     },
@@ -44,7 +47,11 @@ const TEMPLATES = [
         node('motion', 'text', 420, 360, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
         node('video', 'video-gen', 860, 120),
       ],
-      edges: [edge('prompt', 'image'), edge('image', 'video'), edge('motion', 'video')],
+      edges: [
+        edge('prompt', 'text-out', 'image', 'text-in'),
+        edge('image', 'image-out', 'video', 'image-in'),
+        edge('motion', 'text-out', 'video', 'text-in'),
+      ],
       viewport: { x: 0, y: 0, zoom: 1 },
       group: false,
     },
@@ -69,9 +76,10 @@ async function seed() {
   if (marker && Number(marker.value) >= SEED_VERSION) return false
 
   for (const t of TEMPLATES) {
+    // 内置模板以代码为准：提升 SEED_VERSION 后会用新内容覆盖旧的内置模板
     await Template.updateOne(
       { key: t.key },
-      { $setOnInsert: { ...t, userId: LOCAL_USER, builtin: true, isActive: true } },
+      { $set: { ...t, userId: LOCAL_USER, builtin: true }, $setOnInsert: { isActive: true } },
       { upsert: true }
     )
   }

@@ -188,3 +188,42 @@ module.exports = {
   async chat(cfg, req) { /* 对话类 → { text } */ },
 }
 ```
+
+## 10. 补充约定（联调后确定）
+
+实现过程中前后端对齐下来的细节，同样是约定的一部分。
+
+**模型与运行**
+
+- `ModelSpec.options.imgModes?: string[]`（`frames` 首尾帧 / `multi` 多图参考），对应 `params.imgMode`。
+- 前端每个"数量"单位提交一次 `POST /api/runs`；一次运行的 `outputs[]` 全部使用。
+- `POST /api/runs/estimate` 也会对对话模型调用（只有 `{ model, count }`），返回必须带 `currency`，未知时 `unknown: true`。
+- 价格表的键：`by: "resolution"` 用分辨率，`by: "duration"` 用秒数字符串，`by: "resolution_duration"` 用 `"<分辨率>:<秒>"`，例如 `720p:5`。
+- 同步型接入（`submit` 直接给出结果）受生成总时长限制，不受 60 秒提交限制。
+- 提交失败只在"上游确定没收到"时重试（连接被拒、域名解析失败、429、503）；超时和连接重置不重试，避免重复产生计费任务。
+- 进程崩溃后，停在 `running` 且没有外部任务号的运行直接判失败，不重新提交。
+
+**文件**
+
+- `POST /api/files/upload` 对图片返回 `thumbnailUrl`。
+- 文件地址可以是站内相对地址（`/files/...`）；`/files/*` 不需要登录。
+- 没有公网地址时，本地存储里的参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）会报错并提示设置 `PUBLIC_URL` 或改用对象存储。
+
+**画布**
+
+- `PUT /api/workflow/:id` 只带 `{ name }` 时只改名；保存 `settings.bg`；返回 `updatedAt`。
+- `POST /api/workflow/download` `{ url, filename }` 代理下载跨域文件；`POST /api/workflow/:id/download-zip` `{ urls? }`，不带 `urls` 表示整张画布。
+- 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`）。
+
+**分享链接**
+
+- `POST /api/canvas-share/publish` `{ workflowId, title?, description?, expiresInDays? }` → `{ id, token, updated, expiresAt }`，不带 `expiresInDays` 表示永不过期。
+- `GET /api/canvas-share/:token` 公开只读；不存在、已过期、已撤销统一返回 404。
+- `GET /api/canvas-share/mine` 保留已撤销和已过期的链接；`DELETE /api/canvas-share/:id` 第一次撤销，对已撤销的再删一次才从列表移除；撤销后的 token 不复用。
+
+**设置与用量**
+
+- `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultTheme`、`defaultLocale`、`concurrency`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`maxRetries`、`retentionDays`。
+- `GET /api/admin/usage` → `{ items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`。
+- 接入的新增和修改：字段直接放在请求体顶层；修改时不带密钥表示保持不变，`baseUrl: ''` 表示恢复默认地址。
+- 只有真正的登录失败才返回 401（前端收到 401 会清除登录状态）。
