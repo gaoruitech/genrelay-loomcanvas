@@ -119,7 +119,10 @@ test('upstream reports failure: run fails with the upstream reason, onFailed fir
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '内容违规')
+  // The upstream's words are kept as a parameter of our own message.
+  assert.equal(run.errorCode, 'upstream.failed_detail')
+  assert.deepEqual(run.errorParams, { detail: '内容违规' })
+  assert.ok(run.error.includes('内容违规'))
   assert.deepEqual(billing.calls.map((c) => c[0]), ['beforeRun', 'onFailed'])
 })
 
@@ -144,7 +147,7 @@ test('submit that never answers hits the submit deadline', async () => {
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '提交超时')
+  assert.equal(run.errorCode, 'run.timeout_submit')
   assert.ok(Date.now() - t0 < 1000, 'failed promptly')
 })
 
@@ -159,7 +162,7 @@ test('a task that never finishes hits the poll deadline', async () => {
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '生成超时')
+  assert.equal(run.errorCode, 'run.timeout_generate')
   assert.ok(polls >= 2)
 })
 
@@ -173,7 +176,7 @@ test('a poll call that hangs cannot outlive the poll deadline', async () => {
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '生成超时')
+  assert.equal(run.errorCode, 'run.timeout_generate')
 })
 
 test('download that hangs hits the download deadline', async () => {
@@ -190,7 +193,7 @@ test('download that hangs hits the download deadline', async () => {
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '结果下载超时')
+  assert.equal(run.errorCode, 'run.timeout_download')
 })
 
 test('cancel while polling: aborts the provider call, marks canceled, refunds', async () => {
@@ -373,7 +376,7 @@ test('the poll deadline counts from the original submission, across restarts', a
   runner.enqueue(id)
   const run = await settled(store, id)
   assert.equal(run.status, 'failed')
-  assert.equal(run.error, '生成超时')
+  assert.equal(run.errorCode, 'run.timeout_generate')
 })
 
 test('concurrency limit is respected', async () => {
@@ -410,7 +413,7 @@ test('chat runs: text result, chat deadline', async () => {
   slow.runner.enqueue(id2)
   const run2 = await settled(slow.store, id2)
   assert.equal(run2.status, 'failed')
-  assert.equal(run2.error, '对话超时')
+  assert.equal(run2.errorCode, 'run.timeout_chat')
 })
 
 test('withDeadline rejects on timeout even when the work ignores its signal', async () => {

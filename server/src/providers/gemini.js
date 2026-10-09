@@ -20,6 +20,7 @@
  */
 const { request, ProviderError, trimBase, parseModelList } = require('./http')
 const { LONG_CALL_MS } = require('./openaiShared')
+const { msg } = require('../i18n')
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
 const DEFAULT_MODELS = 'gemini-2.5-flash-image'
@@ -34,7 +35,7 @@ function headers(cfg) {
 }
 
 function requireKey(cfg) {
-  if (!cfg.apiKey) throw new ProviderError('未配置 API Key')
+  if (!cfg.apiKey) throw new ProviderError('provider.api_key_missing')
 }
 
 const isImageModel = (id) => /image|imagen|banana/i.test(id)
@@ -122,11 +123,11 @@ function imagesFromResponse(data) {
 
 function refusal(data) {
   const block = data && data.promptFeedback && data.promptFeedback.blockReason
-  if (block) return `请求被上游拦截（${block}）`
+  if (block) return msg('upstream.blocked', { reason: block })
   const cand = data && Array.isArray(data.candidates) && data.candidates[0]
   const reason = cand && cand.finishReason
-  if (reason && reason !== 'STOP') return `上游未生成结果（${reason}）`
-  return ''
+  if (reason && reason !== 'STOP') return msg('upstream.no_result_reason', { reason })
+  return null
 }
 
 async function generate(cfg, model, body, signal) {
@@ -155,8 +156,8 @@ module.exports = {
   label: 'Google Gemini',
   fields: [
     { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: '接口地址', placeholder: DEFAULT_BASE_URL },
-    { key: 'models', label: '模型', type: 'textarea', placeholder: DEFAULT_MODELS, help: '逗号分隔；留空时自动读取可用模型。名称含 image 的按图片模型处理，其余按对话模型处理' },
+    { key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE_URL },
+    { key: 'models', label: 'Models', type: 'textarea', placeholder: DEFAULT_MODELS, help: 'Comma-separated. Leave empty to detect the available models; names containing "image" are treated as image models, the rest as chat models.' },
   ],
   defaultBaseUrl: DEFAULT_BASE_URL,
   sync: true,
@@ -173,14 +174,14 @@ module.exports = {
   async test(cfg, { signal } = {}) {
     requireKey(cfg)
     const ids = await discover(cfg, signal)
-    return { ok: true, message: '连接成功', modelCount: ids.length }
+    return { ok: true, modelCount: ids.length }
   },
 
   async submit(cfg, run) {
     requireKey(cfg)
-    if (run.kind !== 'image') throw new ProviderError('该接入只支持图片生成和对话')
+    if (run.kind !== 'image') throw new ProviderError('provider.image_chat_only')
     const parts = await userParts(run)
-    if (!parts.length) throw new ProviderError('请填写提示词或接入参考图')
+    if (!parts.length) throw new ProviderError('run.prompt_or_image_required')
     const p = run.params || {}
     const imageConfig = {}
     if (p.aspectRatio && p.aspectRatio !== 'auto') imageConfig.aspectRatio = p.aspectRatio
@@ -191,24 +192,24 @@ module.exports = {
     const data = await generate(cfg, run.model, { contents: [{ role: 'user', parts }], generationConfig }, run.signal)
     const { outputs, text } = imagesFromResponse(data)
     if (!outputs.length) {
-      throw new ProviderError(refusal(data) || (text ? `上游只返回了文字：${text.slice(0, 200)}` : '上游没有返回图片'))
+      throw new ProviderError(refusal(data) || (text ? msg('upstream.text_only', { text: text.slice(0, 200) }) : msg('upstream.no_image')))
     }
     return { outputs }
   },
 
   async poll() {
-    throw new ProviderError('该接入没有异步任务')
+    throw new ProviderError('provider.no_async')
   },
 
   async chat(cfg, req) {
     requireKey(cfg)
     const parts = await userParts(req)
-    if (!parts.length) throw new ProviderError('请填写提示词')
+    if (!parts.length) throw new ProviderError('run.prompt_required')
     const body = { contents: [{ role: 'user', parts }] }
     if (req.systemPrompt) body.systemInstruction = { parts: [{ text: req.systemPrompt }] }
     const data = await generate(cfg, req.model, body, req.signal)
     const { text } = imagesFromResponse(data)
-    if (!text) throw new ProviderError(refusal(data) || '上游没有返回文本内容')
+    if (!text) throw new ProviderError(refusal(data) || 'upstream.no_text')
     const u = data && data.usageMetadata
     return {
       text,

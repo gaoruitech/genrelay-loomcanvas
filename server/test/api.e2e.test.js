@@ -15,6 +15,8 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const sharp = require('sharp')
+const zh = require('../src/i18n/zh-CN')
+const en = require('../src/i18n/en')
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomcanvas-e2e-'))
 process.env.SECRET_KEY = 'e2e-test-secret-key-0123456789'
@@ -115,8 +117,8 @@ test('LoomCanvas API end to end', async (t) => {
 
   let token = ''
   /** JSON call; returns { status, body }. */
-  async function call(method, pathname, body, { auth = true, raw = false } = {}) {
-    const headers = {}
+  async function call(method, pathname, body, { auth = true, raw = false, headers: extra = {} } = {}) {
+    const headers = { ...extra }
     if (auth && token) headers.Authorization = `Bearer ${token}`
     let payload
     if (body instanceof FormData) payload = body
@@ -174,7 +176,7 @@ test('LoomCanvas API end to end', async (t) => {
     // Updating other fields with a blank key keeps the stored key.
     const updated = await data('PUT', `/api/admin/providers/${providerId}`, { name: 'Fake upstream', apiKey: '' })
     assert.deepEqual([updated.name, updated.hasKey, updated.keyTail], ['Fake upstream', true, '3456'])
-    assert.deepEqual(await data('POST', `/api/admin/providers/${providerId}/test`), { ok: true, message: '连接成功', modelCount: 2 })
+    assert.deepEqual(await data('POST', `/api/admin/providers/${providerId}/test`), { ok: true, message: zh['provider.test_ok'], modelCount: 2 })
     assert.equal((await call('GET', '/api/app/bootstrap')).body.data.hasProvider, true)
   })
 
@@ -274,7 +276,7 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal((await call('GET', '/api/workflow/' + '0'.repeat(24))).status, 404)
 
     const dup = await data('POST', `/api/workflow/${workflowId}/duplicate`)
-    assert.equal(dup.name, '新名字 副本')
+    assert.equal(dup.name, zh['canvas.copy_name'].replace('{name}', '新名字'))
     await data('DELETE', `/api/workflow/${dup.id}`)
     assert.equal((await data('GET', '/api/workflow/list')).length, 1)
 
@@ -349,6 +351,19 @@ test('LoomCanvas API end to end', async (t) => {
     const run = await waitRun(`/api/runs/${runId}`)
     assert.equal(run.status, 'failed')
     assert.match(run.error, /bad key/)
+    // The reason is stored as a message code, so each reader gets it in their own language;
+    // the upstream's own words ("bad key") are passed through untranslated.
+    assert.equal(run.errorCode, 'upstream.submit_failed_detail')
+    const inLocale = async (locale) => (await call('GET', `/api/runs/${runId}`, undefined, { headers: { 'X-Locale': locale } })).body.data.error
+    assert.equal(await inLocale('en'), en['upstream.submit_failed_detail'].replace('{detail}', 'bad key'))
+    assert.equal(await inLocale('zh-CN'), zh['upstream.submit_failed_detail'].replace('{detail}', 'bad key'))
+    const batch = await call('POST', '/api/runs/status', { ids: [runId] }, { headers: { 'X-Locale': 'en' } })
+    assert.equal(batch.body.data[0].error, await inLocale('en'))
+    const records = await call('GET', '/api/admin/usage/records?status=failed', undefined, { headers: { 'X-Locale': 'en' } })
+    assert.equal(records.body.data.list.find((r) => r.id === runId).error, await inLocale('en'))
+    // A record written before message codes existed still shows the text it has.
+    await mongoose.connection.collection('runs').updateOne({ _id: new mongoose.Types.ObjectId(runId) }, { $set: { error: '旧版本写下的原因' }, $unset: { errorCode: '', errorParams: '' } })
+    assert.equal(await inLocale('en'), '旧版本写下的原因')
     await data('PUT', `/api/admin/providers/${providerId}`, { apiKey: 'sk-e2e-key-abcdef123456' })
 
     for (const body of [{}, { model: 'nope' }, { model: 'ghost:model', prompt: 'x' }, { model: 'gaorui:nano-banana-2', prompt: 5 }, { model: 'gaorui:nano-banana-2', imageUrls: ['data:image/png;base64,AAAA'] }, { model: 'gaorui:nano-banana-2', params: [] }, { model: 'gaorui:chat-small', prompt: 'x' }]) {
@@ -518,7 +533,25 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal((await call('GET', '/api/nope')).status, 404)
     const malformed = await fetch(base + '/api/brand-kits', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{oops' })
     assert.equal(malformed.status, 400)
-    assert.deepEqual(Object.keys(await malformed.json()).sort(), ['data', 'message', 'result'])
+    const envelope = await malformed.json()
+    assert.deepEqual(Object.keys(envelope).sort(), ['code', 'data', 'message', 'result'])
+    assert.equal(envelope.code, 'common.body_not_json')
+
+    // Language of a message: X-Locale, then Accept-Language, then the site default.
+    const said = async (headers) => (await call('GET', '/api/runs/not-an-id', undefined, { headers })).body
+    const bad = (catalog) => catalog['validation.bad_format'].replace('{field}', 'id')
+    assert.deepEqual([(await said({})).message, (await said({})).code], [bad(zh), 'validation.bad_format'])
+    assert.equal((await said({ 'X-Locale': 'en' })).message, bad(en))
+    assert.equal((await said({ 'Accept-Language': 'en-US,en;q=0.9,zh;q=0.8' })).message, bad(en))
+    assert.equal((await said({ 'X-Locale': 'zh-CN', 'Accept-Language': 'en' })).message, bad(zh))
+    assert.equal((await said({ 'X-Locale': 'fr', 'Accept-Language': 'fr' })).message, bad(zh), 'unsupported languages fall through')
+    await data('PUT', '/api/admin/settings', { defaultLocale: 'en' })
+    assert.equal((await said({})).message, bad(en), 'site default')
+    assert.equal((await said({ 'Accept-Language': 'zh-CN' })).message, bad(zh))
+    assert.equal((await call('POST', '/api/auth/login', { password: 'nope' }, { auth: false })).body.message, en['auth.wrong_password'])
+    await data('PUT', '/api/admin/settings', { defaultLocale: 'zh-CN' })
+    const types = await call('GET', '/api/admin/provider-types', undefined, { headers: { 'X-Locale': 'en' } })
+    assert.equal(types.body.data.find((p) => p.type === 'gaorui').label, en['provider.gaorui.label'])
     await data('DELETE', `/api/admin/providers/${providerId}`)
     assert.deepEqual(await data('GET', '/api/models'), [])
     assert.equal(await mongoose.connection.collection('modeloverrides').countDocuments(), 0, 'overrides go with their provider')

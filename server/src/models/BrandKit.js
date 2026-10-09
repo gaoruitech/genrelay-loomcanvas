@@ -17,7 +17,8 @@ const brandKitSchema = new mongoose.Schema({
   refImages: {
     type: [String],
     default: [],
-    validate: { validator: (v) => !Array.isArray(v) || v.length <= MAX_REF_IMAGES, message: `固定参考图最多 ${MAX_REF_IMAGES} 张` },
+    // `message` is a catalog key; the error handler renders it with these properties.
+    validate: { validator: (v) => !Array.isArray(v) || v.length <= MAX_REF_IMAGES, message: 'brandKit.ref_images_max', max: MAX_REF_IMAGES },
   },
   promptPrefix: { type: String, default: '', maxlength: 1000 },
   // Appended to the prompt as text; most image APIs have no negative-prompt parameter.

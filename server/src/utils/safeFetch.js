@@ -18,12 +18,18 @@ const https = require('https')
 const dns = require('dns')
 const net = require('net')
 const { PassThrough } = require('stream')
+const { t, msg } = require('../i18n')
 
+/**
+ * `code` is for callers to branch on; `i18n` is the catalog message a caller
+ * may show. Not user-facing by itself: each caller decides.
+ */
 class SafeFetchError extends Error {
-  constructor(code, message, extra = {}) {
-    super(message)
+  constructor(code, key, params = {}, extra = {}) {
+    super(t('en', key, params))
     this.name = 'SafeFetchError'
     this.code = code
+    this.i18n = msg(key, params)
     Object.assign(this, extra)
   }
 }
@@ -106,20 +112,20 @@ function hostOf(u) {
 function assertPublicUrl(raw, { allowPrivate = false } = {}) {
   let u
   try { u = raw instanceof URL ? raw : new URL(String(raw)) } catch {
-    throw new SafeFetchError('EURL', '地址无法解析')
+    throw new SafeFetchError('EURL', 'fetch.bad_url')
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-    throw new SafeFetchError('EPROTO', '仅支持 http/https 地址')
+    throw new SafeFetchError('EPROTO', 'fetch.bad_scheme')
   }
-  if (u.username || u.password) throw new SafeFetchError('EURL', '地址中不能包含账号密码')
+  if (u.username || u.password) throw new SafeFetchError('EURL', 'fetch.credentials')
   const host = hostOf(u)
-  if (!host) throw new SafeFetchError('EURL', '地址缺少主机名')
+  if (!host) throw new SafeFetchError('EURL', 'fetch.no_host')
   if (allowPrivate || allowedHosts.has(host)) return u
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new SafeFetchError('EBLOCKED', '不允许访问内网地址')
+    throw new SafeFetchError('EBLOCKED', 'fetch.private_address')
   }
   if (net.isIP(host) && isBlockedAddress(host)) {
-    throw new SafeFetchError('EBLOCKED', '不允许访问内网地址')
+    throw new SafeFetchError('EBLOCKED', 'fetch.private_address')
   }
   return u
 }
@@ -131,11 +137,11 @@ function guardedLookup(hostname, options, callback) {
   dns.lookup(hostname, { ...opts, all: true }, (err, addresses) => {
     if (err) return callback(err)
     const list = Array.isArray(addresses) ? addresses : [{ address: addresses, family: net.isIP(addresses) }]
-    if (!list.length) return callback(new SafeFetchError('EDNS', '域名解析失败'))
+    if (!list.length) return callback(new SafeFetchError('EDNS', 'fetch.dns_failed'))
     // One private record is enough to refuse: otherwise a name with a public
     // and a private record could be steered to the private one.
     if (list.some((a) => isBlockedAddress(a.address))) {
-      return callback(new SafeFetchError('EBLOCKED', '不允许访问内网地址'))
+      return callback(new SafeFetchError('EBLOCKED', 'fetch.private_address'))
     }
     if (opts.all) return callback(null, list)
     callback(null, list[0].address, list[0].family)
@@ -176,7 +182,7 @@ async function open(raw, opts = {}) {
   } = opts
 
   const timeoutCtl = new AbortController()
-  const timer = setTimeout(() => timeoutCtl.abort(new SafeFetchError('ETIMEDOUT', '下载超时')), timeoutMs)
+  const timer = setTimeout(() => timeoutCtl.abort(new SafeFetchError('ETIMEDOUT', 'fetch.timeout')), timeoutMs)
   const signal = outerSignal ? AbortSignal.any([outerSignal, timeoutCtl.signal]) : timeoutCtl.signal
   const done = () => clearTimeout(timer)
 
@@ -184,11 +190,11 @@ async function open(raw, opts = {}) {
     if (err instanceof SafeFetchError) return err
     if (timeoutCtl.signal.aborted) return timeoutCtl.signal.reason
     if (outerSignal && outerSignal.aborted) {
-      const e = new SafeFetchError('EABORTED', '下载已取消')
+      const e = new SafeFetchError('EABORTED', 'fetch.aborted')
       e.cause = outerSignal.reason
       return e
     }
-    return new SafeFetchError(err.code || 'ENETWORK', `下载失败：${err.message}`, { cause: err })
+    return new SafeFetchError(err.code || 'ENETWORK', 'fetch.failed_detail', { detail: err.message }, { cause: err })
   }
 
   try {
@@ -200,8 +206,8 @@ async function open(raw, opts = {}) {
       if (REDIRECT_CODES.has(res.statusCode)) {
         res.resume()
         const loc = res.headers.location
-        if (!loc) throw new SafeFetchError('EREDIRECT', '重定向缺少目标地址')
-        if (hop >= maxRedirects) throw new SafeFetchError('EREDIRECT', '重定向次数过多')
+        if (!loc) throw new SafeFetchError('EREDIRECT', 'fetch.redirect_no_target')
+        if (hop >= maxRedirects) throw new SafeFetchError('EREDIRECT', 'fetch.too_many_redirects')
         u = assertPublicUrl(new URL(loc, u), { allowPrivate })
         // Caller-supplied headers (possibly credentials) stay with the first origin.
         if (u.origin !== origin) sendHeaders = {}
@@ -209,7 +215,7 @@ async function open(raw, opts = {}) {
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         res.resume()
-        throw new SafeFetchError('EHTTP', `下载失败：HTTP ${res.statusCode}`, { status: res.statusCode })
+        throw new SafeFetchError('EHTTP', 'fetch.http_error', { status: res.statusCode }, { status: res.statusCode })
       }
       return { res, url: u.toString(), done, translate, signal }
     }
@@ -234,12 +240,12 @@ async function safeFetch(raw, opts = {}) {
   const { res, url, done, translate } = await open(raw, opts)
   try {
     const len = declaredLength(res)
-    if (len !== null && len > maxBytes) throw new SafeFetchError('E2BIG', '文件超过大小上限')
+    if (len !== null && len > maxBytes) throw new SafeFetchError('E2BIG', 'file.too_large')
     const chunks = []
     let total = 0
     for await (const chunk of res) {
       total += chunk.length
-      if (total > maxBytes) throw new SafeFetchError('E2BIG', '文件超过大小上限')
+      if (total > maxBytes) throw new SafeFetchError('E2BIG', 'file.too_large')
       chunks.push(chunk)
     }
     return { buffer: Buffer.concat(chunks, total), contentType: contentTypeOf(res), url }
@@ -263,7 +269,7 @@ async function safeFetchStream(raw, opts = {}) {
   if (len !== null && len > maxBytes) {
     res.destroy()
     done()
-    throw new SafeFetchError('E2BIG', '文件超过大小上限')
+    throw new SafeFetchError('E2BIG', 'file.too_large')
   }
   const out = new PassThrough()
   let total = 0
@@ -272,7 +278,7 @@ async function safeFetchStream(raw, opts = {}) {
   signal.addEventListener('abort', onAbort, { once: true })
   res.on('data', (chunk) => {
     total += chunk.length
-    if (total > maxBytes) return fail(new SafeFetchError('E2BIG', '文件超过大小上限'))
+    if (total > maxBytes) return fail(new SafeFetchError('E2BIG', 'file.too_large'))
     if (!out.write(chunk)) { res.pause(); out.once('drain', () => res.resume()) }
   })
   res.on('end', () => { signal.removeEventListener('abort', onAbort); done(); out.end() })

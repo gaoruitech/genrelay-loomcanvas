@@ -29,7 +29,7 @@ function cors(allowedOrigins) {
     if (origin && allowed.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin)
       res.setHeader('Vary', 'Origin')
-      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Locale')
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition')
       res.setHeader('Access-Control-Max-Age', '600')

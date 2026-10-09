@@ -2,7 +2,6 @@
   {
     "id": "nano-banana-pro",
     "label": "Nano Banana Pro",
-    "desc": "高质量图片生成与编辑",
     "kind": "image",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -18,7 +17,6 @@
   {
     "id": "nano-banana-2",
     "label": "Nano Banana 2",
-    "desc": "图片生成与编辑",
     "kind": "image",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -34,7 +32,6 @@
   {
     "id": "nano-banana-2.1",
     "label": "Nano Banana 2.1",
-    "desc": "新版图片模型",
     "kind": "image",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -50,7 +47,6 @@
   {
     "id": "nano-banana-2-lite",
     "label": "Nano Banana 2 Lite",
-    "desc": "轻量图片模型，仅 1K",
     "kind": "image",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -66,7 +62,6 @@
   {
     "id": "omni-flash",
     "label": "Omni Flash",
-    "desc": "文生视频 / 图生视频，6-10 秒",
     "kind": "video",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -84,7 +79,6 @@
   {
     "id": "omni-flash-edit",
     "label": "Omni Flash Edit",
-    "desc": "按提示词改写一段已有视频",
     "kind": "video",
     "acceptsImage": true,
     "acceptsVideo": true,
@@ -100,7 +94,6 @@
   {
     "id": "sora-2-openai-12s",
     "label": "Sora 2 (12s)",
-    "desc": "文生视频 / 单图生视频，固定 12 秒",
     "kind": "video",
     "acceptsImage": true,
     "acceptsVideo": false,
@@ -116,7 +109,6 @@
   {
     "id": "grok-imagine-video-1.5-preview",
     "label": "Grok Video 1.5",
-    "desc": "文生视频 / 多图参考，4-15 秒",
     "kind": "video",
     "acceptsImage": true,
     "acceptsVideo": false,

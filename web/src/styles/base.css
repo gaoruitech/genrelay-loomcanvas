@@ -143,6 +143,17 @@ a:hover { text-decoration: underline; }
 }
 .lc-x:hover { background: var(--n-4); color: var(--t-max); }
 
+/* ---------- TDesign（只用了 Message / Dialog 两个插件） ----------
+   品牌色不接过来的话，确认弹窗的主按钮是 TDesign 默认的蓝，跟整站的主操作色对不上。
+   三个选择器都要写：TDesign 自己在 :root[theme-mode] 上定义这组变量，只写 :root 压不过。 */
+:root, :root[theme-mode='light'], :root[theme-mode='dark'] {
+  --td-brand-color: var(--btn-bg);
+  --td-brand-color-hover: var(--btn-bg-hover);
+  --td-brand-color-active: var(--btn-bg-hover);
+  --td-brand-color-focus: var(--accent-line);
+}
+.t-button--variant-base.t-button--theme-primary { color: var(--btn-fg); }
+
 /* 生成节点展开面板（提示词 / 参数 / 历史版本）时，整个节点提到其它节点上面，
    否则面板会被下方的节点盖住。写成样式而不是改 style.zIndex：vue-flow 每次重渲染
    节点外壳都会把行内 z-index 写回去，面板还开着就被压下去了。 */

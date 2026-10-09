@@ -312,10 +312,10 @@ async function copy(s: string) {
   border-radius: 4px;
   font-size: 11px;
 }
-.td-tag.done { background: rgba(80, 200, 120, 0.15); color: #5fcf80; }
-.td-tag.running { background: rgba(0, 150, 255, 0.15); color: var(--info); }
-.td-tag.error { background: rgba(255, 80, 80, 0.15); color: var(--danger); }
-.td-tag.stale { background: rgba(255, 170, 0, 0.15); color: var(--warning); }
+.td-tag.done { background: var(--success-dim); color: var(--success); }
+.td-tag.running { background: var(--info-dim); color: var(--info); }
+.td-tag.error { background: var(--danger-dim); color: var(--danger); }
+.td-tag.stale { background: var(--warning-dim); color: var(--warning); }
 
 .td-copy {
   flex-shrink: 0;

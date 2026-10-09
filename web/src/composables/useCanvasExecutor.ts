@@ -5,7 +5,7 @@ import {
   getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels,
   type AdapterPollResult,
 } from '@/utils/canvasModels'
-import { llmApi, platformExportApi, canvasToolApi } from '@/utils/api'
+import { llmApi, runsApi, unwrap, platformExportApi, canvasToolApi } from '@/utils/api'
 import { uploadDataUrl } from '@/utils/canvasUpload'
 import { sumCosts } from '@/utils/cost'
 import { t } from '@/locales'
@@ -27,6 +27,14 @@ const ANALYSIS_TYPE = 'video-analysis'
 const LLM_TYPE = 'llm'
 // 输出文本、由专门执行器处理（不走通用 adapter）、但仍参与运行计划/排队的节点类型
 const TEXT_OUT_TYPES = new Set([ANALYSIS_TYPE, LLM_TYPE])
+
+/**
+ * 后端某次运行给出的失败原因。带上那次运行的 id：节点上存的 errorMsg 是当时界面语言的
+ * 一句话，有了 id 才能在换语言 / 重新打开画布时按当前语言重取（见 refreshRunErrors）。
+ */
+function runFailure(message: string, runId: string): Error {
+  return Object.assign(new Error(message), { runId })
+}
 /**
  * 多平台导出。与 video-analysis / llm 一样不走模型适配器，但它更特殊：
  * 整个处理在后端本机做（换尺寸、白底净化、纯白检测），不调任何模型，
@@ -112,12 +120,17 @@ interface ExecutorOptions {
   getBrandKit?: (id?: string | null) => BrandKit | null
   /** 当前画布 id，提交运行时带上用于用量归属 */
   getWorkflowId?: () => string | null | undefined
+  /**
+   * 立刻把画布存一次。提交成功拿到任务号的那一刻调用：任务号只在内存里的话，
+   * 这时候刷新或关页面，已经在跑（也已经计费）的任务就再也接不回来了。
+   */
+  persist?: () => Promise<unknown> | void
 }
 
 // 同时真正在执行(submit/poll)的节点上限。多条生成并发时用它兜底，避免一次打出过多请求触发上游限流。
 const MAX_CONCURRENT = 10
 
-export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId }: ExecutorOptions) {
+export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId, persist }: ExecutorOptions) {
   // ============ 并发调度状态 ============
   // 多条生成可同时进行：不再用单一全局锁，改为「按依赖就绪即执行 + 并发上限」的 DAG 调度。
   // inflight：节点 → 正在跑的 Promise。既做「同一节点只跑一次」的去重（防共享上游被重复触发重复计费），
@@ -456,6 +469,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       status: 'running',
       progress: 0,
       errorMsg: '',
+      errorRunId: '',
       cost: null,
       // 落库"本次执行实际用的提示词"：上游文本节点会覆盖本地 prompt/instruction，
       // 不存的话详情面板就只能显示卡片上当前文本框里的内容，跟实际跑的可能不一致。
@@ -498,7 +512,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
           return { taskId, fileUrls: outputUrls(polled), cost: polled.cost }
         }
         if (polled.status === 'failed') {
-          throw new Error(polled.error || t('executor.genFailed'))
+          throw polled.error ? runFailure(polled.error, taskId) : new Error(t('executor.genFailed'))
         }
         // pending / processing / queued：把上游进度实时写回
         progressByTask[taskId] = Math.min(99, Number(polled.progress) || 0)
@@ -548,7 +562,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       }
       // taskIds 立刻落库 —— 用户中途刷新也能恢复所有任务的产物
       // taskId 保留:兼容历史 resumeIncompleteTasks 与详情面板
-      updateNodeData(nodeId, { taskId: taskIds[0], taskIds: [...taskIds] })
+      // runPending：这批任务还没出结果。重跑时节点上留着上一版的图，
+      // 光看「有没有产物」分不出新任务跑完没有，得靠这个标记
+      updateNodeData(nodeId, { taskId: taskIds[0], taskIds: [...taskIds], runPending: true })
+      // 不等自动保存的去抖：存不上不影响本次运行，只是刷新后接不回来
+      void Promise.resolve(persist?.()).catch(() => {})
 
       // 阶段 2: 并发轮询（进度由 pollTask 内部实时写回）
       const settled = await Promise.allSettled(
@@ -557,12 +575,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
 
       const fileUrls: string[] = []
       let firstError: string | null = null
+      let firstErrorRunId = ''
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
+          firstErrorRunId = s.reason?.runId || ''
         }
       }
       const totalCost = sumCosts(costs)
@@ -572,7 +592,9 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         updateNodeData(nodeId, {
           status: 'error',
           errorMsg: firstError || t('executor.allFailed'),
+          errorRunId: firstErrorRunId,
           cost: totalCost,
+          runPending: false,
         })
         return false
       }
@@ -593,6 +615,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         [arrField]: fileUrls,
         cost: totalCost,
         errorMsg: '',
+        runPending: false,
       })
       pushResult(nodeId, {
         urls: fileUrls,
@@ -607,6 +630,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         status: 'error',
         errorMsg: submitErrorMessage(err) || t('executor.runFailed'),
         cost: sumCosts(costs),
+        runPending: false,
       })
       return false
     } finally {
@@ -646,7 +670,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       const refImageUrls = await collectRefImages(inputs.imageUrls)
@@ -656,7 +680,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (!taskId) throw new Error(t('executor.noRunId'))
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.runFailed') })
+      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.runFailed'), errorRunId: err?.runId || '' })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -684,7 +708,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       const refImageUrls = await collectRefImages(inputs.imageUrls)
@@ -699,7 +723,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (!taskId) throw new Error(t('executor.noRunId'))
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.genFailed') })
+      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.genFailed'), errorRunId: err?.runId || '' })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -747,7 +771,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
     if (d.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       let patch: Record<string, any>
@@ -825,7 +849,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       const group = node.data?.group === 'overseas' ? 'overseas' : 'domestic'
@@ -911,7 +935,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         return true
       }
       if (task.status === 'failed' || task.status === 'canceled') {
-        throw new Error(task.error || t('executor.genFailed'))
+        throw task.error ? runFailure(task.error, taskId) : new Error(t('executor.genFailed'))
       }
       updateNodeData(nodeId, { progress: Math.min(99, Number(task.progress) || 0) })
     }
@@ -1119,7 +1143,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     const adapter = getAdapter(modelId)
     if (!adapter) return false
 
-    updateNodeData(nodeId, { status: 'running', errorMsg: '' })
+    updateNodeData(nodeId, { status: 'running', errorMsg: '', errorRunId: '' })
 
     // 恢复轮询的实时进度：各任务进度汇总写回节点
     const progressByTask: Record<string, number> = {}
@@ -1149,7 +1173,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
           return { fileUrls: outputUrls(polled), cost: polled.cost }
         }
         if (polled.status === 'failed') {
-          throw new Error(polled.error || t('executor.genFailed'))
+          throw polled.error ? runFailure(polled.error, tid) : new Error(t('executor.genFailed'))
         }
         // pending / processing / queued：实时写回上游进度
         progressByTask[tid] = Math.min(99, Number(polled.progress) || 0)
@@ -1163,12 +1187,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       const fileUrls: string[] = []
       const costs: Array<Cost | undefined> = []
       let firstError: string | null = null
+      let firstErrorRunId = ''
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
+          firstErrorRunId = s.reason?.runId || ''
         }
       }
       const totalCost = sumCosts(costs) || node.data?.cost || null
@@ -1176,6 +1202,8 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         updateNodeData(nodeId, {
           status: 'error',
           errorMsg: firstError || t('executor.resumeFailed'),
+          errorRunId: firstErrorRunId,
+          runPending: false,
         })
         return false
       }
@@ -1192,6 +1220,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
         [arrField]: fileUrls,
         cost: totalCost,
         errorMsg: '',
+        runPending: false,
       })
       // 刷新前提交、刷新后才回来的那一版同样要进历史，
       // 否则「跑完就刷新」的用法会让历史断档
@@ -1207,17 +1236,23 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       updateNodeData(nodeId, {
         status: 'error',
         errorMsg: err?.message || t('executor.resumeFailed'),
+        runPending: false,
       })
       return false
     }
   }
 
-  /** 扫描所有 gen 节点：有 taskId 且无结果、无失败记录的，并发恢复轮询 */
+  /**
+   * 扫描所有 gen 节点，把刷新前还没出结果的任务并发接回来轮询。
+   * 「还没出结果」以 runPending 为准；没有这个标记的老数据按原来的判法：
+   * 有 taskId 且无结果、无失败记录。
+   */
   function resumeIncompleteTasks() {
     const candidates = nodes.value.filter((n) => {
       if (!GEN_TYPES.has(n.type as string)) return false
       const d = n.data || {}
       if (!d.taskId) return false
+      if (d.runPending === true) return true
       if (d.imageUrl || d.videoUrl) return false
       // 已落库的失败任务不再轮询，直接保留 error 态展示
       if (d.errorMsg) return false
@@ -1226,6 +1261,21 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     for (const n of candidates) {
       attachTask(n.id).catch(() => {})
     }
+  }
+
+  /**
+   * 失败原因来自后端运行的节点，按当前界面语言把原因重取一遍。
+   * 打开画布和切换语言时调用；取不到（运行记录已清理、断网）就保留存着的那句。
+   */
+  async function refreshRunErrors(): Promise<void> {
+    const targets = nodes.value.filter((n) => n.data?.errorMsg && n.data?.errorRunId)
+    await Promise.all(targets.map(async (n) => {
+      try {
+        const id = n.data.errorRunId as string
+        const run = TEXT_OUT_TYPES.has(n.type as string) ? unwrap(await llmApi.get(id)) : unwrap(await runsApi.get(id))
+        if (run.error && run.error !== n.data.errorMsg) updateNodeData(n.id, { errorMsg: run.error })
+      } catch { /* 保留原文 */ }
+    }))
   }
 
   // ============ Stale 传播 ============
@@ -1348,6 +1398,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     runAll,
     attachTask,
     resumeIncompleteTasks,
+    refreshRunErrors,
     collectImageRefs,
     // 批量运行要在换完素材后立刻作废下游：内部那个 stale watcher 是 200ms
     // 去抖的，等它的话 runAll 会认为下游「已有产物」而整轮跳过

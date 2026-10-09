@@ -5,6 +5,7 @@
  * chat completions (with vision parts), model discovery and generic specs.
  */
 const { request, ProviderError, openaiBase } = require('./http')
+const { msg } = require('../i18n')
 
 const LONG_CALL_MS = 30 * 60 * 1000 // the runner's deadline is the real limit
 
@@ -59,7 +60,7 @@ async function chatCompletion(cfg, req) {
     parts.push({ type: 'image_url', image_url: { url: await req.media.toRef(url) } })
   }
   if (req.videoUrl) {
-    parts.push({ type: 'video_url', video_url: { url: await req.media.toPublicUrl(req.videoUrl, '视频') } })
+    parts.push({ type: 'video_url', video_url: { url: await req.media.toPublicUrl(req.videoUrl, msg('noun.video')) } })
   }
   const plain = parts.length === 1 && parts[0].type === 'text'
   const messages = []
@@ -75,10 +76,10 @@ async function chatCompletion(cfg, req) {
     timeoutMs: LONG_CALL_MS,
   })
   if (data && data.error) {
-    throw new ProviderError(`上游返回错误：${String(data.error.message || data.error).slice(0, 300)}`)
+    throw new ProviderError('upstream.error_detail', { detail: String(data.error.message || data.error).slice(0, 300) })
   }
   const text = textFromChoice(data)
-  if (!text) throw new ProviderError('上游没有返回文本内容')
+  if (!text) throw new ProviderError('upstream.no_text')
   return { text, usage: usageFrom(data) }
 }
 
@@ -91,7 +92,7 @@ async function listModelIds(cfg, { signal, timeoutMs = 15000 } = {}) {
     timeoutMs,
   })
   const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : null)
-  if (!list) throw new ProviderError('上游的模型列表格式无法识别')
+  if (!list) throw new ProviderError('upstream.bad_model_list')
   const ids = []
   for (const m of list) {
     const id = typeof m === 'string' ? m : m && m.id

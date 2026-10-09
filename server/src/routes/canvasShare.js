@@ -20,6 +20,7 @@ const { randomToken } = require('../utils/crypto')
 const { requireAuth, isAuthed } = require('../middleware/auth')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, isObjectId, pageParams, text } = require('../utils/validate')
+const { t } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 
 const router = express.Router()
@@ -27,7 +28,7 @@ const router = express.Router()
 const MAX_NODES = 500
 const MAX_SHARES = 500
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,64}$/
-const GONE = '分享不存在、已过期或已被撤销'
+const GONE = 'share.gone'
 
 function isActive(doc, now = Date.now()) {
   return !doc.isDeleted && !doc.revoked && (!doc.expiresAt || new Date(doc.expiresAt).getTime() > now)
@@ -67,14 +68,14 @@ function summary(doc, { owner }) {
 function parseExpiry(body) {
   if (body.expiresInDays !== undefined && body.expiresInDays !== null && body.expiresInDays !== '') {
     const days = Number(body.expiresInDays)
-    if (!Number.isFinite(days) || days < 0 || days > 3650) throw badRequest('expiresInDays 必须在 0-3650 之间')
+    if (!Number.isFinite(days) || days < 0 || days > 3650) throw badRequest('validation.range', { field: 'expiresInDays', min: 0, max: 3650 })
     return days === 0 ? null : new Date(Date.now() + days * 24 * 3600 * 1000)
   }
   if (body.expiresAt === undefined) return undefined
   if (body.expiresAt === null || body.expiresAt === '') return null
   const d = new Date(body.expiresAt)
-  if (Number.isNaN(d.getTime())) throw badRequest('expiresAt 不是有效的时间')
-  if (d.getTime() <= Date.now()) throw badRequest('expiresAt 必须晚于当前时间')
+  if (Number.isNaN(d.getTime())) throw badRequest('validation.bad_date', { field: 'expiresAt' })
+  if (d.getTime() <= Date.now()) throw badRequest('share.expires_in_past')
   return d
 }
 
@@ -111,10 +112,10 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
   const body = req.body || {}
   requireObjectId(body.workflowId, 'workflowId')
   const wf = await Workflow.findOne({ _id: body.workflowId, userId: LOCAL_USER, isDeleted: false }).lean()
-  if (!wf) throw notFound('画布不存在')
+  if (!wf) throw notFound('canvas.not_found')
   const rawNodes = Array.isArray(wf.nodes) ? wf.nodes : []
-  if (!rawNodes.length) throw badRequest('空画布无法分享')
-  if (rawNodes.length > MAX_NODES) throw badRequest(`节点数量不能超过 ${MAX_NODES}`)
+  if (!rawNodes.length) throw badRequest('share.empty_canvas')
+  if (rawNodes.length > MAX_NODES) throw badRequest('canvas.max_nodes', { max: MAX_NODES })
 
   const nodes = cleanNodes(rawNodes)
   const snapshot = {
@@ -124,7 +125,7 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
     settings: wf.settings && typeof wf.settings === 'object' ? structuredClone(wf.settings) : {},
   }
   const fields = {
-    title: text(body.title, 80) || wf.name || '未命名画布',
+    title: text(body.title, 80) || wf.name || t(req.locale, 'canvas.untitled'),
     description: text(body.description, 500),
     snapshot,
     nodeCount: nodes.length,
@@ -145,7 +146,7 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
     await doc.save()
   } else {
     if ((await Share.countDocuments({ userId: LOCAL_USER, isDeleted: false })) >= MAX_SHARES) {
-      throw badRequest(`最多保留 ${MAX_SHARES} 个分享，请先清理`)
+      throw badRequest('share.max', { max: MAX_SHARES })
     }
     doc = await Share.create({
       userId: LOCAL_USER,
@@ -198,7 +199,7 @@ router.post('/:ref/copy', requireAuth, wrap(async (req, res) => {
   const nodes = cleanNodes(snap.nodes)
   const wf = await Workflow.create({
     userId: LOCAL_USER,
-    name: (text(req.body && req.body.name, 80) || `${doc.title || '未命名画布'} (副本)`).slice(0, 80),
+    name: (text(req.body && req.body.name, 80) || t(req.locale, 'share.copy_name', { name: doc.title || t(req.locale, 'canvas.untitled') })).slice(0, 80),
     nodes,
     edges: structuredClone(Array.isArray(snap.edges) ? snap.edges : []),
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },
@@ -212,7 +213,7 @@ router.post('/:ref/copy', requireAuth, wrap(async (req, res) => {
 async function findOwned(id) {
   requireObjectId(id)
   const doc = await Share.findOne({ _id: id, userId: LOCAL_USER, isDeleted: false })
-  if (!doc) throw notFound('分享不存在')
+  if (!doc) throw notFound('share.not_found')
   return doc
 }
 
@@ -222,14 +223,14 @@ router.put('/:id', requireAuth, wrap(async (req, res) => {
   const body = req.body || {}
   if (body.title !== undefined) {
     const title = text(body.title, 80)
-    if (!title) throw badRequest('标题不能为空')
+    if (!title) throw badRequest('share.title_required')
     doc.title = title
   }
   if (body.description !== undefined) doc.description = text(body.description, 500)
   const expiry = parseExpiry(body)
   if (expiry !== undefined) doc.expiresAt = expiry
   if (body.revoked !== undefined) {
-    if (typeof body.revoked !== 'boolean') throw badRequest('revoked 必须是布尔值')
+    if (typeof body.revoked !== 'boolean') throw badRequest('validation.boolean', { field: 'revoked' })
     // Un-revoking issues a new token: whoever held the old link stays locked out.
     if (doc.revoked && !body.revoked) doc.token = randomToken()
     doc.revoked = body.revoked

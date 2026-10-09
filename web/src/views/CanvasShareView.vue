@@ -97,6 +97,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+import '@/styles/vue-flow-theme.css'
 
 /**
  * vue-flow 的 Background / MiniMap 把颜色当 SVG attribute 传，attribute 不解析

@@ -24,8 +24,8 @@ import { ref, computed, type Ref } from 'vue'
 
 /** 与类型无关的运行时字段：状态、进度、任务 id、实际成本、结果历史 */
 const VOLATILE_COMMON = [
-  'status', 'progress', 'taskId', 'taskIds', 'cost', 'generatedCount',
-  'errorMsg', 'results', 'resultIndex', 'validationError', 'validationStamp',
+  'status', 'progress', 'taskId', 'taskIds', 'runPending', 'cost', 'generatedCount',
+  'errorMsg', 'errorRunId', 'results', 'resultIndex', 'validationError', 'validationStamp',
 ]
 
 /** 各类型节点的「产物」字段 —— 只有生成类节点才有，输入类节点的同名字段是用户内容 */

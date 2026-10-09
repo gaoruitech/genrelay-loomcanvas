@@ -7,19 +7,20 @@
  * it is deliberately NOT run through the SSRF guard: pointing a provider at a
  * model server on the local network is a legitimate setup.
  *
- * Failures become ProviderError with a message safe to show to the user and
+ * Failures become ProviderError with a catalog message safe to show to the user and
  * two flags the runner relies on:
  *   transient       - worth retrying a status query
  *   safeToResubmit  - the upstream certainly did not accept the request, so
  *                     even a task submission may be repeated
  */
 const axios = require('axios')
+const { LocalizedError } = require('../i18n')
 
-class ProviderError extends Error {
-  constructor(message, extra = {}) {
-    super(message)
+class ProviderError extends LocalizedError {
+  /** @param {string|object} key catalog key or message; text from the upstream goes in params */
+  constructor(key, params = {}, extra = {}) {
+    super(key, params)
     this.name = 'ProviderError'
-    this.userFacing = true
     this.transient = false
     this.safeToResubmit = false
     Object.assign(this, extra)
@@ -77,12 +78,12 @@ async function request({ method = 'GET', url, headers = {}, data, params, signal
     if (signal && signal.aborted) throw signal.reason
     const code = err.code || ''
     if (NOT_SENT.has(code)) {
-      throw new ProviderError(`无法连接上游接口（${code}）`, { transient: true, safeToResubmit: true, code })
+      throw new ProviderError('upstream.unreachable', { code }, { transient: true, safeToResubmit: true, code })
     }
     if (AMBIGUOUS.has(code)) {
-      throw new ProviderError(`上游接口连接中断或超时（${code}）`, { transient: true, code })
+      throw new ProviderError('upstream.interrupted', { code }, { transient: true, code })
     }
-    throw new ProviderError('请求上游接口失败', { code, cause: err })
+    throw new ProviderError('upstream.request_failed', {}, { code, cause: err })
   }
 
   if (res.status >= 200 && res.status < 300) return res.data
@@ -90,9 +91,9 @@ async function request({ method = 'GET', url, headers = {}, data, params, signal
   const detail = messageFromBody(res.data)
   const status = res.status
   if (status === 401 || status === 403) {
-    throw new ProviderError(`上游拒绝了请求（HTTP ${status}），请检查 API Key${detail ? `：${detail}` : ''}`, { status })
+    throw new ProviderError(detail ? 'upstream.auth_rejected_detail' : 'upstream.auth_rejected', { status, detail }, { status })
   }
-  throw new ProviderError(`上游接口返回 HTTP ${status}${detail ? `：${detail}` : ''}`, {
+  throw new ProviderError(detail ? 'upstream.http_error_detail' : 'upstream.http_error', { status, detail }, {
     status,
     transient: [408, 429, 500, 502, 503, 504].includes(status),
     // 429/503 are explicit "not now" answers; the request was not processed.

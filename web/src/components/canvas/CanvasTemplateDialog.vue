@@ -187,7 +187,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tpl-use {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: var(--glass-soft);
+  background: var(--glass-panel);
   color: var(--accent-text); font-size: 14px; font-weight: 600;
   opacity: 0; transition: opacity 0.15s;
 }

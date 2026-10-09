@@ -41,17 +41,17 @@ function configured(cfg) {
 }
 
 function requireBase(cfg) {
-  if (!cfg.baseUrl) throw new ProviderError('未配置接口地址')
+  if (!cfg.baseUrl) throw new ProviderError('provider.base_url_missing')
 }
 
 module.exports = {
   type: 'openai-compatible',
-  label: 'OpenAI 兼容接口',
+  label: 'OpenAI-compatible API',
   fields: [
-    { key: 'baseUrl', label: '接口地址', required: true, placeholder: 'https://api.openai.com/v1' },
+    { key: 'baseUrl', label: 'Base URL', required: true, placeholder: 'https://api.openai.com/v1' },
     { key: 'apiKey', label: 'API Key', secret: true, required: false },
-    { key: 'models', label: '对话模型', type: 'textarea', placeholder: 'gpt-4o-mini, gpt-4o', help: '逗号分隔；与下一项都留空时自动从 /v1/models 读取' },
-    { key: 'imageModels', label: '图片模型', type: 'textarea', placeholder: 'gpt-image-1', help: '逗号分隔' },
+    { key: 'models', label: 'Chat models', type: 'textarea', placeholder: 'gpt-4o-mini, gpt-4o', help: 'Comma-separated. Leave this and the next field empty to read the list from /v1/models.' },
+    { key: 'imageModels', label: 'Image models', type: 'textarea', placeholder: 'gpt-image-1', help: 'Comma-separated.' },
   ],
   defaultBaseUrl: '',
   // submit() returns the finished images, so it runs under the generation deadline.
@@ -76,13 +76,13 @@ module.exports = {
   async test(cfg, { signal } = {}) {
     requireBase(cfg)
     const ids = await listModelIds(cfg, { signal })
-    return { ok: true, message: '连接成功', modelCount: ids.length }
+    return { ok: true, modelCount: ids.length }
   },
 
   async submit(cfg, run) {
     requireBase(cfg)
-    if (run.kind !== 'image') throw new ProviderError('该接入只支持图片生成和对话')
-    if (!run.prompt) throw new ProviderError('请填写提示词')
+    if (run.kind !== 'image') throw new ProviderError('provider.image_chat_only')
+    if (!run.prompt) throw new ProviderError('run.prompt_required')
     const p = run.params || {}
     const body = { model: run.model, prompt: run.prompt, n: Math.min(4, Math.max(1, Number(p.count) || 1)) }
     if (SIZES[p.aspectRatio]) body.size = SIZES[p.aspectRatio]
@@ -96,19 +96,19 @@ module.exports = {
       timeoutMs: LONG_CALL_MS,
     })
     if (data && data.error) {
-      throw new ProviderError(`上游返回错误：${String(data.error.message || data.error).slice(0, 300)}`)
+      throw new ProviderError('upstream.error_detail', { detail: String(data.error.message || data.error).slice(0, 300) })
     }
     const outputs = []
     for (const item of (data && Array.isArray(data.data) ? data.data : [])) {
       if (item && typeof item.b64_json === 'string' && item.b64_json) outputs.push({ type: 'image', b64: item.b64_json })
       else if (item && typeof item.url === 'string' && item.url) outputs.push({ type: 'image', url: item.url })
     }
-    if (!outputs.length) throw new ProviderError('上游没有返回图片')
+    if (!outputs.length) throw new ProviderError('upstream.no_image')
     return { outputs }
   },
 
   async poll() {
-    throw new ProviderError('该接入没有异步任务')
+    throw new ProviderError('provider.no_async')
   },
 
   async chat(cfg, req) {

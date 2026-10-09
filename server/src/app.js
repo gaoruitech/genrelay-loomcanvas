@@ -7,6 +7,7 @@ const express = require('express')
 const { getConfig } = require('./config')
 const { securityHeaders, noStore, cors } = require('./middleware/security')
 const { requireAuth } = require('./middleware/auth')
+const { locale } = require('./middleware/locale')
 const { apiNotFound, errorHandler } = require('./middleware/errors')
 const files = require('./routes/files')
 const assets = require('./routes/assets')
@@ -23,6 +24,7 @@ function createApp() {
   }
 
   app.use(securityHeaders)
+  app.use(locale)
 
   // Stored files (local driver). Public: share links and upstream models load them.
   app.use('/files', files.staticRouter())

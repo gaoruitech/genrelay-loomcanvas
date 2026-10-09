@@ -63,7 +63,7 @@ function requireAuth(req, _res, next) {
     req.userId = LOCAL_USER
     return next()
   }
-  next(new ApiError(401, '请先登录', 401))
+  next(new ApiError(401, 'auth.login_required', {}, 401))
 }
 
 /* ---- login rate limit: in memory, per client address ---- */
@@ -84,7 +84,7 @@ function loginRateLimit(req, _res, next) {
     attempts.set(ip, entry)
   }
   if (entry.count >= MAX_ATTEMPTS) {
-    return next(new ApiError(429, '尝试次数过多，请稍后再试', 429))
+    return next(new ApiError(429, 'auth.too_many_attempts', {}, 429))
   }
   // Counted before the check, so parallel guesses cannot outrun the limit.
   entry.count += 1

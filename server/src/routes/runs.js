@@ -23,14 +23,14 @@ function publicSpec(m) {
 
 function modelIdOf(body) {
   const id = body && body.model
-  if (typeof id !== 'string' || !id || id.length > 200) throw badRequest('缺少 model')
+  if (typeof id !== 'string' || !id || id.length > 200) throw badRequest('validation.required', { field: 'model' })
   return id
 }
 
 /** Params are a flat bag of small primitives; anything else is dropped. */
 function cleanParams(input) {
   if (input === undefined || input === null) return {}
-  if (!isPlainObject(input)) throw badRequest('params 必须是对象')
+  if (!isPlainObject(input)) throw badRequest('validation.object', { field: 'params' })
   const out = {}
   for (const [k, v] of Object.entries(input).slice(0, 30)) {
     if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(k)) continue
@@ -44,16 +44,16 @@ function cleanParams(input) {
 
 function mediaList(v, name, max) {
   if (v === undefined || v === null) return []
-  if (!Array.isArray(v)) throw badRequest(`${name} 必须是数组`)
-  if (v.length > max) throw badRequest(`${name} 最多 ${max} 项`)
-  for (const u of v) if (!isMediaUrl(u)) throw badRequest(`${name} 中有无效的地址`)
+  if (!Array.isArray(v)) throw badRequest('validation.array', { field: name })
+  if (v.length > max) throw badRequest('validation.max_items', { field: name, max })
+  for (const u of v) if (!isMediaUrl(u)) throw badRequest('validation.bad_url_in', { field: name })
   return v
 }
 
 function promptOf(v, name = 'prompt') {
   if (v === undefined || v === null) return ''
-  if (typeof v !== 'string') throw badRequest(`${name} 必须是字符串`)
-  if (v.length > MAX_PROMPT) throw badRequest(`${name} 过长`)
+  if (typeof v !== 'string') throw badRequest('validation.string', { field: name })
+  if (v.length > MAX_PROMPT) throw badRequest('validation.too_long', { field: name })
   return v
 }
 
@@ -66,7 +66,7 @@ function attribution(body) {
 async function findRun(id, kindFilter) {
   requireObjectId(id, 'id')
   const run = await Run.findOne({ _id: id, userId: LOCAL_USER, ...kindFilter }).lean()
-  if (!run) throw notFound('运行记录不存在')
+  if (!run) throw notFound('run.not_found')
   return run
 }
 
@@ -76,16 +76,16 @@ const CHAT = { kind: 'chat' }
 /** GET /api/models?kind=image */
 router.get('/models', wrap(async (req, res) => {
   const kind = req.query.kind
-  if (kind !== undefined && !RUN_KINDS.includes(kind)) throw badRequest('kind 只能是 image / video / chat')
+  if (kind !== undefined && !RUN_KINDS.includes(kind)) throw badRequest('validation.one_of', { field: 'kind', values: RUN_KINDS.join(' / ') })
   const models = await registry.listModels({ kind })
-  ok(res, models.map(publicSpec))
+  ok(res, models.map((m) => registry.localizeSpec(publicSpec(m), req.locale)))
 }))
 
 /** POST /api/runs/estimate { model, params, count } */
 router.post('/runs/estimate', wrap(async (req, res) => {
   const body = req.body || {}
   const { spec } = await registry.resolveModel(modelIdOf(body))
-  if (!spec) throw badRequest('模型不存在或已下线')
+  if (!spec) throw badRequest('model.unavailable')
   const params = cleanParams(body.params)
   const count = clampInt(body.count !== undefined ? body.count : params.count, 1, 100, 1)
   ok(res, estimateCost(spec, params, count))
@@ -109,26 +109,26 @@ router.post('/runs', wrap(async (req, res) => {
 /** POST /api/runs/status { ids: [] } -> Run[] (batch polling) */
 router.post('/runs/status', wrap(async (req, res) => {
   const ids = req.body && req.body.ids
-  if (!Array.isArray(ids)) throw badRequest('ids 必须是数组')
-  if (ids.length > MAX_IDS) throw badRequest(`一次最多查询 ${MAX_IDS} 条`)
+  if (!Array.isArray(ids)) throw badRequest('validation.array', { field: 'ids' })
+  if (ids.length > MAX_IDS) throw badRequest('validation.max_items', { field: 'ids', max: MAX_IDS })
   const valid = [...new Set(ids.filter(isObjectId))]
   const runs = valid.length ? await Run.find({ _id: { $in: valid }, userId: LOCAL_USER, ...MEDIA }).lean() : []
   const byId = new Map(runs.map((r) => [String(r._id), r]))
   // Same order as requested; unknown ids are simply absent.
-  ok(res, valid.filter((id) => byId.has(id)).map((id) => serializeRun(byId.get(id))))
+  ok(res, valid.filter((id) => byId.has(id)).map((id) => serializeRun(byId.get(id), req.locale)))
 }))
 
 /** GET /api/runs/:id */
 router.get('/runs/:id', wrap(async (req, res) => {
-  ok(res, serializeRun(await findRun(req.params.id, MEDIA)))
+  ok(res, serializeRun(await findRun(req.params.id, MEDIA), req.locale))
 }))
 
 /** POST /api/runs/:id/cancel */
 router.post('/runs/:id/cancel', wrap(async (req, res) => {
   const run = await findRun(req.params.id, {})
-  if (['succeeded', 'failed', 'canceled'].includes(run.status)) return ok(res, serializeRun(run), '运行已结束')
+  if (['succeeded', 'failed', 'canceled'].includes(run.status)) return ok(res, serializeRun(run, req.locale), 'run.already_finished')
   const after = await getRunner().cancel(String(run._id))
-  ok(res, serializeRun(after || run))
+  ok(res, serializeRun(after || run, req.locale))
 }))
 
 /** POST /api/llm/tasks { model, prompt, systemPrompt?, imageUrls?, videoUrl? } -> { taskId } */
@@ -138,10 +138,10 @@ router.post('/llm/tasks', wrap(async (req, res) => {
   const imageUrls = mediaList(body.imageUrls, 'imageUrls', 16)
   let videoUrls = []
   if (body.videoUrl !== undefined && body.videoUrl !== null && body.videoUrl !== '') {
-    if (!isMediaUrl(body.videoUrl)) throw badRequest('videoUrl 不是有效的地址')
+    if (!isMediaUrl(body.videoUrl)) throw badRequest('validation.bad_url', { field: 'videoUrl' })
     videoUrls = [body.videoUrl]
   }
-  if (!prompt.trim() && !imageUrls.length && !videoUrls.length) throw badRequest('请填写提示词')
+  if (!prompt.trim() && !imageUrls.length && !videoUrls.length) throw badRequest('run.prompt_required')
   const run = await createRun({
     kind: 'chat',
     model: modelIdOf(body),
@@ -158,8 +158,8 @@ router.post('/llm/tasks', wrap(async (req, res) => {
 /** GET /api/llm/tasks/:id -> { status, text, error, cost } */
 router.get('/llm/tasks/:id', wrap(async (req, res) => {
   const run = await findRun(req.params.id, CHAT)
-  const s = serializeRun(run)
-  ok(res, { id: s.id, status: s.status, progress: s.progress, text: s.text, error: s.error, cost: s.cost, model: s.model })
+  const s = serializeRun(run, req.locale)
+  ok(res, { id: s.id, status: s.status, progress: s.progress, text: s.text, error: s.error, errorCode: s.errorCode, cost: s.cost, model: s.model })
 }))
 
 module.exports = router

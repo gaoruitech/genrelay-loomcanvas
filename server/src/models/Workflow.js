@@ -9,7 +9,7 @@ const { Mixed } = mongoose.Schema.Types
 /** One canvas: the node graph plus its viewport and appearance settings. */
 const workflowSchema = new mongoose.Schema({
   userId: { type: String, default: LOCAL_USER, index: true },
-  name: { type: String, required: true, default: '未命名画布', maxlength: 80 },
+  name: { type: String, required: true, default: 'Untitled', maxlength: 80 },
   schemaVersion: { type: Number, default: CURRENT_SCHEMA_VERSION },
 
   nodes: { type: [Mixed], default: [] },

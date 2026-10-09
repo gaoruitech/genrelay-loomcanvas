@@ -96,10 +96,10 @@ test('gaorui nano-banana: upstream errors become user-facing errors', async (t) 
   t.after(up.close)
   const cfg = { baseUrl: up.baseUrl, apiKey: 'k' }
   const run = (prompt) => ({ kind: 'image', model: 'nano-banana-2', prompt, imageUrls: [], params: {}, media, signal })
-  await assert.rejects(gaorui.submit(cfg, run('x')), (e) => e.userFacing && /余额不足/.test(e.message))
+  await assert.rejects(gaorui.submit(cfg, run('x')), (e) => e.userFacing && e.i18n.code === 'upstream.submit_failed_detail' && e.i18n.params.detail === '余额不足')
   await assert.rejects(gaorui.submit(cfg, run('unauthorized')), (e) => e.userFacing && e.status === 401 && !e.safeToResubmit && !e.message.includes('sk-'))
-  await assert.rejects(gaorui.submit({ baseUrl: up.baseUrl, apiKey: '' }, run('x')), /未配置 API Key/)
-  await assert.rejects(gaorui.submit(cfg, { ...run('x'), model: 'not-in-catalog' }), /不在该接入的支持列表/)
+  await assert.rejects(gaorui.submit({ baseUrl: up.baseUrl, apiKey: '' }, run('x')), (e) => e.i18n.code === 'provider.api_key_missing')
+  await assert.rejects(gaorui.submit(cfg, { ...run('x'), model: 'not-in-catalog' }), (e) => e.i18n.code === 'provider.model_not_supported')
 })
 
 test('gaorui: connection refused is transient and safe to resubmit', async () => {
@@ -134,7 +134,7 @@ test('gaorui videos: request body per model', async (t) => {
   assert.deepEqual(up.calls[3].body, {
     model: 'omni_flash_abra_edit', prompt: 'go', source_video_url: 'public(/files/v.mp4)', aspect_ratio: '16:9', resolution: '4k', input_reference: ['ref(r)'],
   })
-  await assert.rejects(gaorui.submit(cfg, run('omni-flash-edit')), /源视频/)
+  await assert.rejects(gaorui.submit(cfg, run('omni-flash-edit')), (e) => e.i18n.code === 'provider.video_edit_needs_source')
 
   await gaorui.submit(cfg, run('sora-2-openai-12s', { params: { aspectRatio: '16:9' }, imageUrls: ['one', 'two'] }))
   assert.deepEqual(up.calls[4].body, { model: 'sora-2-openai-12s', prompt: 'go', size: '1280x720', input_reference: 'ref(one)' })
@@ -147,7 +147,7 @@ test('gaorui videos: request body per model', async (t) => {
   assert.equal(up.calls[6].body.seconds, '15', 'clamped, and sent as a string')
   assert.equal('image_urls' in up.calls[6].body, false)
 
-  await assert.rejects(gaorui.submit(cfg, run('omni-flash', { prompt: '' })), /提示词/)
+  await assert.rejects(gaorui.submit(cfg, run('omni-flash', { prompt: '' })), (e) => e.i18n.code === 'run.prompt_required')
 })
 
 test('gaorui videos: both response shapes are understood', async (t) => {
@@ -163,9 +163,9 @@ test('gaorui videos: both response shapes are understood', async (t) => {
   reply = { code: 'success', data: { task_id: 'wrapped-1', data: { status: 'queued' } } }
   assert.deepEqual(await gaorui.submit(cfg, req), { externalId: 'wrapped-1' })
   reply = { code: 'error', message: '参数错误' }
-  await assert.rejects(gaorui.submit(cfg, req), /参数错误/)
+  await assert.rejects(gaorui.submit(cfg, req), (e) => e.i18n.code === 'upstream.error_detail' && e.i18n.params.detail === '参数错误')
   reply = { status: 'queued' }
-  await assert.rejects(gaorui.submit(cfg, req), /任务编号/)
+  await assert.rejects(gaorui.submit(cfg, req), (e) => e.i18n.code === 'upstream.no_task_id')
 
   reply = { code: 'success', data: { task_id: 't1', status: 'IN_PROGRESS', progress: '45%' } }
   assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 45 })
@@ -199,7 +199,7 @@ test('gaorui listModels: catalog plus chat models discovered from /v1/models', a
   for (const id of ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1', 'nano-banana-2-lite']) {
     assert.equal(specs.filter((s) => s.id === id && s.kind === 'image').length, 1, id)
   }
-  assert.deepEqual(await gaorui.test({ baseUrl: up.baseUrl, apiKey: 'k' }), { ok: true, message: '连接成功', modelCount: 5 })
+  assert.deepEqual(await gaorui.test({ baseUrl: up.baseUrl, apiKey: 'k' }), { ok: true, modelCount: 5 })
   // Without a key, or with the upstream down, the catalog still lists.
   assert.ok((await gaorui.listModels({ baseUrl: up.baseUrl, apiKey: '' })).every((s) => s.kind !== 'chat'))
   assert.ok((await gaorui.listModels({ baseUrl: 'http://127.0.0.1:9', apiKey: 'k' })).length >= 4)
@@ -273,7 +273,7 @@ test('gemini: request shape and every accepted result form', async (t) => {
   assert.deepEqual((await gemini.submit(cfg, run)).outputs, [{ type: 'image', url: 'https://cdn.example/out/2.webp?x=1' }], 'only links that look like images')
 
   reply = { candidates: [{ content: { parts: [{ text: 'I cannot do that.' }] } }] }
-  await assert.rejects(gemini.submit(cfg, run), /只返回了文字/)
+  await assert.rejects(gemini.submit(cfg, run), (e) => e.i18n.code === 'upstream.text_only')
   reply = { promptFeedback: { blockReason: 'SAFETY' } }
   await assert.rejects(gemini.submit(cfg, run), /SAFETY/)
 

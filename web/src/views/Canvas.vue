@@ -856,6 +856,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+import '@/styles/vue-flow-theme.css'
 
 /**
  * vue-flow 的 Background / MiniMap 把颜色当 SVG attribute 传，attribute 不解析
@@ -872,7 +873,7 @@ interface Viewport { x: number; y: number; zoom: number }
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // 模型清单拉回来之后，一个可用的图片 / 视频模型都没有 → 顶栏下方挂一条提示。
 // 没拉完之前不显示，免得每次进画布都闪一下。
@@ -943,8 +944,11 @@ const executor = useCanvasExecutor({
   nodes, edges, updateNodeData,
   getBrandKit: brandKits.getBrandKit,
   getWorkflowId: () => currentId.value,
+  persist: () => doSave(true),
 })
 provide(CANVAS_EXECUTOR_KEY, executor)
+// 切换界面语言：后端给出的运行失败原因跟着换
+watch(locale, () => { void executor.refreshRunErrors() })
 
 /* ==================== 撤销 / 重做 ==================== */
 // 约定：每个会改变画布结构的操作，动手之前先调一次 hist.record()。
@@ -1234,7 +1238,7 @@ function toggleMoreMenu(e: MouseEvent) {
   closeMenus()
   if (moreMenu.value.open) { moreMenu.value.open = false; return }
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.max(12, Math.min(rect.left, window.innerWidth - 240))
+  const x = Math.max(12, Math.min(rect.left, window.innerWidth - 300 - 12))
   const y = rect.bottom + 8
   moreMenu.value = { open: true, x, y }
   lastMenuPos.value = { x, y }
@@ -1879,6 +1883,7 @@ function forkFromContext() {
   delete data.resultIndex
   delete data.taskId
   delete data.taskIds
+  delete data.runPending
   nodes.value.push({
     id: newId,
     type: src.type,
@@ -1925,6 +1930,7 @@ function continueFromContext() {
   delete data.resultIndex
   delete data.taskId
   delete data.taskIds
+  delete data.runPending
   delete data.imageUrl
   delete data.imageUrls
   delete data.cost
@@ -1975,7 +1981,11 @@ const loading = ref(false)
 
 // 自动保存：去抖 + 指纹去重
 const AUTO_SAVE_DELAY = 1500
+// 去抖最多推迟这么久。节点在跑的时候进度每隔一两秒写回一次，每次都会重置去抖计时，
+// 没有这个上限的话，运行期间（以及别的节点还在跑时刚出的结果）一直存不下去
+const AUTO_SAVE_MAX_WAIT = 5000
 let autoSaveTimer: number | null = null
+let autoSaveDueBy = 0
 let lastFingerprint: string | null = null
 let suppressAutoSave = false  // 加载 / 重置时临时关闭以避免误触发
 
@@ -2525,6 +2535,7 @@ function onNodeDragStop() {
 
 async function doSave(silent: boolean): Promise<boolean> {
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  autoSaveDueBy = 0
   const payload = buildSavePayload()
   const fp = JSON.stringify(payload)
   try {
@@ -2568,6 +2579,7 @@ async function handleSave() {
 
 async function autoSave() {
   autoSaveTimer = null
+  autoSaveDueBy = 0
   if (saving.value || autoSaving.value) return
   // 空画布且未持久化过 → 不创建
   if (!currentId.value && nodes.value.length === 0) return
@@ -2587,8 +2599,10 @@ async function autoSave() {
 function scheduleAutoSave() {
   if (suppressAutoSave) return
   dirty.value = true
+  const now = Date.now()
+  if (!autoSaveDueBy) autoSaveDueBy = now + AUTO_SAVE_MAX_WAIT
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  autoSaveTimer = window.setTimeout(autoSave, AUTO_SAVE_DELAY)
+  autoSaveTimer = window.setTimeout(autoSave, Math.max(0, Math.min(AUTO_SAVE_DELAY, autoSaveDueBy - now)))
 }
 
 // 拆分自动保存监听：只有 nodes/edges 需要深度遍历；
@@ -2650,7 +2664,7 @@ async function loadOtherCanvasInto(id: string) {
     const newNodes = srcNodes.map((n: any) => {
       const isChild = !!n.parentNode && idMap.has(n.parentNode)
       const data: any = JSON.parse(JSON.stringify(stripNodeData(n.data)))
-      delete data.taskId; delete data.taskIds
+      delete data.taskId; delete data.taskIds; delete data.runPending
       const nn: any = {
         id: idMap.get(n.id)!,
         type: n.type,
@@ -3020,7 +3034,11 @@ async function loadWorkflow(id: string) {
       // 换画布要清历史，否则能「撤销」到上一张画布的内容
       hist.reset()
       // 对刷新前还在跑的 task，自动恢复轮询拉结果
-      setTimeout(() => executor.resumeIncompleteTasks(), 100)
+      setTimeout(() => {
+        executor.resumeIncompleteTasks()
+        // 存着的失败原因是当时界面语言的一句话，按现在的语言重取
+        void executor.refreshRunErrors()
+      }, 100)
     } else {
       MessagePlugin.error(res.data.message || t('common.loadFailed'))
       router.replace('/')
@@ -3355,8 +3373,8 @@ onBeforeUnmount(() => {
 .tb-doc-ic svg { width: 17px; height: 17px; }
 .tb-save { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--t-dim); padding: 3px 10px 3px 9px; border-radius: 999px; background: var(--n-3); border: 1px solid var(--n-5); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tb-save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--t-dim); flex: none; }
-.tb-save.saved .tb-save-dot { background: #22a06b; }
-.tb-save.unsaved .tb-save-dot { background: #e0a100; }
+.tb-save.saved .tb-save-dot { background: var(--success); }
+.tb-save.unsaved .tb-save-dot { background: var(--warning); }
 .tb-save.saving .tb-save-dot { background: var(--accent-text); animation: tbSavePulse 1s ease-in-out infinite; }
 @keyframes tbSavePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
@@ -3370,6 +3388,12 @@ onBeforeUnmount(() => {
   .tb-name { min-width: 0; width: 100%; padding: 6px; }
   .tb-right { flex: 0 1 auto; min-width: 0; overflow-x: auto; gap: 6px; }
   .tb-right .tb-btn { flex: none; }
+}
+/* 手机宽度下名称框已经被挤到 0 宽，却还占着一个 gap，正好把「保存」右边挤出去 4px。
+   干脆整块收掉，按钮区就能完整摆下。 */
+@media (max-width: 420px) {
+  .tb-left { display: none; }
+  .tb-right { margin-left: auto; }
 }
 .tb-btn {
   display: inline-flex;
@@ -3757,62 +3781,6 @@ onBeforeUnmount(() => {
   color: var(--t-dim);
   font-size: 14px;
   z-index: 4;
-}
-
-.vf-wrap :deep(.vue-flow__controls) {
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.vf-wrap :deep(.vue-flow__controls-button) {
-  background: var(--n-3);
-  border-bottom: 1px solid var(--n-5);
-  color: var(--t-body);
-  fill: var(--t-body);
-}
-.vf-wrap :deep(.vue-flow__controls-button:hover) {
-  background: var(--n-4);
-  color: var(--accent-text);
-  fill: var(--accent-text);
-}
-.vf-wrap :deep(.vue-flow__minimap) {
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
-}
-/* 关键：vue-flow theme-default 给 .vue-flow__node-output / -input / -default 这三个
-   保留类名套了白底 + 10px padding + 150px 固定宽 + 选中白halo。我们用了 type='output'
-   就把这层"原生节点皮"继承下来了，表现成卡片外漏一圈白边。这里全部 reset，回归纯净
-   包装层，所有视觉都让 .cv-node 自己控制。 */
-.vf-wrap :deep(.vue-flow__node-output),
-.vf-wrap :deep(.vue-flow__node-input),
-.vf-wrap :deep(.vue-flow__node-default) {
-  padding: 0;
-  width: auto;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  color: inherit;
-  font-size: inherit;
-  text-align: left;
-  box-shadow: none;
-}
-.vf-wrap :deep(.vue-flow__node-output.selected),
-.vf-wrap :deep(.vue-flow__node-output.selected:hover),
-.vf-wrap :deep(.vue-flow__node-output:focus),
-.vf-wrap :deep(.vue-flow__node-output:focus-visible),
-.vf-wrap :deep(.vue-flow__node-input.selected),
-.vf-wrap :deep(.vue-flow__node-input.selected:hover),
-.vf-wrap :deep(.vue-flow__node-input:focus),
-.vf-wrap :deep(.vue-flow__node-input:focus-visible),
-.vf-wrap :deep(.vue-flow__node-default.selected),
-.vf-wrap :deep(.vue-flow__node-default.selected:hover),
-.vf-wrap :deep(.vue-flow__node-default:focus),
-.vf-wrap :deep(.vue-flow__node-default:focus-visible) {
-  box-shadow: none;
-  outline: none;
-  border: none;
 }
 
 .vf-wrap :deep(.vue-flow__handle) {

@@ -91,7 +91,10 @@ export interface Run {
   status: RunStatus
   progress: number
   outputs: RunOutput[]
+  /** 失败原因，已是当前界面语言 */
   error?: string
+  /** 失败原因的稳定标识，需要按原因分支时用它，不要去匹配文字 */
+  errorCode?: string
   cost?: Cost
   model: string
   kind: ModelKind
@@ -114,6 +117,7 @@ export interface LlmTask {
   status: RunStatus
   text?: string
   error?: string
+  errorCode?: string
   cost?: Cost
   progress?: number
 }

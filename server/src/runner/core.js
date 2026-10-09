@@ -15,6 +15,10 @@
  *  - on shutdown, in-flight runs go back to `queued` so the next process
  *    resumes them (re-polling the upstream task when one was already created).
  *
+ * Failure reasons are catalog messages (see ../i18n): a run stores the message
+ * code and its parameters, and whoever reads the run later renders them in
+ * their own language.
+ *
  * Injected dependencies:
  *   store    { claim(id), get(id), update(id, patch), cancelQueued(id), recover() }
  *   resolve  async (run) -> { provider, cfg, request, sync? }
@@ -23,6 +27,8 @@
  *   settings () -> { concurrency, submitTimeoutMs, pollTimeoutMs:{image,video},
  *                    chatTimeoutMs, downloadTimeoutMs, retries }
  */
+
+const { LocalizedError, RAW, isMessage, msg, messageOf, storedError } = require('../i18n')
 
 const STATUS = {
   QUEUED: 'queued',
@@ -33,24 +39,22 @@ const STATUS = {
   CANCELED: 'canceled',
 }
 
-/** An error whose message is meant for the user. */
-class RunError extends Error {
-  constructor(code, message, extra = {}) {
-    super(message)
+/** An error whose message (a catalog key or message object) is meant for the user. */
+class RunError extends LocalizedError {
+  constructor(code, key, params = {}, extra = {}) {
+    super(key, params, extra)
     this.name = 'RunError'
     this.code = code
-    this.userFacing = true
-    Object.assign(this, extra)
   }
 }
 
-const GENERIC_FAILURE = '运行失败，请稍后重试或查看服务端日志'
+const CANCELED = msg('run.canceled')
 const POLL_CALL_TIMEOUT_MS = 30 * 1000
 const MAX_CONSECUTIVE_POLL_ERRORS = 5
 
-function userMessage(err) {
-  if (err && err.userFacing && err.message) return String(err.message).slice(0, 500)
-  return GENERIC_FAILURE
+/** What a failed run tells the user: the error's own message when it has one. */
+function failureMessage(err) {
+  return messageOf(err) || msg('run.failed')
 }
 
 function abortableSleep(ms, signal) {
@@ -66,13 +70,13 @@ function abortableSleep(ms, signal) {
  * Run fn(signal) with a hard deadline. Rejects when the deadline passes or the
  * parent signal aborts, even if fn ignores its signal.
  */
-async function withDeadline(fn, ms, parent, timeoutMessage) {
+async function withDeadline(fn, ms, parent, timeoutKey) {
   if (parent.aborted) throw parent.reason
-  if (!(ms > 0)) throw new RunError('TIMEOUT', timeoutMessage)
+  if (!(ms > 0)) throw new RunError('TIMEOUT', timeoutKey)
   const ctl = new AbortController()
   const onParent = () => ctl.abort(parent.reason)
   parent.addEventListener('abort', onParent, { once: true })
-  const timer = setTimeout(() => ctl.abort(new RunError('TIMEOUT', timeoutMessage)), ms)
+  const timer = setTimeout(() => ctl.abort(new RunError('TIMEOUT', timeoutKey)), ms)
   try {
     const work = Promise.resolve().then(() => fn(ctl.signal))
     work.catch(() => {}) // a late rejection after the race is settled is not an unhandled one
@@ -139,14 +143,14 @@ class Runner {
     if (entry) {
       if (!entry.reason) {
         entry.reason = 'cancel'
-        entry.ctl.abort(new RunError('CANCELED', '已取消'))
+        entry.ctl.abort(new RunError('CANCELED', CANCELED))
       }
       await entry.promise
       return this.store.get(key)
     }
     const idx = this.queue.indexOf(key)
     if (idx >= 0) this.queue.splice(idx, 1)
-    await this.store.cancelQueued(key, { status: STATUS.CANCELED, error: '已取消', finishedAt: new Date(this.now()) })
+    await this.store.cancelQueued(key, { status: STATUS.CANCELED, ...storedError(CANCELED), finishedAt: new Date(this.now()) })
     return this.store.get(key)
   }
 
@@ -158,7 +162,7 @@ class Runner {
     for (const entry of this.active.values()) {
       if (!entry.reason) {
         entry.reason = 'shutdown'
-        entry.ctl.abort(new RunError('SHUTDOWN', '服务正在重启'))
+        entry.ctl.abort(new RunError('SHUTDOWN', 'run.restarting'))
       }
       pending.push(entry.promise)
     }
@@ -197,10 +201,13 @@ class Runner {
           verdict = await this.billing.beforeRun(ctx, run.cost)
         } catch (err) {
           this.log.error('[runner] billing.beforeRun threw:', err && err.message)
-          throw new RunError('BILLING_ERROR', '计费检查失败，本次运行未执行')
+          throw new RunError('BILLING_ERROR', 'run.billing_error')
         }
         if (verdict && verdict.allow === false) {
-          throw new RunError('BILLING_DENIED', String(verdict.reason || '计费钩子拒绝了本次运行').slice(0, 300))
+          // The hook's own reason is free text and is shown as it is.
+          throw new RunError('BILLING_DENIED', verdict.reason
+            ? msg(RAW, { text: String(verdict.reason).slice(0, 300) })
+            : msg('run.billing_denied'))
         }
         billed = true
         run = await this.store.update(id, { billingStarted: true })
@@ -216,6 +223,8 @@ class Runner {
         status: STATUS.SUCCEEDED,
         progress: 100,
         error: '',
+        errorCode: '',
+        errorParams: {},
         finishedAt: new Date(this.now()),
       })
       await this._hook('afterRun', ctx, result)
@@ -231,22 +240,22 @@ class Runner {
       }
       await this.store.update(id, {
         status: canceled ? STATUS.CANCELED : STATUS.FAILED,
-        error: canceled ? '已取消' : userMessage(err),
+        ...storedError(canceled ? CANCELED : failureMessage(err)),
         finishedAt: new Date(this.now()),
       })
-      if (billed) await this._hook('onFailed', ctx, canceled ? new RunError('CANCELED', '已取消') : err)
+      if (billed) await this._hook('onFailed', ctx, canceled ? new RunError('CANCELED', CANCELED) : err)
     }
   }
 
   async _chat(run, { provider, cfg, request }, signal) {
-    if (typeof provider.chat !== 'function') throw new RunError('UNSUPPORTED', '该接入不支持对话模型')
+    if (typeof provider.chat !== 'function') throw new RunError('UNSUPPORTED', 'run.chat_unsupported')
     const cfgTimeout = this.settings().chatTimeoutMs
     const out = await withDeadline(
       (sig) => provider.chat(cfg, { ...request, signal: sig }),
-      cfgTimeout, signal, '对话超时'
+      cfgTimeout, signal, 'run.timeout_chat'
     )
     const text = out && typeof out.text === 'string' ? out.text : ''
-    if (!text) throw new RunError('EMPTY', '上游没有返回内容')
+    if (!text) throw new RunError('EMPTY', 'upstream.no_text')
     const result = { text }
     if (out.usage) result.usage = out.usage
     if (out.cost) result.cost = out.cost
@@ -273,7 +282,7 @@ class Runner {
         submittedAt = this.now()
         await this.store.update(id, { externalId, submittedAt: new Date(submittedAt), progress: Math.max(run.progress || 0, 5) })
       } else {
-        throw new RunError('BAD_SUBMIT', '上游没有返回任务编号')
+        throw new RunError('BAD_SUBMIT', 'upstream.no_task_id')
       }
     }
 
@@ -288,18 +297,18 @@ class Runner {
       const out = []
       for (const o of outputs) out.push(await this.transfer(o, { signal: sig, kind: run.kind }))
       return out
-    }, s.downloadTimeoutMs, signal, '结果下载超时')
+    }, s.downloadTimeoutMs, signal, 'run.timeout_download')
     return { outputs: stored }
   }
 
   async _submit(provider, cfg, request, budgetMs, retries, signal, sync) {
     const deadline = this.now() + budgetMs
-    const label = sync ? '生成超时' : '提交超时'
+    const timeoutKey = sync ? 'run.timeout_generate' : 'run.timeout_submit'
     for (let attempt = 0; ; attempt++) {
       try {
         return await withDeadline(
           (sig) => provider.submit(cfg, { ...request, signal: sig }),
-          deadline - this.now(), signal, label
+          deadline - this.now(), signal, timeoutKey
         )
       } catch (err) {
         // Only retry when the upstream certainly did not accept the task;
@@ -319,20 +328,20 @@ class Runner {
     const [minGap, maxGap] = this.pollIntervalMs
     for (let attempt = 0; ; attempt++) {
       const remaining = deadline - this.now()
-      if (remaining <= 0) throw new RunError('TIMEOUT', '生成超时')
+      if (remaining <= 0) throw new RunError('TIMEOUT', 'run.timeout_generate')
       await abortableSleep(Math.min(remaining, Math.min(maxGap, minGap * (1 + attempt * 0.5))), signal)
-      if (deadline - this.now() <= 0) throw new RunError('TIMEOUT', '生成超时')
+      if (deadline - this.now() <= 0) throw new RunError('TIMEOUT', 'run.timeout_generate')
 
       let res
       try {
         res = await withDeadline(
           (sig) => provider.poll(cfg, { ...request, signal: sig }),
-          Math.min(POLL_CALL_TIMEOUT_MS, deadline - this.now()), signal, '生成超时'
+          Math.min(POLL_CALL_TIMEOUT_MS, deadline - this.now()), signal, 'run.timeout_generate'
         )
         errors = 0
       } catch (err) {
         if (signal.aborted) throw signal.reason
-        if (this.now() >= deadline) throw new RunError('TIMEOUT', '生成超时')
+        if (this.now() >= deadline) throw new RunError('TIMEOUT', 'run.timeout_generate')
         // A status query is always safe to repeat. Transient errors are ridden
         // out until the deadline; persistent hard errors give up early.
         if (err && (err.transient || err.code === 'TIMEOUT')) continue
@@ -342,11 +351,17 @@ class Runner {
 
       const status = res && res.status
       if (status === 'succeeded') {
-        if (!Array.isArray(res.outputs) || !res.outputs.length) throw new RunError('EMPTY', '上游任务完成但没有返回结果')
+        if (!Array.isArray(res.outputs) || !res.outputs.length) throw new RunError('EMPTY', 'upstream.no_outputs')
         return res.outputs
       }
       if (status === 'failed') {
-        throw new RunError('UPSTREAM_FAILED', String(res.error || '上游生成失败').slice(0, 500))
+        // A provider reports either its own message or the upstream's free text,
+        // which is passed on untranslated inside a sentence of ours.
+        const reason = res.error
+        if (isMessage(reason)) throw new RunError('UPSTREAM_FAILED', reason)
+        throw new RunError('UPSTREAM_FAILED', reason
+          ? msg('upstream.failed_detail', { detail: String(reason).slice(0, 400) })
+          : msg('upstream.failed'))
       }
       const progress = Math.min(94, Math.max(lastProgress, Math.round(Number(res && res.progress) || 0)))
       if (progress > lastProgress) {
@@ -357,4 +372,4 @@ class Runner {
   }
 }
 
-module.exports = { Runner, RunError, STATUS, withDeadline, abortableSleep, userMessage }
+module.exports = { Runner, RunError, STATUS, withDeadline, abortableSleep, failureMessage }

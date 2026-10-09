@@ -12,13 +12,14 @@ const { loadImage } = require('../services/media')
 const { getStorage, newKey } = require('../storage')
 const { ok, wrap, badRequest } = require('../utils/http')
 const { clampInt, isMediaUrl } = require('../utils/validate')
+const { t, msg } = require('../i18n')
 
 const router = express.Router()
 
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024
 
 function imageUrlOf(v, what) {
-  if (!isMediaUrl(v)) throw badRequest(`缺少${what}地址`)
+  if (!isMediaUrl(v)) throw badRequest('media.url_missing', { what })
   return v
 }
 
@@ -66,12 +67,12 @@ router.post('/tool/slice', wrap(async (req, res) => {
   const b = req.body || {}
   const cols = clampInt(b.cols, 1, 6, 3)
   const rows = clampInt(b.rows, 1, 6, 3)
-  const cells = await tools.slice(await fetchImage(b.imageUrl, '源图'), { cols, rows })
+  const cells = await tools.slice(await fetchImage(b.imageUrl, msg('noun.source_image')), { cols, rows })
   const items = []
   for (const cell of cells) {
     items.push({
       key: cell.key,
-      label: `第 ${cell.index} 格`,
+      label: t(req.locale, 'tool.slice_cell', { n: cell.index }),
       url: await save(cell.buffer, cell.mime),
       width: cell.width,
       height: cell.height,
@@ -84,13 +85,13 @@ router.post('/tool/slice', wrap(async (req, res) => {
 router.post('/tool/collage', wrap(async (req, res) => {
   const b = req.body || {}
   const urls = Array.isArray(b.imageUrls) ? b.imageUrls.filter(Boolean) : []
-  if (urls.length < 2) throw badRequest('至少要接两张图才能拼')
-  if (urls.length > 64) throw badRequest('图片数量过多')
+  if (urls.length < 2) throw badRequest('tool.collage_min')
+  if (urls.length > 64) throw badRequest('tool.collage_max')
   const cols = clampInt(b.cols, 1, 4, 2)
   const rows = clampInt(b.rows, 1, 4, 2)
   const used = urls.slice(0, cols * rows)
   const buffers = []
-  for (let i = 0; i < used.length; i++) buffers.push(await fetchImage(used[i], `第 ${i + 1} 张图`))
+  for (let i = 0; i < used.length; i++) buffers.push(await fetchImage(used[i], msg('noun.nth_image', { n: i + 1 })))
   const out = await tools.collage(buffers, { cols, rows, gap: clampInt(b.gap, 0, 80, 0), bg: b.bg, ratio: String(b.ratio || '') })
   ok(res, {
     url: await save(out.buffer, out.mime),
@@ -106,8 +107,8 @@ router.post('/tool/collage', wrap(async (req, res) => {
 /** POST /api/canvas/tool/watermark { imageUrl, markUrl, position, scalePct, opacity, marginPct } */
 router.post('/tool/watermark', wrap(async (req, res) => {
   const b = req.body || {}
-  const base = await fetchImage(b.imageUrl, '底图')
-  const mark = await fetchImage(b.markUrl, '水印图')
+  const base = await fetchImage(b.imageUrl, msg('noun.base_image'))
+  const mark = await fetchImage(b.markUrl, msg('noun.watermark_image'))
   const out = await tools.watermark(base, mark, {
     position: tools.ANCHORS.has(String(b.position)) ? String(b.position) : 'br',
     scalePct: clampInt(b.scalePct, 5, 60, 20),
@@ -120,7 +121,7 @@ router.post('/tool/watermark', wrap(async (req, res) => {
 /** POST /api/canvas/tool/fit { imageUrl, ratio, bg, format, quality, maxKb } */
 router.post('/tool/fit', wrap(async (req, res) => {
   const b = req.body || {}
-  const out = await tools.fit(await fetchImage(b.imageUrl, '源图'), {
+  const out = await tools.fit(await fetchImage(b.imageUrl, msg('noun.source_image')), {
     ratio: String(b.ratio || ''),
     bg: b.bg,
     format: ['jpg', 'png', 'webp'].includes(String(b.format)) ? String(b.format) : 'auto',
@@ -140,10 +141,10 @@ router.post('/tool/fit', wrap(async (req, res) => {
 router.post('/platform-export', wrap(async (req, res) => {
   const b = req.body || {}
   const group = b.group === 'overseas' ? 'overseas' : 'domestic'
-  const out = await tools.platformExport(await fetchImage(b.imageUrl, '源图'), group)
+  const out = await tools.platformExport(await fetchImage(b.imageUrl, msg('noun.source_image')), group)
   const items = []
   for (const it of out.items) {
-    items.push({ key: it.key, label: it.label, url: await save(it.buffer, it.mime), width: it.width, height: it.height })
+    items.push({ key: it.key, label: t(req.locale, `export.${it.key}`), url: await save(it.buffer, it.mime), width: it.width, height: it.height })
   }
   ok(res, { group, items, whiteBg: out.whiteBg })
 }))

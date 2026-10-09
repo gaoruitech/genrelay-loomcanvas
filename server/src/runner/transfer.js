@@ -71,7 +71,7 @@ function ensureThumbnail(thumbKey, sourceKey) {
 
 async function storeImage(buffer) {
   const mime = sniffMime(buffer)
-  if (kindOfMime(mime) !== 'image') throw new RunError('BAD_RESULT', '上游返回的不是图片文件')
+  if (kindOfMime(mime) !== 'image') throw new RunError('BAD_RESULT', 'upstream.not_image_file')
   const storage = getStorage()
   let width = 0
   let height = 0
@@ -121,7 +121,7 @@ async function storeStream(type, url, headers, signal, timeoutMs) {
     const head = await peek(stream)
     const mime = sniffMime(head)
     if (kindOfMime(mime) !== type) {
-      throw new RunError('BAD_RESULT', type === 'video' ? '上游返回的不是视频文件' : '上游返回的文件格式不正确')
+      throw new RunError('BAD_RESULT', type === 'video' ? 'upstream.not_video_file' : 'upstream.bad_file')
     }
     const saved = await getStorage().put(newKey('outputs', mime), stream, { contentType: mime })
     return { type, url: saved.url, key: saved.key, thumbnailUrl: '', thumbKey: '', width: 0, height: 0 }
@@ -133,7 +133,7 @@ async function storeStream(type, url, headers, signal, timeoutMs) {
 
 function fromDataUri(uri) {
   const m = /^data:([\w/+.-]+)?(;base64)?,(.*)$/s.exec(uri)
-  if (!m || !m[2]) throw new RunError('BAD_RESULT', '上游返回的内联数据无法解析')
+  if (!m || !m[2]) throw new RunError('BAD_RESULT', 'upstream.bad_inline_data')
   return Buffer.from(m[3], 'base64')
 }
 
@@ -145,11 +145,11 @@ async function transferOutput(output, { signal, timeoutMs = 300000 } = {}) {
   const type = ['image', 'video', 'audio'].includes(output && output.type) ? output.type : 'image'
   try {
     if (output.b64) {
-      if (type !== 'image') throw new RunError('BAD_RESULT', '不支持的内联结果类型')
+      if (type !== 'image') throw new RunError('BAD_RESULT', 'upstream.bad_inline_type')
       return await storeImage(Buffer.from(String(output.b64), 'base64'))
     }
     const url = String(output.url || '')
-    if (!url) throw new RunError('BAD_RESULT', '上游结果缺少地址')
+    if (!url) throw new RunError('BAD_RESULT', 'upstream.no_result_url')
     if (url.startsWith('data:')) return await storeImage(fromDataUri(url))
 
     // Already ours (a provider echoing an input back): reference it, do not copy.
@@ -164,7 +164,7 @@ async function transferOutput(output, { signal, timeoutMs = 300000 } = {}) {
   } catch (err) {
     if (signal && signal.aborted) throw signal.reason
     if (err && err.name === 'SafeFetchError') {
-      throw new RunError('DOWNLOAD_FAILED', `结果${err.message.startsWith('下载') ? '' : '下载失败：'}${err.message}`)
+      throw new RunError('DOWNLOAD_FAILED', 'run.download_failed', { detail: err.i18n })
     }
     throw err
   }

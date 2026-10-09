@@ -16,7 +16,7 @@ test('every built-in provider type is registered with the plugin contract', () =
     assert.ok(t.fields.some((f) => f.key === 'apiKey' && f.secret), `${t.type} declares a secret apiKey field`)
   }
   assert.equal(registry.getType('gaorui').defaultBaseUrl, 'https://gaorui.cc')
-  assert.equal(registry.getType('gaorui').label, '高睿 API')
+  assert.equal(registry.getType('gaorui').label, 'Gaorui API')
   assert.equal(registry.getType('nope'), null)
 })
 

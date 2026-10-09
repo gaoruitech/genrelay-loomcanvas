@@ -32,8 +32,8 @@ test('slice: cells tile the source exactly', async () => {
   assert.equal(cells[0].height + cells[3].height, 500)
   assert.deepEqual(await size(cells[0].buffer), [cells[0].width, cells[0].height])
   assert.equal(cells[0].mime, 'image/jpeg')
-  await assert.rejects(tools.slice(src, { cols: 1, rows: 1 }), /至少/)
-  await assert.rejects(tools.slice(src, { cols: 6, rows: 6 }), /最多/)
+  await assert.rejects(tools.slice(src, { cols: 1, rows: 1 }), (e) => e.i18n.code === 'tool.slice_min')
+  await assert.rejects(tools.slice(src, { cols: 6, rows: 6 }), (e) => e.i18n.code === 'tool.slice_max')
   await assert.rejects(tools.slice(Buffer.from('not an image'), { cols: 2, rows: 2 }), (e) => e.userFacing)
 })
 
@@ -52,7 +52,7 @@ test('collage: grid size with gaps', async () => {
   assert.equal(out.used, 3)
   const squared = await tools.collage([a, b], { cols: 2, rows: 1, ratio: '1:1' })
   assert.deepEqual([squared.width, squared.height], [800, 400])
-  await assert.rejects(tools.collage([a], { cols: 2, rows: 2 }), /两张/)
+  await assert.rejects(tools.collage([a], { cols: 2, rows: 2 }), (e) => e.i18n.code === 'tool.collage_min')
 })
 
 test('watermark keeps the base size', async () => {

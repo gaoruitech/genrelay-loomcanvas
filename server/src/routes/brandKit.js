@@ -55,7 +55,7 @@ async function clearOtherDefaults(keepId) {
 async function findKit(id) {
   requireObjectId(id)
   const kit = await BrandKit.findOne({ _id: id, userId: LOCAL_USER, isDeleted: false })
-  if (!kit) throw notFound('品牌包不存在')
+  if (!kit) throw notFound('brandKit.not_found')
   return kit
 }
 
@@ -66,9 +66,9 @@ router.get('/', wrap(async (_req, res) => {
 
 router.post('/', wrap(async (req, res) => {
   const payload = pickPayload(req.body || {})
-  if (!payload.name) throw badRequest('请给品牌包起个名字')
+  if (!payload.name) throw badRequest('brandKit.name_required')
   if ((await BrandKit.countDocuments({ userId: LOCAL_USER, isDeleted: false })) >= MAX_KITS) {
-    throw badRequest(`最多 ${MAX_KITS} 个品牌包，先删掉不用的`)
+    throw badRequest('brandKit.max', { max: MAX_KITS })
   }
   const kit = await BrandKit.create({ ...payload, userId: LOCAL_USER })
   if (kit.isDefault) await clearOtherDefaults(kit._id)
@@ -78,7 +78,7 @@ router.post('/', wrap(async (req, res) => {
 router.put('/:id', wrap(async (req, res) => {
   const kit = await findKit(req.params.id)
   const payload = pickPayload(req.body || {})
-  if (payload.name === '') throw badRequest('名称不能为空')
+  if (payload.name === '') throw badRequest('common.name_required')
   Object.assign(kit, payload)
   await kit.save()
   if (kit.isDefault) await clearOtherDefaults(kit._id)

@@ -15,6 +15,8 @@ const Provider = require('../models/Provider')
 const ModelOverride = require('../models/ModelOverride')
 const { getConfig } = require('../config')
 const { decrypt } = require('../utils/crypto')
+const { ApiError } = require('../utils/http')
+const { LocalizedError, has, t } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 
 const TYPES = new Map()
@@ -39,22 +41,52 @@ function getType(type) {
   return TYPES.get(type) || null
 }
 
+/** First of the catalog keys that exists, rendered; otherwise the plugin's own text. */
+function localized(locale, keys, own) {
+  const key = keys.find(has)
+  return key ? t(locale, key) : (own || '')
+}
+
+/**
+ * Display names of a plugin and its form fields. The catalog is looked up by
+ * stable identifiers - `provider.<type>.label`, `provider.<type>.field.<key>.label|help`,
+ * then `provider.field.<key>.label` shared by all types - so a plugin without
+ * catalog entries simply shows the text it declares.
+ */
+function typeLabel(plugin, locale) {
+  return localized(locale, [`provider.${plugin.type}.label`], plugin.label)
+}
+
+function fieldText(plugin, field, part, locale) {
+  return localized(locale, [`provider.${plugin.type}.field.${field.key}.${part}`, `provider.field.${field.key}.${part}`], field[part])
+}
+
 /** What the settings page needs to render the "add provider" form. */
-function listTypes() {
+function listTypes(locale) {
   return [...TYPES.values()].map((p) => ({
     type: p.type,
-    label: p.label,
+    label: typeLabel(p, locale),
     defaultBaseUrl: p.defaultBaseUrl || '',
     fields: p.fields.map((f) => ({
       key: f.key,
-      label: f.label,
+      label: fieldText(p, f, 'label', locale),
       type: f.type || (f.secret ? 'password' : 'text'),
       secret: !!f.secret,
       required: !!f.required,
       placeholder: f.placeholder || '',
-      help: f.help || '',
+      help: fieldText(p, f, 'help', locale),
     })),
   }))
+}
+
+/**
+ * A ModelSpec with its one-line description in the reader's language, for the
+ * built-in models that have one in the catalog (`model.<type>.<model>.desc`).
+ */
+function localizeSpec(spec, locale) {
+  const parts = spec && splitModelId(spec.id)
+  const key = parts ? `model.${spec.providerType}.${parts.model}.desc` : ''
+  return has(key) ? { ...spec, desc: t(locale, key) } : spec
 }
 
 const KINDS = new Set(['image', 'video', 'chat'])
@@ -154,9 +186,7 @@ function configFor(doc) {
     try {
       apiKey = decrypt(doc.apiKeyEnc, getConfig().secretKey)
     } catch {
-      const err = new Error('无法解密该接入的 API Key（SECRET_KEY 是否被改过？），请重新填写')
-      err.userFacing = true
-      throw err
+      throw new LocalizedError('provider.key_undecryptable')
     }
   }
   return {
@@ -218,19 +248,19 @@ async function listModels({ includeDisabled = false, kind } = {}) {
  * model, its provider or its key is not usable.
  */
 async function resolveModel(fullId, { requireEnabled = true } = {}) {
-  const fail = (msg) => Object.assign(new Error(msg), { userFacing: true, status: 400 })
+  const fail = (key, params) => new ApiError(400, key, params)
   const parts = splitModelId(fullId)
-  if (!parts) throw fail('模型标识格式不正确')
+  if (!parts) throw fail('model.bad_id')
   const doc = await Provider.findOne({ userId: LOCAL_USER, slug: parts.slug }).select('+apiKeyEnc').lean()
-  if (!doc) throw fail('该模型所属的接入不存在，请到设置里检查')
-  if (requireEnabled && doc.enabled === false) throw fail('该模型所属的接入已停用')
+  if (!doc) throw fail('model.provider_missing')
+  if (requireEnabled && doc.enabled === false) throw fail('model.provider_disabled')
   const plugin = getType(doc.type)
-  if (!plugin) throw fail(`不支持的接入类型：${doc.type}`)
+  if (!plugin) throw fail('provider.type_unsupported_named', { type: doc.type })
   const specs = await specsForInstance(doc)
   const override = await ModelOverride.findOne({ modelId: fullId }).lean()
   const base = specs.find((s) => s.id === fullId) || null
   const spec = base ? mergeOverrides([base], override ? [override] : [])[0] : null
-  if (requireEnabled && spec && !spec.enabled) throw fail('该模型已被停用')
+  if (requireEnabled && spec && !spec.enabled) throw fail('model.disabled')
   return { doc, plugin, cfg: configFor(doc), spec, model: parts.model }
 }
 
@@ -238,6 +268,8 @@ module.exports = {
   register,
   getType,
   listTypes,
+  typeLabel,
+  localizeSpec,
   buildSpecs,
   mergeOverrides,
   splitModelId,

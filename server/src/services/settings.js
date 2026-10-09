@@ -11,15 +11,15 @@ const { isMediaUrl } = require('../utils/validate')
 
 const int = (min, max) => (v, key) => {
   const n = Number(v)
-  if (!Number.isInteger(n) || n < min || n > max) throw badRequest(`${key} 必须是 ${min}-${max} 之间的整数`)
+  if (!Number.isInteger(n) || n < min || n > max) throw badRequest('validation.int_range', { field: key, min, max })
   return n
 }
 const oneOf = (...values) => (v, key) => {
-  if (!values.includes(v)) throw badRequest(`${key} 只能是 ${values.join(' / ')}`)
+  if (!values.includes(v)) throw badRequest('validation.one_of', { field: key, values: values.join(' / ') })
   return v
 }
 const string = (max) => (v, key) => {
-  if (typeof v !== 'string') throw badRequest(`${key} 必须是字符串`)
+  if (typeof v !== 'string') throw badRequest('validation.string', { field: key })
   return v.trim().slice(0, max)
 }
 
@@ -30,7 +30,7 @@ const DEFINITIONS = {
     default: '',
     parse: (v, key) => {
       const s = string(2048)(v, key)
-      if (s && !isMediaUrl(s)) throw badRequest('logoUrl 必须是 http(s) 地址或站内文件地址')
+      if (s && !isMediaUrl(s)) throw badRequest('settings.logo_url')
       return s
     },
   },
@@ -76,11 +76,11 @@ function get(key) {
 
 /** Validate and persist a partial update. Unknown keys are rejected. */
 async function update(patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw badRequest('请求体必须是对象')
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw badRequest('validation.body_object')
   const parsed = {}
   for (const [key, value] of Object.entries(patch)) {
     const def = DEFINITIONS[key]
-    if (!def) throw badRequest(`未知的设置项：${String(key).slice(0, 40)}`)
+    if (!def) throw badRequest('settings.unknown_key', { key: String(key).slice(0, 40) })
     parsed[key] = def.parse(value, key)
   }
   for (const [key, value] of Object.entries(parsed)) {

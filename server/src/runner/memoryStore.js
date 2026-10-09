@@ -5,6 +5,7 @@
  * runner tests; also documents exactly what the runner needs from a store.
  */
 const { STATUS } = require('./core')
+const { msg, storedError } = require('../i18n')
 
 function createMemoryStore(initial = []) {
   const runs = new Map()
@@ -68,7 +69,7 @@ function createMemoryStore(initial = []) {
       for (const run of runs.values()) {
         if (run.status !== STATUS.RUNNING && run.status !== STATUS.ARCHIVING) continue
         if (run.externalId) run.status = STATUS.QUEUED
-        else Object.assign(run, { status: STATUS.FAILED, error: '服务中断，任务提交状态未知，请重试', finishedAt: new Date() })
+        else Object.assign(run, { status: STATUS.FAILED, ...storedError(msg('run.interrupted')), finishedAt: new Date() })
       }
       return [...runs.values()]
         .filter((r) => r.status === STATUS.QUEUED)

@@ -279,7 +279,7 @@ async function remove() {
 .bk-btn:disabled { opacity: .5; cursor: not-allowed; }
 .bk-btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--accent-text); }
 .bk-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); color: var(--btn-fg); }
-.bk-btn.danger:hover { border-color: #e06a5c; color: #e06a5c; }
+.bk-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 
 @media (max-width: 700px) {
   .bk-body { grid-template-columns: 1fr; }

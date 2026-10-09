@@ -32,10 +32,10 @@ router.get('/app/bootstrap', wrap(async (req, res) => {
 
 /** POST /api/auth/login { password } -> { token } */
 router.post('/auth/login', loginRateLimit, wrap(async (req, res) => {
-  if (!authRequired()) return ok(res, { token: '' }, '当前实例未开启登录')
+  if (!authRequired()) return ok(res, { token: '' }, 'auth.not_enabled')
   const password = req.body && req.body.password
-  if (typeof password !== 'string' || !password) throw badRequest('请输入访问密码')
-  if (password.length > 200 || !checkPassword(password)) throw new ApiError(401, '密码不正确', 401)
+  if (typeof password !== 'string' || !password) throw badRequest('auth.password_required')
+  if (password.length > 200 || !checkPassword(password)) throw new ApiError(401, 'auth.wrong_password', {}, 401)
   req.loginSucceeded()
   ok(res, { token: issueToken() })
 }))

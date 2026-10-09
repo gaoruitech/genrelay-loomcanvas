@@ -19,6 +19,7 @@ loomcanvas/
 │     ├─ runner/            任务执行器（排队、轮询、转存、记账）
 │     ├─ storage/           存储驱动：local / s3 / oss
 │     ├─ billing/           计费钩子（默认空实现）
+│     ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
 │     └─ utils/
 ├─ web/               Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  └─ src/
@@ -35,7 +36,7 @@ loomcanvas/
 ## 2. 通用约定
 
 - 所有接口前缀 `/api`。
-- 返回统一为 `{ "result": 0, "message": "...", "data": ... }`；`result` 非 0 表示失败，同时使用合适的 HTTP 状态码。
+- 返回统一为 `{ "result": 0, "message": "...", "data": ... }`；`result` 非 0 表示失败，同时使用合适的 HTTP 状态码。失败时多一个 `code`（这条信息的稳定标识，见第 10 节「服务端文字的语言」）。
 - 第一版是单用户。所有数据表带 `userId` 字段，固定写入常量 `local`，为以后多用户留位置。
 - 登录：环境变量 `ACCESS_PASSWORD` 为空时不需要登录；非空时除 `/api/app/bootstrap`、`/api/auth/login`、分享只读接口外都要带 `Authorization: Bearer <token>`。
 - 文件地址：本地存储驱动下，文件通过 `/files/<key>` 访问；接口返回的都是可直接访问的完整或站内相对地址。
@@ -115,7 +116,8 @@ Run：
   "status": "queued",            // queued | running | archiving | succeeded | failed | canceled
   "progress": 0,                  // 0-100
   "outputs": [ { "type": "image", "url": "…", "thumbnailUrl": "…" } ],
-  "error": "",                    // 给用户看的失败原因
+  "error": "",                    // 给用户看的失败原因，按请求的语言给出
+  "errorCode": "",                // 失败原因的稳定标识，如 run.timeout_generate
   "cost": { "amount": 0.12, "currency": "CNY", "unknown": false },
   "model": "…", "kind": "image",
   "createdAt": "…", "startedAt": "…", "finishedAt": "…"
@@ -127,7 +129,7 @@ Run：
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/llm/tasks` | `{ model, prompt, systemPrompt?, imageUrls?, videoUrl? }` → `{ taskId }` |
-| GET | `/api/llm/tasks/:id` | → `{ status, text, error, cost }`，status 同 Run |
+| GET | `/api/llm/tasks/:id` | → `{ status, text, error, errorCode, cost }`，status 同 Run |
 
 ## 5. 管理接口（设置页）
 
@@ -178,13 +180,13 @@ module.exports = {
 ```js
 module.exports = {
   type: 'gaorui',
-  label: '高睿 API',
+  label: 'Gaorui API',                  // 自带的名字；语言文件里有 provider.gaorui.label 时用语言文件的
   fields: [ { key: 'apiKey', label: 'API Key', secret: true, required: true } ],
   defaultBaseUrl: 'https://gaorui.cc',
   async listModels(cfg) { /* 返回 ModelSpec[]（不含 providerId 和前缀，由注册表补） */ },
-  async test(cfg) { /* 连通性测试 */ },
+  async test(cfg) { /* 连通性测试 → { ok, modelCount? }；失败就抛错 */ },
   async submit(cfg, run) { /* → { externalId } 或 { outputs }（同步接口直接给结果） */ },
-  async poll(cfg, run) { /* → { status, progress, outputs?, error? } */ },
+  async poll(cfg, run) { /* → { status, progress, outputs?, error? }；error 填上游的原话 */ },
   async chat(cfg, req) { /* 对话类 → { text } */ },
 }
 ```
@@ -220,7 +222,18 @@ module.exports = {
 - `POST /api/workflow/download` `{ url, filename }` 代理下载跨域文件；`POST /api/workflow/:id/download-zip` `{ urls? }`，不带 `urls` 表示整张画布。
 - 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`、`video-in`）。
 - 视频生成节点的提示词里，指代首帧 / 尾帧的 `@` 存的是固定写法 `@first_frame` / `@last_frame`，与界面语言无关；文本框里显示成当前语言的名字（`@首帧`、`@First_frame`），提交给模型前再换成自然语言。老画布里存的 `@首帧` / `@尾帧` 照样认。
-- 后端内置内容（接入类型及其表单字段、内置模板、内置模型的一句话说明、切片和多平台导出的各项名字）在接口里是固定一种语言的原文，各自带稳定标识（接入 `type`、字段 `key`、模板 `key`、模型标识、导出项 `key`）；前端按标识在语言文件里取当前语言的写法，语言文件里没有的才显示接口给的原文。接口返回的错误信息 `message` 目前只有中文。
+- 后端内置内容（接入类型及其表单字段、内置模板、内置模型的一句话说明、切片和多平台导出的各项名字）各自带稳定标识（接入 `type`、字段 `key`、模板 `key`、模型标识、导出项 `key`）。除内置模板外，接口按请求的语言给出这些名字（见下面「服务端文字的语言」）；前端仍按标识在自己的语言文件里取当前语言的写法（这样切换语言不用重新请求），语言文件里没有的才显示接口给的。内置模板是入库的内容，接口给的是入库时的原文。
+
+**服务端文字的语言**
+
+- 服务端给用户看的每一句话都是语言文件里的一个条目：`server/src/i18n/zh-CN.js` 和 `en.js`，两边的键必须完全一致，键是 `<分类>.<名字>` 的扁平写法，`{name}` 是占位符。代码里不写给用户看的中文或英文句子，只写键：`badRequest('validation.max_items', { field: 'ids', max: 100 })`、`new RunError('TIMEOUT', 'run.timeout_generate')`。占位符的值可以是另一条信息 `{ code, params }`（比如句子里的名词 `noun.source_image`），渲染时用同一种语言。
+- 一次请求用哪种语言，按顺序取第一个认得的：请求头 `X-Locale`（前端每个请求都带当前界面语言，`zh-CN` 或 `en`）→ `Accept-Language` → 设置里的 `defaultLocale` → `zh-CN`。
+- 出错的返回是 `{ result, message, code, data: null }`：`message` 是按上面的语言渲染好的句子，`code` 是这条信息的键（稳定，可以拿来做分支；没有对应条目的原样文字 `code` 为空串）。成功的返回 `message` 一般是固定的 `ok`，个别需要提示的（如「运行已结束」）同样按语言给出。
+- 会存下来以后再看的错误不存成一句话：运行记录存 `errorCode` + `errorParams`，读的时候按读的人的语言渲染成 `error`；`error` 字段里另存一份 `zh-CN` 的文字，只在没有 `errorCode`（这套机制之前写下的记录）或键已经不存在时才显示。
+- 上游接口自己说的话不翻译，原样放进我们的句子里（「上游生成失败：<原话>」/ "Generation failed at the upstream: <原话>"）。计费钩子给的拒绝原因、第三方接入插件抛出的 `userFacing` 错误也是原样显示。接入插件的 `poll` 返回 `{ status: 'failed', error }` 时，`error` 填上游的原话（字符串）或一条信息 `{ code, params }`。
+- 按请求语言给出的不只是错误：接入类型和表单字段的名字（`provider.<type>.label`、`provider.<type>.field.<key>.label|help`、各类型共用的 `provider.field.<key>.label`；语言文件里没有的用插件自带的）、内置模型的一句话说明（`model.<接入类型>.<模型标识>.desc`）、多平台导出各项的名字（`export.<key>`）、切片各格的名字、连通性测试的结果、后端起的默认名字（未命名画布、副本）。
+- 不走语言文件的：内置模板和文本模板（`services/seed.js`，首次启动时入库的内容）、服务端日志（英文）、打包下载里的文件名、以及上面说的上游原话。
+- `server/test/i18n.test.js` 把这几条当测试守着：两个语言文件的键和占位符一致；代码里用到的键都存在、语言文件里没有用不到的键；`server/src` 里除 `i18n/zh-CN.js`、`services/seed.js` 和注释外没有中文。
 
 **分享链接**
 

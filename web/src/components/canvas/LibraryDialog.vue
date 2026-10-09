@@ -940,7 +940,7 @@ watch(() => props.modelValue, (open) => {
 }
 .st-active { background: var(--accent-line); color: var(--accent-text); }
 .st-expired { background: rgba(150,150,150,0.2); color: var(--t-body); }
-.st-revoked { background: rgba(255,90,90,0.2); color: #ff6a6a; }
+.st-revoked { background: var(--danger-dim); color: var(--danger); }
 
 .btn-del {
   position: absolute; top: 8px; right: 8px;

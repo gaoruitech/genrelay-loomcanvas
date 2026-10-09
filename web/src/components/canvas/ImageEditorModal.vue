@@ -591,7 +591,7 @@ function requestClose() {
   background-position: 0 0, 9px 9px;
 }
 .ie-state { color: var(--t-dim); font-size: 13px; }
-.ie-state.error { color: #ff6b6b; }
+.ie-state.error { color: var(--danger); }
 /* 尺寸由 fitFrame() 写成 px，这里不再参与推导。
    overflow:hidden 是必须的：裁剪框那圈压暗用的是 9999px 的 box-shadow，
    不裁掉会把整个弹窗一起压黑。手柄因此也全部放在框内侧。 */

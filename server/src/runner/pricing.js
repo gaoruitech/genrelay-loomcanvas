@@ -16,6 +16,8 @@
  * is flagged `unknown` so the UI can say "cost unknown" instead of "free".
  */
 
+const { LocalizedError } = require('../i18n')
+
 const UNITS = new Set(['per_image', 'per_video', 'per_second', 'per_1m_tokens'])
 const BYS = new Set(['resolution', 'duration', 'resolution_duration'])
 
@@ -96,40 +98,40 @@ function tokenCost(spec, usage) {
   return { amount: round(amount), currency, unknown: false }
 }
 
-/** Validate a pricing object from an admin override. Returns a clean copy or throws Error. */
+/** Validate a pricing object from an admin override. Returns a clean copy or throws a LocalizedError. */
 function normalizePricing(input) {
   if (input === null) return null
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('pricing 必须是对象或 null')
-  if (!UNITS.has(input.unit)) throw new Error('pricing.unit 不合法')
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new LocalizedError('validation.object_or_null', { field: 'pricing' })
+  if (!UNITS.has(input.unit)) throw new LocalizedError('validation.invalid', { field: 'pricing.unit' })
   const out = { currency: String(input.currency || 'CNY').trim().toUpperCase().slice(0, 8), unit: input.unit }
   const cleanTable = (table, depth) => {
-    if (!table || typeof table !== 'object' || Array.isArray(table)) throw new Error('pricing.table 必须是对象')
+    if (!table || typeof table !== 'object' || Array.isArray(table)) throw new LocalizedError('validation.object', { field: 'pricing.table' })
     const entries = Object.entries(table)
-    if (!entries.length || entries.length > 200) throw new Error('pricing.table 条目数不合法')
+    if (!entries.length || entries.length > 200) throw new LocalizedError('price.table_size')
     const res = {}
     for (const [k, v] of entries) {
-      if (k.length > 40 || k.startsWith('$') || k.includes('.')) throw new Error('pricing.table 的键不合法')
+      if (k.length > 40 || k.startsWith('$') || k.includes('.')) throw new LocalizedError('price.table_key')
       if (isPrice(v)) res[k] = v
       else if (depth > 0 && v && typeof v === 'object') res[k] = cleanTable(v, depth - 1)
-      else throw new Error(`pricing.table["${k}"] 必须是非负数`)
+      else throw new LocalizedError('validation.non_negative', { field: `pricing.table["${k}"]` })
     }
     return res
   }
   if (input.unit === 'per_1m_tokens') {
     if (input.table !== undefined) {
       const t = cleanTable(input.table, 0)
-      if (!isPrice(t.input) || !isPrice(t.output)) throw new Error('按 token 计价的 table 需要 input 和 output')
+      if (!isPrice(t.input) || !isPrice(t.output)) throw new LocalizedError('price.token_table')
       out.table = { input: t.input, output: t.output }
     } else if (isPrice(input.price)) out.price = input.price
-    else throw new Error('pricing.price 必须是非负数')
+    else throw new LocalizedError('validation.non_negative', { field: 'pricing.price' })
     return out
   }
   if (input.by !== undefined && input.by !== null && input.by !== '') {
-    if (!BYS.has(input.by)) throw new Error('pricing.by 不合法')
+    if (!BYS.has(input.by)) throw new LocalizedError('validation.invalid', { field: 'pricing.by' })
     out.by = input.by
     out.table = cleanTable(input.table, input.by === 'resolution_duration' ? 1 : 0)
   } else {
-    if (!isPrice(input.price)) throw new Error('pricing.price 必须是非负数')
+    if (!isPrice(input.price)) throw new LocalizedError('validation.non_negative', { field: 'pricing.price' })
     out.price = input.price
   }
   return out

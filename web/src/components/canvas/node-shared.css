@@ -95,10 +95,10 @@
 .cv-icon-btn:hover { background: var(--n-5); color: var(--accent-text); }
 .cv-icon-btn:active { background: var(--n-6); }
 .cv-icon-btn svg { width: 14px; height: 14px; }
-.cv-tag.stale { background: rgba(255, 170, 0, 0.15); color: var(--warning); }
-.cv-tag.running { background: rgba(0, 150, 255, 0.15); color: var(--info); }
-.cv-tag.done { background: rgba(80, 200, 120, 0.15); color: #5fcf80; }
-.cv-tag.error { background: rgba(255, 80, 80, 0.15); color: var(--danger); }
+.cv-tag.stale { background: var(--warning-dim); color: var(--warning); }
+.cv-tag.running { background: var(--info-dim); color: var(--info); }
+.cv-tag.done { background: var(--success-dim); color: var(--success); }
+.cv-tag.error { background: var(--danger-dim); color: var(--danger); }
 
 .cv-textarea {
   width: 100%;

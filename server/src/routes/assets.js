@@ -10,6 +10,7 @@ const express = require('express')
 const { UserAsset, CanvasAsset, USER_ASSET_KINDS } = require('../models/Asset')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, pageParams, isMediaUrl, escapeRegExp, text } = require('../utils/validate')
+const { t } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 const sharp = require('sharp')
 const { loadImage } = require('../services/media')
@@ -75,9 +76,9 @@ function serializeUserAsset(d) {
 
 function mediaFields(b) {
   const mediaUrl = typeof b.mediaUrl === 'string' ? b.mediaUrl.trim() : ''
-  if (!isMediaUrl(mediaUrl)) throw badRequest('缺少有效的媒体地址')
+  if (!isMediaUrl(mediaUrl)) throw badRequest('asset.media_url_required')
   const thumb = typeof b.thumbnailUrl === 'string' ? b.thumbnailUrl.trim() : ''
-  if (thumb && !isMediaUrl(thumb)) throw badRequest('缩略图地址无效')
+  if (thumb && !isMediaUrl(thumb)) throw badRequest('asset.bad_thumbnail')
   const dim = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.min(100000, Math.round(Number(v))) : 0)
   return {
     mediaUrl,
@@ -93,7 +94,7 @@ function mediaFields(b) {
 
 async function assertRoom(kind) {
   if ((await UserAsset.countDocuments({ ...live, kind })) >= LIMIT_PER_KIND) {
-    throw badRequest(`该分类已达上限（${LIMIT_PER_KIND} 项），请先清理`)
+    throw badRequest('asset.kind_full', { max: LIMIT_PER_KIND })
   }
 }
 
@@ -146,7 +147,7 @@ function userAssetRouter() {
     const doc = await UserAsset.create({
       userId: LOCAL_USER,
       kind: 'output',
-      name: text(b.name, 300) || '成品',
+      name: text(b.name, 300) || t(req.locale, 'asset.default_output_name'),
       source: 'generated',
       fromFlowId: text(b.fromFlowId, 100),
       fromProduct: text(b.fromProduct, 100),
@@ -158,7 +159,7 @@ function userAssetRouter() {
   /** POST /api/user-asset/folder/delete { name } - dissolve a folder, keep its assets */
   router.post('/folder/delete', wrap(async (req, res) => {
     const name = text(req.body && req.body.name, 120)
-    if (!name) throw badRequest('缺少分组名')
+    if (!name) throw badRequest('asset.folder_required')
     const r = await UserAsset.updateMany({ ...live, folder: name }, { $set: { folder: '' } })
     ok(res, { moved: r.modifiedCount || 0 })
   }))
@@ -173,7 +174,7 @@ function userAssetRouter() {
     if (Array.isArray(b.tags)) set.tags = tagsOf(b.tags)
     if (USER_ASSET_KINDS.includes(b.kind)) set.kind = b.kind
     const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live }, { $set: set }, { new: true }).lean()
-    if (!doc) throw notFound('资产不存在')
+    if (!doc) throw notFound('asset.not_found')
     ok(res, serializeUserAsset(doc))
   }))
 
@@ -181,7 +182,7 @@ function userAssetRouter() {
   router.delete('/:id', wrap(async (req, res) => {
     requireObjectId(req.params.id)
     const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live }, { $set: { isDeleted: true } }).lean()
-    if (!doc) throw notFound('资产不存在')
+    if (!doc) throw notFound('asset.not_found')
     ok(res, { id: String(doc._id) })
   }))
 

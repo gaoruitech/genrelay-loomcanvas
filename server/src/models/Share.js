@@ -17,7 +17,7 @@ const shareSchema = new mongoose.Schema({
   token: { type: String, required: true, unique: true },
   sourceWorkflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', index: true },
 
-  title: { type: String, required: true, default: '未命名画布', maxlength: 80 },
+  title: { type: String, required: true, default: 'Untitled', maxlength: 80 },
   description: { type: String, default: '', maxlength: 500 },
 
   snapshot: {

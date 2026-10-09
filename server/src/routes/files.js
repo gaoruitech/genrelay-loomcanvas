@@ -22,10 +22,10 @@ const MAX_IMAGE_PIXELS = 120 * 1000 * 1000
 
 /** Validate a buffer, store it, describe it. */
 async function ingest(buffer, { allow = ['image', 'video', 'audio'] } = {}) {
-  if (!Buffer.isBuffer(buffer) || !buffer.length) throw badRequest('文件为空')
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw badRequest('file.empty')
   const mime = sniffMime(buffer)
   const kind = kindOfMime(mime)
-  if (!kind || !allow.includes(kind)) throw badRequest('不支持的文件类型，只接受图片、视频和音频')
+  if (!kind || !allow.includes(kind)) throw badRequest(allow.length === 1 && allow[0] === 'image' ? 'file.image_only' : 'file.unsupported_type')
 
   const out = { size: buffer.length, mime }
   if (kind === 'image') {
@@ -36,7 +36,7 @@ async function ingest(buffer, { allow = ['image', 'video', 'audio'] } = {}) {
       out.width = (rotated ? meta.height : meta.width) || 0
       out.height = (rotated ? meta.width : meta.height) || 0
     } catch {
-      throw badRequest('图片无法解析，文件可能已损坏')
+      throw badRequest('file.image_corrupt')
     }
   }
   const saved = await getStorage().put(newKey('uploads', mime), buffer, { contentType: mime })
@@ -60,18 +60,18 @@ function apiRouter() {
 
   /** POST /api/files/upload  multipart, field "file" */
   router.post('/upload', upload.single('file'), wrap(async (req, res) => {
-    if (!req.file) throw badRequest('缺少文件，表单字段名应为 file')
+    if (!req.file) throw badRequest('file.missing')
     ok(res, await ingest(req.file.buffer))
   }))
 
   /** POST /api/files/fetch { url } - download a remote image into storage */
   router.post('/fetch', wrap(async (req, res) => {
     const url = req.body && req.body.url
-    if (typeof url !== 'string' || !url || url.length > 2048) throw badRequest('缺少 url')
+    if (typeof url !== 'string' || !url || url.length > 2048) throw badRequest('validation.required', { field: 'url' })
     // Already ours: nothing to fetch.
     const own = getStorage().keyFromUrl(url)
     if (own) {
-      if (!(await getStorage().exists(own))) throw new ApiError(404, '文件不存在')
+      if (!(await getStorage().exists(own))) throw new ApiError(404, 'file.not_found')
       const buffer = await getStorage().getBuffer(own)
       const mime = sniffMime(buffer) || mimeForKey(own)
       const out = { url: getStorage().urlFor(own), key: own, size: buffer.length, mime }
@@ -87,7 +87,7 @@ function apiRouter() {
     try {
       fetched = await safeFetch(url, { maxBytes: getConfig().maxUploadBytes, timeoutMs: 60000 })
     } catch (err) {
-      throw badRequest(err.name === 'SafeFetchError' ? err.message : '抓取失败')
+      throw badRequest(err.name === 'SafeFetchError' ? err.i18n : 'fetch.failed')
     }
     ok(res, await ingest(fetched.buffer, { allow: ['image'] }))
   }))

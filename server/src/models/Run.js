@@ -53,7 +53,12 @@ const runSchema = new mongoose.Schema({
   outputs: { type: [outputSchema], default: [] },
   text: { type: String, default: '' },
   // User-facing failure reason. Never contains credentials or stack traces.
+  // Stored as a catalog message (errorCode + errorParams, see ../i18n) and rendered in
+  // the reader's language; `error` is its text in the fallback language, which is
+  // all that records from before the catalog have.
   error: { type: String, default: '' },
+  errorCode: { type: String, default: '' },
+  errorParams: { type: Mixed, default: {} },
 
   // Estimated at submit time from the ModelSpec pricing (plus overrides).
   cost: {

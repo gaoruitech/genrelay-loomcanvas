@@ -6,6 +6,7 @@
  * storage - all done locally with sharp, no model involved.
  */
 const sharp = require('sharp')
+const { LocalizedError, msg } = require('../i18n')
 
 /** Output pixel cap: collages and padding can enlarge the canvas a lot. */
 const MAX_OUT_PIXELS = 40 * 1000 * 1000
@@ -20,11 +21,10 @@ const RATIOS = {
 const ANCHORS = new Set(['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'])
 const WHITE = { r: 255, g: 255, b: 255, alpha: 1 }
 
-class ToolError extends Error {
-  constructor(message) {
-    super(message)
+class ToolError extends LocalizedError {
+  constructor(key, params) {
+    super(key, params)
     this.name = 'ToolError'
-    this.userFacing = true
     this.status = 400
   }
 }
@@ -59,10 +59,11 @@ function cuts(total, parts) {
   return out
 }
 
-async function readMeta(buf, what = '图片') {
+/** `what` names the image in error messages (a `noun.*` message). */
+async function readMeta(buf, what = msg('noun.image')) {
   let m
-  try { m = await open(buf).metadata() } catch { throw new ToolError(`${what}无法解析`) }
-  if (!m.width || !m.height) throw new ToolError(`${what}读取失败`)
+  try { m = await open(buf).metadata() } catch { throw new ToolError('tool.undecodable', { what }) }
+  if (!m.width || !m.height) throw new ToolError('tool.unreadable', { what })
   return m
 }
 
@@ -81,11 +82,11 @@ async function encode(pipeline, hasAlpha, quality = 92) {
 
 /** Split an image into a cols x rows grid of equal cells. */
 async function slice(source, { cols, rows }) {
-  if (cols * rows < 2) throw new ToolError('至少要切成两块')
-  if (cols * rows > 16) throw new ToolError('一次最多切 16 块')
+  if (cols * rows < 2) throw new ToolError('tool.slice_min')
+  if (cols * rows > 16) throw new ToolError('tool.slice_max', { max: 16 })
   const src = await upright(source)
   const m = await readMeta(src)
-  if (m.width < cols || m.height < rows) throw new ToolError('图片太小，无法按该行列数切片')
+  if (m.width < cols || m.height < rows) throw new ToolError('tool.slice_too_small')
   const xs = cuts(m.width, cols)
   const ys = cuts(m.height, rows)
   const items = []
@@ -106,9 +107,9 @@ async function slice(source, { cols, rows }) {
  * cropped): a collage reads as tidy because the cells line up.
  */
 async function collage(sources, { cols, rows, gap = 0, bg, ratio }) {
-  if (sources.length < 2) throw new ToolError('至少要接两张图才能拼')
+  if (sources.length < 2) throw new ToolError('tool.collage_min')
   const used = sources.slice(0, cols * rows)
-  const first = await readMeta(used[0], '第一张图')
+  const first = await readMeta(used[0], msg('noun.first_image'))
   const r = RATIOS[ratio] || null
 
   let cellW = Math.min(first.width, MAX_CELL_EDGE)
@@ -136,17 +137,17 @@ async function collage(sources, { cols, rows, gap = 0, bg, ratio }) {
 /** Stamp `mark` onto `base` at one of nine anchor positions. */
 async function watermark(baseInput, markInput, { position = 'br', scalePct = 20, opacity = 70, marginPct = 3 }) {
   const base = await upright(baseInput)
-  const bm = await readMeta(base, '底图')
-  await readMeta(markInput, '水印图')
+  const bm = await readMeta(base, msg('noun.base_image'))
+  await readMeta(markInput, msg('noun.watermark_image'))
 
   let markBuf = await open(markInput).rotate().ensureAlpha()
     .resize({ width: Math.max(16, Math.round((bm.width * scalePct) / 100)) }).png().toBuffer()
-  let mm = await readMeta(markBuf, '水印图')
+  let mm = await readMeta(markBuf, msg('noun.watermark_image'))
   // A tall mark scaled by width could tower over the image; cap it at half the height.
   if (mm.height > bm.height / 2) {
     markBuf = await open(markInput).rotate().ensureAlpha()
       .resize({ height: Math.max(8, Math.round(bm.height / 2)) }).png().toBuffer()
-    mm = await readMeta(markBuf, '水印图')
+    mm = await readMeta(markBuf, msg('noun.watermark_image'))
   }
   if (opacity < 100) {
     // sharp has no opacity knob: multiply the mark's alpha by tiling a
@@ -234,19 +235,19 @@ async function fit(source, { ratio, bg, format = 'auto', quality = 88, maxKb = 0
 
 /* ------------------------------------------------------ platform export */
 
-/** Target sizes for marketplace listing images. */
+/** Target sizes for marketplace listing images. Their display names are `export.<key>` in the catalog. */
 const PLATFORM_SIZES = {
   domestic: {
-    taobao: { width: 1200, height: 1200, fit: 'cover', label: '淘宝主图 1:1' },
-    whiteBg: { width: 1200, height: 1200, fit: 'contain', label: '白底主图 1:1' },
-    xhs: { width: 1242, height: 1656, fit: 'cover', label: '小红书 3:4' },
-    douyin: { width: 1080, height: 1920, fit: 'cover', label: '抖音 9:16' },
+    taobao: { width: 1200, height: 1200, fit: 'cover' },
+    whiteBg: { width: 1200, height: 1200, fit: 'contain' },
+    xhs: { width: 1242, height: 1656, fit: 'cover' },
+    douyin: { width: 1080, height: 1920, fit: 'cover' },
   },
   overseas: {
-    whiteBg: { width: 1200, height: 1200, fit: 'contain', label: 'White background 1:1' },
-    amazon: { width: 1200, height: 1200, fit: 'cover', label: 'Amazon 1:1' },
-    shopify: { width: 1200, height: 1500, fit: 'cover', label: 'Shopify 4:5' },
-    tiktok: { width: 1080, height: 1920, fit: 'cover', label: 'TikTok 9:16' },
+    whiteBg: { width: 1200, height: 1200, fit: 'contain' },
+    amazon: { width: 1200, height: 1200, fit: 'cover' },
+    shopify: { width: 1200, height: 1500, fit: 'cover' },
+    tiktok: { width: 1080, height: 1920, fit: 'cover' },
   },
 }
 
@@ -295,7 +296,7 @@ async function checkWhiteBackground(buffer, { threshold = 250, tolerance = 0.9 }
 async function platformExport(source, group) {
   const sizes = PLATFORM_SIZES[group] || PLATFORM_SIZES.domestic
   const src = await upright(source)
-  await readMeta(src, '源图')
+  await readMeta(src, msg('noun.source_image'))
   const items = []
   let whiteBg = null
   for (const [key, spec] of Object.entries(sizes)) {
@@ -310,7 +311,7 @@ async function platformExport(source, group) {
       buffer = await whiten(buffer)
       whiteBg = await checkWhiteBackground(buffer)
     }
-    items.push({ key, label: spec.label, width: spec.width, height: spec.height, buffer, mime: 'image/jpeg' })
+    items.push({ key, width: spec.width, height: spec.height, buffer, mime: 'image/jpeg' })
   }
   return { items, whiteBg }
 }

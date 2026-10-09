@@ -6,6 +6,7 @@ import type {
 } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
 import { localizeTemplates } from '@/utils/builtinContent'
+import { currentLocale } from '@/locales'
 
 export type { ApiResponse } from '@/types'
 
@@ -17,6 +18,8 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = getToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // 后端按这个语言给出 message 和运行失败原因（见 docs/architecture.md 第 10 节）
+  config.headers['X-Locale'] = currentLocale()
   return config
 })
 

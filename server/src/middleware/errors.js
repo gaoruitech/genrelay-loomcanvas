@@ -2,35 +2,39 @@
 
 /** 404 for unknown API routes and the single place errors become responses. */
 const { ApiError } = require('../utils/http')
+const { FALLBACK_LOCALE, RAW, msg, has, messageOf, render } = require('../i18n')
 
 function apiNotFound(_req, _res, next) {
-  next(new ApiError(404, '接口不存在', 404))
+  next(new ApiError(404, 'common.route_not_found', {}, 404))
 }
 
 function classify(err) {
-  if (err instanceof ApiError) return { status: err.status, message: err.message, result: err.result }
+  if (err instanceof ApiError) return { status: err.status, message: err.i18n, result: err.result }
   // Errors raised by our own services that are safe to show (provider/media/registry).
-  if (err && err.userFacing && err.message) {
+  const shown = messageOf(err)
+  if (shown) {
     // An upstream's own 401/403/429 must not masquerade as ours: the frontend
     // treats a 401 from this server as "logged out".
     const status = [400, 404, 409, 413, 422].includes(err.status) ? err.status : 400
-    return { status, message: String(err.message).slice(0, 500) }
+    return { status, message: shown }
   }
   // body-parser
-  if (err && err.type === 'entity.too.large') return { status: 413, message: '请求体过大' }
-  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) return { status: 400, message: '请求体不是合法的 JSON' }
+  if (err && err.type === 'entity.too.large') return { status: 413, message: msg('common.body_too_large') }
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) return { status: 400, message: msg('common.body_not_json') }
   // multer
   if (err && err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') return { status: 413, message: '文件超过大小上限' }
-    return { status: 400, message: '上传的表单格式不正确' }
+    if (err.code === 'LIMIT_FILE_SIZE') return { status: 413, message: msg('file.too_large') }
+    return { status: 400, message: msg('file.bad_form') }
   }
   // mongoose
-  if (err && err.name === 'CastError') return { status: 400, message: '参数格式不正确' }
+  if (err && err.name === 'CastError') return { status: 400, message: msg('validation.bad_param') }
   if (err && err.name === 'ValidationError') {
+    // Our own schema validators use a catalog key as their message.
     const first = err.errors && Object.values(err.errors)[0]
-    return { status: 400, message: (first && first.message) || '数据校验失败' }
+    const key = first && first.properties && first.properties.message
+    return { status: 400, message: has(key) ? msg(key, first.properties) : msg('validation.failed') }
   }
-  if (err && err.code === 11000) return { status: 409, message: '已存在相同的记录' }
+  if (err && err.code === 11000) return { status: 409, message: msg('common.duplicate') }
   return null
 }
 
@@ -41,9 +45,15 @@ function errorHandler(err, req, res, _next) {
     // Unexpected: log everything server-side, tell the client nothing specific.
     console.error(`[error] ${req.method} ${req.originalUrl}:`, err)
   }
-  const { status, message, result } = known || { status: 500, message: '服务器内部错误' }
+  const { status, message, result } = known || { status: 500, message: msg('common.internal') }
   if (res.headersSent) return res.end()
-  res.status(status).json({ result: result || -1, message, data: null })
+  res.status(status).json({
+    result: result || -1,
+    message: render(req.locale || FALLBACK_LOCALE, message).slice(0, 500),
+    // Stable identifier of the message, for clients that branch on it.
+    code: message.code === RAW ? '' : message.code,
+    data: null,
+  })
 }
 
 module.exports = { apiNotFound, errorHandler }

@@ -10,7 +10,7 @@ function isObjectId(v) {
 
 /** Throws 400 unless the value is a 24-hex ObjectId string. */
 function requireObjectId(v, name = 'id') {
-  if (!isObjectId(v)) throw badRequest(`${name} 格式不正确`)
+  if (!isObjectId(v)) throw badRequest('validation.bad_format', { field: name })
   return v
 }
 
@@ -54,7 +54,7 @@ function escapeRegExp(s) {
 function parseDate(v, name) {
   if (v === undefined || v === null || v === '') return null
   const d = new Date(/^\d+$/.test(String(v)) ? Number(v) : String(v))
-  if (Number.isNaN(d.getTime())) throw badRequest(`${name} 不是有效的日期`)
+  if (Number.isNaN(d.getTime())) throw badRequest('validation.bad_date', { field: name })
   return d
 }
 

@@ -15,6 +15,8 @@ const { Runner, RunError } = require('./core')
 const { createMongoStore } = require('./mongoStore')
 const { transferOutput } = require('./transfer')
 const { estimateCost, tokenCost } = require('./pricing')
+const { ApiError } = require('../utils/http')
+const { messageOf, renderStored } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 
 let runner = null
@@ -26,7 +28,7 @@ async function resolveRun(run) {
     // A run that was accepted keeps running even if its model was disabled meanwhile.
     target = await registry.resolveModel(run.modelId, { requireEnabled: false })
   } catch (err) {
-    throw new RunError('NO_PROVIDER', err.userFacing ? err.message : '找不到该模型的接入配置')
+    throw new RunError('NO_PROVIDER', messageOf(err) || 'run.no_provider')
   }
   const { plugin, cfg, spec } = target
   const request = {
@@ -81,11 +83,11 @@ function getRunner() {
  */
 async function createRun(input) {
   const { doc, spec, model } = await registry.resolveModel(input.model)
-  if (!spec) throw Object.assign(new Error('模型不存在或已下线'), { userFacing: true, status: 400 })
+  if (!spec) throw new ApiError(400, 'model.unavailable')
   // input.kind is 'chat' (LLM task endpoint) or 'media' (run endpoint).
   const wantsChat = input.kind === 'chat'
   if (wantsChat !== (spec.kind === 'chat')) {
-    throw Object.assign(new Error(wantsChat ? '该模型不是对话模型' : '对话模型请通过对话接口调用'), { userFacing: true, status: 400 })
+    throw new ApiError(400, wantsChat ? 'model.not_chat' : 'model.chat_only')
   }
   const params = { ...spec.defaults, ...input.params }
   const count = Number.isInteger(params.count) && params.count > 0 ? params.count : 1
@@ -113,8 +115,8 @@ async function createRun(input) {
   return run
 }
 
-/** Run document -> the contract's Run shape. */
-function serializeRun(run) {
+/** Run document -> the contract's Run shape, its failure reason in the reader's language. */
+function serializeRun(run, locale) {
   return {
     id: String(run._id),
     status: run.status,
@@ -126,7 +128,8 @@ function serializeRun(run) {
       ...(o.width ? { width: o.width, height: o.height } : {}),
     })),
     text: run.text || '',
-    error: run.error || '',
+    error: renderStored(locale, run),
+    errorCode: run.errorCode || '',
     cost: {
       amount: (run.cost && run.cost.amount) || 0,
       currency: (run.cost && run.cost.currency) || '',

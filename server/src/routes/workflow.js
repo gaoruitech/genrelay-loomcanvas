@@ -10,6 +10,7 @@ const { migrateWorkflow, CURRENT_SCHEMA_VERSION } = require('../utils/workflowSc
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, isPlainObject, isMediaUrl } = require('../utils/validate')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
+const { t, messageOf } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
 
 const router = express.Router()
@@ -19,7 +20,7 @@ const ZIP_ITEM_MAX_BYTES = 1024 * 1024 * 1024
 const MAX_NODES = 500
 const MAX_EDGES = 2000
 const MAX_LIST = 200
-const DEFAULT_NAME = '未命名画布'
+const defaultName = (req) => t(req.locale, 'canvas.untitled')
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 }
 
 function serialize(doc) {
@@ -39,35 +40,35 @@ function serialize(doc) {
 }
 
 function parseViewport(v) {
-  if (!isPlainObject(v)) throw badRequest('viewport 必须是对象')
+  if (!isPlainObject(v)) throw badRequest('validation.object', { field: 'viewport' })
   const num = (x, dft) => (typeof x === 'number' && Number.isFinite(x) ? x : dft)
   return { x: num(v.x, 0), y: num(v.y, 0), zoom: Math.min(10, Math.max(0.01, num(v.zoom, 1))) }
 }
 
 /** Shape-check the writable fields; returns only those present in the body. */
 function parseBody(body) {
-  if (!isPlainObject(body)) throw badRequest('请求体必须是对象')
+  if (!isPlainObject(body)) throw badRequest('validation.body_object')
   const out = {}
   if (body.name !== undefined) {
-    if (typeof body.name !== 'string' || !body.name.trim()) throw badRequest('name 不能为空')
-    if (body.name.length > MAX_NAME_LEN) throw badRequest(`name 长度不能超过 ${MAX_NAME_LEN}`)
+    if (typeof body.name !== 'string' || !body.name.trim()) throw badRequest('common.name_required')
+    if (body.name.length > MAX_NAME_LEN) throw badRequest('validation.max_length', { field: 'name', max: MAX_NAME_LEN })
     out.name = body.name.trim()
   }
   if (body.nodes !== undefined) {
-    if (!Array.isArray(body.nodes)) throw badRequest('nodes 必须为数组')
-    if (body.nodes.length > MAX_NODES) throw badRequest(`节点数量不能超过 ${MAX_NODES}`)
-    if (!body.nodes.every(isPlainObject)) throw badRequest('nodes 中有无效的节点')
+    if (!Array.isArray(body.nodes)) throw badRequest('validation.array', { field: 'nodes' })
+    if (body.nodes.length > MAX_NODES) throw badRequest('canvas.max_nodes', { max: MAX_NODES })
+    if (!body.nodes.every(isPlainObject)) throw badRequest('canvas.bad_node')
     out.nodes = body.nodes
   }
   if (body.edges !== undefined) {
-    if (!Array.isArray(body.edges)) throw badRequest('edges 必须为数组')
-    if (body.edges.length > MAX_EDGES) throw badRequest(`连线数量不能超过 ${MAX_EDGES}`)
-    if (!body.edges.every(isPlainObject)) throw badRequest('edges 中有无效的连线')
+    if (!Array.isArray(body.edges)) throw badRequest('validation.array', { field: 'edges' })
+    if (body.edges.length > MAX_EDGES) throw badRequest('canvas.max_edges', { max: MAX_EDGES })
+    if (!body.edges.every(isPlainObject)) throw badRequest('canvas.bad_edge')
     out.edges = body.edges
   }
   if (body.viewport !== undefined) out.viewport = parseViewport(body.viewport)
   if (body.settings !== undefined) {
-    if (!isPlainObject(body.settings)) throw badRequest('settings 必须是对象')
+    if (!isPlainObject(body.settings)) throw badRequest('validation.object', { field: 'settings' })
     out.settings = body.settings
   }
   return out
@@ -80,7 +81,7 @@ function parseBody(body) {
 async function loadWorkflow(id) {
   requireObjectId(id)
   const raw = await Workflow.findOne({ _id: id, userId: LOCAL_USER, isDeleted: false }).lean()
-  if (!raw) throw notFound('画布不存在')
+  if (!raw) throw notFound('canvas.not_found')
   const { doc, changed } = migrateWorkflow(raw)
   if (changed) {
     await Workflow.updateOne({ _id: raw._id }, {
@@ -115,14 +116,14 @@ router.get('/list', wrap(async (_req, res) => {
  */
 router.post('/download', wrap(async (req, res) => {
   const { url, filename } = req.body || {}
-  if (!isMediaUrl(url)) throw badRequest('url 必填')
+  if (!isMediaUrl(url)) throw badRequest('validation.required', { field: 'url' })
   const abort = new AbortController()
   res.on('close', () => { if (!res.writableEnded) abort.abort(new Error('client closed')) })
   let stream
   try {
     stream = (await openStream(url, { maxBytes: ZIP_ITEM_MAX_BYTES, signal: abort.signal, timeoutMs: 10 * 60 * 1000 })).stream
   } catch (err) {
-    throw badRequest(err && (err.userFacing || err.name === 'SafeFetchError') ? err.message : '下载失败')
+    throw badRequest((err && err.name === 'SafeFetchError' && err.i18n) || messageOf(err) || 'fetch.failed')
   }
   // Look at the first bytes before committing to a response.
   const head = await new Promise((resolve) => {
@@ -137,7 +138,7 @@ router.post('/download', wrap(async (req, res) => {
   const mime = head ? sniffMime(head) : null
   if (!kindOfMime(mime)) {
     stream.destroy()
-    throw badRequest('该地址不是图片、视频或音频文件')
+    throw badRequest('file.not_media_url')
   }
   const safeName = String(filename || 'download').replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').slice(0, 120) || 'download'
   res.setHeader('Content-Type', mime)
@@ -152,7 +153,7 @@ router.post('/', wrap(async (req, res) => {
   const nodes = data.nodes || []
   const doc = await Workflow.create({
     userId: LOCAL_USER,
-    name: data.name || DEFAULT_NAME,
+    name: data.name || defaultName(req),
     nodes,
     edges: data.edges || [],
     viewport: data.viewport || DEFAULT_VIEWPORT,
@@ -187,7 +188,7 @@ router.put('/:id', wrap(async (req, res) => {
     { $set: set },
     { new: true }
   ).lean()
-  if (!doc) throw notFound('画布不存在')
+  if (!doc) throw notFound('canvas.not_found')
   ok(res, serialize(doc))
 }))
 
@@ -200,7 +201,7 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
   const wanted = req.body && typeof req.body.name === 'string' ? req.body.name.trim() : ''
   const doc = await Workflow.create({
     userId: LOCAL_USER,
-    name: (wanted || `${src.name || DEFAULT_NAME} 副本`).slice(0, MAX_NAME_LEN),
+    name: (wanted || t(req.locale, 'canvas.copy_name', { name: src.name || defaultName(req) })).slice(0, MAX_NAME_LEN),
     nodes: src.nodes || [],
     edges: src.edges || [],
     viewport: src.viewport || DEFAULT_VIEWPORT,
@@ -220,7 +221,7 @@ router.delete('/:id', wrap(async (req, res) => {
     { $set: { isDeleted: true } },
     { new: true }
   ).lean()
-  if (!doc) throw notFound('画布不存在')
+  if (!doc) throw notFound('canvas.not_found')
   ok(res, { id: String(doc._id) })
 }))
 
@@ -255,7 +256,7 @@ function zipExt(url, kind) {
 router.post('/:id/download-zip', wrap(async (req, res) => {
   const doc = await loadWorkflow(req.params.id)
   const urls = req.body && req.body.urls
-  if (urls !== undefined && urls !== null && !Array.isArray(urls)) throw badRequest('urls 必须是数组')
+  if (urls !== undefined && urls !== null && !Array.isArray(urls)) throw badRequest('validation.array', { field: 'urls' })
   const wanted = Array.isArray(urls) && urls.length ? new Set(urls.filter((u) => typeof u === 'string')) : null
 
   const items = []
@@ -268,12 +269,12 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
       items.push({ ...m, label })
     }
   }
-  if (!items.length) throw notFound('没有可下载的成品')
+  if (!items.length) throw notFound('canvas.nothing_to_download')
   if (items.length > MAX_ZIP_ITEMS) {
-    throw badRequest(`一次最多打包 ${MAX_ZIP_ITEMS} 项，当前 ${items.length} 项，请分批下载`)
+    throw badRequest('canvas.zip_max', { max: MAX_ZIP_ITEMS, count: items.length })
   }
 
-  const baseName = String(doc.name || DEFAULT_NAME).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').slice(0, 60)
+  const baseName = String(doc.name || defaultName(req)).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').slice(0, 60)
   res.setHeader('Content-Type', 'application/zip')
   res.setHeader('Content-Disposition', `attachment; filename="canvas.zip"; filename*=UTF-8''${encodeURIComponent(baseName + '.zip')}`)
 

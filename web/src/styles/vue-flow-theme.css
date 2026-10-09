@@ -1,0 +1,60 @@
+/* vue-flow 自带皮肤（theme-default / controls / minimap）的统一覆盖。
+   编辑页和分享页都渲染同一套画布，这几条必须两边同时生效：原来只写在
+   Canvas.vue 的 scoped 样式里，分享页就漏了 —— 深色下缩放按钮、小地图和
+   「成品」节点外壳都是 vue-flow 默认的白底。
+   选择器带一层 .vue-flow，优先级压过库里的单类选择器，不依赖引入顺序。 */
+.vue-flow .vue-flow__controls {
+  background: var(--n-2);
+  border: 1px solid var(--n-5);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.vue-flow .vue-flow__controls-button {
+  background: var(--n-3);
+  border-bottom: 1px solid var(--n-5);
+  color: var(--t-body);
+  fill: var(--t-body);
+}
+.vue-flow .vue-flow__controls-button:hover {
+  background: var(--n-4);
+  color: var(--accent-text);
+  fill: var(--accent-text);
+}
+.vue-flow .vue-flow__minimap {
+  background: var(--n-2);
+  border: 1px solid var(--n-5);
+  border-radius: 8px;
+}
+/* 关键：vue-flow theme-default 给 .vue-flow__node-output / -input / -default 这三个
+   保留类名套了白底 + 10px padding + 150px 固定宽 + 选中白halo。我们用了 type='output'
+   就把这层"原生节点皮"继承下来了，表现成卡片外漏一圈白边。这里全部 reset，回归纯净
+   包装层，所有视觉都让 .cv-node 自己控制。 */
+.vue-flow .vue-flow__node-output,
+.vue-flow .vue-flow__node-input,
+.vue-flow .vue-flow__node-default {
+  padding: 0;
+  width: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  box-shadow: none;
+}
+.vue-flow .vue-flow__node-output.selected,
+.vue-flow .vue-flow__node-output.selected:hover,
+.vue-flow .vue-flow__node-output:focus,
+.vue-flow .vue-flow__node-output:focus-visible,
+.vue-flow .vue-flow__node-input.selected,
+.vue-flow .vue-flow__node-input.selected:hover,
+.vue-flow .vue-flow__node-input:focus,
+.vue-flow .vue-flow__node-input:focus-visible,
+.vue-flow .vue-flow__node-default.selected,
+.vue-flow .vue-flow__node-default.selected:hover,
+.vue-flow .vue-flow__node-default:focus,
+.vue-flow .vue-flow__node-default:focus-visible {
+  box-shadow: none;
+  outline: none;
+  border: none;
+}

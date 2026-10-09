@@ -22,6 +22,7 @@
  */
 const catalog = require('./catalog/gaorui.json')
 const { request, ProviderError, trimBase } = require('./http')
+const { msg } = require('../i18n')
 const { chatCompletion, listModelIds, chatSpec, bearer } = require('./openaiShared')
 
 const DEFAULT_BASE_URL = 'https://gaorui.cc'
@@ -38,7 +39,7 @@ function root(cfg) {
 }
 
 function requireKey(cfg) {
-  if (!cfg.apiKey) throw new ProviderError('未配置 API Key')
+  if (!cfg.apiKey) throw new ProviderError('provider.api_key_missing')
 }
 
 function asList(v) {
@@ -84,10 +85,10 @@ async function submitNanoBanana(cfg, run) {
     timeoutMs: 60000,
   })
   if (!data || data.code !== 0) {
-    throw new ProviderError(`提交失败：${errorText(data && (data.msg || data.message)) || `code=${data && data.code}`}`)
+    throw new ProviderError('upstream.submit_failed_detail', { detail: errorText(data && (data.msg || data.message)) || `code=${data && data.code}` })
   }
   const id = data.data && data.data.id
-  if (!id) throw new ProviderError('提交失败：上游没有返回任务编号')
+  if (!id) throw new ProviderError('upstream.no_task_id')
   return { externalId: String(id) }
 }
 
@@ -102,17 +103,18 @@ async function pollNanoBanana(cfg, run) {
     timeoutMs: 20000,
   })
   if (!data || data.code !== 0) {
-    throw new ProviderError(`查询失败：${errorText(data && (data.msg || data.message)) || `code=${data && data.code}`}`, { transient: true })
+    throw new ProviderError('upstream.query_failed_detail', { detail: errorText(data && (data.msg || data.message)) || `code=${data && data.code}` }, { transient: true })
   }
   const d = data.data || {}
   const status = String(d.status || '').toLowerCase()
   if (IMAGE_DONE.has(status)) {
     const urls = [d.image_url, d.imageUrl, d.url, d.output].map(asList).find((l) => l.length) || []
-    if (!urls.length) return { status: 'failed', error: '任务完成但上游没有返回图片地址' }
+    if (!urls.length) return { status: 'failed', error: msg('upstream.no_image_url') }
     return { status: 'succeeded', progress: 100, outputs: urls.map((url) => ({ type: 'image', url })) }
   }
   if (IMAGE_FAILED.has(status)) {
-    return { status: 'failed', error: errorText(d.error || d.fail_reason || d.message) || '上游生成失败' }
+    // The upstream's own words; the runner wraps them (or says "failed" when there are none).
+    return { status: 'failed', error: errorText(d.error || d.fail_reason || d.message) }
   }
   return { status: 'running', progress: percent(d.progress) }
 }
@@ -162,11 +164,11 @@ const VIDEO_BODY = {
   async 'videos-omni-flash-edit'(run) {
     const p = run.params || {}
     const source = (run.videoUrls || [])[0]
-    if (!source) throw new ProviderError('视频编辑需要先接入一段源视频')
+    if (!source) throw new ProviderError('provider.video_edit_needs_source')
     const body = {
       model: 'omni_flash_abra_edit',
       prompt: run.prompt,
-      source_video_url: await run.media.toPublicUrl(source, '源视频'),
+      source_video_url: await run.media.toPublicUrl(source, msg('noun.source_video')),
       aspect_ratio: SIZE_16_9[p.aspectRatio] ? p.aspectRatio : '16:9',
       resolution: OMNI_RESOLUTIONS.has(String(p.resolution)) ? String(p.resolution) : '720p',
     }
@@ -206,7 +208,7 @@ const VIDEO_BODY = {
       resolution: ['480p', '720p'].includes(p.resolution) ? p.resolution : '480p',
     }
     const urls = []
-    for (const url of (run.imageUrls || []).slice(0, 5)) urls.push(await run.media.toPublicUrl(url, '参考图'))
+    for (const url of (run.imageUrls || []).slice(0, 5)) urls.push(await run.media.toPublicUrl(url, msg('noun.reference_image')))
     if (urls.length) body.image_urls = urls
     return body
   },
@@ -222,9 +224,10 @@ const OK_CODES = new Set(['success', 0, 200])
  * Returns the fields we care about from whichever arrived.
  */
 function readVideoTask(raw) {
-  if (!raw || typeof raw !== 'object') throw new ProviderError('上游返回了无法识别的内容', { transient: true })
+  if (!raw || typeof raw !== 'object') throw new ProviderError('upstream.unrecognized', {}, { transient: true })
   if (raw.code !== undefined && !OK_CODES.has(raw.code)) {
-    throw new ProviderError(errorText(raw.message || raw.msg) || `上游返回错误（code=${raw.code}）`)
+    const detail = errorText(raw.message || raw.msg)
+    throw new ProviderError(detail ? 'upstream.error_detail' : 'upstream.error_code', { detail, code: raw.code })
   }
   let outer = raw.code !== undefined || (raw.data && raw.data.status !== undefined) ? raw.data : raw
   if (Array.isArray(outer)) outer = outer[0]
@@ -246,7 +249,7 @@ const VIDEO_FAILED = new Set(['failed', 'failure', 'error', 'cancelled', 'cancel
 
 async function submitVideo(cfg, run, protocol) {
   const body = await VIDEO_BODY[protocol](run)
-  if (!body.prompt) throw new ProviderError('请填写提示词')
+  if (!body.prompt) throw new ProviderError('run.prompt_required')
   const raw = await request({
     method: 'POST',
     url: `${root(cfg)}/v1/videos`,
@@ -256,8 +259,8 @@ async function submitVideo(cfg, run, protocol) {
     timeoutMs: 60000,
   })
   const task = readVideoTask(raw)
-  if (VIDEO_FAILED.has(task.status)) throw new ProviderError(task.error || '上游拒绝了任务')
-  if (!task.id) throw new ProviderError('提交失败：上游没有返回任务编号')
+  if (VIDEO_FAILED.has(task.status)) throw new ProviderError(task.error ? 'upstream.rejected_detail' : 'upstream.rejected', { detail: task.error })
+  if (!task.id) throw new ProviderError('upstream.no_task_id')
   return { externalId: String(task.id) }
 }
 
@@ -278,7 +281,7 @@ async function pollVideo(cfg, run) {
       : { type: 'video', url: `${base}/content`, headers: bearer(cfg.apiKey) }
     return { status: 'succeeded', progress: 100, outputs: [output] }
   }
-  if (VIDEO_FAILED.has(task.status)) return { status: 'failed', error: task.error || '上游生成失败' }
+  if (VIDEO_FAILED.has(task.status)) return { status: 'failed', error: task.error }
   return { status: 'running', progress: task.progress }
 }
 
@@ -286,16 +289,16 @@ async function pollVideo(cfg, run) {
 
 function protocolOf(run) {
   const entry = byId.get(run.model)
-  if (!entry) throw new ProviderError(`模型 ${run.model} 不在该接入的支持列表中`)
+  if (!entry) throw new ProviderError('provider.model_not_supported', { model: run.model })
   return entry._protocol
 }
 
 module.exports = {
   type: 'gaorui',
-  label: '高睿 API',
+  label: 'Gaorui API',
   fields: [
     { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: '接口地址', placeholder: DEFAULT_BASE_URL },
+    { key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE_URL },
   ],
   defaultBaseUrl: DEFAULT_BASE_URL,
 
@@ -318,7 +321,7 @@ module.exports = {
   async test(cfg, { signal } = {}) {
     requireKey(cfg)
     const ids = await listModelIds({ ...cfg, baseUrl: root(cfg) }, { signal })
-    return { ok: true, message: '连接成功', modelCount: ids.length }
+    return { ok: true, modelCount: ids.length }
   },
 
   async submit(cfg, run) {
