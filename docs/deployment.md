@@ -39,10 +39,8 @@ Compose reads the `.env` file next to `docker-compose.yml` and passes these on t
 | `ACCESS_PASSWORD` | empty | Shared access password. Empty means no login. |
 | `PORT` | `3000` | Port published on the host. Inside the container the server always listens on 3000. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
-| `STORAGE_DRIVER` | `local` | `local`, `s3` or `oss`. |
-| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_PUBLIC_BASE_URL` | empty | S3-compatible storage. |
-| `OSS_REGION`, `OSS_ENDPOINT`, `OSS_BUCKET`, `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET`, `OSS_PUBLIC_BASE_URL` | empty | Aliyun OSS. |
-| `EXTRA_NPM_PACKAGES` | empty | Build argument, not a runtime variable: extra npm packages installed into the image, e.g. `ali-oss`. Takes effect after `docker compose build`. |
+| `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under **Settings → Storage** takes precedence. |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_KEY_PREFIX`, `S3_PUBLIC_BASE_URL`, `S3_DELIVERY`, `S3_ACL` | empty | S3-compatible storage (AWS S3, Cloudflare R2, Aliyun OSS, MinIO…). See [Storage](storage.md#environment-variable-reference). |
 | `TRUST_PROXY` | empty | Number of reverse proxies in front, or their addresses. |
 | `CORS_ORIGIN` | empty | Extra browser origins allowed to call the API. |
 | `SSRF_ALLOW_HOSTS` | empty | Hosts exempt from the private-address download block. |
@@ -67,20 +65,14 @@ See [Billing hook](billing-hook.md).
 
 ### Object storage with the Docker image
 
-The S3 SDK (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`) is in the image, so `STORAGE_DRIVER=s3` needs nothing extra.
+By default files are kept in the `app_data` volume. To keep them in a bucket instead, open **Settings → Storage** in the running app, enter the bucket, test the connection and save. It takes effect immediately; nothing has to be rebuilt or restarted. The `S3_*` variables in `.env` are the alternative for an instance that should start on a bucket before anyone opens the settings page; a configuration saved on the page overrides them.
 
-The OSS SDK (`ali-oss`) is **not** in the image. With `STORAGE_DRIVER=oss` the stock image exits at startup with a message naming the missing package. To add it, set this in `.env` and rebuild:
+- The AWS SDK (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`, `@aws-sdk/s3-request-presigner`) is a regular dependency and is in the image. There is no extra package to install and no build argument. The `EXTRA_NPM_PACKAGES` build argument of earlier versions is gone; remove it from `.env`.
+- `STORAGE_DRIVER=oss` is no longer accepted: the container exits at startup with a message that says what to set instead. Aliyun OSS is now used through its S3-compatible API. See [Storage](storage.md#migrating-from-storage_driveross).
+- Keep the `app_data` volume after switching to a bucket. Files stored before the switch are still read from it; they are not moved.
+- A MinIO container can run next to the app; there is a Compose snippet in [Storage](storage.md#minio).
 
-```ini
-EXTRA_NPM_PACKAGES=ali-oss
-```
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-The S3 and OSS drivers are written but have not been run against a real bucket in this project; treat them as untested. See [Configuration](configuration.md#storage-drivers).
+The S3 driver is verified against MinIO. AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services; see [Storage](storage.md#what-has-been-tested).
 
 ## Running without Docker
 
@@ -130,6 +122,7 @@ Things the proxy must get right:
 | --- | --- |
 | Upload size | Allow request bodies a little larger than `MAX_UPLOAD_MB` (multipart adds overhead). Canvas saves are JSON up to 6 MB. |
 | Long requests | Uploads, zip downloads and the download proxy can run for minutes. The server allows 15 minutes per request; give the proxy at least 10. Runs themselves are polled with short requests, so no WebSocket or SSE support is needed. |
+| Files from a bucket | With S3 storage and `proxy` delivery, `/files/*` is streamed from the bucket through the app, videos included. Do not let the proxy buffer those responses on disk (`proxy_buffering off` in nginx, as below), pass `Range` and `If-None-Match` through unchanged (the default), and keep the long timeouts. The responses are immutable, so a cache in front may keep them. With `redirect` delivery the app only answers a `302`. See [Storage](storage.md#private-or-public-bucket-the-two-delivery-modes). |
 | Client address | Set `TRUST_PROXY=1` (one proxy in front) so the login rate limit sees the real client address instead of the proxy's. |
 | `PUBLIC_URL` | Set it to the public HTTPS address if upstream models should fetch reference media by URL. |
 | HSTS | The app does not send `Strict-Transport-Security`. Add it at the proxy that terminates TLS. |
@@ -190,16 +183,16 @@ Caddy obtains the certificate itself and sets `X-Forwarded-For`.
 
 It is optional. Leave it empty for local or LAN use; the stock `docker-compose.yml` passes on whatever `.env` has, empty by default.
 
-**File URLs do not contain it.** With the local storage driver every stored file gets the site-relative URL `/files/<key>`, whatever `PUBLIC_URL` is, and that is what canvases save. Browsers load it from the address the app was opened at, so canvases keep working when the host, the port or `PUBLIC_URL` changes. Absolute URLs saved by earlier versions (`<PUBLIC_URL>/files/<key>`, or a loopback address) are still recognized as this instance's files; for the first form `PUBLIC_URL` has to be the same as it was then.
+**File URLs do not contain it.** Every stored file gets the site-relative URL `/files/<key>`, whatever `PUBLIC_URL` is and whichever storage holds the file, and that is what canvases save. Browsers load it from the address the app was opened at, so canvases keep working when the host, the port or `PUBLIC_URL` changes. Absolute URLs saved by earlier versions (`<PUBLIC_URL>/files/<key>`, or a loopback address) are still recognized as this instance's files; for the first form `PUBLIC_URL` has to be the same as it was then.
 
-**It is used for reference media sent to upstream models.** When a node sends a reference image or a source video to a model, the upstream has to read it:
+**It is used for reference media sent to upstream models.** When a node sends a reference image or a source video to a model, the upstream has to read it. For a file on the local disk:
 
 - If `PUBLIC_URL` is a public address, the upstream receives `<PUBLIC_URL>/files/<key>`.
 - If it is empty, or points at `localhost` or a private address, images are sent inline as base64 to providers that accept that. Inputs that must be a URL (the source video of a video edit, reference images for some video models) fail with a message asking you to set `PUBLIC_URL` or switch to object storage.
 
-Share links are built by the browser from the address in the address bar, not from `PUBLIC_URL`.
+A file in a bucket is handed to the upstream straight from the bucket instead: its public address, or a presigned URL that is valid for one hour. `PUBLIC_URL` is only the fallback when neither is publicly reachable. So with a bucket on the internet, `PUBLIC_URL` is not needed for reference media. See [Storage](storage.md#reference-media-for-upstream-models).
 
-With the `s3` and `oss` drivers file URLs come from `S3_PUBLIC_BASE_URL` / `OSS_PUBLIC_BASE_URL` instead.
+Share links are built by the browser from the address in the address bar, not from `PUBLIC_URL`.
 
 ## Access password
 
@@ -217,9 +210,9 @@ Back up three things together:
 
 | What | Where | Why |
 | --- | --- | --- |
-| The database | volume `mongo_data` | Canvases, providers (with encrypted keys), settings, runs, shares, assets. |
-| The files | volume `app_data` | Uploaded and generated media (local driver). |
-| `.env` | repository root | `SECRET_KEY`. Without it the provider keys in the database cannot be decrypted. |
+| The database | volume `mongo_data` | Canvases, providers (with encrypted keys), settings, the saved storage configuration (with its encrypted secret), runs, shares, assets. |
+| The files | volume `app_data` | Uploaded and generated media kept on the local disk. |
+| `.env` | repository root | `SECRET_KEY`. Without it the provider keys and the storage secret in the database cannot be decrypted. |
 
 Database dump:
 
@@ -242,7 +235,7 @@ docker compose cp ./loomcanvas-data-backup/. app:/app/data
 
 After restoring files, make sure `/app/data` is still writable by the `node` user inside the container (`docker compose exec -u root app chown -R node:node /app/data`); the process can write nowhere else. Test your restore procedure before you rely on it; these commands have not been exercised as part of the project's test suite.
 
-With `s3` or `oss` storage the files live in your bucket; back that up with the provider's tools.
+With S3 storage the files live in your bucket; back that up with the vendor's tools (versioning, replication). If you switched storage at some point, files are in both places, the `app_data` volume and the bucket, and both need a backup. See [Storage](storage.md#backups).
 
 ## Upgrading
 
@@ -274,4 +267,5 @@ curl -fsS http://localhost:3000/api/app/bootstrap
 - **Uploads are buffered in memory.** Each upload is held in RAM up to `MAX_UPLOAD_MB` before it is written to storage; "fetch from URL" does the same. Size the container's memory for the number of people uploading at once, and do not raise `MAX_UPLOAD_MB` further than you need.
 - Generated images are also handled in memory (up to 60 MB each) to read their size and make a thumbnail. Generated videos are streamed to storage (up to 1 GB each).
 - Concurrency of runs is the `concurrency` setting (default 4). Most of a run is waiting on the upstream, so CPU use is low; image tools and thumbnails use `sharp`.
-- Disk: with the local driver, results are kept forever unless you set `retentionDays`. See [Configuration](configuration.md#admin-settings).
+- With S3 storage and `proxy` delivery, every file view passes through the app as a stream. That costs little memory, but the traffic is the server's.
+- Disk: results are kept forever, on the local disk or in the bucket, unless you set `retentionDays`. See [Configuration](configuration.md#admin-settings).

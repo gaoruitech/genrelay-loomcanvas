@@ -169,16 +169,6 @@ const STATIC_COMPONENT_ROWS = [
       'chevron-left, book, download, upload, check, x, video, trash, edit) have the same geometry ' +
       'as the corresponding Feather icons; the others were drawn for LoomCanvas in the same style.',
   },
-  {
-    onlyIfProject: 'server',
-    name: 'Object storage SDKs (not shipped)',
-    where: '`@aws-sdk/client-s3`, `@aws-sdk/lib-storage` (STORAGE_DRIVER=s3) and `ali-oss` (STORAGE_DRIVER=oss)',
-    license: 'Declared by their publishers as Apache-2.0 (`@aws-sdk/*`) and MIT (`ali-oss`); their dependency trees are not inventoried here',
-    note:
-      'Loaded with `require()` only when the matching storage driver is selected. They are not in ' +
-      '`server/package.json` or the lockfile and are not in the Docker image: the operator installs ' +
-      'them. Because they are outside the lockfile, the license check does not cover them.',
-  },
 ]
 
 // Font files found under web/public or web/src must be listed here (path relative to the

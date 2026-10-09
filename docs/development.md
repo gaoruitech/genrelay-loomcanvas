@@ -18,9 +18,9 @@ loomcanvas/
 │  │  ├─ models/           Mongoose models
 │  │  ├─ providers/        provider plugins, registry, catalog/*.json
 │  │  ├─ runner/           run queue, deadlines, result transfer, pricing
-│  │  ├─ storage/          local / s3 / oss drivers, key generation
+│  │  ├─ storage/          storage layer: local disk and S3-compatible buckets, key generation
 │  │  ├─ billing/          billing hook loader (no-op by default)
-│  │  ├─ services/         settings, media, image tools, seed, retention, canvas graph
+│  │  ├─ services/         settings, storage settings, media, image tools, seed, retention, canvas graph
 │  │  ├─ middleware/       auth, locale, errors, security headers
 │  │  ├─ i18n/             server messages: en.js, zh-CN.js
 │  │  └─ utils/            crypto, safeFetch, sniff, validate, workflowSchema
@@ -115,14 +115,60 @@ npm test
   ```
 
 - Providers are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API.
+- The S3 storage tests against a real service are skipped unless `TEST_S3_ENDPOINT` is set; see [Live S3 tests](#live-s3-tests).
 
 The frontend has no unit tests. `npm run build` (type-check) and `npm run i18n:check` are its gates.
+
+### Live S3 tests
+
+`server/test/storage.test.js` covers the storage layer without a network: validation, addressing, lookup, switching, precedence, the encrypted secret, the settings logic, error classification. It runs with `npm test` like every other unit test.
+
+`server/test/storage.live.test.js` runs the same layer against a real S3 API. Nothing in it is mocked: objects are written to and read from the service named by the environment. Without `TEST_S3_ENDPOINT` every test in the file is reported as skipped, which is what happens in CI.
+
+| Variable | Meaning |
+| --- | --- |
+| `TEST_S3_ENDPOINT` | For example `http://127.0.0.1:9000` (MinIO). Turns the live tests on. |
+| `TEST_S3_BUCKET` | An existing, private bucket. |
+| `TEST_S3_ACCESS_KEY_ID`, `TEST_S3_SECRET_ACCESS_KEY` | A credential that may read, write, delete and list in it. |
+| `TEST_S3_REGION` | Default `us-east-1`. |
+| `TEST_S3_FORCE_PATH_STYLE` | Default `true`. |
+| `TEST_S3_VHOST_ENDPOINT` | Optional. An endpoint where `<bucket>.<host>` resolves, to exercise virtual-hosted addressing. |
+| `TEST_S3_PUBLIC_BUCKET`, `TEST_S3_PUBLIC_BASE_URL` | Optional. A bucket anyone can read and the address it is read at, to exercise `redirect` delivery. |
+| `TEST_MONGODB_URI` | Needed by the test that goes through the settings API (there is no in-memory fallback for this one). |
+
+A MinIO to test against:
+
+```bash
+docker run -d --name loomcanvas-minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data
+```
+
+Create the buckets with `mc` (here from the `minio/mc` image, sharing the MinIO container's network):
+
+```bash
+docker run --rm --network container:loomcanvas-minio --entrypoint sh minio/mc -c "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb local/loomcanvas-test && mc mb local/loomcanvas-public && mc anonymous set download local/loomcanvas-public"
+```
+
+Run the live tests:
+
+```bash
+cd server
+TEST_S3_ENDPOINT=http://127.0.0.1:9000 \
+TEST_S3_BUCKET=loomcanvas-test \
+TEST_S3_ACCESS_KEY_ID=minioadmin \
+TEST_S3_SECRET_ACCESS_KEY=minioadmin \
+TEST_S3_PUBLIC_BUCKET=loomcanvas-public \
+TEST_S3_PUBLIC_BASE_URL=http://127.0.0.1:9000/loomcanvas-public \
+TEST_MONGODB_URI=mongodb://127.0.0.1:27017 \
+node --test test/storage.live.test.js
+```
+
+Each run writes under its own prefix (`loomcanvastest/<random>/`) and removes what it wrote. The suite can be pointed at another S3-compatible service the same way; so far it has only been run against MinIO. If you run it against AWS S3, R2 or OSS, please report the result.
 
 ### CI
 
 `.github/workflows/ci.yml` runs on pushes to `main` / `master` and on pull requests. It has two jobs:
 
-- **check**, on Node 20 and Node 22, with a MongoDB 7 service and `TEST_MONGODB_URI` pointing at it: `npm run install:all`, then `npm run check`.
+- **check**, on Node 20 and Node 22, with a MongoDB 7 service and `TEST_MONGODB_URI` pointing at it: `npm run install:all`, then `npm run check`. No S3 service is started, so the live S3 tests are skipped there.
 - **docker**: builds the image and starts the Compose stack, then checks that `/api/app/bootstrap` answers, that the web app is served, and that the process does not run as root.
 
 There is no other pipeline (none for Gitee).
@@ -238,6 +284,7 @@ Server:
 - Respond with `ok(res, data)`; fail by throwing an error with a catalog key. Unexpected errors are logged and answered with a generic message.
 - Any URL that came from a user or from an upstream response is fetched through `utils/safeFetch.js`. Files are typed by content (`utils/sniff.js`), never by name or declared type.
 - Storage keys are generated by `storage/keys.js`; nothing a user typed goes into a key.
+- Files are read and written only through `getStorage()` (`storage/index.js`), which finds a file on whichever backend holds it. The address that is stored and returned is always `storage.urlFor(key)`, that is `/files/<key>`. A presigned URL (`storage.externalUrls()`) is for one upstream request: never store it, return it to a client or log it.
 - Every collection carries `userId`, always the constant `local`, so multi-user support can be added later without a data migration.
 - The runner core (`runner/core.js`) takes its store, provider lookup, transfer and billing as injected dependencies, which is what makes it testable without a database.
 - No new runtime dependency without a reason: headers, CORS and rate limiting are a few lines each rather than packages.

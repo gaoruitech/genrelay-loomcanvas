@@ -146,7 +146,7 @@ test('LoomCanvas API end to end', async (t) => {
     const boot = await call('GET', '/api/app/bootstrap')
     assert.deepEqual([boot.status, boot.body.data.authRequired, boot.body.data.authed, boot.body.data.hasProvider], [200, true, false, false])
     assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
-    for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
+    for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['GET', '/api/admin/storage'], ['POST', '/api/admin/storage/test'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
       const r = await call(m, p, m === 'POST' ? {} : undefined)
       assert.equal(r.status, 401, `${m} ${p}`)
       assert.notEqual(r.body.result, 0)
@@ -512,6 +512,29 @@ test('LoomCanvas API end to end', async (t) => {
     for (const url of ['http://10.0.0.1/a.png', 'http://[::1]/a.png', 'file:///etc/passwd', '/etc/passwd', '/files/../../etc/passwd']) {
       assert.equal((await call('POST', '/api/canvas/tool/slice', { imageUrl: url, cols: 2, rows: 2 })).status, 400, url)
     }
+  })
+
+  await t.test('storage settings: local by default; an S3 configuration that fails its test is not saved', async () => {
+    const status = await data('GET', '/api/admin/storage')
+    assert.deepEqual([status.source, status.driver, status.delivery, status.s3, status.previous], ['default', 'local', '', null, []])
+
+    const s3 = { preset: 'minio', endpoint: 'http://127.0.0.1:9', bucket: 'canvas', accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'not-a-real-secret-0000', forcePathStyle: true }
+    const tested = await data('POST', '/api/admin/storage/test', { s3 })
+    assert.deepEqual([tested.ok, tested.code, tested.steps[0]], [false, 'storage.err_unreachable', { step: 'put', status: 'failed', ms: tested.steps[0].ms }])
+    assert.ok(tested.message.startsWith(zh['storage.err_unreachable'].split('{')[0]))
+    assert.ok(!JSON.stringify(tested).includes('not-a-real-secret'))
+
+    const refused = await call('PUT', '/api/admin/storage', { driver: 's3', s3 })
+    assert.deepEqual([refused.status, refused.body.code, refused.body.data.test.ok], [400, 'storage.save_needs_test', false])
+    assert.equal((await call('PUT', '/api/admin/storage', { driver: 's3', s3: { ...s3, endpoint: 'https://canvas.oss-cn-hangzhou.aliyuncs.com' } })).body.code, 'storage.endpoint_has_bucket')
+    assert.equal((await call('PUT', '/api/admin/storage', { driver: 'ftp' })).body.code, 'validation.one_of')
+    assert.equal((await call('PUT', '/api/admin/storage', { driver: 'local' }, { auth: false })).status, 401)
+    assert.equal(await mongoose.connection.collection('settings').countDocuments({ key: 'storage' }), 0, 'nothing was saved')
+    assert.equal((await data('GET', '/api/admin/storage')).driver, 'local')
+    // The stored file from the upload test is still served.
+    assert.equal((await fetch(base + uploaded.url)).status, 200)
+    // The storage document is not one of the ordinary settings.
+    assert.equal((await call('PUT', '/api/admin/settings', { storage: { driver: 's3' } })).body.code, 'settings.unknown_key')
   })
 
   await t.test('restart recovery: interrupted run with an upstream task resumes polling, one without fails', async () => {

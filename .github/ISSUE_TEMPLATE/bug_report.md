@@ -7,10 +7,10 @@ assignees: ''
 ---
 
 <!--
-Never paste API keys, SECRET_KEY, ACCESS_PASSWORD or login tokens.
+Never paste API keys, SECRET_KEY, ACCESS_PASSWORD, storage secret keys or login tokens.
 For a security problem, do not open an issue: see SECURITY.md.
 
-不要贴出 API Key、SECRET_KEY、ACCESS_PASSWORD 或登录凭证。
+不要贴出 API Key、SECRET_KEY、ACCESS_PASSWORD、存储密钥或登录凭证。
 安全问题请不要开 issue，见 SECURITY.md。
 -->
 
@@ -31,7 +31,7 @@ For a security problem, do not open an issue: see SECURITY.md.
 - LoomCanvas version (`version` from `GET /api/app/bootstrap`, or the commit) / 版本（`GET /api/app/bootstrap` 里的 `version`，或 commit）:
 - Deployment (Docker Compose / without Docker) / 部署方式（Docker Compose / 不用 Docker）:
 - Behind a reverse proxy? Which one? / 是否在反向代理后面？哪一种？:
-- Storage driver (`local` / `s3` / `oss`) / 存储驱动:
+- Storage (`local` / `s3`; for `s3` the service: AWS S3, Cloudflare R2, Aliyun OSS, MinIO, other; delivery `proxy` / `redirect`) / 存储（`local` / `s3`；`s3` 请写明服务商和分发方式）:
 - Browser and OS / 浏览器与操作系统:
 
 ## If a run failed / 如果是运行失败

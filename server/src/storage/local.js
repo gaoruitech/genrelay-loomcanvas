@@ -1,6 +1,9 @@
 'use strict'
 
-/** Local filesystem driver. Files are served by the app under /files/<key>. */
+/**
+ * Local filesystem backend. Also owns the address scheme every backend shares:
+ * a stored file is /files/<key> on this site, whichever backend holds it.
+ */
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -36,7 +39,7 @@ function createLocalStorage({ dir, publicUrl = '' }) {
       throw err
     }
     const { size } = await fs.promises.stat(full)
-    return { key, size, url: urlFor(key) }
+    return { key, size }
   }
 
   async function getStream(key) {
@@ -49,13 +52,14 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     return fs.promises.readFile(pathFor(key))
   }
 
-  /** Size in bytes, known without reading the file. Optional in the driver contract. */
-  async function size(key) {
-    return (await fs.promises.stat(pathFor(key))).size
-  }
-
-  async function exists(key) {
-    try { await fs.promises.access(pathFor(key)); return true } catch { return false }
+  /** { size, lastModified } of a stored file, or null when there is none. */
+  async function head(key) {
+    try {
+      const st = await fs.promises.stat(pathFor(key))
+      return st.isFile() ? { size: st.size, lastModified: st.mtime } : null
+    } catch {
+      return null
+    }
   }
 
   async function remove(key) {
@@ -73,7 +77,7 @@ function createLocalStorage({ dir, publicUrl = '' }) {
   }
 
   /**
-   * Map a URL back to a key when it points at this storage:
+   * Map a URL back to a key when it is one of this site's file addresses:
    * a site-relative /files/<key>, or an absolute URL on PUBLIC_URL / loopback
    * (what earlier versions stored when PUBLIC_URL was set).
    */
@@ -96,7 +100,7 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     return isValidKey(key) ? key : null
   }
 
-  return { driver: 'local', root, put, getStream, getBuffer, size, exists, delete: remove, urlFor, keyFromUrl, pathFor }
+  return { id: 'local', driver: 'local', root, put, getStream, getBuffer, head, delete: remove, urlFor, keyFromUrl, pathFor }
 }
 
 module.exports = { createLocalStorage }

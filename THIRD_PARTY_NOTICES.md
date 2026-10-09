@@ -23,33 +23,33 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | Fonts | none | n/a | No font files are in `web/public` or `web/src`, and the web app loads none from a CDN. The stylesheets name `Inter` first and fall back to fonts already installed on the viewer's system. |
 | Icon packages | npm packages `tdesign-icons-vue-next` (MIT) | see the web table below | Icon components used by the UI library are compiled into the web bundle as inline SVG. No icon font is loaded. |
 | Inline SVG icons | SVG markup in `web/src` (not an npm package) | Feather: MIT, Copyright (c) 2013-2023 Cole Bemis, https://github.com/feathericons/feather | The interface icons are inline 24x24 stroke SVGs. Several of them (for example image, chevron-left, book, download, upload, check, x, video, trash, edit) have the same geometry as the corresponding Feather icons; the others were drawn for LoomCanvas in the same style. |
-| Object storage SDKs (not shipped) | `@aws-sdk/client-s3`, `@aws-sdk/lib-storage` (STORAGE_DRIVER=s3) and `ali-oss` (STORAGE_DRIVER=oss) | Declared by their publishers as Apache-2.0 (`@aws-sdk/*`) and MIT (`ali-oss`); their dependency trees are not inventoried here | Loaded with `require()` only when the matching storage driver is selected. They are not in `server/package.json` or the lockfile and are not in the Docker image: the operator installs them. Because they are outside the lockfile, the license check does not cover them. |
 
 ## server: production dependencies
 
-253 packages from `server/package-lock.json`. By license: MIT (162), Apache-2.0 (54), ISC (13), LGPL-3.0-or-later (10), BlueOak-1.0.0 (4), Apache-2.0 AND LGPL-3.0-or-later (3), BSD-3-Clause (3), BSD-2-Clause (2), 0BSD (1), Apache-2.0 AND LGPL-3.0-or-later AND MIT (1).
+254 packages from `server/package-lock.json`. By license: MIT (162), Apache-2.0 (55), ISC (13), LGPL-3.0-or-later (10), BlueOak-1.0.0 (4), Apache-2.0 AND LGPL-3.0-or-later (3), BSD-3-Clause (3), BSD-2-Clause (2), 0BSD (1), Apache-2.0 AND LGPL-3.0-or-later AND MIT (1).
 
 | Package | Version | License | Scope | Repository |
 | --- | --- | --- | --- | --- |
-| @aws-sdk/checksums | 3.1001.1 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/checksums |
-| @aws-sdk/client-s3 | 3.1148.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/client-s3 |
-| @aws-sdk/core | 3.978.1 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/core |
-| @aws-sdk/credential-provider-env | 3.972.72 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-env |
-| @aws-sdk/credential-provider-http | 3.972.74 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-http |
-| @aws-sdk/credential-provider-ini | 3.973.17 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-ini |
-| @aws-sdk/credential-provider-login | 3.972.79 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-login |
-| @aws-sdk/credential-provider-node | 3.972.84 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-node |
-| @aws-sdk/credential-provider-process | 3.972.72 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-process |
-| @aws-sdk/credential-provider-sso | 3.973.16 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-sso |
-| @aws-sdk/credential-provider-web-identity | 3.972.78 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/credential-provider-web-identity |
-| @aws-sdk/lib-storage | 3.1148.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/lib-storage |
-| @aws-sdk/middleware-sdk-s3 | 3.972.77 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/middleware-sdk-s3 |
-| @aws-sdk/nested-clients | 3.997.46 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/nested-clients |
-| @aws-sdk/signature-v4-multi-region | 3.996.47 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/signature-v4-multi-region |
-| @aws-sdk/token-providers | 3.1138.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/token-providers |
-| @aws-sdk/types | 3.974.6 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/types |
-| @aws-sdk/xml-builder | 3.972.41 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws-sdk/xml-builder |
-| @aws/lambda-invoke-store | 0.3.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@aws/lambda-invoke-store |
+| @aws-sdk/checksums | 3.1001.1 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/client-s3 | 3.1148.0 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/core | 3.978.1 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-env | 3.972.72 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-http | 3.972.74 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-ini | 3.973.17 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-login | 3.972.79 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-node | 3.972.84 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-process | 3.972.72 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-sso | 3.973.16 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/credential-provider-web-identity | 3.972.78 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/lib-storage | 3.1148.0 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/middleware-sdk-s3 | 3.972.77 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/nested-clients | 3.997.46 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/s3-request-presigner | 3.1148.0 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/signature-v4-multi-region | 3.996.47 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/token-providers | 3.1138.0 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/types | 3.974.6 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws-sdk/xml-builder | 3.972.41 | Apache-2.0 | required | https://github.com/aws/aws-sdk-js-v3 |
+| @aws/lambda-invoke-store | 0.3.0 | Apache-2.0 | required | https://github.com/awslabs/aws-lambda-invoke-store |
 | @emnapi/runtime | 1.11.3 | MIT | optional | https://www.npmjs.com/package/@emnapi/runtime |
 | @img/colour | 1.1.0 | MIT | required | https://github.com/lovell/colour |
 | @img/sharp-darwin-arm64 | 0.35.5 | Apache-2.0 | optional | https://www.npmjs.com/package/@img/sharp-darwin-arm64 |
@@ -81,12 +81,12 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | @isaacs/cliui | 8.0.2 | ISC | required | https://github.com/yargs/cliui |
 | @mongodb-js/saslprep | 1.6.0 | MIT | required | https://github.com/mongodb-js/devtools-shared |
 | @pkgjs/parseargs | 0.11.0 | MIT | optional | https://www.npmjs.com/package/@pkgjs/parseargs |
-| @smithy/core | 3.35.2 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/core |
-| @smithy/credential-provider-imds | 4.5.2 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/credential-provider-imds |
-| @smithy/fetch-http-handler | 5.8.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/fetch-http-handler |
-| @smithy/node-http-handler | 4.12.1 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/node-http-handler |
-| @smithy/signature-v4 | 5.7.4 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/signature-v4 |
-| @smithy/types | 4.19.0 | Apache-2.0 | optional | https://www.npmjs.com/package/@smithy/types |
+| @smithy/core | 3.35.2 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
+| @smithy/credential-provider-imds | 4.5.2 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
+| @smithy/fetch-http-handler | 5.8.0 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
+| @smithy/node-http-handler | 4.12.1 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
+| @smithy/signature-v4 | 5.7.4 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
+| @smithy/types | 4.19.0 | Apache-2.0 | required | https://github.com/smithy-lang/smithy-typescript |
 | @types/webidl-conversions | 7.0.3 | MIT | required | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/whatwg-url | 11.0.5 | MIT | required | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | abort-controller | 3.0.0 | MIT | required | https://github.com/mysticatea/abort-controller |
@@ -112,10 +112,10 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | bare-url | 2.5.4 | Apache-2.0 | required | https://github.com/holepunchto/bare-url |
 | base64-js | 1.5.1 | MIT | required | https://github.com/beatgammit/base64-js |
 | body-parser | 1.20.8 | MIT | required | https://github.com/expressjs/body-parser |
-| bowser | 2.14.1 | MIT | optional | https://www.npmjs.com/package/bowser |
+| bowser | 2.14.1 | MIT | required | https://github.com/bowser-js/bowser |
 | brace-expansion | 2.1.7 | MIT | required | https://github.com/juliangruber/brace-expansion |
 | bson | 6.10.4 | Apache-2.0 | required | https://github.com/mongodb/js-bson |
-| buffer | 5.6.0 | MIT | optional | https://www.npmjs.com/package/buffer |
+| buffer | 5.6.0 | MIT | required | https://github.com/feross/buffer |
 | buffer | 6.0.3 | MIT | required | https://github.com/feross/buffer |
 | buffer-crc32 | 1.0.0 | MIT | required | https://github.com/brianloveswords/buffer-crc32 |
 | buffer-equal-constant-time | 1.0.1 | BSD-3-Clause | required | https://github.com/goinstant/buffer-equal-constant-time |
@@ -237,7 +237,7 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | range-parser | 1.2.1 | MIT | required | https://github.com/jshttp/range-parser |
 | raw-body | 2.5.3 | MIT | required | https://github.com/stream-utils/raw-body |
 | readable-stream | 2.3.8 | MIT | required | https://github.com/nodejs/readable-stream |
-| readable-stream | 3.6.2 | MIT | optional | https://www.npmjs.com/package/readable-stream |
+| readable-stream | 3.6.2 | MIT | required | https://github.com/nodejs/readable-stream |
 | readable-stream | 4.8.0 | MIT | required | https://github.com/nodejs/readable-stream |
 | readdir-glob | 1.1.3 | Apache-2.0 | required | https://github.com/Yqnn/node-readdir-glob |
 | safe-buffer | 5.1.2 | MIT | required | https://github.com/feross/safe-buffer |
@@ -258,7 +258,7 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | signal-exit | 4.1.0 | ISC | required | https://github.com/tapjs/signal-exit |
 | sparse-bitfield | 3.0.3 | MIT | required | https://github.com/mafintosh/sparse-bitfield |
 | statuses | 2.0.2 | MIT | required | https://github.com/jshttp/statuses |
-| stream-browserify | 3.0.0 | MIT | optional | https://www.npmjs.com/package/stream-browserify |
+| stream-browserify | 3.0.0 | MIT | required | https://github.com/browserify/stream-browserify |
 | streamsearch | 1.1.0 | MIT | required | https://github.com/mscdex/streamsearch |
 | streamx | 2.28.1 | MIT | required | https://github.com/mafintosh/streamx |
 | string-width | 4.2.3 | MIT | required | https://github.com/sindresorhus/string-width |
@@ -272,7 +272,7 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | text-decoder | 1.2.7 | Apache-2.0 | required | https://github.com/holepunchto/text-decoder |
 | toidentifier | 1.0.1 | MIT | required | https://github.com/component/toidentifier |
 | tr46 | 5.1.1 | MIT | required | https://github.com/jsdom/tr46 |
-| tslib | 2.8.1 | 0BSD | optional | https://www.npmjs.com/package/tslib |
+| tslib | 2.8.1 | 0BSD | required | https://github.com/Microsoft/tslib |
 | type-is | 1.6.18 | MIT | required | https://github.com/jshttp/type-is |
 | unpipe | 1.0.0 | MIT | required | https://github.com/stream-utils/unpipe |
 | util-deprecate | 1.0.2 | MIT | required | https://github.com/TooTallNate/util-deprecate |

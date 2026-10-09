@@ -2,7 +2,7 @@ import axios from 'axios'
 import type {
   ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest,
   LlmTask, ProviderType, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings,
-  UsageSummaryRow, UsageRecord,
+  UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult,
 } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
 import { localizeTemplates } from '@/utils/builtinContent'
@@ -137,6 +137,14 @@ export const adminApi = {
   settings: () => api.get<ApiResponse<AdminSettings>>('/admin/settings'),
   updateSettings: (data: Partial<AdminSettings>) =>
     api.put<ApiResponse<AdminSettings>>('/admin/settings', data),
+
+  storage: () => api.get<ApiResponse<StorageStatus>>('/admin/storage'),
+  /** 用还没保存的配置真实读写一遍存储桶；secretAccessKey 留空表示用已保存的那一把 */
+  testStorage: (s3: StorageS3Form) =>
+    api.post<ApiResponse<StorageTestResult>>('/admin/storage/test', { s3 }),
+  /** 保存并立即生效。S3 配置会先测试，没过返回 400（code: storage.save_needs_test，data.test 是测试结果），force 可跳过 */
+  saveStorage: (data: { driver: 'local' } | { driver: 's3'; s3: StorageS3Form; force?: boolean }) =>
+    api.put<ApiResponse<StorageStatus>>('/admin/storage', data),
 
   usage: (params: { from?: string; to?: string; groupBy: 'day' | 'model' }) =>
     api.get<ApiResponse<{ items: UsageSummaryRow[] }>>('/admin/usage', { params }),

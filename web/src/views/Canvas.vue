@@ -1501,7 +1501,7 @@ const contextNodeInfo = computed(() => {
 const contextImageUrl = computed(() => {
   const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
   const u = (n?.data as any)?.imageUrl
-  // 没配 PUBLIC_URL 时本地存储给的是站内相对地址（/files/...），同样能编辑
+  // 本站存储的文件是站内相对地址（/files/...），同样能编辑
   return typeof u === 'string' && (/^https?:\/\//i.test(u) || u.startsWith('/files/')) ? u : ''
 })
 

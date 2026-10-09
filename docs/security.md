@@ -25,13 +25,13 @@ LoomCanvas is a **single-user** application. There is one shared access password
 
 | Purpose | Use |
 | --- | --- |
-| Provider credentials | Encrypting API keys in the database (AES-256-GCM, fresh random IV per value). |
+| Provider credentials and the storage secret | Encrypting provider API keys, and the S3 secret access key saved under **Settings → Storage**, in the database (AES-256-GCM, fresh random IV per value). |
 | Login tokens | Signing the JWT issued at login (HS256). |
 
 Rules:
 
 - At least 16 characters; use 32 random bytes or more. The server refuses to start without it and never generates one.
-- Keep it stable. If it changes, saved provider keys cannot be decrypted (re-enter them under **Settings → Providers**) and everyone is signed out.
+- Keep it stable. If it changes, saved provider keys cannot be decrypted (re-enter them under **Settings → Providers**) and everyone is signed out. A saved S3 secret cannot be decrypted either: the server logs it, writes new files to what the environment says (the local disk by default) and the **Storage** tab asks for the secret again; until then the files in that bucket do not load.
 - It lives in `.env`. Protect that file, keep it out of version control, and back it up together with the database. A database backup without the key cannot restore provider keys. A database backup **with** the key reveals them.
 
 ## Access password
@@ -70,7 +70,7 @@ These work without a token even when a password is set:
 
 | What | Why | What protects it |
 | --- | --- | --- |
-| `GET /files/<key>` | Share pages and upstream models must be able to load media. | Keys contain 128 random bits and cannot be listed or guessed. There is no expiry. |
+| `GET /files/<key>` | Share pages and upstream models must be able to load media. This is the address of every stored file, on the local disk and in a bucket alike. | Keys contain 128 random bits and cannot be listed or guessed. There is no expiry. |
 | `GET /api/canvas-share/<token>` and the `/share/<token>` page | That is what a share link is. | A 256-bit random token; optional expiry; revocation. |
 | `GET /api/app/bootstrap` | The login page needs it. | Reveals the site name, logo URL, default theme and language, whether a password is required, and the version. |
 | `POST /api/auth/login` | Signing in. | Rate limit. |
@@ -81,11 +81,12 @@ Consequences:
 - **Revoking a share link does not delete the files** on it. The link stops working, but a visitor who saved a file URL can still load that file. The same is true after you delete a canvas or an asset: those are soft deletes and the files stay.
 - A share link shows a snapshot of the whole canvas: prompts, text nodes, images, videos, and the model ids chosen in the nodes (including the provider's slug). Run state, run and task ids, failure details and costs are stripped when the link is published, again when it is read, and from copies made of it.
 - The public read and the copy endpoint accept only the link token. A share's database id never works in its place, signed in or not.
-- With object storage, files are public through the bucket's public URL, under the same kind of random keys. The drivers do not sign URLs.
+- With S3 storage nothing changes about this: `/files/<key>` is answered by the app for files in a bucket too. **The bucket itself can stay private** (`proxy` delivery): the app reads it with its credentials and browsers never talk to it. With `redirect` delivery the objects are in addition readable at the bucket's public domain, under the same random keys. See [Storage](storage.md#private-or-public-bucket-the-two-delivery-modes).
+- Reference media in a bucket is handed to upstream models as a **presigned URL** that is valid for one hour (or as the public address with `redirect` delivery). Whoever has that URL can read that one object until it expires. Presigned URLs are made per upstream request and are never stored in canvases, share links or run records.
 
 If some material must not be reachable by URL at all, LoomCanvas in its current form is not the place for it.
 
-How files are served: the content type comes from the server-chosen extension, with `X-Content-Type-Options: nosniff`, a sandboxing `Content-Security-Policy`, and `Content-Disposition: attachment` for anything that is not an image, video or audio. A stored file cannot run script in the app's origin.
+How files are served: the content type comes from the server-chosen extension, with `X-Content-Type-Options: nosniff`, a sandboxing `Content-Security-Policy`, and `Content-Disposition: attachment` for anything that is not an image, video or audio. A stored file cannot run script in the app's origin. This holds for files on the local disk and for files streamed from a bucket (`proxy` delivery). With `redirect` delivery the browser is sent to the bucket's public domain, which is another origin and sends its own headers.
 
 "Fetch from URL" (`POST /api/files/fetch`) only returns images. That also holds when the URL points at this instance's own storage: a stored video is refused with `file.image_only`.
 
@@ -100,9 +101,10 @@ The server downloads URLs on behalf of users in several places: "fetch from URL"
 - A total deadline and a byte cap apply to every download.
 - What comes back is typed by its content. A "picture" that is really an HTML page is rejected.
 
-Two things are deliberately **not** behind the guard:
+Three things are deliberately **not** behind the guard:
 
 - **A provider's base URL.** It is set by the operator in Settings, and pointing it at a model server on your own network is legitimate. Since anyone with the access password can add a provider, anyone with the password can make the server send requests to internal addresses. This is one more reason the password equals full trust.
+- **The S3 endpoint and the public base URL of the storage settings.** They are set by the operator under Settings → Storage (or in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. As with providers, anyone with the access password can do this. The guard for URLs that users and upstreams supply is unchanged.
 - **Hosts in `SSRF_ALLOW_HOSTS`.** Use it only when an upstream on your own network returns result links that point at itself. Every host you list becomes reachable for all the download features above. List exact host names or IPs, as few as possible, and never in a deployment where untrusted people have the password.
 
 ## Upload validation
@@ -123,14 +125,16 @@ There is no malware scanning and no content inspection beyond the format check.
 | Data | At rest |
 | --- | --- |
 | Provider API keys | Encrypted with AES-256-GCM. Never returned by any endpoint; the interface shows whether a key is set and its last four characters. |
+| The S3 secret access key saved under Settings → Storage, and those of earlier buckets | Encrypted the same way. Never returned; the interface shows that one is set and its last four characters. The endpoint, bucket and Access Key ID are stored and returned in plain. |
 | Canvases, prompts, settings, usage records | Plain, in MongoDB. |
 | Uploaded and generated files | Plain, on disk or in your bucket. |
-| `ACCESS_PASSWORD`, `SECRET_KEY`, object storage credentials | Plain, in the environment. |
+| `ACCESS_PASSWORD`, `SECRET_KEY`, `S3_*` credentials given as variables | Plain, in the environment. |
 
 Other things done to keep keys from leaking:
 
 - Requests to an upstream do not follow redirects, so the `Authorization` header cannot be carried to another host.
 - If an upstream echoes the credentials of the request in an error message, they are replaced by `***` before the message is shown or stored.
+- If an upstream quotes a presigned storage URL back in an error, the values of its `X-Amz-*` query parameters (the signature among them) are replaced by `***` before the error is shown or stored.
 - Unexpected errors are logged on the server and answered with a generic message.
 
 The stock Compose file runs MongoDB without authentication, reachable only from the app container. If you use an external MongoDB, give it authentication and TLS and put the credentials in `MONGODB_URI`.
@@ -138,7 +142,7 @@ The stock Compose file runs MongoDB without authentication, reachable only from 
 ## Browser-side protections
 
 - Pages are served with a `Content-Security-Policy`. Scripts: `script-src 'self'` plus the SHA-256 hash of the one inline script in the built `index.html` (it sets the theme before anything paints); no `'unsafe-inline'` and no `'unsafe-eval'` for scripts. Also `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` and `frame-ancestors 'self'`. Styles allow `'unsafe-inline'` for the style attributes the UI libraries set.
-- Images, media and fetches (`img-src`, `media-src`, `connect-src`) are allowed from any `http(s)` origin on purpose, because a canvas shows results from object storage, CDNs and pasted links, and downloads them in the browser.
+- Images, media and fetches (`img-src`, `media-src`, `connect-src`) are allowed from any `http(s)` origin on purpose, because a canvas shows results from object storage, CDNs and pasted links, and downloads them in the browser. The origin of every public base URL in the storage settings is listed explicitly as well, and the list follows the settings without a restart. Today that changes nothing, since any origin is allowed; it keeps those origins allowed if the open sources are ever tightened.
 - The web build is made so that it needs no `eval` (`__INTLIFY_JIT_COMPILATION__` in `web/vite.config.ts`, for vue-i18n).
 - If you serve the web build from another server than this one (your own nginx, a CDN), that server has to send an equivalent policy itself; the one above is only added by the LoomCanvas server.
 - API responses carry `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and are `no-store`.
@@ -152,8 +156,8 @@ The stock Compose file runs MongoDB without authentication, reachable only from 
 - **Multi-tenant isolation.** All data belongs to one user. It is not safe to give the password to mutually untrusted people, and it is not a base for a shared service without your own isolation layer.
 - **Accounts, roles, single sign-on, two-factor authentication.**
 - **Audit logging.**
-- **Private or expiring file URLs.**
-- **Encryption of files or of the database** (beyond provider keys).
+- **Private or expiring file URLs.** A bucket can be private, but `/files/<key>` in front of it is public and does not expire.
+- **Encryption of files or of the database** (beyond provider keys and the storage secret). Encryption at rest in a bucket is the storage vendor's feature.
 - **Spending limits.** A person with access can start as many runs as the queue allows (up to 500 unfinished at a time). To cap spending, use a [billing hook](billing-hook.md) and the limits your upstream provider offers.
 - **Protection against a malicious upstream**, beyond the download guard and content checks. Whatever you send to a provider (prompts, reference media) is in that provider's hands.
 
@@ -161,4 +165,5 @@ The stock Compose file runs MongoDB without authentication, reachable only from 
 
 - [Deployment](deployment.md): reverse proxy, backups, upgrades.
 - [Configuration](configuration.md): every variable mentioned here.
+- [Storage](storage.md): private buckets, delivery, presigned URLs.
 - [SECURITY.md](../SECURITY.md): how to report a vulnerability.

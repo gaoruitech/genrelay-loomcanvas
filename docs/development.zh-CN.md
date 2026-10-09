@@ -18,9 +18,9 @@ loomcanvas/
 │  │  ├─ models/           Mongoose 模型
 │  │  ├─ providers/        模型接入插件、注册表、catalog/*.json
 │  │  ├─ runner/           任务队列、时限、结果转存、计价
-│  │  ├─ storage/          local / s3 / oss 驱动、key 生成
+│  │  ├─ storage/          存储层：本地磁盘与 S3 兼容的桶、key 生成
 │  │  ├─ billing/          计费钩子的加载（默认空实现）
-│  │  ├─ services/         设置、素材读取、图片工具、内置内容、结果清理、画布图
+│  │  ├─ services/         设置、存储设置、素材读取、图片工具、内置内容、结果清理、画布图
 │  │  ├─ middleware/       登录、语言、错误、安全响应头
 │  │  ├─ i18n/             服务端提示语：en.js、zh-CN.js
 │  │  └─ utils/            crypto、safeFetch、sniff、validate、workflowSchema
@@ -115,14 +115,60 @@ npm test
   ```
 
 - 模型接入是对着测试里现起的假上游测的，见[编写模型接入](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口。
+- 对着真实服务的 S3 存储测试，没设 `TEST_S3_ENDPOINT` 时是跳过的，见[对着真实的 S3 测试](#对着真实的-s3-测试)。
 
 前端没有单元测试，把关的是 `npm run build`（类型检查）和 `npm run i18n:check`。
+
+### 对着真实的 S3 测试
+
+`server/test/storage.test.js` 不联网，测的是存储层本身：配置校验、寻址、查找、切换、优先级、密钥加密、设置逻辑、错误归类。它和其他单元测试一样随 `npm test` 运行。
+
+`server/test/storage.live.test.js` 让同一层代码对着真实的 S3 接口跑。里面没有任何模拟：对象真的写进环境变量指定的服务，再读回来。没设 `TEST_S3_ENDPOINT` 时，这个文件里的测试全部报告为跳过，CI 里就是这种情况。
+
+| 变量 | 含义 |
+| --- | --- |
+| `TEST_S3_ENDPOINT` | 例如 `http://127.0.0.1:9000`（MinIO）。设了它才会运行这些测试。 |
+| `TEST_S3_BUCKET` | 一个已经存在的私有桶。 |
+| `TEST_S3_ACCESS_KEY_ID`、`TEST_S3_SECRET_ACCESS_KEY` | 对这个桶有读、写、删除和列出权限的密钥。 |
+| `TEST_S3_REGION` | 默认 `us-east-1`。 |
+| `TEST_S3_FORCE_PATH_STYLE` | 默认 `true`。 |
+| `TEST_S3_VHOST_ENDPOINT` | 可选。一个能解析 `<桶>.<主机>` 的 Endpoint，用来测虚拟主机风格的寻址。 |
+| `TEST_S3_PUBLIC_BUCKET`、`TEST_S3_PUBLIC_BASE_URL` | 可选。一个任何人都能读的桶，以及读它用的地址，用来测 `redirect` 分发。 |
+| `TEST_MONGODB_URI` | 走设置接口的那个测试需要它（这一个没有内存数据库兜底）。 |
+
+起一个 MinIO 来测：
+
+```bash
+docker run -d --name loomcanvas-minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data
+```
+
+用 `mc` 建桶（这里用 `minio/mc` 镜像，和 MinIO 容器共用网络）：
+
+```bash
+docker run --rm --network container:loomcanvas-minio --entrypoint sh minio/mc -c "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb local/loomcanvas-test && mc mb local/loomcanvas-public && mc anonymous set download local/loomcanvas-public"
+```
+
+运行这些测试：
+
+```bash
+cd server
+TEST_S3_ENDPOINT=http://127.0.0.1:9000 \
+TEST_S3_BUCKET=loomcanvas-test \
+TEST_S3_ACCESS_KEY_ID=minioadmin \
+TEST_S3_SECRET_ACCESS_KEY=minioadmin \
+TEST_S3_PUBLIC_BUCKET=loomcanvas-public \
+TEST_S3_PUBLIC_BASE_URL=http://127.0.0.1:9000/loomcanvas-public \
+TEST_MONGODB_URI=mongodb://127.0.0.1:27017 \
+node --test test/storage.live.test.js
+```
+
+每次运行都写在自己的前缀下（`loomcanvastest/<随机>/`），结束时删掉自己写的东西。这套测试同样可以指向别的 S3 兼容服务；到目前为止它只对着 MinIO 跑过。如果你对着 AWS S3、R2 或 OSS 跑了，请把结果告诉我们。
 
 ### CI
 
 `.github/workflows/ci.yml` 在推送到 `main` / `master` 和提交合并请求时运行，有两个任务：
 
-- **check**：分别在 Node 20 和 Node 22 上跑，带一个 MongoDB 7 服务，`TEST_MONGODB_URI` 指向它。先 `npm run install:all`，再 `npm run check`。
+- **check**：分别在 Node 20 和 Node 22 上跑，带一个 MongoDB 7 服务，`TEST_MONGODB_URI` 指向它。先 `npm run install:all`，再 `npm run check`。CI 里没有起 S3 服务，所以对着真实 S3 的测试在那里是跳过的。
 - **docker**：构建镜像并启动 Compose 整套服务，然后检查 `/api/app/bootstrap` 有响应、前端页面能打开、进程不是以 root 运行。
 
 没有别的流水线（没有 Gitee 的）。
@@ -236,6 +282,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - 成功用 `ok(res, data)` 返回；失败就抛一个带语言文件键的错误。意料之外的错误记日志，给用户的是统一的提示。
 - 凡是来自用户或上游响应的地址，都通过 `utils/safeFetch.js` 去取。文件类型按内容判断（`utils/sniff.js`），不看文件名，也不看对方声明的类型。
 - 存储 key 由 `storage/keys.js` 生成，用户输入的任何内容都不会进入 key。
+- 读写文件一律通过 `getStorage()`（`storage/index.js`），文件在哪个后端它就去哪找。存下来的、返回给客户端的地址永远是 `storage.urlFor(key)`，也就是 `/files/<key>`。预签名地址（`storage.externalUrls()`）只给那一次上游请求用：不要保存，不要返回给客户端，也不要写进日志。
 - 每张数据表都带 `userId`，目前固定是常量 `local`，以后加多用户不需要迁移数据。
 - 执行器核心（`runner/core.js`）的存储、接入查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
 - 没有理由不加新的运行时依赖：响应头、跨域、限流各自只有几行代码，没有引入包。

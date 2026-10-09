@@ -46,23 +46,23 @@ Some inputs can only be passed to the upstream as a URL: the source video of a v
 Fix one of:
 
 - Set `PUBLIC_URL` to your instance's public address (for example `https://canvas.example.com`) and make sure it is reachable from the internet; or
-- switch to object storage (`STORAGE_DRIVER=s3` or `oss`) with a public base URL.
+- keep files in an S3-compatible bucket that is reachable from the internet (**Settings → Storage**). A file in a bucket is handed to the upstream as a presigned URL that is valid for one hour, so neither `PUBLIC_URL` nor a public bucket is needed.
 
-With local storage, files already on the canvas need no re-upload: their URL is site-relative and `PUBLIC_URL` is added when the file is handed to the upstream. `localhost` and private addresses never count as public. See [Providers](providers.md#how-media-reaches-the-upstream).
+With `PUBLIC_URL`, files already on the canvas need no re-upload: their URL is site-relative and `PUBLIC_URL` is added when the file is handed to the upstream. Switching to a bucket does not move files that are already on the local disk; those still need `PUBLIC_URL`, or have to be uploaded again. `localhost` and private addresses never count as public. See [Providers](providers.md#how-media-reaches-the-upstream) and [Storage](storage.md#reference-media-for-upstream-models).
 
 ### Images are broken when I open the app from another computer
 
-With local storage, files are stored with a site-relative URL (`/files/<key>`) and load from whatever address the app is opened at, so this should not happen with files stored by the current version, whatever `PUBLIC_URL` is.
+Files are stored with a site-relative URL (`/files/<key>`), on the local disk and in a bucket alike, and load from whatever address the app is opened at. So this should not happen with files stored by the current version, whatever `PUBLIC_URL` is.
 
 It can still happen with canvases saved by an earlier version, which stored absolute URLs such as `http://localhost:3000/files/…`. The browser on the other computer cannot reach that address. Re-upload those files, or re-run the nodes. See [Deployment](deployment.md#public_url).
 
 ### How do thumbnails work, and why are some missing?
 
 - Nodes show a small WebP thumbnail (longest edge 512 px) instead of the full image; opening or downloading always uses the original.
-- Thumbnails are made when a file is uploaded or a result is stored. With local storage, a missing one is also generated the first time it is requested, and kept.
+- Thumbnails are made when a file is uploaded or a result is stored. A missing one is also generated the first time it is requested, and kept. This works the same on the local disk and in a bucket; a thumbnail is stored next to its image.
 - Only PNG, JPEG, WebP, BMP and AVIF images get one. Videos, GIFs and HEIC images do not; the original is shown.
 - Small uploads (longest edge up to 512 px) are their own thumbnail.
-- With object storage there is no on-demand generation. After a page reload, images whose thumbnail URL the browser no longer knows are shown from the original. That is slower, not broken.
+- Images at external addresses, and images that canvases saved by earlier versions reference by an absolute bucket URL, have no derived thumbnail. They are shown from the original. That is slower, not broken.
 
 ### An upload fails or says the file is too large
 
@@ -78,6 +78,37 @@ A `413` that does not look like a LoomCanvas message comes from the proxy. Only 
 ### A result could not be downloaded: "Private network addresses are not allowed"
 
 The upstream returned a result link that points at a private or loopback address, and the server refuses to fetch those. If the upstream is a model server on your own network, list its host in `SSRF_ALLOW_HOSTS` and restart. Read [Security](security.md#ssrf-protection) first.
+
+## Storage
+
+### Which storage should I use?
+
+- **Local disk** (the default): nothing to set up. Right for one machine with enough disk. Back up the `app_data` volume.
+- **An S3-compatible bucket** (AWS S3, Cloudflare R2, Aliyun OSS, MinIO…): when the disk is too small, when files should survive the machine, or when upstream models must fetch reference videos by URL and the instance has no public address.
+
+Configure it under **Settings → Storage**. Details: [Storage](storage.md).
+
+### Do I need a public bucket?
+
+No. With the default `proxy` delivery the bucket stays private: the app reads it with its credentials and serves the files itself at `/files/<key>`. No public access and no CORS configuration are needed. A public domain is only needed if you choose `redirect` delivery, so that browsers load files straight from the bucket or its CDN. See [Storage](storage.md#private-or-public-bucket-the-two-delivery-modes).
+
+Note that `/files/<key>` itself is public either way; see [Security](security.md#what-is-public).
+
+### What happens to my files when I switch storage?
+
+Nothing: they are not moved or copied, and there is no migration tool. New files go to the new place; files stored before stay where they were and keep loading from there, as long as that place still exists. Do not delete the local directory (or the `app_data` volume), and do not delete the old bucket or revoke its key. You can copy the files yourself if you want everything in one place. See [Storage](storage.md#what-happens-when-you-switch).
+
+### Does it work with Cloudflare R2, Aliyun OSS, AWS S3?
+
+They are S3-compatible and the settings for each are in [Storage](storage.md#recipes-per-vendor), but only MinIO has been run against a live service in this project. Use the connection test on the Storage tab, and please report what you find.
+
+### I used `STORAGE_DRIVER=oss` and the server no longer starts
+
+The `oss` driver was removed. Aliyun OSS is now used through its S3-compatible API with `STORAGE_DRIVER=s3`. The variables to rename are listed in [Storage](storage.md#migrating-from-storage_driveross).
+
+### Files answer 502
+
+A storage service the app is configured to read (the active bucket, or an earlier one) cannot be reached or refuses the credential. That is reported as `502`, not `404`, because the file may well exist. Run the connection test under **Settings → Storage** and look for `[files]` lines in the server log.
 
 ## Runs
 
@@ -139,8 +170,9 @@ Read the last lines of the log (`docker compose logs app`). The usual causes:
 | `SECRET_KEY is required` | Missing or shorter than 16 characters. |
 | `must be an integer between` / `must be one of` | An environment variable has an invalid value; the message names it. |
 | `TRUST_PROXY must be …` | `TRUST_PROXY` is not a number of proxies (1 to 10) or a list of addresses. `true` and host names are rejected. |
-| `needs the "…" package` | `STORAGE_DRIVER=oss` but `ali-oss` is not installed (or `s3` after an install with `--omit=optional`). See [Deployment](deployment.md#object-storage-with-the-docker-image). |
-| `STORAGE_DRIVER=s3 requires …` | A required storage variable is empty. |
+| `STORAGE_DRIVER=oss is no longer supported` | The `oss` driver was removed. Use `STORAGE_DRIVER=s3` with the OSS S3-compatible endpoint. See [Storage](storage.md#migrating-from-storage_driveross). |
+| `STORAGE_DRIVER=s3 requires …` | `S3_BUCKET`, `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY` is empty. |
+| `The S3_* storage settings are not valid` | An `S3_*` variable has a value that is not accepted (an endpoint with a path, an invalid bucket name, `S3_DELIVERY=redirect` without `S3_PUBLIC_BASE_URL`…). See [Storage](storage.md#environment-variable-reference). |
 | `WEB_DIST is set to … but there is no index.html` | The frontend was not built, or the path is wrong. |
 | `BILLING_HOOK could not be loaded` | The hook file is missing or throws on load. |
 | a MongoDB connection error | The database is not reachable at `MONGODB_URI`. |
@@ -149,6 +181,7 @@ Read the last lines of the log (`docker compose logs app`). The usual causes:
 
 Generated files are kept forever by default. Options:
 
+- Move new files to a bucket under **Settings → Storage**. Files that are already on the disk stay there; see [Storage](storage.md#what-happens-when-you-switch).
 - Set **Settings → Limits → Result retention (days)**. Result files of runs older than that are deleted; canvases that still show them will show broken images.
 - Usage records are small, but you can delete old ones under **Settings → Usage → Clear records older than**. That removes records only, not files.
 - Deleting a canvas or an asset does not delete its files.
@@ -165,7 +198,7 @@ If it speaks the OpenAI chat or image API, use the OpenAI-compatible type. Other
 
 ### Have the providers been tested against the real services?
 
-Not as part of this project so far. They are tested against a fake upstream that pins the request and response shapes. The S3 and OSS storage drivers are written but have not been run against a real bucket either. Expect to verify these in your own environment, and please report what you find.
+Not as part of this project so far. They are tested against a fake upstream that pins the request and response shapes. The S3 storage driver is verified against MinIO; AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services ([Storage](storage.md#what-has-been-tested)). Expect to verify these in your own environment, and please report what you find.
 
 ## Licensing
 

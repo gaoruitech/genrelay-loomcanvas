@@ -126,7 +126,13 @@ One chat completion for the Language model and Video analysis nodes. `usage` is 
 | `await media.toRef(url)` | a public URL, or a `data:` URI when there is no public address | either form in one field |
 | `await media.toPublicUrl(url, what?)` | a public URL, or throws `media.needs_public_url` | URLs only (and for video) |
 
-Canvas URLs may be site-relative (`/files/…`). Never forward them unchanged.
+Canvas URLs are usually site-relative (`/files/…`). Never forward them unchanged.
+
+The URL that `toRef` and `toPublicUrl` return is for the upstream request you are building, and for nothing else. For a file kept in a bucket it can be a **presigned URL**: it carries a signature in its query string, lets anyone who has it read the file, and expires after one hour. So:
+
+- Put it in the request to the upstream and nowhere else. Do not log it, and do not put it in an error message, in `outputs` or in anything else you return.
+- Do not keep it for later. Call the helper again in `poll` if you need the address again; a URL from `submit` may have expired by then.
+- An upstream that fetches the URL long after it accepted the task (more than an hour) will find it expired.
 
 ### Outputs
 

@@ -39,10 +39,8 @@ Compose 读取 `docker-compose.yml` 同目录下的 `.env`，并把下面这些�
 | `ACCESS_PASSWORD` | 空 | 共用的访问口令。留空表示不需要登录。 |
 | `PORT` | `3000` | 映射到宿主机的端口。容器内服务端固定监听 3000。 |
 | `MAX_UPLOAD_MB` | `50` | 单个上传文件的上限。 |
-| `STORAGE_DRIVER` | `local` | `local`、`s3` 或 `oss`。 |
-| `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_FORCE_PATH_STYLE`、`S3_PUBLIC_BASE_URL` | 空 | S3 兼容存储。 |
-| `OSS_REGION`、`OSS_ENDPOINT`、`OSS_BUCKET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`OSS_PUBLIC_BASE_URL` | 空 | 阿里云 OSS。 |
-| `EXTRA_NPM_PACKAGES` | 空 | 构建参数，不是运行时变量：额外装进镜像的 npm 包，例如 `ali-oss`。执行 `docker compose build` 后生效。 |
+| `STORAGE_DRIVER` | `local` | `local` 或 `s3`。只是初始默认值：「设置 → 存储」里保存的配置优先于它。 |
+| `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_FORCE_PATH_STYLE`、`S3_KEY_PREFIX`、`S3_PUBLIC_BASE_URL`、`S3_DELIVERY`、`S3_ACL` | 空 | S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）。见[存储](storage.zh-CN.md#环境变量一览)。 |
 | `TRUST_PROXY` | 空 | 前面反向代理的层数，或代理的地址。 |
 | `CORS_ORIGIN` | 空 | 额外允许跨域调用接口的来源。 |
 | `SSRF_ALLOW_HOSTS` | 空 | 不受内网地址下载拦截限制的主机。 |
@@ -67,20 +65,14 @@ services:
 
 ### 在 Docker 镜像里使用对象存储
 
-S3 的 SDK（`@aws-sdk/client-s3`、`@aws-sdk/lib-storage`）已经在镜像里，`STORAGE_DRIVER=s3` 不需要额外安装。
+默认情况下文件存在 `app_data` 数据卷里。想改存到桶里，在运行中的应用里打开「设置 → 存储」，填好桶的信息，测试连接，保存。保存后立即生效，不用重新构建，也不用重启。`.env` 里的 `S3_*` 变量是另一种办法，适合在还没人打开设置页之前就要用桶的实例；页面上保存的配置优先于它们。
 
-OSS 的 SDK（`ali-oss`）镜像里**没有**装。直接设 `STORAGE_DRIVER=oss`，容器会在启动时退出，并提示缺哪个包。要加上它，在 `.env` 里设置下面这一项，然后重新构建：
+- AWS SDK（`@aws-sdk/client-s3`、`@aws-sdk/lib-storage`、`@aws-sdk/s3-request-presigner`）是常规依赖，镜像里已经有了。不用额外装包，也没有构建参数。早期版本的构建参数 `EXTRA_NPM_PACKAGES` 已经去掉，请从 `.env` 里删除。
+- 不再接受 `STORAGE_DRIVER=oss`：容器会在启动时退出，并提示应该改设什么。阿里云 OSS 现在通过它的 S3 兼容接口使用。见[存储](storage.zh-CN.md#从-storage_driveross-迁移)。
+- 切换到桶之后，请保留 `app_data` 数据卷。切换前存下的文件仍然从它读取，不会被搬走。
+- MinIO 容器可以和应用放在一起跑，Compose 片段见[存储](storage.zh-CN.md#minio)。
 
-```ini
-EXTRA_NPM_PACKAGES=ali-oss
-```
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-S3 和 OSS 两个驱动的代码已经写好，但在本项目里还没有对着真实的桶跑过，请当作未经验证来对待。见[配置](configuration.zh-CN.md#存储驱动)。
+S3 驱动是对着 MinIO 验证的。AWS S3、Cloudflare R2、阿里云 OSS 没有对着真实服务跑过，见[存储](storage.zh-CN.md#测试情况)。
 
 ## 不用 Docker 运行
 
@@ -130,6 +122,7 @@ S3 和 OSS 两个驱动的代码已经写好，但在本项目里还没有对着
 | --- | --- |
 | 上传大小 | 请求体上限要比 `MAX_UPLOAD_MB` 略大一点（multipart 有额外开销）。保存画布是 JSON，最大 6 MB。 |
 | 长请求 | 上传、打包下载和代理下载可能持续几分钟。服务端单个请求最长允许 15 分钟，代理至少给 10 分钟。运行本身是用短请求轮询的，不需要 WebSocket 或 SSE。 |
+| 来自桶的文件 | 使用 S3 存储并且分发方式是 `proxy` 时，`/files/*` 由应用从桶里流式转发，视频也一样。不要让代理把这些响应先缓冲到磁盘上（nginx 里是 `proxy_buffering off`，见下面的例子），`Range` 和 `If-None-Match` 原样透传（默认就是），超时保持上面那样长。这些响应是不可变的，前面的缓存可以留着它们。分发方式是 `redirect` 时，应用只回一个 `302`。见[存储](storage.zh-CN.md#两种分发方式)。 |
 | 客户端地址 | 设置 `TRUST_PROXY=1`（前面有一层代理），登录限流才能看到真实的客户端地址，而不是代理的地址。 |
 | `PUBLIC_URL` | 需要上游模型按地址读取参考素材时，设成对外的 HTTPS 地址。 |
 | HSTS | 应用不发送 `Strict-Transport-Security`，请在终结 TLS 的代理上加。 |
@@ -190,16 +183,16 @@ Caddy 会自己申请证书，并自动带上 `X-Forwarded-For`。
 
 它是可选的。本机或内网使用时留空即可；自带的 `docker-compose.yml` 把 `.env` 里的值原样传入，默认为空。
 
-**文件地址里不带它。** 使用本地存储时，不管 `PUBLIC_URL` 是什么，每个存下来的文件地址都是站内相对地址 `/files/<key>`，画布里保存的就是这个地址。浏览器按打开应用的那个地址去加载，所以换主机、换端口、改 `PUBLIC_URL` 之后画布照常可用。早期版本存下的绝对地址（`<PUBLIC_URL>/files/<key>`，或回环地址）仍会被认作本实例的文件；前一种要求 `PUBLIC_URL` 与当时一致。
+**文件地址里不带它。** 不管 `PUBLIC_URL` 是什么、文件存在哪种存储里，每个存下来的文件地址都是站内相对地址 `/files/<key>`，画布里保存的就是这个地址。浏览器按打开应用的那个地址去加载，所以换主机、换端口、改 `PUBLIC_URL` 之后画布照常可用。早期版本存下的绝对地址（`<PUBLIC_URL>/files/<key>`，或回环地址）仍会被认作本实例的文件；前一种要求 `PUBLIC_URL` 与当时一致。
 
-**它用在发给上游模型的参考素材上。** 节点把参考图或原视频交给模型时，上游得能读到它：
+**它用在发给上游模型的参考素材上。** 节点把参考图或原视频交给模型时，上游得能读到它。对本地磁盘上的文件：
 
 - `PUBLIC_URL` 是公网地址：上游拿到的是 `<PUBLIC_URL>/files/<key>`。
 - 留空，或者是 `localhost`、内网地址：图片以 base64 的形式直接发给支持这种方式的接入。必须是地址的输入（视频编辑的原视频、部分视频模型的参考图）会失败，并提示设置 `PUBLIC_URL` 或改用对象存储。
 
-分享链接是浏览器按地址栏里的地址拼出来的，与 `PUBLIC_URL` 无关。
+桶里的文件则是直接从桶交给上游：给它的公开地址，或者一个有效期一小时的预签名地址。只有这两个都不是公网可达的地址时，才退回到 `PUBLIC_URL`。所以桶在公网上的话，参考素材不需要 `PUBLIC_URL`。见[存储](storage.zh-CN.md#给上游模型的参考素材)。
 
-使用 `s3`、`oss` 驱动时，文件地址来自 `S3_PUBLIC_BASE_URL` / `OSS_PUBLIC_BASE_URL`。
+分享链接是浏览器按地址栏里的地址拼出来的，与 `PUBLIC_URL` 无关。
 
 ## 访问口令
 
@@ -217,9 +210,9 @@ Caddy 会自己申请证书，并自动带上 `X-Forwarded-For`。
 
 | 内容 | 位置 | 原因 |
 | --- | --- | --- |
-| 数据库 | 数据卷 `mongo_data` | 画布、模型接入（含加密后的 Key）、设置、运行记录、分享、资产。 |
-| 文件 | 数据卷 `app_data` | 上传和生成的素材（本地存储）。 |
-| `.env` | 仓库根目录 | `SECRET_KEY`。没有它，数据库里的 Key 解不开。 |
+| 数据库 | 数据卷 `mongo_data` | 画布、模型接入（含加密后的 Key）、设置、保存的存储配置（含加密后的密钥）、运行记录、分享、资产。 |
+| 文件 | 数据卷 `app_data` | 存在本地磁盘上的上传和生成的素材。 |
+| `.env` | 仓库根目录 | `SECRET_KEY`。没有它，数据库里的接入 Key 和存储密钥都解不开。 |
 
 导出数据库：
 
@@ -242,7 +235,7 @@ docker compose cp ./loomcanvas-data-backup/. app:/app/data
 
 恢复文件后，确认容器内的 `node` 用户仍然能写 `/app/data`（`docker compose exec -u root app chown -R node:node /app/data`）；进程只能写这一个目录。正式依赖之前请自己演练一遍恢复流程，这几条命令不在项目的测试范围内。
 
-使用 `s3`、`oss` 存储时，文件在你的桶里，用存储服务商的工具备份。
+使用 S3 存储时，文件在你的桶里，用存储服务商的工具备份（版本控制、跨区域复制）。如果中途切换过存储，两边都有文件：`app_data` 数据卷和桶都要备份。见[存储](storage.zh-CN.md#备份)。
 
 ## 升级
 
@@ -274,4 +267,5 @@ curl -fsS http://localhost:3000/api/app/bootstrap
 - **上传的文件先放在内存里。** 每个上传在写入存储前都整个放在内存中，最大 `MAX_UPLOAD_MB`；「按地址抓取」也一样。请按同时上传的人数预留内存，`MAX_UPLOAD_MB` 不要调得比实际需要更大。
 - 生成的图片也在内存中处理（每张最大 60 MB），用来读取尺寸和生成缩略图。生成的视频是流式写入存储的（每个最大 1 GB）。
 - 同时执行的运行数由 `concurrency` 设置决定（默认 4）。一次运行大部分时间在等上游，CPU 占用不高；图片工具和缩略图用的是 `sharp`。
-- 磁盘：本地存储下结果永久保留，除非设置了 `retentionDays`。见[配置](configuration.zh-CN.md#管理设置)。
+- 使用 S3 存储并且分发方式是 `proxy` 时，每次查看文件都以流的方式经过应用。占的内存很少，但流量算在这台服务器上。
+- 磁盘：结果永久保留（不管在本地磁盘还是在桶里），除非设置了 `retentionDays`。见[配置](configuration.zh-CN.md#管理设置)。

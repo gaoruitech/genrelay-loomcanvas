@@ -21,9 +21,9 @@ loomcanvas/
 │  │  │  ├─ gaorui.js / openaiCompatible.js / gemini.js
 │  │  │  └─ catalog/*.json  各接入的模型声明
 │  │  ├─ runner/            任务执行器（排队、轮询、转存、记账）
-│  │  ├─ storage/           存储驱动：local / s3 / oss
+│  │  ├─ storage/           存储层：本地磁盘与 S3 兼容对象存储（index 门面、local、s3、schema、probe、keys）
 │  │  ├─ billing/           计费钩子（默认空实现）
-│  │  ├─ services/          设置、素材读取、图片工具、内置内容、结果清理
+│  │  ├─ services/          设置、存储设置（storageSettings.js）、素材读取、图片工具、内置内容、结果清理
 │  │  ├─ middleware/        登录、语言、错误处理、安全响应头
 │  │  ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
 │  │  └─ utils/
@@ -32,7 +32,7 @@ loomcanvas/
 │  └─ src/
 │     ├─ views/             CanvasList / Canvas / CanvasShareView / Settings / Setup / NotFound
 │     ├─ components/canvas/ 画布节点与对话框
-│     ├─ components/settings/ 设置页的各个标签页
+│     ├─ components/settings/ 设置页的各个标签页：模型接入、模型、存储、限制、外观、用量
 │     ├─ composables/       执行器、批量、历史等
 │     ├─ utils/             api.ts、canvasModels.ts 等
 │     └─ locales/           zh-CN.ts、en.ts、modules/*.ts
@@ -52,8 +52,8 @@ loomcanvas/
 - 登录：环境变量 `ACCESS_PASSWORD` 为空时不需要登录；非空时除 `/api/app/bootstrap`、`/api/auth/login`、分享只读接口外都要带 `Authorization: Bearer <token>`。凭证有效期 30 天，改了口令即全部失效。登录有限流：每个客户端每 10 分钟 10 次（IPv6 按 /64 网段计），所有客户端合计每 10 分钟 300 次；合计达到上限后，这个时间窗内不再接受新的登录，已登录的不受影响。计数在进程内存里。
 - 请求体大小：JSON 默认 1 MB，`/api/workflow` 下 6 MB，`/api/auth` 和 `/api/canvas-share` 下 64 KB。需要登录的接口先验凭证、再解析请求体。
 - 请求本身格式不对（路径里的百分号编码有误、不支持的字符集等）返回 4xx，`code` 为 `common.bad_request`，不返回 500。
-- 文件地址：本地存储驱动下，文件通过 `/files/<key>` 访问，接口返回的永远是站内相对地址 `/files/<key>`，与 `PUBLIC_URL` 无关；对象存储驱动返回桶的公开地址前缀下的完整地址。
-- 上游 Key 用 `SECRET_KEY` 做 AES-256-GCM 加密后入库；任何接口都不返回明文，只返回 `hasKey` 和 `keyTail`（末四位）。
+- 文件地址：每个存下来的文件只有一个地址，站内相对地址 `/files/<key>`。接口返回的、画布里保存的都是它，与 `PUBLIC_URL` 无关，也与文件在本地磁盘还是在 S3 兼容的桶里无关。`/files/<key>` 由应用应答（见第 10 节「文件」）。
+- 上游 Key 用 `SECRET_KEY` 做 AES-256-GCM 加密后入库；任何接口都不返回明文，只返回 `hasKey` 和 `keyTail`（末四位）。存储设置里的 S3 Secret Access Key 同样处理，接口只返回 `hasSecret` 和 `secretTail`。
 
 ## 3. 基础接口
 
@@ -164,6 +164,9 @@ Run：
 | GET | `/api/admin/models` | 所有模型（含未启用）及其覆盖项 |
 | PUT | `/api/admin/models/:modelId` | `{ enabled?, label?, sort?, defaults?, pricing? }` |
 | GET/PUT | `/api/admin/settings` | 站点名称、Logo、默认主题和语言、并发数、超时、重试次数、结果保留天数 |
+| GET | `/api/admin/storage` | → `{ source: 'saved'\|'env'\|'default', driver: 'local'\|'s3', delivery: ''\|'proxy'\|'redirect', envDriver, secretUnreadable, s3: null \| { preset, endpoint, region, bucket, accessKeyId, forcePathStyle, keyPrefix, publicBaseUrl, delivery, acl, hasSecret, secretTail, endpointHost }, previous: [{ endpointHost, bucket, keyPrefix }] }` |
+| POST | `/api/admin/storage/test` | `{ s3 }`，用提交的、未保存的配置真实走一遍 → `{ ok, steps: [{ step: 'put'\|'head'\|'get'\|'public'\|'delete', status: 'ok'\|'failed'\|'skipped', ms? }], message, code }`。测试不通过也是 HTTP 200；`secretAccessKey` 为空表示用已保存的那个 |
+| PUT | `/api/admin/storage` | `{ driver: 'local' }` 或 `{ driver: 's3', s3, force? }` → 同 GET。立即生效，不用重启。S3 配置先测试，不通过则不保存，返回 400（`storage.save_needs_test`），测试结果在 `data.test`；`force: true` 跳过测试 |
 | GET | `/api/admin/usage` | `?from&to&groupBy=day|model` → 汇总；`/api/admin/usage/records` 分页明细 |
 | DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。删除这一刻之前创建、已结束（成功、失败、已取消）的用量记录（`2025-01-31` 表示这一天 UTC 零点之前）；排队中、运行中的不动，生成的文件不删。缺 `before` 返回 400 `validation.required`，日期不对返回 400 `validation.bad_date` |
 
@@ -185,7 +188,7 @@ Run：
 - 运行记录落库在 `runs`；进程启动时把 `queued` 的重新入队，`running` / `archiving` 且有外部任务号的继续轮询（不重新提交），没有外部任务号的以 `run.interrupted` 判失败。
 - 未完成的运行（`queued`、`running`、`archiving`）最多 500 个，超出时提交接口返回 429（`run.queue_full`）。
 - 每一步都有总时长上限：提交 60 秒（`submitTimeoutSec`），轮询总时长按模型类型（图片 10 分钟 `imageTimeoutMinutes`、视频 30 分钟 `videoTimeoutMinutes`），对话 5 分钟（`chatTimeoutSec`），结果下载 5 分钟（`downloadTimeoutSec`）。这些都是设置项，括号里是键名。超时一律判失败，不允许无限等待。
-- 结果文件下载后转存到存储层，图片生成缩略图。
+- 结果文件下载后转存到存储层（当前使用的后端：本地磁盘或 S3 兼容的桶），图片生成缩略图。
 - 任何请求都不会向上游发两次。进程收到退出信号时，手上的运行只有在两种情况下放回 `queued`：已经有外部任务号（下次启动继续轮询，不重新提交），或者还什么都没发出去。请求已经发出、还没有外部任务号的运行以 `run.interrupted` 判失败，不会再发一次；同步型接入（OpenAI 兼容接口的图片、Gemini）的每一次运行和每一次对话都属于这种情况。
 - 运行存储的约定：`recover()` 返回 `{ queued, interrupted }`。`queued` 是要入队的运行 id（按创建时间从早到晚），`interrupted` 是上一个进程留下的、卡在中途又没有外部任务号的运行，由执行器判失败。
 - 被 `beforeRun` 放行、最后没有成功的运行都会调用 `billing.onFailed`，包括上面因中断而失败的。启动时处理 `interrupted` 的顺序是先调钩子、再更新记录，中间再崩溃会在下一次启动时重复调用，所以这一处是「至少一次」，钩子应按 `ctx.runId` 做到幂等。
@@ -240,11 +243,23 @@ module.exports = {
 
 - `POST /api/files/upload` 对图片返回 `thumbnailUrl`。
 - 缩略图的地址由原图地址直接推出，不需要另外记录：存储 key 为 `<uploads|outputs|tools>/…/<名字>.<扩展名>` 的图片，缩略图 key 是 `thumbs/of/<uploads|outputs|tools>/…/<名字>_<扩展名>.webp`（最长边 512 的 webp）。例如 `/files/outputs/2025/01/ab12.png` → `/files/thumbs/of/outputs/2025/01/ab12_png.webp`。只有 png / jpg / webp / bmp / avif 有缩略图；视频、GIF 没有。
-  - 上传和运行结果转存时会顺手生成；本地存储下 `GET /files/thumbs/of/…` 发现文件不在（老文件、工具节点的产物）就从原图现做一份、落盘、以后直接读。原图不存在返回 404；原图存在但做不出缩略图时 302 到原图。
-  - 画布节点数据里只存原图地址。前端显示小图时：本地存储的地址（`/files/…`）按上面的规则推出缩略图地址，所以刷新、复制节点、分享页都有缩略图；对象存储和外链地址用接口返回的 `thumbnailUrl`（只在当前页面内存里记着，刷新后退回原图）。
-- 本地存储下文件地址永远是站内相对地址（`/files/...`），不带 `PUBLIC_URL`，所以换主机、换端口、改 `PUBLIC_URL` 后画布照常可用；早期版本存下的 `PUBLIC_URL/files/...` 和回环地址仍被认作本实例的文件。`/files/*` 不需要登录；不是图片、视频、音频的文件带 `Content-Disposition: attachment`。
-- `PUBLIC_URL` 只在把本地存储里的文件交给上游时用来拼出绝对地址，可以不填。
-- 没有公网地址时，本地存储里的参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）会报错并提示设置 `PUBLIC_URL` 或改用对象存储。
+  - 上传和运行结果转存时会顺手生成；`GET /files/thumbs/of/…` 发现文件不在（老文件、工具节点的产物）就从原图现做一份、存下来、以后直接读，所有后端都一样。缩略图（顺手生成的和现做的）写到原图所在的那个后端，不一定是当前使用的后端。原图不存在返回 404；原图存在但做不出缩略图时 302 到原图。
+  - 画布节点数据里只存原图地址。前端显示小图时：存储里的文件（`/files/…`，任何后端）按上面的规则推出缩略图地址，所以刷新、复制节点、分享页都有缩略图；外链地址（以及早期版本存下的桶的绝对地址）用接口返回的 `thumbnailUrl`（只在当前页面内存里记着，刷新后退回原图）。
+- 一个地址：文件地址永远是站内相对地址 `/files/<key>`，所有后端都一样，不带 `PUBLIC_URL`，也不带桶的域名，所以换主机、换端口、改 `PUBLIC_URL`、换存储之后画布照常可用。早期版本存下的 `PUBLIC_URL/files/...`、回环地址，以及 S3 驱动存下的 `<公开访问地址>/<key>`（要求这个公开访问地址还在某个已配置的后端里）仍被认作本实例的文件，映射回 key；画布里的这些旧地址不改写。
+- `GET /files/<key>` 由应用应答，不需要登录，按文件所在的后端分三种：
+  - 本地磁盘：从磁盘读，同以前。
+  - 桶，`delivery: 'proxy'`：从桶里流式转发，不在内存里攒。单个 `Range` → 206（多区间的请求给整个文件），`If-None-Match` / `ETag` → 304，支持 `HEAD`，`Content-Type` 取自 key 的扩展名，`Cache-Control: public, max-age=31536000, immutable`。桶可以是私有的，不需要 CORS，也不需要公共读。
+  - 桶，`delivery: 'redirect'`：302 到 `<publicBaseUrl>/<keyPrefix><key>`，`Cache-Control: public, max-age=300`。
+  - 前两种带同样的加固头：`X-Content-Type-Options: nosniff`、沙箱化的 CSP，不是图片、视频、音频的文件带 `Content-Disposition: attachment`。找不到返回 404；存储服务问不到（连不上、凭据被拒）返回 502，不是 404。
+- 文件在哪个后端不做记录，靠查：先问本地磁盘（一次 stat），再问当前使用的桶，再问其他可读的桶（HEAD），结果记在进程内存里（key 只写一次、不移动；上限 2 万条）。可读的后端 = 本地磁盘（始终）+ 设置页保存的 S3 配置（存储方式改回本地后仍保留）+ 最多 5 个更早保存过的桶（`previous`）+ 环境变量里的 S3 配置（`STORAGE_DRIVER=s3` 时）。切换存储不移动、不复制文件，这个版本没有迁移工具；旧后端的配置还在，旧文件就照常加载。自己复制对象（保持 key 不变、放在路径前缀下）同样能被找到。
+- 存储用哪个，优先级是：设置页保存的配置（`settings` 集合里键为 `storage` 的一条）> 环境变量（`STORAGE_DRIVER`、`S3_*`）> 本地磁盘。保存后立即切换，不用重启；进行中的上传在它开始时的后端上完成。`SECRET_KEY` 变了导致保存的 S3 密钥解不开时，新文件退回环境变量指定的后端（默认本地磁盘），记日志，`secretUnreadable` 为 `true`。
+- 结果保留期清理、打包下载、画布工具、`files/fetch`、素材库都经过存储层，对两种驱动都适用。
+- 把文件交给上游（`services/media.js` 的 `upstreamUrl`）：桶里的文件依次取 (1) `delivery: 'redirect'` 时的公开地址，(2) 有效期 1 小时的预签名 GET 地址，取其中第一个「公网可达」的（不是 `localhost`、不是内网 IP；只看地址本身，不解析）；都不行时 (3) `PUBLIC_URL + /files/<key>`（`PUBLIC_URL` 已设且是公网地址）。本地磁盘上的文件只有 (3)。
+- `PUBLIC_URL` 只在上面第 (3) 步用来拼出绝对地址，可以不填。
+- 以上都拿不到公网地址时，参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）以 `media.needs_public_url` 报错。
+- 预签名地址只用于那一次上游请求，不进画布、分享和运行记录。上游如果在错误信息里把它带了回来，`X-Amz-*` 查询参数的值在入库和展示之前换成 `***`。
+- S3 驱动对各家的处理：`forcePathStyle` 由配置明确给出（MinIO 为 true；AWS、R2、OSS 为 false）；始终设置 `requestChecksumCalculation: 'WHEN_REQUIRED'` 和 `responseChecksumValidation: 'WHEN_REQUIRED'`；没有配置 `acl` 就不发 ACL 头；对象写入时带 `Content-Type` 和 `Cache-Control: public, max-age=31536000, immutable`。`STORAGE_DRIVER=oss` 已移除，启动时报配置错误并提示改用 `s3`。
+- S3 的 Endpoint 和公开访问地址由部署者填写，不经过 SSRF 防护（与接入的接口地址同理）；用户给出的地址的防护不变。
 
 **画布**
 
@@ -276,6 +291,7 @@ module.exports = {
 
 **设置与用量**
 
+- 存储不在 `GET/PUT /api/admin/settings` 里：它有自己的三个接口（第 5 节的 `/api/admin/storage`），存在 `settings` 集合里键为 `storage` 的一条记录中，密钥加密。把 `storage` 当作设置键提交会得到 `settings.unknown_key`。
 - `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultTheme`、`defaultLocale`、`concurrency`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。各项的默认值和范围见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
 - `GET /api/admin/usage` → `{ groupBy, timezone, totals, items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`，`totals` 与 `items` 的每一项形状相同。可带 `tz`（IANA 时区名，默认 `UTC`）决定按天分组时一天的起止。
 - 接入的新增和修改：字段直接放在请求体顶层；修改时不带密钥表示保持不变，`baseUrl: ''` 表示恢复默认地址。
@@ -283,7 +299,7 @@ module.exports = {
 
 **安全响应头**
 
-- 每个页面带 `Content-Security-Policy`：`script-src 'self'` 加上构建出的 `index.html` 里内联主题脚本的 sha256，脚本不允许 `'unsafe-inline'` 和 `'unsafe-eval'`；`img-src` / `media-src` / `connect-src` 有意对任何 http(s) 来源开放（画布要显示和下载对象存储、CDN、外链里的结果）；另有 `frame-ancestors 'self'`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
+- 每个页面带 `Content-Security-Policy`：`script-src 'self'` 加上构建出的 `index.html` 里内联主题脚本的 sha256，脚本不允许 `'unsafe-inline'` 和 `'unsafe-eval'`；`img-src` / `media-src` / `connect-src` 有意对任何 http(s) 来源开放（画布要显示和下载对象存储、CDN、外链里的结果），另外明确列出存储配置里每个 `publicBaseUrl` 的来源，跟着当前的存储配置变，不用重启（现在不改变效果，为的是以后收紧开放来源时它们仍被允许）；另有 `frame-ancestors 'self'`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
 - 接口响应带 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` 和 `Cache-Control: no-store`。
 - 所有响应带 `X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy`、`Cross-Origin-Opener-Policy`、`Permissions-Policy`。
 - 应用不设置 HSTS，交给终结 TLS 的反向代理。

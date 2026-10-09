@@ -120,15 +120,17 @@ Reference images and source videos on a canvas are files in **your** storage. Th
 | Way | Used by | Without a public address |
 | --- | --- | --- |
 | Inline base64 | Gemini (always) | Works. |
-| URL if public, otherwise an inline data URI | Gaorui image models, Omni Flash, Omni Flash Edit reference images, Sora 2; images in OpenAI-style chat | Works. Images are sent inline, up to 20 MB each. |
+| URL if there is a public one, otherwise an inline data URI | Gaorui image models, Omni Flash, Omni Flash Edit reference images, Sora 2; images in OpenAI-style chat | Works. Images are sent inline, up to 20 MB each. |
 | URL only | Omni Flash Edit **source video**, Grok Video reference images, video in chat | **Fails** with "A publicly reachable URL is needed…". |
 
-"Public" means the file URL is an `http(s)` address that is not `localhost` and not a private IP. That is the case when:
+A "public address" is an `http(s)` URL that is not `localhost` and not a private IP. A file has one when:
 
-- you use the local driver and `PUBLIC_URL` is your public address (it is added to the file's site-relative URL when the file is handed to the upstream), or
-- you use object storage (`s3` / `oss`), whose public base URL is used.
+- it is in an S3-compatible bucket whose endpoint is reachable from the internet. The upstream then receives the bucket's public address (with `redirect` delivery), or a presigned URL that is valid for one hour. The bucket can be private, and `PUBLIC_URL` is not needed; or
+- `PUBLIC_URL` is your public address. It is added to the file's site-relative URL (`/files/<key>`) when the file is handed to the upstream. This is the only way for files on the local disk.
 
-So for video editing and for image-to-video with URL-only models, set `PUBLIC_URL` to a public address or switch to object storage. See [Deployment](deployment.md#public_url).
+So for video editing and for image-to-video with URL-only models, either set `PUBLIC_URL` to a public address or keep files in a bucket (**Settings → Storage**). Switching storage does not move files that are already stored. See [Storage](storage.md#reference-media-for-upstream-models) and [Deployment](deployment.md#public_url).
+
+A presigned URL is sent to the upstream provider and lets anyone who has it read that one file until it expires. It is never stored in canvases or run records.
 
 Results always come back the same way: LoomCanvas downloads the upstream's result (through the [SSRF guard](security.md#ssrf-protection)) and stores it in your storage, with a thumbnail for images.
 

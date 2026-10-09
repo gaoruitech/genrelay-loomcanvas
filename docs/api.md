@@ -10,7 +10,7 @@ This is the API the LoomCanvas frontend uses. It is written from the route files
 
 ### Base URL and format
 
-- Every endpoint is under `/api`. Stored files are served under `/files` (local storage driver).
+- Every endpoint is under `/api`. Stored files are served under `/files`, on every storage backend.
 - Request bodies are JSON (`Content-Type: application/json`), except the file upload, which is `multipart/form-data`.
 - JSON bodies are limited to 1 MB, or 6 MB under `/api/workflow`, or 64 KB for `/api/auth` and `/api/canvas-share`. On protected endpoints the body is parsed only after the token has been checked.
 - Ids are 24-character hexadecimal strings.
@@ -145,19 +145,35 @@ Response `data`:
 }
 ```
 
-`width`, `height` and `thumbnailUrl` are present for images only. With the local storage driver `url` is always site-relative (`/files/<key>`), whatever `PUBLIC_URL` is; with object storage it is an absolute URL under the bucket's public base URL.
+`width`, `height` and `thumbnailUrl` are present for images only. `url` is always site-relative (`/files/<key>`), whatever `PUBLIC_URL` is and whichever storage backend holds the file: the local disk or a bucket.
 
 Errors: `file.missing`, `file.empty`, `file.unsupported_type`, `file.image_corrupt` (400); `file.too_large` (413).
 
 ### POST /api/files/fetch
 
-Body: `{ "url": string }`. The server downloads a remote **image** (through the SSRF guard, up to `MAX_UPLOAD_MB`) and stores it. A URL that already points at this instance's storage is returned as it is. Response as for upload.
+Body: `{ "url": string }`. The server downloads a remote **image** (through the SSRF guard, up to `MAX_UPLOAD_MB`) and stores it. A URL that already points at this instance's storage is not downloaded again; the response describes the stored file, with its `/files/<key>` address. That includes absolute addresses under a configured bucket's public base URL, which earlier versions stored. Response as for upload.
 
 Errors (400): `file.image_only` (also for a stored file that is not an image), `fetch.*` (for example `fetch.private_address`, `fetch.http_error`, `fetch.timeout`); `file.not_found` (404).
 
 ### GET /files/:key
 
-Public. Serves a stored file with the local storage driver. Supports range requests. Anything that is not an image, video or audio file is sent as a download. Thumbnails under `thumbs/of/…` are generated on first request; when a thumbnail cannot be made the response is a `302` to the original. Unknown keys answer `404` with an empty body.
+Public. The one address of a stored file, whichever backend holds it. `HEAD` is answered as well. The response depends on where the file is:
+
+| File is | Response |
+| --- | --- |
+| On the local disk | The file, read from disk. Range requests are supported. |
+| In a bucket with `proxy` delivery | The object, streamed from the bucket. A single `Range` gives `206` with `Content-Range` (a request with several ranges gets the whole file); `If-None-Match` gives `304`; `ETag`, `Last-Modified` and `Accept-Ranges: bytes` are set. |
+| In a bucket with `redirect` delivery | `302` to `<publicBaseUrl>/<keyPrefix><key>`, with `Cache-Control: public, max-age=300`. |
+
+Files served by the app (the first two rows) carry `Cache-Control: public, max-age=31536000, immutable`, a `Content-Type` taken from the key's extension, `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. Anything that is not an image, video or audio file is sent as a download.
+
+Thumbnails under `thumbs/of/…` are generated on first request, on every backend, and stored next to their source image; when a thumbnail cannot be made the response is a `302` to the original.
+
+| HTTP | When |
+| --- | --- |
+| 404, empty body | Unknown key, or the file is on none of the readable backends. |
+| 416 | The requested range cannot be satisfied. |
+| 502, empty body | A storage service could not be asked (unreachable, credential refused), so the file may exist. |
 
 ---
 
@@ -442,7 +458,7 @@ Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_
 
 ## Admin
 
-Base path `/api/admin`. These back the Settings page. There is no separate admin role: anyone who is signed in can call them.
+Base path `/api/admin`. These back the Settings page. There is no separate admin role: anyone who is signed in can call them. When `ACCESS_PASSWORD` is empty, anyone who can reach the instance can.
 
 ### Providers
 
@@ -502,6 +518,103 @@ Errors: `model.bad_id`, `common.nothing_to_update`, `validation.invalid`, `valid
 | PUT | `/api/admin/settings` | Any subset of the keys | The full object after the update. |
 
 Keys, defaults and ranges are listed in [Configuration](configuration.md#admin-settings). Errors (400): `settings.unknown_key` (any key that is not a setting, including names such as `constructor` or `__proto__`), `validation.int_range`, `validation.one_of`, `validation.string`, `settings.logo_url`.
+
+### Storage
+
+Where files are kept: the local disk or an S3-compatible bucket. Storage is not part of `/api/admin/settings`; it has its own endpoints. What the fields mean, per-vendor values and what happens to existing files on a switch are in [Storage](storage.md).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| GET | `/api/admin/storage` | | The storage status (below). |
+| POST | `/api/admin/storage/test` | `{ s3: {…} }` | The result of a connection test with the submitted, unsaved configuration. |
+| PUT | `/api/admin/storage` | `{ driver: "local" }` or `{ driver: "s3", s3: {…}, force?: true }` | The storage status after the change. |
+
+**The status**, returned by `GET` and by a successful `PUT`:
+
+```json
+{
+  "source": "saved",
+  "driver": "s3",
+  "delivery": "proxy",
+  "envDriver": "local",
+  "secretUnreadable": false,
+  "s3": {
+    "preset": "minio",
+    "endpoint": "http://minio:9000",
+    "region": "us-east-1",
+    "bucket": "loomcanvas",
+    "accessKeyId": "AKIA…",
+    "forcePathStyle": true,
+    "keyPrefix": "",
+    "publicBaseUrl": "",
+    "delivery": "proxy",
+    "acl": "",
+    "hasSecret": true,
+    "secretTail": "x9Qd",
+    "endpointHost": "minio:9000"
+  },
+  "previous": [
+    { "endpointHost": "s3.eu-west-1.amazonaws.com", "bucket": "old-bucket", "keyPrefix": "" }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source` | Where the active choice comes from: `saved` (a configuration was saved through this API or the settings page), `env` (`STORAGE_DRIVER=s3` in the environment), `default` (local disk, nothing configured). |
+| `driver` | The backend that receives new files: `local` or `s3`. |
+| `delivery` | How `/files/<key>` answers for files on the active backend: `proxy` or `redirect`; empty when `driver` is `local`. |
+| `envDriver` | What `STORAGE_DRIVER` says. |
+| `secretUnreadable` | `true` when the saved secret cannot be decrypted (`SECRET_KEY` changed). New files then go to what the environment says until the secret is entered again. |
+| `s3` | The S3 configuration the form starts from: the saved one (kept also while `driver` is `local`), otherwise the environment's, otherwise `null`. The secret is never returned: `hasSecret` and `secretTail` (its last four characters) stand in for it. `endpointHost` is the endpoint's host, or the AWS default for the region when the endpoint is empty. |
+| `previous` | Earlier saved buckets, at most 5. They receive no new files and are still read. |
+
+**The `s3` object** in request bodies:
+
+| Field | Values |
+| --- | --- |
+| `preset` | `aws`, `r2`, `oss`, `minio` or `custom` (default). A label for the form; it has no effect on requests. |
+| `endpoint` | `http(s)://host[:port]` without a path, credentials or query. Empty for AWS S3. Must not start with the bucket name. |
+| `region` | Default `us-east-1`. |
+| `bucket` | Required. 3 to 63 lowercase letters, digits, dots and hyphens. |
+| `accessKeyId` | Required. |
+| `secretAccessKey` | Empty or omitted means "use the stored one" (the saved secret, otherwise the environment's). Required when there is none. |
+| `forcePathStyle` | Boolean, default `false`. |
+| `keyPrefix` | Optional folder inside the bucket. Returned normalised, with a trailing slash (`a/b/`). |
+| `publicBaseUrl` | Optional `http(s)` URL that maps to the bucket root; a path is allowed. Returned without a trailing slash. |
+| `delivery` | `proxy` or `redirect`. Default: `redirect` when `publicBaseUrl` is set, otherwise `proxy`. `redirect` needs `publicBaseUrl`. |
+| `acl` | `""` (default), `private` or `public-read`. |
+
+**POST /api/admin/storage/test** makes a real round trip: it writes a small object under `probe/`, looks it up (and looks up a key that does not exist, to detect a credential without list permission), reads it back and compares the bytes, loads it through the public address when delivery is `redirect`, and deletes it. Nothing is saved.
+
+```json
+{
+  "ok": false,
+  "steps": [
+    { "step": "put", "status": "failed", "ms": 41 },
+    { "step": "head", "status": "skipped" },
+    { "step": "get", "status": "skipped" },
+    { "step": "delete", "status": "skipped" }
+  ],
+  "message": "The Secret Access Key is wrong (the signature does not match). Paste it again, without spaces",
+  "code": "storage.err_signature"
+}
+```
+
+- `steps[].step` is `put`, `head`, `get`, `public` (only with `redirect` delivery) or `delete`; `status` is `ok`, `failed` or `skipped`; `ms` is absent for skipped steps.
+- `message` is in the language of the request. `code` is empty when `ok` is `true`.
+- A failed test is an answer, not an error: HTTP 200 with `ok: false`. Only a body that does not validate is answered with 400.
+- `code` of a failed test: `storage.err_access_key`, `storage.err_signature`, `storage.err_access_denied`, `storage.err_list_permission`, `storage.err_no_bucket`, `storage.err_region`, `storage.err_unreachable`, `storage.err_host_not_found`, `storage.err_host_bucket_not_found` (turn path-style addressing on), `storage.err_path_style_refused` (turn it off), `storage.err_tls`, `storage.err_clock_skew`, `storage.err_not_s3`, `storage.err_read_back`, `storage.err_public_unreachable`, `storage.err_public_status`, `storage.err_public_mismatch`, `storage.err_other`. What each means is in [Storage](storage.md#troubleshooting).
+- The server contacts the submitted `endpoint` and `publicBaseUrl`. These are not subject to the SSRF guard; see [Security](security.md#ssrf-protection).
+
+**PUT /api/admin/storage** saves and switches at once, without a restart. Uploads under way finish on the backend they started with.
+
+- `{ "driver": "local" }` goes back to the local disk. A saved S3 configuration is kept and stays readable.
+- `{ "driver": "s3", "s3": {…} }` runs the connection test first. When it fails nothing is saved and the answer is HTTP 400 with `code: "storage.save_needs_test"` and, unlike other errors, a payload: `data.test` is the test result in the shape above.
+- `"force": true` saves without testing.
+- Saving a configuration that points somewhere else (another endpoint, bucket or key prefix) moves the previous one to `previous`. Files are not moved.
+
+Errors (400): `storage.save_needs_test`, `storage.endpoint_has_path`, `storage.endpoint_has_bucket`, `storage.bad_bucket`, `storage.bad_key_prefix`, `storage.redirect_needs_public_url`, `validation.required`, `validation.one_of`, `validation.bad_url`, `validation.bad_format`, `validation.string`, `validation.boolean`.
 
 ### Usage
 

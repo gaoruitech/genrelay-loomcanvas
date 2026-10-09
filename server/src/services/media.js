@@ -17,6 +17,8 @@ const { msg } = require('../i18n')
 
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024
 const MAX_INLINE_BYTES = 20 * 1024 * 1024
+/** Lifetime of a signed address given to an upstream: long enough for a queued video job to start. */
+const SIGNED_URL_TTL_SEC = 3600
 
 /** `what` in the messages below names the media (a `noun.*` message). */
 class MediaError extends ApiError {
@@ -67,8 +69,7 @@ async function openStream(url, { maxBytes, signal, timeoutMs } = {}) {
   const key = ownKey(url)
   if (key) {
     const storage = getStorage()
-    const size = typeof storage.size === 'function' ? await storage.size(key) : null
-    return { stream: await storage.getStream(key), mime: mimeForKey(key), size }
+    return { stream: await storage.getStream(key), mime: mimeForKey(key), size: await storage.size(key) }
   }
   if (typeof url !== 'string' || url.startsWith('/')) throw new MediaError('media.bad_url', { what: msg('noun.file') })
   const res = await safeFetchStream(url, { maxBytes, signal, timeoutMs })
@@ -89,9 +90,28 @@ function absoluteUrl(url) {
 }
 
 /**
+ * An address an upstream on the internet can fetch a canvas URL from, or ''.
+ * A file in a bucket is handed over straight from there - its public domain
+ * when it has one, otherwise a signed address that expires - so the upstream
+ * does not depend on this app being reachable. Everything else goes through
+ * PUBLIC_URL. The result is for the upstream request only; it is never stored.
+ */
+async function upstreamUrl(url) {
+  const key = ownKey(url)
+  if (key) {
+    for (const direct of await getStorage().externalUrls(key, { expiresIn: SIGNED_URL_TTL_SEC })) {
+      if (isPubliclyReachable(direct)) return direct
+    }
+  }
+  const abs = absoluteUrl(url)
+  return abs && isPubliclyReachable(abs) ? abs : ''
+}
+
+/**
  * Helpers handed to providers for one request. Reference media on the canvas
- * may sit in local storage that the upstream cannot reach; these turn a canvas
- * URL into something the upstream can actually consume.
+ * may sit in storage that the upstream cannot reach (the local disk without a
+ * public address); these turn a canvas URL into something the upstream can
+ * actually consume.
  */
 function createMediaHelpers(signal) {
   return {
@@ -106,19 +126,19 @@ function createMediaHelpers(signal) {
      * that accept either in the same field.
      */
     async toRef(url) {
-      const abs = absoluteUrl(url)
-      if (abs && isPubliclyReachable(abs)) return abs
+      const direct = await upstreamUrl(url)
+      if (direct) return direct
       const { mime, data } = await this.toBase64(url)
       return `data:${mime};base64,${data}`
     },
 
     /** A public URL or an error - for APIs that only take URLs (and for video). */
     async toPublicUrl(url, what = msg('noun.asset')) {
-      const abs = absoluteUrl(url)
-      if (abs && isPubliclyReachable(abs)) return abs
+      const direct = await upstreamUrl(url)
+      if (direct) return direct
       throw new MediaError('media.needs_public_url', { what })
     },
   }
 }
 
-module.exports = { loadBuffer, loadImage, openStream, createMediaHelpers, isPubliclyReachable, absoluteUrl, ownKey, MediaError, MAX_IMAGE_BYTES }
+module.exports = { loadBuffer, loadImage, openStream, createMediaHelpers, isPubliclyReachable, absoluteUrl, upstreamUrl, ownKey, MediaError, MAX_IMAGE_BYTES }

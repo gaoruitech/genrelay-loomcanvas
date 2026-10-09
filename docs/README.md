@@ -17,7 +17,8 @@
 | Page | What it covers |
 | --- | --- |
 | [Deployment](deployment.md) | Docker Compose, running without Docker, reverse proxy and HTTPS, backups, upgrades. |
-| [Configuration](configuration.md) | Environment variables, admin settings, in-canvas settings, storage drivers, fixed limits. |
+| [Configuration](configuration.md) | Environment variables, admin settings, in-canvas settings, fixed limits. |
+| [Storage](storage.md) | Local disk or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO): setup per vendor, private buckets, delivery, switching, what has been tested. |
 | [Providers](providers.md) | The built-in provider types, their models, how media reaches upstreams, pricing and usage. |
 | [Security](security.md) | Hardening a deployment, what is public, what LoomCanvas does not do. |
 

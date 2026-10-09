@@ -5,6 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const express = require('express')
 const { getConfig } = require('./config')
+const { getStorage } = require('./storage')
 const { securityHeaders, noStore, cors, buildContentSecurityPolicy, inlineScriptHashes } = require('./middleware/security')
 const { requireAuth } = require('./middleware/auth')
 const { locale } = require('./middleware/locale')
@@ -25,10 +26,19 @@ function createApp() {
     throw new Error(`WEB_DIST is set to ${config.webDist} but there is no index.html in it`)
   }
   const scriptHashes = indexHtml ? inlineScriptHashes(fs.readFileSync(indexHtml, 'utf8')) : []
-  app.use(securityHeaders(buildContentSecurityPolicy({ scriptHashes })))
+  // The policy follows the storage settings: a bucket's public domain is allowed
+  // as soon as it is saved, without a restart.
+  let policy = { origins: null, text: '' }
+  app.use(securityHeaders(() => {
+    const origins = getStorage().publicOrigins().join(' ')
+    if (origins !== policy.origins) {
+      policy = { origins, text: buildContentSecurityPolicy({ scriptHashes, mediaOrigins: origins ? origins.split(' ') : [] }) }
+    }
+    return policy.text
+  }))
   app.use(locale)
 
-  // Stored files (local driver). Public: share links and upstream models load them.
+  // Stored files, whichever backend holds them. Public: share links and upstream models load them.
   app.use('/files', files.staticRouter())
 
   const api = express.Router()

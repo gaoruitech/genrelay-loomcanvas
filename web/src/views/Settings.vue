@@ -17,6 +17,7 @@
 
       <ProvidersTab v-if="active === 'providers'" />
       <ModelsTab v-else-if="active === 'models'" />
+      <StorageTab v-else-if="active === 'storage'" />
       <LimitsTab v-else-if="active === 'limits'" />
       <AppearanceTab v-else-if="active === 'appearance'" />
       <UsageTab v-else />
@@ -33,6 +34,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import ProvidersTab from '@/components/settings/ProvidersTab.vue'
 import ModelsTab from '@/components/settings/ModelsTab.vue'
+import StorageTab from '@/components/settings/StorageTab.vue'
 import LimitsTab from '@/components/settings/LimitsTab.vue'
 import AppearanceTab from '@/components/settings/AppearanceTab.vue'
 import UsageTab from '@/components/settings/UsageTab.vue'
@@ -42,7 +44,7 @@ const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
 
-const TABS = ['providers', 'models', 'limits', 'appearance', 'usage'] as const
+const TABS = ['providers', 'models', 'storage', 'limits', 'appearance', 'usage'] as const
 type TabKey = typeof TABS[number]
 
 // 当前标签页放在 ?tab= 里：刷新不丢，也能从别处直接链到某一页

@@ -13,9 +13,6 @@ services:
   app:
     build:
       context: .
-      args:
-        # STORAGE_DRIVER=oss needs EXTRA_NPM_PACKAGES=ali-oss in .env, then `docker compose build`.
-        EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}
     restart: unless-stopped
     depends_on:
       mongodb:
@@ -28,21 +25,21 @@ services:
       # Set it to the public address when an upstream has to download reference files from here.
       PUBLIC_URL: ${PUBLIC_URL:-}
       ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
+      # Storage is normally set in the app, under Settings > Storage; what is saved there overrides
+      # these. They are the default of an instance on which nothing was saved yet. See docs/storage.md.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      # Always used, also after a switch to S3: files stored before the switch stay in this volume.
       STORAGE_LOCAL_DIR: /app/data/files
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_REGION: ${S3_REGION:-}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
-      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
-      OSS_REGION: ${OSS_REGION:-}
-      OSS_BUCKET: ${OSS_BUCKET:-}
-      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-}
-      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:-}
-      OSS_PUBLIC_BASE_URL: ${OSS_PUBLIC_BASE_URL:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
-      OSS_ENDPOINT: ${OSS_ENDPOINT:-}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_DELIVERY: ${S3_DELIVERY:-}
+      S3_ACL: ${S3_ACL:-}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
       TRUST_PROXY: ${TRUST_PROXY:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-}

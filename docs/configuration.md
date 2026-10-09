@@ -21,7 +21,7 @@ All variables are read once at startup by `server/src/config.js`. An invalid val
 | `SECRET_KEY` | none, **required** | Master secret, at least 16 characters. Encrypts provider API keys in the database and derives the key that signs login tokens. The server never generates one for you. Changing it makes saved provider keys unreadable and signs everyone out. |
 | `PORT` | `3000` | HTTP port the server listens on (1 to 65535). In Docker Compose this name sets the host port instead; the container always listens on 3000. |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/loomcanvas` | MongoDB connection string. |
-| `PUBLIC_URL` | empty | Optional. Public address of the instance, `http(s)://…`, no trailing slash. Leave it empty for local or LAN use. It is not part of file URLs; it is only used to give upstream models an absolute URL for reference media kept in local storage (needed for video inputs). See [Deployment](deployment.md#public_url). |
+| `PUBLIC_URL` | empty | Optional. Public address of the instance, `http(s)://…`, no trailing slash. Leave it empty for local or LAN use. It is not part of file URLs; it is only used to give upstream models an absolute URL for reference media that they cannot load straight from a bucket (files on the local disk; needed for video inputs). See [Deployment](deployment.md#public_url). |
 | `ACCESS_PASSWORD` | empty | Shared access password. Empty disables login entirely. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload, and the largest file "fetch from URL" will take (1 to 2048). Uploads are buffered in memory. |
 | `WEB_DIST` | empty | Directory of the built frontend (`web/dist`) to serve from the server. Relative paths are resolved against `server/`. Must contain `index.html`. |
@@ -39,40 +39,39 @@ All variables are read once at startup by `server/src/config.js`. An invalid val
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `STORAGE_DRIVER` | `local` | `local`, `s3` or `oss`. |
-| `STORAGE_LOCAL_DIR` | `./data/files` | Directory for the local driver. Relative paths are resolved against `server/`. |
-| `S3_ENDPOINT` | empty | Endpoint URL for S3-compatible services (R2, MinIO…). Leave empty for AWS S3. |
-| `S3_REGION` | `auto` | Region. |
+| `STORAGE_DRIVER` | `local` | `local` or `s3`. `oss` is no longer accepted: the server exits at startup with a message that says how to migrate ([Storage](storage.md#migrating-from-storage_driveross)). |
+| `STORAGE_LOCAL_DIR` | `./data/files` | Directory of the local disk backend. Relative paths are resolved against `server/`. |
+| `S3_ENDPOINT` | empty | Endpoint of the S3 API for S3-compatible services (R2, OSS, MinIO…), without a path. Leave empty for AWS S3. |
+| `S3_REGION` | `us-east-1` | Region. Use `auto` for R2. |
 | `S3_BUCKET` | empty | Bucket name. Required for `s3`. |
 | `S3_ACCESS_KEY_ID` | empty | Required for `s3`. |
 | `S3_SECRET_ACCESS_KEY` | empty | Required for `s3`. |
-| `S3_FORCE_PATH_STYLE` | off | `1`, `true` or `yes` turns on path-style addressing (MinIO usually needs it). |
-| `S3_PUBLIC_BASE_URL` | empty | Public URL prefix of the bucket or its CDN, no trailing slash. Required for `s3`. |
-| `OSS_REGION` | empty | For example `oss-cn-hangzhou`. `OSS_REGION` or `OSS_ENDPOINT` is required for `oss`. |
-| `OSS_ENDPOINT` | empty | Alternative to `OSS_REGION`. |
-| `OSS_BUCKET` | empty | Required for `oss`. |
-| `OSS_ACCESS_KEY_ID` | empty | Required for `oss`. |
-| `OSS_ACCESS_KEY_SECRET` | empty | Required for `oss`. |
-| `OSS_PUBLIC_BASE_URL` | empty | Public URL prefix of the bucket or its CDN. Required for `oss`. |
+| `S3_FORCE_PATH_STYLE` | off | `1`, `true` or `yes` turns on path-style addressing (MinIO needs it; AWS S3, R2 and OSS do not). |
+| `S3_KEY_PREFIX` | empty | Optional folder inside the bucket. |
+| `S3_PUBLIC_BASE_URL` | empty | Optional. Custom domain, CDN or `r2.dev` address that maps to the root of the bucket, no trailing slash. |
+| `S3_DELIVERY` | see meaning | `proxy` (the app serves the bytes; the bucket can be private) or `redirect` (browsers are redirected to `S3_PUBLIC_BASE_URL`). Default: `redirect` when `S3_PUBLIC_BASE_URL` is set, otherwise `proxy`. |
+| `S3_ACL` | empty | Empty, `private` or `public-read`. Empty sends no ACL header. |
 
-The tests additionally read `TEST_MONGODB_URI`; see [Development](development.md#tests).
+These variables are a bootstrap default. Storage is normally configured under **Settings → Storage**, and **a configuration saved there takes precedence over the environment**. See [Storage](storage.md) for the fields, a recipe per vendor, private buckets and what happens when you switch.
+
+The tests additionally read `TEST_MONGODB_URI` and, for the live S3 tests, `TEST_S3_*`; see [Development](development.md#tests).
 
 Which of these the stock Docker Compose file passes through is listed in [Deployment](deployment.md#variables-read-from-env).
 
-### Storage drivers
+### Storage backends
 
 | Driver | Files live in | File URL | Extra install |
 | --- | --- | --- | --- |
 | `local` | `STORAGE_LOCAL_DIR` | `/files/<key>` (site-relative), served by the app | none |
-| `s3` | Your bucket | `<S3_PUBLIC_BASE_URL>/<key>` | none: the SDK is an optional dependency that `npm ci` installs, and it is in the Docker image |
-| `oss` | Your bucket | `<OSS_PUBLIC_BASE_URL>/<key>` | `npm install ali-oss` in `server/`; with Docker, `EXTRA_NPM_PACKAGES=ali-oss` in `.env` and `docker compose build` |
+| `s3` | Your bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO, other S3-compatible services) | `/files/<key>` as well. The app streams the object from the bucket, or redirects to the bucket's public domain. | none: the AWS SDK is a regular dependency of `server/` and is in the Docker image |
 
-Notes that apply to all drivers:
+Notes that apply to both:
 
 - Storage keys are generated by the server (`uploads/…`, `outputs/…`, `tools/…`, `thumbs/…` plus the date and 32 random hex characters). They never contain file names or anything a user typed.
-- Files are **publicly readable** by anyone who has the URL. The `s3` and `oss` drivers do not sign URLs: objects must be readable through the public base URL (a public-read bucket or a CDN in front of it).
-- The `s3` and `oss` drivers are written but have **not been run against a real bucket** in this project. Expect to test them yourself.
-- On-demand thumbnails (made the first time a thumbnail is requested) exist only for the local driver. With object storage, thumbnails are made when a file is uploaded or a result is stored.
+- `/files/<key>` is **publicly readable** by anyone who has the URL. The bucket itself can stay private.
+- Files are not moved when storage is switched; the earlier backend stays readable. See [Storage](storage.md#what-happens-when-you-switch).
+- Thumbnails are made when a file is uploaded or a result is stored, and on first request when one is missing, on both backends. A thumbnail is written to the backend that holds its source image.
+- The S3 driver is verified against MinIO. AWS S3, Cloudflare R2 and Aliyun OSS have **not been run against the live services**. See [Storage](storage.md#what-has-been-tested).
 
 ## Admin settings
 
@@ -110,12 +109,13 @@ When `ACCESS_PASSWORD` is set, add `-H 'Authorization: Bearer <token>'` (see [AP
 - Run records stay; they are the usage history.
 - A canvas that still shows a deleted result will show a broken image. That is why the default is `0`.
 
-### Providers and models
+### Providers, models and storage
 
-The other two things you configure on the Settings page are stored in their own collections, not as settings keys:
+The other things you configure on the Settings page are not settings keys and are not part of `GET`/`PUT /api/admin/settings`:
 
-- **Providers**: type, name, base URL, API key, enabled. See [Providers](providers.md).
-- **Model overrides**: per model, `enabled`, display name, order, default parameters and the price table. See [Providers](providers.md#pricing).
+- **Providers**: type, name, base URL, API key, enabled. Stored in their own collection. See [Providers](providers.md).
+- **Model overrides**: per model, `enabled`, display name, order, default parameters and the price table. Stored in their own collection. See [Providers](providers.md#pricing).
+- **Storage**: local disk or an S3-compatible bucket, on the **Storage** tab. It has its own endpoints (`/api/admin/storage`, see [API](api.md#storage)), takes effect immediately and takes precedence over `STORAGE_DRIVER` and `S3_*`. See [Storage](storage.md).
 
 ## In-canvas settings
 

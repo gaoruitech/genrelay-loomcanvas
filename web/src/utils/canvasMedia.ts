@@ -7,22 +7,23 @@ import { t } from '@/locales'
  * （N 张原图 = N 次大图解码 + 大量内存/显存，是「图片多了卡顿」的头号原因）。
  *
  * 两个来源：
- *  1. 本地存储的文件（/files/...）：缩略图地址由原图地址直接推出来（见 derivedThumb），
- *     不依赖任何记录，刷新、复制节点、分享页都一样有；后端在第一次请求时现做并缓存。
- *  2. 其它地址（对象存储、外链）：后端在运行结果、素材列表里给的 thumbnailUrl 登记在
- *     这张表里；没登记过的（比如刷新后）退回原图。
+ *  1. 本站存储的文件（/files/...，不管实际存在本地磁盘还是对象存储，地址都是这个）：
+ *     缩略图地址由原图地址直接推出来（见 derivedThumb），不依赖任何记录，刷新、复制节点、
+ *     分享页都一样有；后端在第一次请求时现做并缓存。
+ *  2. 其它地址（外链）：后端在运行结果、素材列表里给的 thumbnailUrl 登记在这张表里；
+ *     没登记过的（比如刷新后）退回原图。
  */
 const thumbs = new Map<string, string>()
 
 /**
- * 本地存储的图片 → 它的缩略图地址。规则与后端 storage/keys.js 的 thumbKeyFor 一致：
+ * 本站存储的图片 → 它的缩略图地址。规则与后端 storage/keys.js 的 thumbKeyFor 一致：
  *   /files/outputs/2025/01/<名字>.png → /files/thumbs/of/outputs/2025/01/<名字>_png.webp
- * 不是本地存储的图片（或格式不做缩略图）返回空串。
+ * 不是本站存储的图片（或格式不做缩略图）返回空串。
  */
-const LOCAL_IMAGE_RE = /^((?:https?:\/\/[^/?#]+)?\/files\/)((?:uploads|outputs|tools)\/[a-z0-9/_-]+)\.(png|jpg|webp|bmp|avif)$/
+const STORED_IMAGE_RE = /^((?:https?:\/\/[^/?#]+)?\/files\/)((?:uploads|outputs|tools)\/[a-z0-9/_-]+)\.(png|jpg|webp|bmp|avif)$/
 
 function derivedThumb(url: string): string {
-  const m = LOCAL_IMAGE_RE.exec(url)
+  const m = STORED_IMAGE_RE.exec(url)
   return m ? `${m[1]}thumbs/of/${m[2]}_${m[3]}.webp` : ''
 }
 

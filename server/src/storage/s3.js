@@ -1,89 +1,198 @@
 'use strict'
 
 /**
- * S3-compatible driver (AWS S3, Cloudflare R2, MinIO, ...).
- * The SDK is an optional dependency (installed by `npm ci`, also in the Docker
- * image) and is loaded only when this driver is selected. If it was left out
- * (npm ci --omit=optional):
- *   npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
- * Objects must be publicly readable through S3_PUBLIC_BASE_URL (a CDN or the
- * public bucket URL); this driver does not sign URLs.
+ * S3 backend: AWS S3 and everything that speaks its API (Cloudflare R2,
+ * Aliyun OSS, MinIO, Backblaze B2, Tencent COS ...).
+ *
+ * The SDK is loaded the first time an S3 backend is created, so an install
+ * that only ever uses the local disk never pays for it.
+ *
+ * Vendor differences are options of the configuration, set once by the
+ * operator (see schema.js): addressing style, region, ACL. Two things are
+ * fixed here because they are right for every vendor:
+ *   - checksums only when the API requires them. Recent SDK versions add a
+ *     CRC32 `x-amz-checksum-*` to every upload by default, which several
+ *     compatible services reject;
+ *   - no ACL header unless one is configured (R2 has no object ACLs).
  */
+const { Transform, pipeline } = require('stream')
 const { isValidKey } = require('./keys')
+const { backendId } = require('./schema')
 
-const INSTALL_HINT = 'npm install @aws-sdk/client-s3 @aws-sdk/lib-storage'
+const OBJECT_CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
-function load(name) {
-  try { return require(name) } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND') {
-      throw new Error(`STORAGE_DRIVER=s3 needs the "${name}" package. Run: ${INSTALL_HINT}`)
+let sdk = null
+function loadSdk() {
+  if (!sdk) {
+    sdk = {
+      ...require('@aws-sdk/client-s3'),
+      Upload: require('@aws-sdk/lib-storage').Upload,
+      getSignedUrl: require('@aws-sdk/s3-request-presigner').getSignedUrl,
     }
-    throw err
   }
+  return sdk
 }
 
-function createS3Storage(cfg) {
-  for (const [k, env] of [
-    ['bucket', 'S3_BUCKET'],
-    ['accessKeyId', 'S3_ACCESS_KEY_ID'],
-    ['secretAccessKey', 'S3_SECRET_ACCESS_KEY'],
-    ['publicBaseUrl', 'S3_PUBLIC_BASE_URL'],
-  ]) {
-    if (!cfg[k]) throw new Error(`STORAGE_DRIVER=s3 requires ${env}`)
-  }
-  const { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, PutObjectCommand } = load('@aws-sdk/client-s3')
+function statusOf(err) {
+  return (err && err.$metadata && err.$metadata.httpStatusCode) || 0
+}
+
+function isNotFound(err) {
+  return !!err && (statusOf(err) === 404 || err.name === 'NoSuchKey' || err.name === 'NotFound')
+}
+
+function missing(key) {
+  return Object.assign(new Error(`no such object: ${key}`), { code: 'ENOENT' })
+}
+
+/**
+ * @param {object} cfg       a parsed configuration (schema.js) with its secret
+ * @param {object} [opts]    { maxAttempts, connectionTimeout, requestTimeout } - the
+ *                           connection test wants to fail fast, normal use keeps the SDK defaults
+ */
+function createS3Backend(cfg, opts = {}) {
+  const { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, Upload, getSignedUrl } = loadSdk()
   const client = new S3Client({
-    region: cfg.region || 'auto',
+    region: cfg.region,
     endpoint: cfg.endpoint || undefined,
     forcePathStyle: !!cfg.forcePathStyle,
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+    // Understood by SDK 3.729 and later; earlier versions never add the checksum.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+    ...(opts.maxAttempts ? { maxAttempts: opts.maxAttempts } : {}),
+    requestHandler: {
+      connectionTimeout: opts.connectionTimeout || 10000,
+      ...(opts.requestTimeout ? { requestTimeout: opts.requestTimeout } : {}),
+    },
   })
   const Bucket = cfg.bucket
-  const check = (key) => { if (!isValidKey(key)) throw new Error('invalid storage key'); return key }
+  const prefix = cfg.keyPrefix || ''
+  const publicBase = cfg.publicBaseUrl ? `${cfg.publicBaseUrl}/${prefix}` : ''
+
+  /** Key inside the bucket. Only keys of our own shape ever reach the API. */
+  function objectKey(key) {
+    if (!isValidKey(key)) throw new Error('invalid storage key')
+    return prefix + key
+  }
+
+  function writeParams(key, contentType) {
+    return {
+      Bucket,
+      Key: objectKey(key),
+      ContentType: contentType || 'application/octet-stream',
+      // Keys are never reused, so whatever serves the object may cache it for good.
+      CacheControl: OBJECT_CACHE_CONTROL,
+      ...(cfg.acl ? { ACL: cfg.acl } : {}),
+    }
+  }
 
   async function put(key, body, { contentType } = {}) {
-    check(key)
+    const params = writeParams(key, contentType)
     if (Buffer.isBuffer(body)) {
-      await client.send(new PutObjectCommand({ Bucket, Key: key, Body: body, ContentType: contentType }))
-      return { key, size: body.length, url: urlFor(key) }
+      await client.send(new PutObjectCommand({ ...params, Body: body, ContentLength: body.length }))
+      return { key, size: body.length }
     }
-    // A stream of unknown length needs a multipart upload.
-    const { Upload } = load('@aws-sdk/lib-storage')
+    // A stream of unknown length goes up as a multipart upload. The counter
+    // sits in the pipe, so a source that fails (download cut, size cap) fails
+    // the upload, and the SDK then aborts it instead of leaving parts behind.
     let size = 0
-    body.on('data', (c) => { size += c.length })
-    await new Upload({ client, params: { Bucket, Key: key, Body: body, ContentType: contentType } }).done()
-    return { key, size, url: urlFor(key) }
+    const counted = new Transform({
+      transform(chunk, _enc, done) { size += chunk.length; done(null, chunk) },
+    })
+    pipeline(body, counted, () => {})
+    await new Upload({ client, params: { ...params, Body: counted } }).done()
+    return { key, size }
+  }
+
+  /** { size, etag, lastModified } or null when the object does not exist. */
+  async function head(key) {
+    try {
+      const out = await client.send(new HeadObjectCommand({ Bucket, Key: objectKey(key) }))
+      return { size: Number(out.ContentLength) || 0, etag: out.ETag || '', lastModified: out.LastModified || null }
+    } catch (err) {
+      if (isNotFound(err)) return null
+      throw err
+    }
+  }
+
+  /**
+   * Open an object for serving. `range` and `ifNoneMatch` are passed to the
+   * service, which answers them itself. Resolves null when there is no such
+   * object, otherwise { status: 200|206|304|416, stream?, size, contentRange, etag, lastModified }.
+   */
+  async function open(key, { range, ifNoneMatch } = {}) {
+    try {
+      const out = await client.send(new GetObjectCommand({
+        Bucket,
+        Key: objectKey(key),
+        ...(range ? { Range: range } : {}),
+        ...(ifNoneMatch ? { IfNoneMatch: ifNoneMatch } : {}),
+      }))
+      return {
+        status: out.ContentRange ? 206 : 200,
+        stream: out.Body,
+        size: Number(out.ContentLength) || 0,
+        contentRange: out.ContentRange || '',
+        etag: out.ETag || '',
+        lastModified: out.LastModified || null,
+      }
+    } catch (err) {
+      if (statusOf(err) === 304) return { status: 304, etag: ifNoneMatch || '' }
+      if (statusOf(err) === 416) return { status: 416 }
+      if (isNotFound(err)) return null
+      throw err
+    }
   }
 
   async function getStream(key) {
-    const out = await client.send(new GetObjectCommand({ Bucket, Key: check(key) }))
-    return out.Body
+    const out = await open(key)
+    if (!out) throw missing(key)
+    return out.stream
   }
 
   async function getBuffer(key) {
-    const stream = await getStream(key)
     const chunks = []
-    for await (const c of stream) chunks.push(c)
+    for await (const c of await getStream(key)) chunks.push(c)
     return Buffer.concat(chunks)
   }
 
-  async function exists(key) {
-    try { await client.send(new HeadObjectCommand({ Bucket, Key: check(key) })); return true } catch { return false }
-  }
-
   async function remove(key) {
-    await client.send(new DeleteObjectCommand({ Bucket, Key: check(key) }))
+    await client.send(new DeleteObjectCommand({ Bucket, Key: objectKey(key) }))
   }
 
-  function urlFor(key) { return `${cfg.publicBaseUrl}/${key}` }
+  /** Address of the object on the public domain (custom domain, CDN, r2.dev), or ''. */
+  function publicUrl(key) {
+    return publicBase && isValidKey(key) ? publicBase + key : ''
+  }
 
-  function keyFromUrl(url) {
-    if (typeof url !== 'string' || !url.startsWith(cfg.publicBaseUrl + '/')) return null
-    const key = url.slice(cfg.publicBaseUrl.length + 1).split(/[?#]/)[0]
+  /** Inverse of publicUrl: the key a public address points at, or null. */
+  function keyFromPublicUrl(url) {
+    if (!publicBase || typeof url !== 'string' || !url.startsWith(publicBase)) return null
+    const key = url.slice(publicBase.length).split(/[?#]/)[0]
     return isValidKey(key) ? key : null
   }
 
-  return { driver: 's3', put, getStream, getBuffer, exists, delete: remove, urlFor, keyFromUrl }
+  /** A signed GET address that works without credentials for `expiresIn` seconds. */
+  function presignGet(key, expiresIn) {
+    return getSignedUrl(client, new GetObjectCommand({ Bucket, Key: objectKey(key) }), { expiresIn })
+  }
+
+  return {
+    id: backendId(cfg),
+    driver: 's3',
+    delivery: cfg.delivery === 'redirect' && publicBase ? 'redirect' : 'proxy',
+    publicOrigin: cfg.publicBaseUrl ? new URL(cfg.publicBaseUrl).origin : '',
+    put,
+    head,
+    open,
+    getStream,
+    getBuffer,
+    delete: remove,
+    publicUrl,
+    keyFromPublicUrl,
+    presignGet,
+  }
 }
 
-module.exports = { createS3Storage }
+module.exports = { createS3Backend, statusOf }

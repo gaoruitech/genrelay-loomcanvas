@@ -38,7 +38,7 @@ async function storeThumbnail(sourceKey, buffer) {
   const key = thumbKeyFor(sourceKey)
   if (!key) return null
   const thumb = await makeThumbnail(buffer)
-  return getStorage().put(key, thumb, { contentType: 'image/webp' })
+  return getStorage().put(key, thumb, { contentType: 'image/webp', sameBackendAs: sourceKey })
 }
 
 const pendingThumbs = new Map()
@@ -59,7 +59,7 @@ function ensureThumbnail(thumbKey, sourceKey) {
     try {
       const buffer = await storage.getBuffer(sourceKey)
       if (buffer.length > THUMB_MAX_SOURCE_BYTES || kindOfMime(sniffMime(buffer)) !== 'image') return 'unsupported'
-      await storage.put(thumbKey, await makeThumbnail(buffer), { contentType: 'image/webp' })
+      await storage.put(thumbKey, await makeThumbnail(buffer), { contentType: 'image/webp', sameBackendAs: sourceKey })
       return 'ok'
     } catch {
       return 'unsupported'

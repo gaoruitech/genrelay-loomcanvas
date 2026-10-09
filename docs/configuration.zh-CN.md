@@ -21,7 +21,7 @@ LoomCanvas 的配置分三层：
 | `SECRET_KEY` | 无，**必填** | 主密钥，至少 16 位。用来加密数据库里的上游 API Key，并派生出签发登录凭证的密钥。服务端不会替你生成。改掉它，已保存的 Key 无法解密，所有人也会被退出登录。 |
 | `PORT` | `3000` | 服务端监听的端口（1 到 65535）。在 Docker Compose 里这个名字设置的是宿主机端口，容器内固定监听 3000。 |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/loomcanvas` | MongoDB 连接串。 |
-| `PUBLIC_URL` | 空 | 可选。实例的公网地址，`http(s)://…`，末尾不带斜杠。本机或内网使用时留空。文件地址里不带它；它只用来把本地存储里的参考素材变成上游模型能读取的绝对地址（用视频做输入时需要）。见[部署](deployment.zh-CN.md#public_url)。 |
+| `PUBLIC_URL` | 空 | 可选。实例的公网地址，`http(s)://…`，末尾不带斜杠。本机或内网使用时留空。文件地址里不带它；它只用来给上游模型一个能读取参考素材的绝对地址，用在上游没法直接从桶里读的文件上（本地磁盘上的文件；用视频做输入时需要）。见[部署](deployment.zh-CN.md#public_url)。 |
 | `ACCESS_PASSWORD` | 空 | 共用的访问口令。留空则完全不需要登录。 |
 | `MAX_UPLOAD_MB` | `50` | 单个上传文件的上限，也是「按地址抓取」能接受的最大文件（1 到 2048）。上传的文件先放在内存里。 |
 | `WEB_DIST` | 空 | 构建好的前端目录（`web/dist`），由服务端一并提供。相对路径以 `server/` 为基准。目录里必须有 `index.html`。 |
@@ -39,40 +39,39 @@ LoomCanvas 的配置分三层：
 
 | 变量 | 默认值 | 含义 |
 | --- | --- | --- |
-| `STORAGE_DRIVER` | `local` | `local`、`s3` 或 `oss`。 |
-| `STORAGE_LOCAL_DIR` | `./data/files` | 本地存储的目录。相对路径以 `server/` 为基准。 |
-| `S3_ENDPOINT` | 空 | S3 兼容服务（R2、MinIO 等）的接入地址。用 AWS S3 时留空。 |
-| `S3_REGION` | `auto` | 区域。 |
+| `STORAGE_DRIVER` | `local` | `local` 或 `s3`。不再接受 `oss`：服务端会在启动时退出，并提示怎么迁移（见[存储](storage.zh-CN.md#从-storage_driveross-迁移)）。 |
+| `STORAGE_LOCAL_DIR` | `./data/files` | 本地磁盘后端的目录。相对路径以 `server/` 为基准。 |
+| `S3_ENDPOINT` | 空 | S3 兼容服务（R2、OSS、MinIO 等）的 S3 接口地址，不带路径。用 AWS S3 时留空。 |
+| `S3_REGION` | `us-east-1` | 地域。R2 填 `auto`。 |
 | `S3_BUCKET` | 空 | 桶名。`s3` 必填。 |
 | `S3_ACCESS_KEY_ID` | 空 | `s3` 必填。 |
 | `S3_SECRET_ACCESS_KEY` | 空 | `s3` 必填。 |
-| `S3_FORCE_PATH_STYLE` | 关 | 填 `1`、`true` 或 `yes` 开启路径风格寻址（MinIO 通常需要）。 |
-| `S3_PUBLIC_BASE_URL` | 空 | 桶或其 CDN 的公开地址前缀，末尾不带斜杠。`s3` 必填。 |
-| `OSS_REGION` | 空 | 例如 `oss-cn-hangzhou`。`oss` 需要 `OSS_REGION` 或 `OSS_ENDPOINT` 之一。 |
-| `OSS_ENDPOINT` | 空 | 可代替 `OSS_REGION`。 |
-| `OSS_BUCKET` | 空 | `oss` 必填。 |
-| `OSS_ACCESS_KEY_ID` | 空 | `oss` 必填。 |
-| `OSS_ACCESS_KEY_SECRET` | 空 | `oss` 必填。 |
-| `OSS_PUBLIC_BASE_URL` | 空 | 桶或其 CDN 的公开地址前缀。`oss` 必填。 |
+| `S3_FORCE_PATH_STYLE` | 关 | 填 `1`、`true` 或 `yes` 开启路径风格寻址（MinIO 需要；AWS S3、R2、OSS 不需要）。 |
+| `S3_KEY_PREFIX` | 空 | 可选，桶里的一个目录。 |
+| `S3_PUBLIC_BASE_URL` | 空 | 可选。对应桶的根的自定义域名、CDN 或 `r2.dev` 地址，末尾不带斜杠。 |
+| `S3_DELIVERY` | 见含义 | `proxy`（由本站转发文件，桶可以是私有的）或 `redirect`（把浏览器重定向到 `S3_PUBLIC_BASE_URL`）。默认值：设了 `S3_PUBLIC_BASE_URL` 时是 `redirect`，否则是 `proxy`。 |
+| `S3_ACL` | 空 | 空、`private` 或 `public-read`。为空时不发 ACL 头。 |
 
-测试另外会读 `TEST_MONGODB_URI`，见[开发](development.zh-CN.md#测试)。
+这些变量只是初始默认值。存储一般在「设置 → 存储」里配置，**那里保存的配置优先于环境变量**。各个字段、各家服务的配法、私有桶，以及切换时会发生什么，见[存储](storage.zh-CN.md)。
+
+测试另外会读 `TEST_MONGODB_URI`，对着真实 S3 的测试还会读 `TEST_S3_*`，见[开发](development.zh-CN.md#测试)。
 
 自带的 Docker Compose 文件传了其中哪些，见[部署](deployment.zh-CN.md#从-env-读取的变量)。
 
-### 存储驱动
+### 存储后端
 
 | 驱动 | 文件存在哪 | 文件地址 | 额外安装 |
 | --- | --- | --- | --- |
 | `local` | `STORAGE_LOCAL_DIR` | `/files/<key>`（站内相对地址），由应用自己提供 | 无 |
-| `s3` | 你的桶 | `<S3_PUBLIC_BASE_URL>/<key>` | 无：SDK 是可选依赖，`npm ci` 会装上，Docker 镜像里也有 |
-| `oss` | 你的桶 | `<OSS_PUBLIC_BASE_URL>/<key>` | 在 `server/` 下执行 `npm install ali-oss`；用 Docker 时在 `.env` 里设 `EXTRA_NPM_PACKAGES=ali-oss`，再执行 `docker compose build` |
+| `s3` | 你的桶（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 及其他 S3 兼容服务） | 同样是 `/files/<key>`。应用从桶里读出对象转发，或者重定向到桶的公开域名。 | 无：AWS SDK 是 `server/` 的常规依赖，Docker 镜像里也有 |
 
-对所有驱动都成立的几点：
+对两者都成立的几点：
 
 - 存储 key 由服务端生成（`uploads/…`、`outputs/…`、`tools/…`、`thumbs/…` 加日期和 32 位随机十六进制字符），里面不会出现文件名或任何用户输入的内容。
-- 文件对拿到地址的人**公开可读**。`s3`、`oss` 驱动不做地址签名：对象必须能通过公开地址前缀读到（桶设为公共读，或前面挂 CDN）。
-- `s3`、`oss` 两个驱动的代码已经写好，但在本项目里**还没有对着真实的桶跑过**。使用前请自己验证。
-- 「第一次请求时现做」的缩略图只有本地存储才有。使用对象存储时，缩略图在上传或结果转存时生成。
+- `/files/<key>` 对拿到地址的人**公开可读**。桶本身可以保持私有。
+- 切换存储时文件不会被移动，原来的后端仍然可读。见[存储](storage.zh-CN.md#切换存储时会发生什么)。
+- 缩略图在上传文件或转存结果时生成；缺的那张在第一次被请求时现做，两种后端都一样。缩略图写到它的原图所在的后端。
+- S3 驱动是对着 MinIO 验证的。AWS S3、Cloudflare R2、阿里云 OSS **没有对着真实服务跑过**。见[存储](storage.zh-CN.md#测试情况)。
 
 ## 管理设置
 
@@ -110,12 +109,13 @@ curl -X PUT http://localhost:3000/api/admin/settings \
 - 运行记录保留，它们就是用量历史。
 - 画布上如果还显示着已被删除的结果，会变成破图。所以默认值是 `0`。
 
-### 模型接入与模型
+### 模型接入、模型与存储
 
-设置页上另外两类配置存在各自的数据表里，不是设置键：
+设置页上另外几类配置不是设置键，也不在 `GET` / `PUT /api/admin/settings` 里：
 
-- **模型接入**：类型、名称、接口地址、API Key、是否启用。见[模型接入](providers.zh-CN.md)。
-- **模型覆盖项**：每个模型的启用状态、显示名称、排序、默认参数和价格表。见[模型接入](providers.zh-CN.md#价格)。
+- **模型接入**：类型、名称、接口地址、API Key、是否启用。存在自己的数据表里。见[模型接入](providers.zh-CN.md)。
+- **模型覆盖项**：每个模型的启用状态、显示名称、排序、默认参数和价格表。存在自己的数据表里。见[模型接入](providers.zh-CN.md#价格)。
+- **存储**：本地磁盘或 S3 兼容的桶，在「存储」标签页里配置。它有自己的接口（`/api/admin/storage`，见 [API](api.md#storage)），保存后立即生效，并且优先于 `STORAGE_DRIVER` 和 `S3_*`。见[存储](storage.zh-CN.md)。
 
 ## 画布内设置
 

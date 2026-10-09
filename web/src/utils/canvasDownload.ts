@@ -16,12 +16,19 @@ function isSameOrigin(url: string): boolean {
 /**
  * 把一个媒体地址读成 blob。
  * 站内文件（/files/... 或同源地址）直接拉；跨域地址多半没开 CORS，交给后端代理转一手。
+ *
+ * 站内地址也不保证拉得到：文件存在对象存储、且设置成「跳转到公开地址」时，/files/...
+ * 会 302 到存储桶的域名，那边没开 CORS 的话 fetch 直接抛错（<img> 能显示，fetch 不行）。
+ * 这种情况同样退回后端代理，由服务端从存储里读。
  */
 export async function fetchMediaBlob(url: string, filename = 'file'): Promise<Blob> {
   if (isSameOrigin(url)) {
-    const resp = await fetch(url)
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    return await resp.blob()
+    let resp: Response | null = null
+    try { resp = await fetch(url) } catch { /* 被跨域跳转拦下，走后端代理 */ }
+    if (resp) {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      return await resp.blob()
+    }
   }
   const resp = await workflowApi.download(url, filename)
   return resp.data as Blob

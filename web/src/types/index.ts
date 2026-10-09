@@ -179,6 +179,50 @@ export interface AdminSettings {
   downloadTimeoutSec: number
 }
 
+export type StoragePreset = 'aws' | 'r2' | 'oss' | 'minio' | 'custom'
+export type StorageDelivery = 'proxy' | 'redirect'
+
+/** S3 兼容存储的配置表单。secretAccessKey 只写不读，留空表示沿用已保存的 */
+export interface StorageS3Form {
+  preset: StoragePreset
+  endpoint: string
+  region: string
+  bucket: string
+  accessKeyId: string
+  secretAccessKey: string
+  forcePathStyle: boolean
+  keyPrefix: string
+  publicBaseUrl: string
+  delivery: StorageDelivery
+  acl: '' | 'private' | 'public-read'
+}
+
+export interface StorageStatus {
+  /** 当前生效的选择来自哪里：在设置页保存的 / 环境变量 / 什么都没配（本地磁盘） */
+  source: 'saved' | 'env' | 'default'
+  driver: 'local' | 's3'
+  delivery: '' | StorageDelivery
+  envDriver: 'local' | 's3'
+  /** 已保存的密钥解不开（SECRET_KEY 变了），需要重新填写 */
+  secretUnreadable: boolean
+  s3: (Omit<StorageS3Form, 'secretAccessKey'> & { hasSecret: boolean; secretTail: string; endpointHost: string }) | null
+  /** 不再写入、但仍在读取的旧存储桶 */
+  previous: { endpointHost: string; bucket: string; keyPrefix: string }[]
+}
+
+export interface StorageTestStep {
+  step: 'put' | 'head' | 'get' | 'public' | 'delete'
+  status: 'ok' | 'failed' | 'skipped'
+  ms?: number
+}
+
+export interface StorageTestResult {
+  ok: boolean
+  steps: StorageTestStep[]
+  message: string
+  code: string
+}
+
 export interface UsageSummaryRow {
   key: string
   label?: string

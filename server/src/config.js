@@ -7,6 +7,9 @@
 const net = require('net')
 const path = require('path')
 
+const { t } = require('./i18n')
+const { parseS3Config } = require('./storage/schema')
+
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env'), quiet: true })
 
 class ConfigError extends Error {}
@@ -62,6 +65,29 @@ function trustProxy(name) {
   return list
 }
 
+/** S3_* variables as a storage configuration (storage/schema.js). */
+function envS3() {
+  for (const name of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
+    if (!str(name)) throw new ConfigError(`STORAGE_DRIVER=s3 requires ${name}`)
+  }
+  try {
+    return Object.freeze(parseS3Config({
+      endpoint: str('S3_ENDPOINT'),
+      region: str('S3_REGION'),
+      bucket: str('S3_BUCKET'),
+      accessKeyId: str('S3_ACCESS_KEY_ID'),
+      secretAccessKey: str('S3_SECRET_ACCESS_KEY'),
+      forcePathStyle: /^(1|true|yes)$/i.test(str('S3_FORCE_PATH_STYLE')),
+      keyPrefix: str('S3_KEY_PREFIX'),
+      publicBaseUrl: str('S3_PUBLIC_BASE_URL'),
+      delivery: str('S3_DELIVERY').toLowerCase(),
+      acl: str('S3_ACL').toLowerCase(),
+    }))
+  } catch (err) {
+    throw new ConfigError(`The S3_* storage settings are not valid: ${err.message}`)
+  }
+}
+
 function build() {
   const secretKey = str('SECRET_KEY')
   if (secretKey.length < 16) {
@@ -74,8 +100,12 @@ function build() {
   }
 
   const storageDriver = str('STORAGE_DRIVER', 'local').toLowerCase()
-  if (!['local', 's3', 'oss'].includes(storageDriver)) {
-    throw new ConfigError(`STORAGE_DRIVER must be one of local, s3, oss (got "${storageDriver}")`)
+  if (storageDriver === 'oss') {
+    // Both languages: this is read by whoever upgraded, before any request sets a language.
+    throw new ConfigError(['en', 'zh-CN'].map((locale) => t(locale, 'storage.oss_driver_removed')).join(' | '))
+  }
+  if (!['local', 's3'].includes(storageDriver)) {
+    throw new ConfigError(`STORAGE_DRIVER must be one of local, s3 (got "${storageDriver}")`)
   }
 
   let publicUrl = str('PUBLIC_URL').replace(/\/+$/, '')
@@ -105,23 +135,9 @@ function build() {
     storage: Object.freeze({
       driver: storageDriver,
       localDir: resolveFromRoot(str('STORAGE_LOCAL_DIR', './data/files')),
-      s3: Object.freeze({
-        endpoint: str('S3_ENDPOINT'),
-        region: str('S3_REGION', 'auto'),
-        bucket: str('S3_BUCKET'),
-        accessKeyId: str('S3_ACCESS_KEY_ID'),
-        secretAccessKey: str('S3_SECRET_ACCESS_KEY'),
-        forcePathStyle: /^(1|true|yes)$/i.test(str('S3_FORCE_PATH_STYLE')),
-        publicBaseUrl: str('S3_PUBLIC_BASE_URL').replace(/\/+$/, ''),
-      }),
-      oss: Object.freeze({
-        region: str('OSS_REGION'),
-        endpoint: str('OSS_ENDPOINT'),
-        bucket: str('OSS_BUCKET'),
-        accessKeyId: str('OSS_ACCESS_KEY_ID'),
-        accessKeySecret: str('OSS_ACCESS_KEY_SECRET'),
-        publicBaseUrl: str('OSS_PUBLIC_BASE_URL').replace(/\/+$/, ''),
-      }),
+      // The S3 settings from the environment, validated; null unless STORAGE_DRIVER=s3.
+      // A configuration saved on the settings page takes precedence over these.
+      s3: storageDriver === 's3' ? envS3() : null,
     }),
   })
 }

@@ -127,16 +127,31 @@ function messageOf(err) {
 }
 
 /**
+ * A signed storage address carries a credential in its query string. Those are
+ * handed to upstreams, which may quote them back in an error; before an error
+ * is kept, the signature parameters are blanked.
+ */
+function scrubSigned(value) {
+  if (typeof value === 'string') return value.replace(/([?&]X-Amz-[A-Za-z-]+=)[^&\s"'<>)]+/gi, '$1***')
+  if (isMessage(value)) return msg(value.code, scrubSigned(value.params))
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubSigned(v)]))
+  }
+  return value
+}
+
+/**
  * Fields to store for an error that is read later (a run's failure reason):
  * the message itself plus its text in the fallback language, which is what
  * records written before the catalog existed have and what is shown if a key
  * ever disappears.
  */
 function storedError(message) {
+  const clean = scrubSigned(message)
   return {
-    error: render(FALLBACK_LOCALE, message).slice(0, 500),
-    errorCode: message.code,
-    errorParams: message.params || {},
+    error: render(FALLBACK_LOCALE, clean).slice(0, 500),
+    errorCode: clean.code,
+    errorParams: clean.params || {},
   }
 }
 
@@ -163,5 +178,6 @@ module.exports = {
   LocalizedError,
   messageOf,
   storedError,
+  scrubSigned,
   renderStored,
 }

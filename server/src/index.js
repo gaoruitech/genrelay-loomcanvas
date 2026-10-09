@@ -19,16 +19,17 @@ async function main() {
   const { setAllowedHosts } = require('./utils/safeFetch')
   setAllowedHosts(config.ssrfAllowHosts)
 
-  // Fail early on a bad storage setup (missing SDK, missing bucket...).
-  const { getStorage } = require('./storage')
-  const storage = getStorage()
-
   mongoose.set('strictQuery', true)
   await mongoose.connect(config.mongodbUri, { serverSelectionTimeoutMS: 10000 })
   console.log('[db] connected')
 
   const settings = require('./services/settings')
   await settings.load()
+  // Storage: what was saved on the settings page wins over the environment.
+  const storage = await require('./services/storageSettings').load()
+  if (storage.secretUnreadable) {
+    console.error('[storage] the saved S3 secret cannot be decrypted (was SECRET_KEY changed?). Enter it again under Settings > Storage.')
+  }
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
   const { getRunner } = require('./runner')
@@ -41,7 +42,7 @@ async function main() {
 
   const app = require('./app').createApp()
   const server = app.listen(config.port, () => {
-    console.log(`[http] LoomCanvas server listening on :${config.port} (storage: ${storage.driver}, login: ${config.accessPassword ? 'on' : 'off'})`)
+    console.log(`[http] LoomCanvas server listening on :${config.port} (storage: ${storage.driver} from ${storage.source === 'saved' ? 'settings' : 'environment'}, login: ${config.accessPassword ? 'on' : 'off'})`)
   })
   // Long uploads and zip downloads must not be cut by the default timeouts.
   server.requestTimeout = 15 * 60 * 1000

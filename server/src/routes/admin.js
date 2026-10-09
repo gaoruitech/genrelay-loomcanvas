@@ -7,6 +7,7 @@ const ModelOverride = require('../models/ModelOverride')
 const Run = require('../models/Run')
 const registry = require('../providers')
 const settings = require('../services/settings')
+const storageSettings = require('../services/storageSettings')
 const { getConfig } = require('../config')
 const { encrypt, keyTail } = require('../utils/crypto')
 const { normalizePricing } = require('../runner/pricing')
@@ -291,6 +292,42 @@ router.get('/settings', wrap(async (_req, res) => {
 
 router.put('/settings', wrap(async (req, res) => {
   ok(res, await settings.update(req.body))
+}))
+
+/* -------------------------------------------------------------- storage */
+
+/** A connection test in the reader's language: per-step results plus one actionable sentence. */
+function serializeStorageTest(result, locale) {
+  return {
+    ok: result.ok,
+    steps: result.steps,
+    message: result.ok ? t(locale, 'storage.test_ok') : render(locale, result.error),
+    code: result.ok ? '' : result.error.code,
+  }
+}
+
+/** GET /api/admin/storage - the storage in use, where that was decided, and the S3 form's values (no secret) */
+router.get('/storage', wrap(async (_req, res) => {
+  ok(res, storageSettings.status())
+}))
+
+/** POST /api/admin/storage/test { s3 } - real round trip with the submitted, unsaved configuration */
+router.post('/storage/test', wrap(async (req, res) => {
+  const body = isPlainObject(req.body) ? req.body : {}
+  ok(res, serializeStorageTest(await storageSettings.test(body.s3), req.locale))
+}))
+
+/**
+ * PUT /api/admin/storage { driver: 'local' } | { driver: 's3', s3, force? }
+ * Takes effect at once. An S3 configuration is tested first; when the test
+ * fails nothing is saved and the answer is 400 with the test in `data`, unless
+ * `force` is true.
+ */
+router.put('/storage', wrap(async (req, res) => {
+  const out = await storageSettings.save(req.body)
+  if (out.saved) return ok(res, out.status)
+  const test = serializeStorageTest(out.test, req.locale)
+  res.status(400).json({ result: -1, message: t(req.locale, 'storage.save_needs_test', { reason: test.message }), code: 'storage.save_needs_test', data: { test } })
 }))
 
 /* ---------------------------------------------------------------- usage */

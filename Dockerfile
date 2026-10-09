@@ -10,11 +10,8 @@ RUN npm run build
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY server/package*.json ./
-# The S3 SDK comes with `npm ci` (an optional dependency). Other optional packages - the
-# Alibaba Cloud OSS SDK - are added on request:  --build-arg EXTRA_NPM_PACKAGES=ali-oss
-ARG EXTRA_NPM_PACKAGES=""
-RUN npm ci --omit=dev \
- && if [ -n "$EXTRA_NPM_PACKAGES" ]; then npm install --omit=dev --no-save $EXTRA_NPM_PACKAGES; fi
+# The AWS SDK used for S3-compatible storage is a regular dependency, so it is installed here.
+RUN npm ci --omit=dev
 
 # Stage 3: the image that runs
 FROM node:20-alpine

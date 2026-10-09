@@ -26,9 +26,14 @@ function inlineScriptHashes(html) {
  * canvas shows results from object storage, upstream CDNs and links the user
  * pasted, and downloads them in the browser. Styles need 'unsafe-inline' for
  * the style attributes the UI libraries set.
+ *
+ * `mediaOrigins` are the public domains object storage delivers files from
+ * (/files/<key> redirects there). They are named explicitly, so they stay
+ * allowed whatever is later decided about the open http(s) sources.
  */
-function buildContentSecurityPolicy({ scriptHashes = [] } = {}) {
-  const anywhere = "'self' data: blob: https: http:"
+function buildContentSecurityPolicy({ scriptHashes = [], mediaOrigins = [] } = {}) {
+  const origins = mediaOrigins.filter((o) => /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(o))
+  const anywhere = ["'self' data: blob: https: http:", ...origins].join(' ')
   return [
     "default-src 'self'",
     ["script-src 'self'", ...scriptHashes].join(' '),
@@ -45,10 +50,15 @@ function buildContentSecurityPolicy({ scriptHashes = [] } = {}) {
   ].join('; ')
 }
 
-/** Headers of every response. `csp` is the policy for pages (see above). */
+/**
+ * Headers of every response. `csp` is the policy for pages (see above), or a
+ * function returning it when it depends on something that can change at run
+ * time (the storage settings).
+ */
 function securityHeaders(csp) {
+  const policy = typeof csp === 'function' ? csp : () => csp
   return (_req, res, next) => {
-    res.setHeader('Content-Security-Policy', csp)
+    res.setHeader('Content-Security-Policy', policy())
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('X-Frame-Options', 'SAMEORIGIN')
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')

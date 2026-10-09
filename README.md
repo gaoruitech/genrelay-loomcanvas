@@ -6,7 +6,7 @@ An open-source, self-hosted infinite canvas for AI image and video creation. Con
 
 LoomCanvas does not sell credits and ships no models. You bring your own API keys; the canvas shows the estimated cost of each step and keeps a usage log.
 
-> Status: early development. Interfaces may change before the first tagged release. The built-in providers are tested against a fake upstream and have not yet been exercised against the real services as part of this project; the S3 and OSS storage drivers are written but untested.
+> Status: early development. Interfaces may change before the first tagged release. The built-in providers are tested against a fake upstream and have not yet been exercised against the real services as part of this project; the S3 storage driver is verified against MinIO only, and has not been run against AWS S3, Cloudflare R2 or Aliyun OSS.
 
 ![The canvas editor](docs/images/11-editor-en.png)
 
@@ -17,7 +17,7 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 - **Run orchestration.** Run a single node, a branch or the whole canvas; batch runs over a set of source images. Runs are queued with a concurrency limit and hard timeouts. After a server restart, queued runs and runs that already have an upstream task carry on.
 - **Bring your own models.** Providers are plugins. Built in: Gaorui API (one key for image, video and chat models), any OpenAI-compatible endpoint (chat and text-to-image), and Google Gemini (image and chat).
 - **Cost, not credits.** An estimate per run from a price table you maintain, shown as "Cost unknown" until you enter prices, plus usage records by day and by model.
-- **Your files stay with you.** Results are copied into your own storage: local disk by default; S3-compatible storage and Aliyun OSS drivers are included.
+- **Your files stay with you.** Results are copied into your own storage: the local disk by default, or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO), configured under Settings → Storage. The bucket can stay private. See [Storage](docs/storage.md) for what has been tested.
 - **Templates, brand kits, asset library, share links.** Read-only share links with expiry and revocation.
 - **Chinese and English** interface and server messages; light and dark themes.
 - **Single-user by design.** One optional shared access password. No accounts, no multi-tenant isolation.
@@ -45,7 +45,7 @@ docker compose up -d
 Open http://localhost:3000 (or the host's address, with the `PORT` you set) and follow the setup page to connect a model provider. The recommended one is the Gaorui API; get a key at https://gaorui.cc.
 
 - `SECRET_KEY` encrypts your provider API keys in the database. Keep it safe and do not change it afterwards, or the saved keys can no longer be decrypted.
-- `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs with local storage).
+- `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs when files are kept on the local disk).
 - Set `ACCESS_PASSWORD` if anyone else can reach the machine.
 
 Step by step: [Getting started](docs/getting-started.md).
@@ -58,6 +58,7 @@ Step by step: [Getting started](docs/getting-started.md).
 | [User guide](docs/user-guide.md) | Using the canvas |
 | [Deployment](docs/deployment.md) | Docker, reverse proxy, backups, upgrades |
 | [Configuration](docs/configuration.md) | Environment variables and settings |
+| [Storage](docs/storage.md) | Local disk or an S3-compatible bucket |
 | [Providers](docs/providers.md) | Provider types, models, pricing |
 | [Security](docs/security.md) | Hardening and limits |
 | [FAQ](docs/faq.md) | Common problems |

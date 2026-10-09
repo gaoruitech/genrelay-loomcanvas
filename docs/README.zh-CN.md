@@ -17,7 +17,8 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署](deployment.zh-CN.md) | Docker Compose、不用 Docker 运行、反向代理与 HTTPS、备份、升级。 |
-| [配置](configuration.zh-CN.md) | 环境变量、管理设置、画布内设置、存储驱动、固定上限。 |
+| [配置](configuration.zh-CN.md) | 环境变量、管理设置、画布内设置、固定上限。 |
+| [存储](storage.zh-CN.md) | 本地磁盘或 S3 兼容的桶（AWS S3、Cloudflare R2、阿里云 OSS、MinIO）：各家的配法、私有桶、分发方式、切换、测试情况。 |
 | [模型接入](providers.zh-CN.md) | 内置的接入类型及其模型、素材怎么送到上游、价格与用量。 |
 | [安全](security.zh-CN.md) | 部署加固、哪些内容是公开的、LoomCanvas 不做什么。 |
 

@@ -25,36 +25,45 @@ It never invents one: provider API keys are encrypted with it, so it has to stay
 | `SECRET_KEY` | (required) | Master secret, 16+ characters. Encrypts provider keys, signs login tokens. |
 | `PORT` | `3000` | HTTP port. |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/loomcanvas` | Database. |
-| `PUBLIC_URL` | empty | Optional. Public address of the instance, e.g. `https://canvas.example.com`. Only used to give upstream models an absolute URL for a stored file (local driver); file URLs themselves are always site-relative (`/files/<key>`). |
+| `PUBLIC_URL` | empty | Optional. Public address of the instance, e.g. `https://canvas.example.com`. Only used to give upstream models an absolute URL for a stored file they cannot load straight from a bucket (files on the local disk); file URLs themselves are always site-relative (`/files/<key>`). |
 | `ACCESS_PASSWORD` | empty | Shared login password. Empty means no login at all. |
 | `MAX_UPLOAD_MB` | `50` | Upload size limit (1 to 2048). Uploads are buffered in memory. |
-| `STORAGE_DRIVER` | `local` | `local`, `s3` or `oss`. |
-| `STORAGE_LOCAL_DIR` | `./data/files` | Where the local driver keeps files (served at `/files/<key>`). |
-| `S3_*`, `OSS_*` | | Object storage settings, see `.env.example`. |
+| `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under Settings → Storage takes precedence. |
+| `STORAGE_LOCAL_DIR` | `./data/files` | Where the local disk backend keeps files. |
+| `S3_*` | | Settings of the S3-compatible backend, see `.env.example`. |
 | `WEB_DIST` | empty | Built frontend to serve from this process (with SPA fallback). |
 | `BILLING_HOOK` | empty | Path to a custom billing module, relative to the directory the server is started from. |
 | `CORS_ORIGIN` | empty | Extra browser origins allowed to call the API (comma separated). |
 | `TRUST_PROXY` | empty | Behind a reverse proxy: the number of proxies in front (`1` to `10`), or a comma-separated list of their addresses (IP, CIDR, `loopback`, `linklocal`, `uniquelocal`). `true` and host names are rejected at startup. |
 | `SSRF_ALLOW_HOSTS` | empty | Hosts exempt from the private-address download block. |
 
-The complete table, with every `S3_*` and `OSS_*` variable, is in
+The complete table, with every `S3_*` variable, is in
 [`../docs/configuration.md`](../docs/configuration.md#environment-variables).
 
-The S3 SDK (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`) is an optional dependency: `npm ci` / `npm install` installs it,
-and it is in the Docker image. The OSS SDK is not bundled: run `npm install ali-oss` here, or with Docker set
-`EXTRA_NPM_PACKAGES=ali-oss` in `.env` and rebuild the image (`docker compose build`).
-Both drivers expect objects to be publicly readable at the configured public base URL.
-They are written but have not been run against a real bucket in this project yet.
+### Storage
 
+Files are kept on the local disk by default. The alternative is one S3-compatible driver (AWS S3, Cloudflare R2,
+Aliyun OSS, MinIO and similar services), configured under Settings → Storage or with `S3_*`; what is saved in the
+settings takes precedence over the environment and takes effect without a restart.
+The AWS SDK (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`, `@aws-sdk/s3-request-presigner`) is a regular dependency,
+loaded the first time an S3 backend is used. `STORAGE_DRIVER=oss` is no longer accepted: use `s3` with the OSS
+S3-compatible endpoint.
+
+Every stored file has one address, `/files/<key>`, on every backend. The app answers it: from disk, by streaming
+the object out of the bucket (so the bucket can be private), or with a redirect to the bucket's public domain.
+Files are not moved when storage is switched; the earlier backend stays readable.
 Files under `/files/` are public by design (share links and upstream models need to load them);
 their names are random and unguessable.
 
+The S3 driver is verified against MinIO. AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live
+services. Everything else is in [`../docs/storage.md`](../docs/storage.md).
+
 ### Reference media and `PUBLIC_URL`
 
-With local storage and no public address, an upstream model cannot download a reference image from this server.
-Images are then sent inline (base64) to providers that accept it.
-Inputs that must be a URL (a source video for video editing, some image-to-video models) need either a public
-`PUBLIC_URL` or object storage.
+A file in a bucket is handed to an upstream model as a presigned URL that is valid for one hour (or as the bucket's
+public address). A file on the local disk needs a public `PUBLIC_URL` for that.
+When there is no publicly reachable address, images are sent inline (base64) to providers that accept it, and
+inputs that must be a URL (a source video for video editing, some image-to-video models) fail.
 
 ## Layout
 
@@ -64,8 +73,8 @@ src/
   config.js       environment              constants.js
   routes/         HTTP endpoints           models/     Mongoose models
   providers/      model provider plugins   runner/     run queue, polling, transfer, pricing
-  storage/        local / s3 / oss         billing/    billing hook (no-op by default)
-  services/       settings, media, image tools, seed, retention
+  storage/        local disk + S3 buckets  billing/    billing hook (no-op by default)
+  services/       settings, storage settings, media, image tools, seed, retention
   middleware/     auth, errors, headers    utils/      crypto, safeFetch, validation
 ```
 
@@ -107,6 +116,7 @@ All five functions must exist; one your upstream has no use for should throw.
   `model` is the upstream model id. Pass `signal` to every request so deadlines and cancellation work.
 - `run.media` converts canvas URLs into something the upstream can read:
   `toRef(url)` (public URL, or data URI as fallback), `toBase64(url)`, `toPublicUrl(url)` (throws if there is none).
+  The URL may be a presigned storage URL: use it for the upstream request only, never log or keep it.
 - An output is `{ type: 'image' | 'video', url, headers? }` or `{ type: 'image', b64 }`.
   The runner downloads it into storage; do not store anything yourself.
 - Use `request()` from `providers/http.js`. It turns failures into errors with a user-facing message and the
@@ -129,4 +139,6 @@ npm test
 
 Unit tests need nothing. The end-to-end tests need a MongoDB: set `TEST_MONGODB_URI`, otherwise
 `mongodb-memory-server` is used (it downloads a MongoDB binary on first run), and those tests are skipped if neither works.
+The storage tests against a real S3 API (`test/storage.live.test.js`) are skipped unless `TEST_S3_ENDPOINT` and the
+related variables are set; see [`../docs/development.md`](../docs/development.md#live-s3-tests).
 No test calls a real model API: providers are tested against a fake upstream.

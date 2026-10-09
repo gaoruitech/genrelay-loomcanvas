@@ -13,7 +13,7 @@
 
 ## 通用约定
 
-- 所有接口前缀 `/api`。本地存储的文件在 `/files/<key>`。
+- 所有接口前缀 `/api`。存下来的文件在 `/files/<key>`，不管用的是哪种存储。
 - 请求体是 JSON，上传文件除外（`multipart/form-data`，字段名 `file`）。JSON 最大 1 MB，`/api/workflow` 下最大 6 MB，`/api/auth` 和 `/api/canvas-share` 下最大 64 KB。需要登录的接口先验凭证、再解析请求体。
 - 返回统一为 `{ "result": 0, "message": "ok", "data": … }`。失败时 `result` 非 0、HTTP 状态码相应变化，并多一个 `code`：这条提示的稳定标识（`server/src/i18n/zh-CN.js` 里的键）。程序里请按 `code` 判断，不要按 `message`。
 - `message` 的语言按请求决定：请求头 `X-Locale`（`zh-CN` 或 `en`）→ `Accept-Language` → 设置里的 `defaultLocale` → `zh-CN`。
@@ -36,9 +36,9 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/files/upload` | 上传一个文件。按内容识别类型，接受图片、视频、音频。 |
+| POST | `/api/files/upload` | 上传一个文件。按内容识别类型，接受图片、视频、音频。返回的 `url` 永远是站内相对地址 `/files/<key>`，文件在本地磁盘上还是在桶里都一样。 |
 | POST | `/api/files/fetch` | `{ url }`，由服务端抓取远程图片并转存。只接受图片：地址指向本实例存储里的视频时也返回 400（`file.image_only`）。 |
-| GET | `/files/<key>` | 公开。读取本地存储里的文件。不是图片、视频、音频的一律按附件下载。 |
+| GET | `/files/<key>` | 公开。每个存下来的文件唯一的地址，文件在哪个后端都一样：在本地磁盘上就从磁盘读；在桶里、分发方式是 `proxy` 时由应用从桶里流式转发（支持 `Range` → 206、`If-None-Match` → 304）；分发方式是 `redirect` 时返回 302，指向桶的公开地址。不是图片、视频、音频的一律按附件下载。找不到返回 404；存储服务连不上返回 502。 |
 
 ### 模型与运行
 
@@ -127,8 +127,13 @@
 | PUT | `/api/admin/models/:modelId` | 修改模型的启用状态、名称、排序、默认参数、价格。`modelId` 要做 URL 编码。 |
 | GET | `/api/admin/settings` | 读取站点设置。 |
 | PUT | `/api/admin/settings` | 修改站点设置。不认识的键返回 400（`settings.unknown_key`）。 |
+| GET | `/api/admin/storage` | 当前的存储：`source`（`saved` 设置页保存的 / `env` 环境变量 / `default` 默认）、`driver`（`local` / `s3`）、`delivery`、S3 配置（不含密钥，只有 `hasSecret` 和 `secretTail`）、仍在读取的旧桶 `previous`。 |
+| POST | `/api/admin/storage/test` | `{ s3 }`，用提交的、尚未保存的配置真实地走一遍：写入、查询、读回比对、（`redirect` 分发时）从公开地址加载、删除。返回 `{ ok, steps, message, code }`。测试不通过也是 HTTP 200，`ok` 为 `false`，`code` 是 `storage.err_*`。 |
+| PUT | `/api/admin/storage` | `{ driver: 'local' }` 或 `{ driver: 's3', s3, force? }`，保存并立即切换，不用重启。S3 配置会先测试；不通过就不保存，返回 400（`storage.save_needs_test`），测试结果在 `data.test` 里；带 `force: true` 则不测试直接保存。文件不会被移动。 |
 | GET | `/api/admin/usage` | 用量汇总，`groupBy=day\|model`。 |
 | GET | `/api/admin/usage/records` | 用量明细，分页。 |
 | DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。删除这一刻之前创建、已结束（成功、失败、已取消）的用量记录；只写日期表示这一天 UTC 零点之前。排队中、运行中的不动，文件不删。缺参数或日期不对返回 400（`validation.required` / `validation.bad_date`）。 |
 
 管理接口没有单独的管理员角色：能登录的人都能调用。
+
+存储接口的请求和返回逐项列在 [api.md](api.md#storage)；各个字段的含义、各家服务的配法见[存储](storage.zh-CN.md)。
