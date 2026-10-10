@@ -52,8 +52,8 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 | `omni-flash` | Omni Flash | video | up to 5, or first + last frame | 16:9, 9:16 | 720p, 1080p | 8, 10 s |
 | `omni-flash-edit` | Omni Flash Edit | video (video edit) | up to 5, plus a source video | 16:9, 9:16 | 720p | |
 | `veo-3.1` | Veo 3.1 | video | up to 3, or first + last frame | 16:9, 9:16 | lite, 720p, 1080p, 4k | 8 s fixed |
-| `grok-imagine-video-1.5-preview` | Grok Video 1.5 | video | up to 5 | 9:16, 16:9, 1:1, 3:2, 2:3 | 480p, 720p | 6, 8, 10, 12, 15 s |
-| `grok-imagine-1.0-video` | Grok Video 1.0 | video | up to 3 | 9:16, 16:9, 1:1, 3:2, 2:3 | 480p | 6, 10, 15 s |
+| `grok-imagine-video-1.5-preview` | Grok Video 1.5 | video | up to 5 | 9:16, 16:9, 1:1 | 480p, 720p | 6, 8, 10, 12, 15 s |
+| `grok-imagine-1.0-video` | Grok Video 1.0 | video | up to 3 | 9:16, 16:9, 1:1 | 480p | 6, 10, 15 s |
 | `deepseek-v4-pro` | DeepSeek V4 Pro | chat | text only | | | |
 | `gpt-5.5` | GPT 5.5 | chat | text only | | | |
 | `glm-5.3` | GLM 5.3 | chat | text only | | | |
@@ -84,8 +84,8 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 | `omni-flash` | Verified (2026-10-10) | Verified (2026-10-10) | 8 s, 720p, 16:9; one reference image (reference-image mode), given as a public URL. First-and-last-frame mode was not run |
 | `omni-flash-edit` | n/a | Not verified | Video edit (source video + prompt): verified (2026-10-10), 720p, 16:9, the source video given as a public URL. Not run with reference images |
 | `veo-3.1` | Verified (2026-10-10) | Verified (2026-10-10) | lite, 16:9, 8 s; one run with a reference image and one with a first and a last frame, images given as public URLs |
-| `grok-imagine-video-1.5-preview` | Verified (2026-10-10) | Not verified | 480p, 16:9; 4 s was asked for and a 6 s clip came back, so 6 s is now the shortest offered |
-| `grok-imagine-1.0-video` | Verified (2026-10-10) | Verified (2026-10-10) | 6 s, 480p, 16:9; one reference image, given as a public URL. Both clips came back 6.0 s long, 752×416 |
+| `grok-imagine-video-1.5-preview` | Verified (2026-10-10) | Not verified | 480p, 16:9; 4 s was asked for and a 6 s clip came back, so 6 s is now the shortest offered. 3:2 is refused by the service ("aspect_ratio must be one of: 1:1, 16:9, 9:16"), so only those three ratios are offered |
+| `grok-imagine-1.0-video` | Verified (2026-10-10) | Verified (2026-10-10) | 6 s, 480p, 16:9; one reference image, given as a public URL. Both clips came back 6.0 s long, 752×416. A 3:2 request was accepted but came back 16:9 (848×480), so only 9:16, 16:9 and 1:1 are offered |
 | `deepseek-v4-pro` | Verified (2026-10-10) | n/a | text-only model |
 | `gpt-5.5` | Verified (2026-10-10) | n/a | text-only model |
 | `glm-5.3` | Verified (2026-10-10) | n/a | text-only model |

@@ -172,7 +172,9 @@ async function pollNanoBanana(cfg, run) {
 /* ------------------------------------------------------------------ videos */
 
 const SIZE_16_9 = { '16:9': '1280x720', '9:16': '720x1280' }
-const GROK_SIZES = { '9:16': '720x1280', '16:9': '1280x720', '1:1': '1024x1024', '3:2': '1792x1024', '2:3': '1024x1792' }
+// Only these three are served: on 2026-10-10 Grok 1.5 refused 3:2 ("aspect_ratio must be one
+// of: 1:1, 16:9, 9:16") and Grok 1.0 accepted it but returned a 16:9 clip.
+const GROK_SIZES = { '9:16': '720x1280', '16:9': '1280x720', '1:1': '1024x1024' }
 // omni_flash_6s is still listed by the upstream but no channel serves it
 // (HTTP 503 model_not_found on 2026-10-10), so 6 s is not offered.
 const OMNI_DURATIONS = [8, 10]

@@ -170,21 +170,24 @@ test('gaorui videos: request body per model', async (t) => {
   assert.equal(up.calls[4].body.model, 'veo_3_1')
   assert.equal('images' in up.calls[4].body, false)
 
-  await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 12, resolution: '720p', aspectRatio: '3:2' }, imageUrls: ['g'] }))
+  await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 12, resolution: '720p', aspectRatio: '1:1' }, imageUrls: ['g'] }))
   assert.deepEqual(up.calls[5].body, {
-    model: 'grok-imagine-video-1.5-preview', prompt: 'go', size: '1792x1024', seconds: '12', resolution: '720p', image_urls: ['public(g)'],
+    model: 'grok-imagine-video-1.5-preview', prompt: 'go', size: '1024x1024', seconds: '12', resolution: '720p', image_urls: ['public(g)'],
   })
+  // 3:2 and 2:3 are not served (2026-10-10: Grok 1.5 refuses them, Grok 1.0 returns 16:9); a stored one falls back.
+  await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 6, aspectRatio: '3:2' } }))
+  assert.equal(up.calls.at(-1).body.size, '720x1280')
   await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 99 } }))
-  assert.equal(up.calls[6].body.seconds, '15', 'clamped, and sent as a string')
+  assert.equal(up.calls.at(-1).body.seconds, '15', 'clamped, and sent as a string')
   assert.equal('image_urls' in up.calls[6].body, false)
   // The shortest Grok 1.5 clip is 6 s; a canvas that still stores 4 s gets 6.
   await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 4 } }))
   assert.equal(up.calls.at(-1).body.seconds, '6')
 
   // Grok Video 1.0: fixed lengths, one quality tier, at most 3 reference images.
-  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 10, resolution: '480p', aspectRatio: '2:3' }, imageUrls: ['a', 'b', 'c', 'd'] }))
+  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 10, resolution: '480p', aspectRatio: '16:9' }, imageUrls: ['a', 'b', 'c', 'd'] }))
   assert.deepEqual(up.calls.at(-1).body, {
-    model: 'grok-imagine-1.0-video', prompt: 'go', size: '1024x1792', seconds: '10', quality: 'standard', resolution: '480p', image_urls: ['public(a)', 'public(b)', 'public(c)'],
+    model: 'grok-imagine-1.0-video', prompt: 'go', size: '1280x720', seconds: '10', quality: 'standard', resolution: '480p', image_urls: ['public(a)', 'public(b)', 'public(c)'],
   })
   await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 8, resolution: '720p', aspectRatio: '4:3' } }))
   assert.deepEqual(up.calls.at(-1).body, { model: 'grok-imagine-1.0-video', prompt: 'go', size: '720x1280', seconds: '6', quality: 'standard', resolution: '480p' }, 'values that are not offered fall back')
