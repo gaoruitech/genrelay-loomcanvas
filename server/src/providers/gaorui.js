@@ -5,18 +5,30 @@
  * our own and not bound to anyone's standard.
  *
  * Supported models are listed in catalog/gaorui.json. Three protocol
- * families, selected per model by `_protocol` there:
+ * families, selected per model by `_protocol` there. A catalog entry with a
+ * `verified` date was run against the real service on that day; what exactly
+ * was run is listed in catalog/SOURCES.md, and the recorded answers are the
+ * fixtures of the "real service" tests in test/providers.test.js.
  *
  *  nano-banana (images, asynchronous)
  *    POST /v1/nano-banana            header  Authorization: <key>   (no "Bearer")
  *      { model, prompt, imageSize, images[], webHook: '-1', shutProgress: false, aspectRatio? }
- *      -> { code: 0, data: { id } }
+ *      -> { code: 0, msg, data: { id, type } }
+ *      `images` are http(s) URLs. A base64 data URI is refused with HTTP 400,
+ *      error code image_must_be_url.
  *    GET  /v1/nano-banana/{id}
- *      -> { code: 0, data: { status, progress, image_url | imageUrl | url | output, error } }
+ *      -> { code: 0, data: { status: pending|processing|succeeded, progress, url }, ... }
+ *      The real service puts the result in data.url. The other names read
+ *      below (image_url, imageUrl, output) have not been seen from it.
  *
  *  videos-* (asynchronous)
  *    POST /v1/videos                 header  Authorization: Bearer <key>, JSON body (per model below)
+ *      -> { id, object: 'video', status: 'queued', progress }
  *    GET  /v1/videos/{id}
+ *      -> { id, status: queued|in_progress|completed, progress, video_url, url, output_url, metadata: { url } }
+ *      Seen for grok-imagine-video-1.5-preview, omni_flash_8s,
+ *      omni_flash_abra_edit and the three veo_3_1 models. The link is a plain
+ *      public address.
  *    GET  /v1/videos/{id}/content    authenticated stream, used when no direct link is returned
  *
  *  chat
@@ -27,7 +39,7 @@
  *      That is what the main site sends in production (model
  *      gemini-3.5-flash-c). A `video_url` part is dropped by the relay without
  *      an error, and the model then answers without having seen the video.
- *      Not yet run from here against the real API.
+ *      Both statements were checked against the real API on 2026-10-10.
  *
  * A custom model (one the user added by hand) is a chat model, or an image
  * model sent through the nano-banana task API. A custom video model is not
@@ -96,8 +108,11 @@ function errorText(v) {
 /* ------------------------------------------------------------------ images */
 
 async function submitNanoBanana(cfg, run) {
+  // Reference images must be http(s) URLs the upstream can fetch. A base64
+  // data URI is refused (HTTP 400, error code image_must_be_url), so an image
+  // that only exists on this machine is refused here, with what to do about it.
   const images = []
-  for (const url of (run.imageUrls || []).slice(0, 8)) images.push(await run.media.toRef(url))
+  for (const url of (run.imageUrls || []).slice(0, 8)) images.push(await run.media.toPublicUrl(url, msg('noun.reference_image')))
   const params = run.params || {}
   const body = {
     model: run.model,
@@ -157,7 +172,10 @@ async function pollNanoBanana(cfg, run) {
 
 const SIZE_16_9 = { '16:9': '1280x720', '9:16': '720x1280' }
 const GROK_SIZES = { '9:16': '720x1280', '16:9': '1280x720', '1:1': '1024x1024', '3:2': '1792x1024', '2:3': '1024x1792' }
-const OMNI_DURATIONS = new Set([6, 8, 10])
+// omni_flash_6s is still listed by the upstream but no channel serves it
+// (HTTP 503 model_not_found on 2026-10-10), so 6 s is not offered.
+const OMNI_DURATIONS = new Set([8, 10])
+const VEO_RESOLUTIONS = new Set(['lite', '720p', '1080p', '4k'])
 const OMNI_RESOLUTIONS = new Set(['720p', '1080p', '4k'])
 
 async function refs(run, max) {
@@ -170,13 +188,13 @@ async function refs(run, max) {
 const VIDEO_BODY = {
   /**
    * Omni Flash generation. The duration is part of the model name.
-   *   { model: 'omni_flash_{6|8|10}s', prompt, resolution: 720p|1080p|4k,
+   *   { model: 'omni_flash_{8|10}s', prompt, resolution: 720p|1080p|4k,
    *     aspect_ratio: 16:9|9:16, input_reference?: string[] (max 5),
    *     first_last_frame?: true (params.imgMode === 'frames'; input_reference = [first, last]) }
    */
   async 'videos-omni-flash'(run) {
     const p = run.params || {}
-    const duration = OMNI_DURATIONS.has(Number(p.duration)) ? Number(p.duration) : 6
+    const duration = OMNI_DURATIONS.has(Number(p.duration)) ? Number(p.duration) : 8
     const frames = p.imgMode === 'frames'
     const body = {
       model: `omni_flash_${duration}s`,
@@ -212,16 +230,26 @@ const VIDEO_BODY = {
   },
 
   /**
-   * Sora 2, OpenAI-style. The duration is fixed by the model name, so no
-   * `seconds` field is sent.
-   *   { model: 'sora-2-openai-12s', prompt, size: 1280x720|720x1280,
-   *     input_reference?: string (one image, URL or data URI) }
+   * Veo 3.1. Three upstream models, chosen by what the run carries:
+   *   no image                         veo_3_1
+   *   images, params.imgMode 'frames'  veo_3_1-fl          images = [first, last?]  (max 2)
+   *   images, otherwise                veo_3_1-components  images = references      (max 3)
+   *   { model, prompt, resolution: lite|720p|1080p|4k, aspect_ratio: 16:9|9:16,
+   *     images?: string[] (http(s) URLs) }
+   * The clip is always 8 s; there is no duration field.
    */
-  async 'videos-sora-openai'(run) {
+  async 'videos-veo-31'(run) {
     const p = run.params || {}
-    const body = { model: run.model, prompt: run.prompt, size: SIZE_16_9[p.aspectRatio] || '720x1280' }
-    const input = await refs(run, 1)
-    if (input.length) body.input_reference = input[0]
+    const frames = p.imgMode === 'frames'
+    const images = []
+    for (const url of (run.imageUrls || []).slice(0, frames ? 2 : 3)) images.push(await run.media.toPublicUrl(url, msg('noun.reference_image')))
+    const body = {
+      model: !images.length ? 'veo_3_1' : frames ? 'veo_3_1-fl' : 'veo_3_1-components',
+      prompt: run.prompt,
+      resolution: VEO_RESOLUTIONS.has(String(p.resolution)) ? String(p.resolution) : 'lite',
+      aspect_ratio: SIZE_16_9[p.aspectRatio] ? p.aspectRatio : '16:9',
+    }
+    if (images.length) body.images = images
     return body
   },
 

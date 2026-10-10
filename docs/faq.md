@@ -45,9 +45,9 @@ Not necessarily. They are calculated from the prices you typed in, at the time t
 
 ## Media
 
-### Video edit fails with "A publicly reachable URL is needed…"
+### A run fails with "A publicly reachable URL is needed…"
 
-Some inputs can only be passed to the upstream as a URL: the source video of a video edit, reference images of some video models, and video in chat. The upstream must be able to download that URL from the internet.
+Some inputs can only be passed to the upstream as a URL: reference images of the Gaorui image models (image-to-image), the source video of a video edit, reference images of some video models, and video in chat. The upstream must be able to download that URL from the internet.
 
 Fix one of:
 
@@ -204,7 +204,7 @@ If it is a proxy or relay that speaks exactly the official OpenAI or Gemini API,
 
 ### Have the providers been tested against the real services?
 
-Not as part of this project so far. They are tested against a fake upstream that pins the request and response shapes. The S3 storage driver is verified against MinIO; AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services ([Storage](storage.md#what-has-been-tested)). Expect to verify these in your own environment, and please report what you find.
+Gaorui: yes. On 2026-10-10 every model in its catalog completed one real run at the lowest settings; [one table in Providers](providers.md#gaorui-what-has-been-verified) says, per model, what is verified and what is not, and in the product those models carry a "Verified" badge. OpenAI and Google Gemini: all unverified. All three are tested against a fake upstream that pins the request and response shapes. The S3 storage driver is verified against MinIO; AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services ([Storage](storage.md#what-has-been-tested)). Expect to verify these in your own environment, and please report what you find.
 
 ## Licensing
 

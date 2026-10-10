@@ -6,7 +6,7 @@ This page takes you from an empty machine to your first generated image.
 
 LoomCanvas does not include any models. You add a provider with your own API key, and the canvas calls its models for you.
 
-> Status: early development. The built-in providers (Gaorui, OpenAI, Google Gemini) are covered by tests against a fake upstream; they have not yet been exercised against the real services as part of this project. If a request shape turns out to be wrong, please open an issue.
+> Status: early development. All three built-in providers (Gaorui, OpenAI, Google Gemini) are covered by tests against a fake upstream. Every Gaorui catalog model was also run against the real service on 2026-10-10 ([what is verified, per model](providers.md#gaorui-what-has-been-verified)); OpenAI and Google Gemini are all unverified. If a request shape turns out to be wrong, please open an issue.
 
 ## 1. Prerequisites
 
@@ -34,7 +34,7 @@ Edit `.env`:
    openssl rand -base64 32
    ```
 
-2. Leave `PUBLIC_URL` empty for local or LAN use. Uploaded and generated files are addressed relative to whatever address the app is opened at, so any host and port works. Set it to the instance's public address (for example `https://canvas.example.com`) when upstream models have to fetch reference media by URL, which video inputs with local storage need. See [Deployment](deployment.md#public_url).
+2. Leave `PUBLIC_URL` empty for local or LAN use. Uploaded and generated files are addressed relative to whatever address the app is opened at, so any host and port works. Set it to the instance's public address (for example `https://canvas.example.com`) when upstream models have to fetch reference media by URL, which video inputs and reference images for the Gaorui image models need with local storage. See [Deployment](deployment.md#public_url).
 
 3. Optionally set `ACCESS_PASSWORD` if other people can reach the machine.
 

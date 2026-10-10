@@ -4,6 +4,7 @@
       <div>
         <h2>{{ t('settings.models.title') }}</h2>
         <p class="tab-desc">{{ t('settings.models.desc') }}</p>
+        <p v-if="anyVerified" class="tab-desc verified-note">{{ t('settings.providers.verifiedHint') }}</p>
       </div>
       <div class="head-tools">
         <LcSelect v-model="kindFilter" class="kind-filter" size="sm" :options="kindOptions" :aria-label="t('settings.models.kind')" />
@@ -66,6 +67,7 @@
             <div class="c-kind" role="cell">
               <span class="kind-badge" :class="m.kind">{{ t('settings.models.kinds.' + m.kind) }}</span>
               <span v-if="m.custom" class="lc-tag custom-tag">{{ t('settings.models.custom') }}</span>
+              <span v-if="m.verified" class="verified-tag" :title="t('settings.providers.verifiedOn', { date: m.verified })">{{ t('settings.providers.verified') }}</span>
             </div>
             <div class="c-sort" role="cell">
               <span class="cell-cap">{{ t('settings.models.sort') }}</span>
@@ -197,6 +199,9 @@ interface Group {
   models: AdminModel[]
 }
 
+/** 清单里有带实测日期的模型时，才解释这个标记 */
+const anyVerified = computed(() => models.value.some(m => !!m.verified))
+
 const filtering = computed(() => !!kindFilter.value || !!keyword.value.trim())
 
 const groups = computed<Group[]>(() => {
@@ -322,6 +327,7 @@ async function confirmRemove() {
 .kind-filter { width: 110px; }
 .search { width: 180px; }
 .retry { margin-top: 12px; }
+.verified-note { margin-top: 4px; }
 
 .group { padding: 0; margin-bottom: 14px; }
 .group-head {

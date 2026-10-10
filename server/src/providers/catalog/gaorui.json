@@ -3,6 +3,7 @@
     {
       "id": "nano-banana-pro",
       "label": "Nano Banana Pro",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -17,6 +18,7 @@
     {
       "id": "nano-banana-2",
       "label": "Nano Banana 2",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -31,6 +33,7 @@
     {
       "id": "nano-banana-2.1",
       "label": "Nano Banana 2.1",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -45,6 +48,7 @@
     {
       "id": "nano-banana-2-lite",
       "label": "Nano Banana 2 Lite",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -61,6 +65,7 @@
     {
       "id": "omni-flash",
       "label": "Omni Flash",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -68,15 +73,16 @@
       "options": {
         "aspectRatios": ["16:9", "9:16"],
         "resolutions": ["720p", "1080p", "4k"],
-        "durations": [6, 8, 10],
+        "durations": [8, 10],
         "imgModes": ["multi", "frames"]
       },
-      "defaults": { "aspectRatio": "16:9", "resolution": "720p", "duration": 6, "imgMode": "multi", "count": 1 },
+      "defaults": { "aspectRatio": "16:9", "resolution": "720p", "duration": 8, "imgMode": "multi", "count": 1 },
       "_protocol": "videos-omni-flash"
     },
     {
       "id": "omni-flash-edit",
       "label": "Omni Flash Edit",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": true,
       "videoEdit": true,
@@ -89,22 +95,26 @@
       "_protocol": "videos-omni-flash-edit"
     },
     {
-      "id": "sora-2-openai-12s",
-      "label": "Sora 2 (12s)",
+      "id": "veo-3.1",
+      "label": "Veo 3.1",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
-      "maxReferenceImages": 1,
+      "maxReferenceImages": 3,
       "options": {
-        "aspectRatios": ["9:16", "16:9"],
-        "durations": [12]
+        "aspectRatios": ["16:9", "9:16"],
+        "resolutions": ["lite", "720p", "1080p", "4k"],
+        "durations": [8],
+        "imgModes": ["multi", "frames"]
       },
-      "defaults": { "aspectRatio": "9:16", "duration": 12, "count": 1 },
-      "_protocol": "videos-sora-openai"
+      "defaults": { "aspectRatio": "16:9", "resolution": "lite", "duration": 8, "imgMode": "multi", "count": 1 },
+      "_protocol": "videos-veo-31"
     },
     {
       "id": "grok-imagine-video-1.5-preview",
       "label": "Grok Video 1.5",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -122,6 +132,7 @@
     {
       "id": "deepseek-v4-pro",
       "label": "DeepSeek V4 Pro",
+      "verified": "2026-10-10",
       "acceptsImage": false,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -132,6 +143,7 @@
     {
       "id": "gpt-5.5",
       "label": "GPT 5.5",
+      "verified": "2026-10-10",
       "acceptsImage": false,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -142,6 +154,7 @@
     {
       "id": "glm-5.3",
       "label": "GLM 5.3",
+      "verified": "2026-10-10",
       "acceptsImage": false,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -152,6 +165,7 @@
     {
       "id": "gpt-6-astra",
       "label": "GPT 6 Astra",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": false,
       "videoEdit": false,
@@ -162,6 +176,7 @@
     {
       "id": "gemini-3.5-flash-c",
       "label": "Gemini 3.5 Flash",
+      "verified": "2026-10-10",
       "acceptsImage": true,
       "acceptsVideo": true,
       "videoEdit": false,

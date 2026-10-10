@@ -97,6 +97,7 @@ There are no form fields to declare. Every vendor has the same form: API key, na
 | `options.counts` | number[] | How many results per click. |
 | `options.imgModes` | string[] | `"multi"` (reference images) and/or `"frames"` (first and last frame). Arrives as `params.imgMode`. |
 | `defaults` | object | Initial parameter values, merged under what the node sends: `aspectRatio`, `resolution`, `duration`, `imgMode`, `count`. |
+| `verified` | string, optional | `"YYYY-MM-DD"`: the day the project completed a real run of this model against the vendor's API (one full text-only run; for a video edit model, one edit). Write it only when that run happened. A model that has it shows a "Verified" badge in the UI; without it there is no badge. |
 | `_anything` | any | Private to the vendor module, never served. See below. |
 
 The validator (`validateCatalog` in `catalog/index.js`) runs when the module is loaded and throws on the first problem, so a broken catalog stops the server at startup instead of surfacing later as a model that half works. Beyond the table above it requires:
@@ -290,6 +291,7 @@ What the server serves for each model (`GET /api/models`, `run.spec`). It is bui
 | `custom` | | `true` for a custom model, `false` for a catalog model. |
 | `desc` | `model.<type>.<model id>.desc` | One-line description, in the reader's language. Catalog models only. |
 | `acceptsImage`, `acceptsVideo`, `videoEdit`, `maxReferenceImages`, `options`, `defaults` | the entry or `customSpec(kind)` | As in [the catalog file](#the-catalog-file). An admin override can change `defaults`. |
+| `verified` | the entry's `verified` | The day the project ran this model against the real API. Catalog models only; a custom model never has it. |
 | `pricing` | the admin override | Only when the operator entered a price. Without it the model shows "Cost unknown". See [Providers](providers.md#pricing). |
 
 Private (`_`) fields and anything not in this table are dropped.

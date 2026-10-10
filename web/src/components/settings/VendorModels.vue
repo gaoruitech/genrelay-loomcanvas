@@ -24,11 +24,13 @@
             <div class="vm-name">
               <span class="vm-label">{{ m.label }}</span>
               <code class="vm-id">{{ m.model }}</code>
+              <span v-if="m.verified" class="verified-tag" :title="t('settings.providers.verifiedOn', { date: m.verified })">{{ t('settings.providers.verified') }}</span>
             </div>
             <div class="vm-caps">{{ capsSummary(m).join(' · ') }}</div>
           </li>
         </ul>
       </div>
+      <p class="vm-hint">{{ t('settings.providers.verifiedHint') }}</p>
       <p class="vm-hint">{{ t('settings.providers.supportedHint') }}</p>
     </div>
   </div>
@@ -81,4 +83,6 @@ const groups = computed(() => KINDS.map(kind => ({ kind, models: props.vendor.mo
 .vm-id { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 11.5px; color: var(--t-dim); word-break: break-all; }
 .vm-caps { margin-top: 3px; font-size: 12px; color: var(--t-body); line-height: 1.55; }
 .vm-hint { margin-top: 10px; font-size: 12px; color: var(--t-dim); line-height: 1.5; }
+.vm-hint + .vm-hint { margin-top: 4px; }
+.vm-name .verified-tag { align-self: center; }
 </style>

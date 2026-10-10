@@ -4,6 +4,10 @@
  * Provider plugins against a local fake upstream. These pin down the request
  * shapes we send and the response shapes we accept; they do not prove the
  * real upstream agrees.
+ *
+ * The exception is the block of tests named "real service": their fixtures are
+ * what https://gaorui.cc answered on 2026-10-10, with ids and file names
+ * replaced by placeholders.
  */
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -61,7 +65,7 @@ test('gaorui nano-banana: submit and poll follow the documented protocol', async
   const post = up.calls[0]
   assert.equal(post.headers.authorization, 'sk-raw-key', 'raw key, no Bearer prefix')
   assert.deepEqual(post.body, {
-    model: 'nano-banana-2.1', prompt: 'a cat', imageSize: '2K', images: ['ref(/files/a.png)'],
+    model: 'nano-banana-2.1', prompt: 'a cat', imageSize: '2K', images: ['public(/files/a.png)'],
     webHook: '-1', shutProgress: false, aspectRatio: '16:9',
   })
 
@@ -125,7 +129,11 @@ test('gaorui videos: request body per model', async (t) => {
   })
 
   await gaorui.submit(cfg, run('omni-flash', { params: { duration: 7, resolution: '8k', aspectRatio: '1:1' } }))
-  assert.deepEqual(up.calls[1].body, { model: 'omni_flash_6s', prompt: 'go', resolution: '720p', aspect_ratio: '16:9' }, 'invalid options fall back to defaults')
+  assert.deepEqual(up.calls[1].body, { model: 'omni_flash_8s', prompt: 'go', resolution: '720p', aspect_ratio: '16:9' }, 'invalid options fall back to defaults')
+  // 6 s is gone from the catalog (no channel serves omni_flash_6s); a canvas that still stores it gets 8 s.
+  await gaorui.submit(cfg, run('omni-flash', { params: { duration: 6 } }))
+  assert.equal(up.calls.at(-1).body.model, 'omni_flash_8s')
+  up.calls.pop()
 
   await gaorui.submit(cfg, run('omni-flash', { params: { imgMode: 'frames' }, imageUrls: ['a', 'b', 'c'] }))
   assert.deepEqual(up.calls[2].body.input_reference, ['ref(a)', 'ref(b)'])
@@ -137,8 +145,25 @@ test('gaorui videos: request body per model', async (t) => {
   })
   await assert.rejects(gaorui.submit(cfg, run('omni-flash-edit')), (e) => e.i18n.code === 'provider.video_edit_needs_source')
 
-  await gaorui.submit(cfg, run('sora-2-openai-12s', { params: { aspectRatio: '16:9' }, imageUrls: ['one', 'two'] }))
-  assert.deepEqual(up.calls[4].body, { model: 'sora-2-openai-12s', prompt: 'go', size: '1280x720', input_reference: 'ref(one)' })
+  // Veo 3.1: the upstream model follows from what the run carries.
+  await gaorui.submit(cfg, run('veo-3.1', { params: { aspectRatio: '9:16', resolution: '1080p', duration: 8 } }))
+  assert.deepEqual(up.calls[4].body, { model: 'veo_3_1', prompt: 'go', resolution: '1080p', aspect_ratio: '9:16' }, 'text only; no duration field, the clip is always 8 s')
+  up.calls.pop()
+  await gaorui.submit(cfg, run('veo-3.1', { params: { imgMode: 'multi' }, imageUrls: ['a', 'b', 'c', 'd'] }))
+  assert.deepEqual(up.calls[4].body, { model: 'veo_3_1-components', prompt: 'go', resolution: 'lite', aspect_ratio: '16:9', images: ['public(a)', 'public(b)', 'public(c)'] }, 'references: at most 3, as public URLs')
+  up.calls.pop()
+  await gaorui.submit(cfg, run('veo-3.1', { params: { imgMode: 'frames', resolution: '8k', aspectRatio: '1:1' }, imageUrls: ['first', 'last', 'extra'] }))
+  assert.deepEqual(up.calls[4].body, { model: 'veo_3_1-fl', prompt: 'go', resolution: 'lite', aspect_ratio: '16:9', images: ['public(first)', 'public(last)'] }, 'first and last frame, in that order')
+  up.calls.pop()
+  // An image that has no public address is refused before anything is sent.
+  const veoLocal = { ...media, async toPublicUrl() { const e = new Error('needs a public URL'); e.code = 'media.needs_public_url'; throw e } }
+  await assert.rejects(gaorui.submit(cfg, run('veo-3.1', { imageUrls: ['/files/a.jpg'], media: veoLocal })), (e) => e.code === 'media.needs_public_url')
+  await assert.rejects(gaorui.submit(cfg, run('sora-2-openai-12s')), (e) => e.i18n.code === 'provider.model_not_supported', 'removed from the catalog')
+  assert.equal(up.calls.length, 4)
+  // frames mode without any image is plain text-to-video
+  await gaorui.submit(cfg, run('veo-3.1', { params: { imgMode: 'frames' } }))
+  assert.equal(up.calls[4].body.model, 'veo_3_1')
+  assert.equal('images' in up.calls[4].body, false)
 
   await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 12, resolution: '720p', aspectRatio: '3:2' }, imageUrls: ['g'] }))
   assert.deepEqual(up.calls[5].body, {
@@ -186,6 +211,182 @@ test('gaorui videos: both response shapes are understood', async (t) => {
   assert.deepEqual(await gaorui.poll(cfg, req), { status: 'failed', error: '审核未通过' })
   reply = { id: 't1', status: 'failed', error: { message: 'bad prompt' } }
   assert.deepEqual(await gaorui.poll(cfg, req), { status: 'failed', error: 'bad prompt' })
+})
+
+/* ---- 高瑞, real service: shapes recorded from https://gaorui.cc on 2026-10-10 (ids and file names are placeholders) ---- */
+
+const REAL_IMG = 'https://media.example.net/media/0000.jpg'
+const REAL_VID = 'https://media.example.net/media/0000.mp4'
+const REAL_IMG_2 = 'https://media.example.net/media/0001.jpg'
+
+test('gaorui real service: nano-banana task shapes, and reference images that must be URLs', async (t) => {
+  let poll = {}
+  const up = await fakeUpstream({
+    'POST /v1/nano-banana': (c) => ((c.body.images || []).some((u) => !/^https?:\/\//.test(u))
+      ? { status: 400, body: { error: { code: 'image_must_be_url', message: '图片/参考图仅支持 http/https URL，不支持 base64 或本地数据，请改用图片/文件 URL', type: 'invalid_request_error' } } }
+      : { body: { code: 0, msg: 'success', data: { id: 'task0001', type: c.body.images.length ? 'image2image' : 'text2image' } } }),
+    'GET /v1/nano-banana/task0001': () => ({ body: poll }),
+  })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const run = (extra) => ({ kind: 'image', model: 'nano-banana-2', prompt: 'a boat', imageUrls: [], params: { resolution: '1K', aspectRatio: '1:1' }, media, signal, ...extra })
+
+  assert.deepEqual(await gaorui.submit(cfg, run()), { externalId: 'task0001' })
+  assert.deepEqual(up.calls[0].body, { model: 'nano-banana-2', prompt: 'a boat', imageSize: '1K', images: [], webHook: '-1', shutProgress: false, aspectRatio: '1:1' })
+
+  // The status answer carries the task twice: OpenAI-style at the top, and in `data`, which is what we read.
+  const req = run({ externalId: 'task0001' })
+  poll = { code: 0, created_at: 1791600108, data: { id: 'task0001', progress: 0, status: 'pending', type: 'text2image', url: '' }, id: 'task0001', model: 'nano-banana-2', msg: 'success', object: 'image', progress: 0, status: 'queued' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 0 })
+  poll = { code: 0, created_at: 1791600108, data: { id: 'task0001', progress: 50, status: 'processing', type: 'text2image', url: '' }, id: 'task0001', model: 'nano-banana-2', msg: 'success', object: 'image', progress: 50, status: 'in_progress' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 50 })
+  poll = {
+    code: 0, completed_at: 1791600118, created_at: 1791600108,
+    data: { id: 'task0001', progress: 100, status: 'succeeded', type: 'text2image', url: REAL_IMG },
+    id: 'task0001', metadata: { url: REAL_IMG, video_url: REAL_IMG }, model: 'nano-banana-2', msg: 'success', object: 'image',
+    output_url: REAL_IMG, progress: 100, status: 'completed', url: REAL_IMG, video_url: REAL_IMG,
+  }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'succeeded', progress: 100, outputs: [{ type: 'image', url: REAL_IMG }] })
+
+  // A reference image goes in as a public URL...
+  await gaorui.submit(cfg, run({ imageUrls: ['/files/a.jpg'], media: { ...media, async toPublicUrl() { return REAL_IMG } } }))
+  assert.deepEqual(up.calls.at(-1).body.images, [REAL_IMG])
+  // ...and one without a public address is refused before anything is sent: the upstream takes no base64.
+  const sent = up.calls.length
+  const local = { ...media, async toPublicUrl() { const e = new Error('needs a public URL'); e.code = 'media.needs_public_url'; throw e } }
+  await assert.rejects(gaorui.submit(cfg, run({ imageUrls: ['/files/a.jpg'], media: local })), (e) => e.code === 'media.needs_public_url')
+  assert.equal(up.calls.length, sent)
+  // What the upstream answered when it was sent a data URI (kept so that answer stays readable if it ever comes back).
+  const dataUri = { ...media, async toPublicUrl() { return 'data:image/jpeg;base64,AAAA' } }
+  await assert.rejects(gaorui.submit(cfg, run({ imageUrls: ['/files/a.jpg'], media: dataUri })), (e) => e.status === 400 && !e.transient && !e.safeToResubmit
+    && e.upstreamCode === 'image_must_be_url' && e.i18n.code === 'upstream.http_error_detail' && e.i18n.params.detail.startsWith('图片/参考图仅支持 http/https URL'))
+})
+
+test('gaorui real service: video task shapes (flat), result link without credentials', async (t) => {
+  let poll = {}
+  const up = await fakeUpstream({
+    'POST /v1/videos': (c) => ({ body: { id: 'video_0001', object: 'video', model: c.body.model === 'omni_flash_abra_edit' ? c.body.model : '', status: 'queued', progress: 0, created_at: 0 } }),
+    'GET /v1/videos/video_0001': () => ({ body: poll }),
+  })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const run = (model, extra) => ({ kind: 'video', model, prompt: 'a boat', imageUrls: [], videoUrls: [], params: {}, media, signal, ...extra })
+
+  // Grok Video 1.5, text only: the body the upstream accepted.
+  assert.deepEqual(await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 4, resolution: '480p', aspectRatio: '16:9' } })), { externalId: 'video_0001' })
+  assert.equal(up.calls[0].headers.authorization, 'Bearer sk-example')
+  assert.deepEqual(up.calls[0].body, { model: 'grok-imagine-video-1.5-preview', prompt: 'a boat', size: '1280x720', seconds: '4', resolution: '480p' })
+  // Omni Flash Edit: the source video is a URL the upstream fetches itself.
+  const publicMedia = { ...media, async toPublicUrl() { return REAL_VID } }
+  await gaorui.submit(cfg, run('omni-flash-edit', { videoUrls: [REAL_VID], params: { resolution: '720p', aspectRatio: '16:9' }, media: publicMedia }))
+  assert.deepEqual(up.calls[1].body, { model: 'omni_flash_abra_edit', prompt: 'a boat', source_video_url: REAL_VID, aspect_ratio: '16:9', resolution: '720p' })
+
+  const req = run('grok-imagine-video-1.5-preview', { externalId: 'video_0001' })
+  poll = { id: 'video_0001', object: 'video', model: '', status: 'queued', progress: 0, created_at: 0 }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 0 })
+  poll = { created_at: 1791600212, id: 'video_0001', metadata: { url: '' }, model: 'grok-imagine-video-1.5-preview', object: 'video', progress: 1, status: 'in_progress' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 1 })
+  poll = {
+    completed_at: 1791600244, created_at: 1791600212, id: 'video_0001', metadata: { url: REAL_VID, video_url: REAL_VID },
+    model: 'grok-imagine-video-1.5-preview', object: 'video', output_url: REAL_VID, progress: 100, status: 'completed', url: REAL_VID, video_url: REAL_VID,
+  }
+  // A plain public link: downloaded without our key.
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'succeeded', progress: 100, outputs: [{ type: 'video', url: REAL_VID }] })
+})
+
+test('gaorui real service: Omni Flash and Veo 3.1, text only and with images given as URLs', async (t) => {
+  // The create answer repeats the model sent; the status answers of veo_3_1 name the resolution tier ("veo_3_1-lite").
+  let poll = {}
+  const up = await fakeUpstream({
+    'POST /v1/videos': (c) => ({ body: { id: 'task0001', object: 'video', model: c.body.model, status: 'queued', progress: 0, created_at: 1791601678 } }),
+    'GET /v1/videos/task0001': () => ({ body: poll }),
+  })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const publicMedia = { ...media, async toRef(url) { return url }, async toPublicUrl(url) { return url } }
+  const run = (model, extra) => ({ kind: 'video', model, prompt: 'a boat', imageUrls: [], videoUrls: [], params: {}, media: publicMedia, signal, ...extra })
+
+  // The five bodies the upstream accepted on 2026-10-10.
+  assert.deepEqual(await gaorui.submit(cfg, run('omni-flash', { params: { duration: 8, resolution: '720p', aspectRatio: '16:9' } })), { externalId: 'task0001' })
+  assert.deepEqual(up.calls.at(-1).body, { model: 'omni_flash_8s', prompt: 'a boat', resolution: '720p', aspect_ratio: '16:9' })
+  await gaorui.submit(cfg, run('omni-flash', { params: { duration: 8, resolution: '720p', aspectRatio: '16:9', imgMode: 'multi' }, imageUrls: [REAL_IMG] }))
+  assert.deepEqual(up.calls.at(-1).body, { model: 'omni_flash_8s', prompt: 'a boat', resolution: '720p', aspect_ratio: '16:9', input_reference: [REAL_IMG] })
+  await gaorui.submit(cfg, run('veo-3.1', { params: { duration: 8, resolution: 'lite', aspectRatio: '16:9' } }))
+  assert.deepEqual(up.calls.at(-1).body, { model: 'veo_3_1', prompt: 'a boat', resolution: 'lite', aspect_ratio: '16:9' })
+  await gaorui.submit(cfg, run('veo-3.1', { params: { duration: 8, resolution: 'lite', aspectRatio: '16:9', imgMode: 'multi' }, imageUrls: [REAL_IMG] }))
+  assert.deepEqual(up.calls.at(-1).body, { model: 'veo_3_1-components', prompt: 'a boat', resolution: 'lite', aspect_ratio: '16:9', images: [REAL_IMG] })
+  await gaorui.submit(cfg, run('veo-3.1', { params: { duration: 8, resolution: 'lite', aspectRatio: '16:9', imgMode: 'frames' }, imageUrls: [REAL_IMG, REAL_IMG_2] }))
+  assert.deepEqual(up.calls.at(-1).body, { model: 'veo_3_1-fl', prompt: 'a boat', resolution: 'lite', aspect_ratio: '16:9', images: [REAL_IMG, REAL_IMG_2] })
+  for (const c of up.calls) assert.equal(c.headers.authorization, 'Bearer sk-example')
+
+  const req = run('veo-3.1', { externalId: 'task0001' })
+  poll = { created_at: 1791601678, id: 'task0001', model: 'omni_flash_8s', object: 'video', progress: 0, status: 'queued' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 0 })
+  poll = { created_at: 1791601678, id: 'task0001', metadata: { url: '' }, model: 'veo_3_1-lite', object: 'video', progress: 50, status: 'in_progress' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 50 })
+  poll = {
+    completed_at: 1791601753, created_at: 1791601678, id: 'task0001', metadata: { url: REAL_VID, video_url: REAL_VID },
+    model: 'veo_3_1-lite', object: 'video', output_url: REAL_VID, progress: 100, status: 'completed', url: REAL_VID, video_url: REAL_VID,
+  }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'succeeded', progress: 100, outputs: [{ type: 'video', url: REAL_VID }] })
+})
+
+test('gaorui real service: "no channel serves this model" is a final answer, in both shapes it arrives in', async (t) => {
+  const inner = (model) => ({ error: { code: 'model_not_found', message: `分组 default 下模型 ${model} 无可用渠道（distributor） (request id: 0000)`, type: 'new_api_error' } })
+  const up = await fakeUpstream({
+    'POST /v1/videos': (c) => {
+      // Recorded on 2026-10-10 for omni_flash_6s and sora-2-openai-12s. Neither is in the catalog any more,
+      // so the two shapes are replayed here for models that still are.
+      // Shape 1: the relay wraps the error body of the service behind it as a JSON string.
+      if (c.body.model.startsWith('omni_flash')) return { status: 503, body: { code: 'fail_to_fetch_task', message: JSON.stringify(inner(c.body.model)), data: null } }
+      // Shape 2: the relay itself has no channel.
+      if (c.body.model === 'veo_3_1') return { status: 503, body: inner(c.body.model) }
+      return { status: 503, body: { error: { message: 'overloaded' } } }
+    },
+  })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const run = (model) => ({ kind: 'video', model, prompt: 'a boat', imageUrls: [], videoUrls: [], params: {}, media, signal })
+  for (const [model, upstream] of [['omni-flash', 'omni_flash_8s'], ['veo-3.1', 'veo_3_1']]) {
+    await assert.rejects(gaorui.submit(cfg, run(model)), (e) => {
+      assert.equal(e.status, 503)
+      assert.equal(e.upstreamCode, 'model_not_found')
+      // Not repeated by the runner: asking again cannot help.
+      assert.equal(e.safeToResubmit, false)
+      assert.equal(e.transient, false)
+      // The sentence of the upstream, not a JSON string.
+      assert.equal(e.i18n.params.detail, `分组 default 下模型 ${upstream} 无可用渠道（distributor） (request id: 0000)`)
+      return true
+    })
+  }
+  // Any other 503 is still "not now": the request was not processed and may be repeated.
+  await assert.rejects(gaorui.submit(cfg, run('grok-imagine-video-1.5-preview')), (e) => e.status === 503 && e.safeToResubmit && e.transient && e.i18n.params.detail === 'overloaded')
+})
+
+test('gaorui real service: chat answers and token usage of the five catalog models', async (t) => {
+  // One answer per model, as recorded (ids replaced, reasoning text shortened). Reasoning text is never part of the answer.
+  const answers = {
+    'deepseek-v4-pro': { choices: [{ finish_reason: 'stop', index: 0, logprobs: null, message: { content: 'pong', reasoning_content: 'thinking...', role: 'assistant' } }], created: 1791600150, id: 'id-0', model: 'deepseek-v4-pro-ga', service_tier: 'default', object: 'chat.completion', usage: { completion_tokens: 30, prompt_tokens: 91, total_tokens: 121, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 27 } } },
+    'gpt-5.5': { id: 'resp_0', object: 'chat.completion', created: 1791600152, model: 'gpt-5.5', choices: [{ index: 0, message: { role: 'assistant', content: 'pong' }, finish_reason: 'stop' }], usage: { prompt_tokens: 13, completion_tokens: 5, total_tokens: 18 }, service_tier: 'default' },
+    'glm-5.3': { id: 'id-1', object: 'chat.completion', created: 1791600168, model: 'glm-5.3', choices: [{ index: 0, message: { role: 'assistant', content: 'pong', reasoning_content: 'thinking...', tool_calls: null }, logprobs: null, finish_reason: 'stop', matched_stop: 154827 }], usage: { prompt_tokens: 19, total_tokens: 93, completion_tokens: 74, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 72 } }, metadata: { weight_version: 'default' } },
+    'gpt-6-astra': { id: 'resp_1', object: 'chat.completion', created: 1791600172, model: 'gpt-6-astra', choices: [{ index: 0, message: { role: 'assistant', content: 'pong' }, finish_reason: 'stop' }], usage: { prompt_tokens: 13, completion_tokens: 5, total_tokens: 18 }, service_tier: 'default' },
+    // completion_tokens includes the reasoning tokens (87 of 88 here).
+    'gemini-3.5-flash-c': { id: 'chatcmpl-0', model: 'gemini-3.5-flash', object: 'chat.completion', created: 1791600174, choices: [{ index: 0, message: { role: 'assistant', content: 'pong' }, finish_reason: 'stop' }], usage: { prompt_tokens: 7, completion_tokens: 88, total_tokens: 95, prompt_tokens_details: { cached_tokens: 0, text_tokens: 7, audio_tokens: 0, image_tokens: 0 }, completion_tokens_details: { text_tokens: 0, audio_tokens: 0, reasoning_tokens: 87 }, input_tokens: 0, output_tokens: 0, input_tokens_details: null } },
+  }
+  const up = await fakeUpstream({ 'POST /v1/chat/completions': (c) => ({ body: answers[c.body.model] }) })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const usage = {}
+  for (const model of Object.keys(answers)) {
+    const out = await gaorui.chat(cfg, { model, prompt: 'Reply with exactly one word: pong', imageUrls: [], media, signal })
+    assert.equal(out.text, 'pong', model)
+    usage[model] = [out.usage.inputTokens, out.usage.outputTokens]
+  }
+  assert.deepEqual(up.calls[0].body, { model: 'deepseek-v4-pro', messages: [{ role: 'user', content: 'Reply with exactly one word: pong' }], stream: false })
+  assert.deepEqual(usage, { 'deepseek-v4-pro': [91, 30], 'gpt-5.5': [13, 5], 'glm-5.3': [19, 74], 'gpt-6-astra': [13, 5], 'gemini-3.5-flash-c': [7, 88] })
+  // An image reaches gpt-6-astra and gemini-3.5-flash-c as a data URI in an image_url part; both read it.
+  await gaorui.chat(cfg, { model: 'gpt-6-astra', prompt: 'what number?', imageUrls: ['/files/n.png'], media: { ...media, async toRef() { return 'data:image/png;base64,AAAA' } }, signal })
+  assert.deepEqual(up.calls.at(-1).body.messages[0].content, [{ type: 'text', text: 'what number?' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }])
 })
 
 test('gaorui: the model list call only proves the key; a custom image model uses the nano-banana task API', async (t) => {

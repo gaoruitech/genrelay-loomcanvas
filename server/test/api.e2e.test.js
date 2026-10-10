@@ -200,8 +200,8 @@ test('LoomCanvas API end to end', async (t) => {
     const id = encodeURIComponent('gaorui:nano-banana-2.1')
     await data('PUT', `/api/admin/models/${id}`, { pricing: { currency: 'CNY', unit: 'per_image', by: 'resolution', table: { '1K': 0.1, '2K': 0.2 } } })
     assert.deepEqual(await data('POST', '/api/runs/estimate', { model: 'gaorui:nano-banana-2.1', params: { resolution: '2K' }, count: 2 }), { unitCost: 0.2, totalCost: 0.4, currency: 'CNY', unknown: false })
-    await data('PUT', `/api/admin/models/${encodeURIComponent('gaorui:omni-flash')}`, { pricing: { currency: 'CNY', unit: 'per_video', by: 'resolution_duration', table: { '720p:6': 3 } } })
-    assert.equal((await data('POST', '/api/runs/estimate', { model: 'gaorui:omni-flash', params: { resolution: '720p', duration: 6, imgMode: 'frames' } })).totalCost, 3)
+    await data('PUT', `/api/admin/models/${encodeURIComponent('gaorui:omni-flash')}`, { pricing: { currency: 'CNY', unit: 'per_video', by: 'resolution_duration', table: { '720p:8': 3 } } })
+    assert.equal((await data('POST', '/api/runs/estimate', { model: 'gaorui:omni-flash', params: { resolution: '720p', duration: 8, imgMode: 'frames' } })).totalCost, 3)
     await data('PUT', `/api/admin/models/${encodeURIComponent('gaorui:chat-small')}`, { pricing: { currency: 'USD', unit: 'per_1m_tokens', table: { input: 1, output: 3 } } })
 
     await data('PUT', `/api/admin/models/${encodeURIComponent('gaorui:nano-banana-pro')}`, { enabled: false })
@@ -304,7 +304,15 @@ test('LoomCanvas API end to end', async (t) => {
   })
 
   await t.test('image run: submit, poll, transfer into storage, thumbnail, cost, usage', async () => {
-    const { runId } = await data('POST', '/api/runs', { model: 'gaorui:nano-banana-2.1', prompt: 'a cat', imageUrls: [uploaded.url], params: { resolution: '2K', aspectRatio: 'auto' }, workflowId, nodeId: 'n1' })
+    // The upstream takes reference images as URLs only. This instance has no public address, so a
+    // reference that exists only in its own storage is refused before anything is sent.
+    const sentBefore = upstream.state.calls.length
+    const localRef = await waitRun(`/api/runs/${(await data('POST', '/api/runs', { model: 'gaorui:nano-banana-2.1', prompt: 'a cat', imageUrls: [uploaded.url], params: { resolution: '1K' } })).runId}`)
+    assert.deepEqual([localRef.status, localRef.errorCode], ['failed', 'media.needs_public_url'])
+    assert.equal(upstream.state.calls.length, sentBefore)
+
+    const reference = 'https://images.example.net/reference.png'
+    const { runId } = await data('POST', '/api/runs', { model: 'gaorui:nano-banana-2.1', prompt: 'a cat', imageUrls: [reference], params: { resolution: '2K', aspectRatio: 'auto' }, workflowId, nodeId: 'n1' })
     const run = await waitRun(`/api/runs/${runId}`)
     assert.equal(run.status, 'succeeded', run.error)
     assert.deepEqual([run.progress, run.kind, run.model], [100, 'image', 'gaorui:nano-banana-2.1'])
@@ -318,11 +326,11 @@ test('LoomCanvas API end to end', async (t) => {
     const thumb = await sharp(Buffer.from(await (await fetch(base + out.thumbnailUrl)).arrayBuffer())).metadata()
     assert.deepEqual([thumb.format, thumb.width, thumb.height], ['webp', 512, 384])
 
-    // What the upstream received: raw key, and the local reference image inlined as a data URI.
+    // What the upstream received: raw key, and the reference image as the public URL it was given.
     const submit = upstream.state.calls.find((c) => c.method === 'POST' && c.url === '/v1/nano-banana')
     assert.equal(submit.auth, 'sk-e2e-key-abcdef123456')
     assert.deepEqual([submit.body.model, submit.body.imageSize, 'aspectRatio' in submit.body], ['nano-banana-2.1', '2K', false])
-    assert.match(submit.body.images[0], /^data:image\/png;base64,/)
+    assert.deepEqual(submit.body.images, [reference])
 
     const batch = await data('POST', '/api/runs/status', { ids: [runId, 'junk', '0'.repeat(24)] })
     assert.deepEqual(batch.map((r) => r.id), [runId])
@@ -397,19 +405,19 @@ test('LoomCanvas API end to end', async (t) => {
   await t.test('usage: summary by day and by model, records', async () => {
     const byModel = await data('GET', '/api/admin/usage?groupBy=model')
     const nb = byModel.items.find((r) => r.key === 'gaorui:nano-banana-2.1')
-    assert.deepEqual([nb.runs, nb.succeeded, nb.failed, nb.amount, nb.currency, nb.unknownCount], [1, 1, 0, 0.2, 'CNY', 0])
+    assert.deepEqual([nb.runs, nb.succeeded, nb.failed, nb.amount, nb.currency, nb.unknownCount], [2, 1, 1, 0.2, 'CNY', 0])
     const nb2 = byModel.items.find((r) => r.key === 'gaorui:nano-banana-2')
     assert.deepEqual([nb2.runs, nb2.failed, nb2.canceled, nb2.amount], [2, 1, 1, 0])
     assert.equal(byModel.items.find((r) => r.key === 'gaorui:omni-flash').unknownCount, 1)
 
     const today = new Date().toISOString().slice(0, 10)
     const byDay = await data('GET', `/api/admin/usage?groupBy=day&from=${today}&to=${today}`)
-    assert.deepEqual(byDay.items.map((r) => [r.key, r.runs]), [[today, 5]])
+    assert.deepEqual(byDay.items.map((r) => [r.key, r.runs]), [[today, 6]])
     assert.deepEqual((await data('GET', '/api/admin/usage?groupBy=day&from=2000-01-01&to=2000-01-02')).items, [])
     assert.equal((await call('GET', '/api/admin/usage?from=garbage')).status, 400)
 
     const records = await data('GET', '/api/admin/usage/records?page=1&pageSize=2')
-    assert.deepEqual([records.total, records.page, records.pageSize, records.list.length], [5, 1, 2, 2])
+    assert.deepEqual([records.total, records.page, records.pageSize, records.list.length], [6, 1, 2, 2])
     assert.deepEqual(Object.keys(records.list[0]).filter((k) => ['id', 'createdAt', 'model', 'kind', 'status', 'cost'].includes(k)).length, 6)
     assert.equal((await data('GET', '/api/admin/usage/records?pageSize=99999')).pageSize, 100)
   })

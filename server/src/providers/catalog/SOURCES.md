@@ -7,8 +7,12 @@ documentation. Every page named below was fetched on 2026-10-10 as markdown
 (OpenAI: the page URL plus `.md`; Google: the page URL plus `.md.txt`) and
 read as text, not through a summary. "Verified" means the statement was read
 on the page named in that row on that day. It does not mean the model was
-called: none of these entries has been run against the real API, only against
-a local fake upstream.
+called: none of the OpenAI and Gemini entries has been run against the real
+API, only against a local fake upstream; no OpenAI or Gemini entry carries a
+`verified` date. The 高瑞 entries are a different case: every one of them
+completed a real run on the real service on 2026-10-10 and carries
+`"verified": "2026-10-10"`, see "高瑞: run against the real service" at the
+end.
 
 Prices are deliberately not recorded here or in the catalogs.
 
@@ -167,7 +171,38 @@ Left out, with the reason:
 
 Our own API; no external source.
 
-The image and video entries are the ones the catalog already had.
+The image entries, `omni-flash`, `omni-flash-edit` and
+`grok-imagine-video-1.5-preview` are the ones the catalog already had.
+
+Changed on 2026-10-10 after the runs against the real service:
+
+- `omni-flash`: 6 s removed from `durations`, default now 8 s. The key's
+  `GET /v1/models` lists `omni_flash_6s`, `omni_flash_8s` and
+  `omni_flash_10s`, but `omni_flash_6s` answers HTTP 503 `model_not_found`
+  ("分组 default 下模型 omni_flash_6s 无可用渠道（distributor）", wrapped in
+  `fail_to_fetch_task`: the service behind the relay has no channel), while
+  the same body with `omni_flash_8s` is accepted. The main site's own code
+  offers 8 and 10 s only and marks 6 s as taken offline
+  (`backend/src/routes/omni.js`, `FLASH_DURATIONS`). The request body was
+  right; the duration was not served. The main site also hides 4k for this
+  model (`FLASH_RESOLUTIONS`); 4k stays in the catalog, **unverified**.
+- `sora-2-openai-12s`: removed. HTTP 503 `model_not_found` from the relay
+  itself, and the id is not in the key's `/v1/models`.
+- `veo-3.1`: added. Protocol from the main site (`backend/src/routes/veo.js`,
+  `services/mockAi.js`, "线路1"): `POST /v1/videos` with
+  `{ model, prompt, resolution: lite|720p|1080p|4k, aspect_ratio: 16:9|9:16, images?: [URL] }`,
+  no duration field (8 s fixed). Three upstream ids, all in the key's
+  `/v1/models`: `veo_3_1` (text), `veo_3_1-components` (reference images, the
+  main site allows 3), `veo_3_1-fl` (first and last frame, 2 images). One
+  catalog entry covers the three, the same way `omni-flash` covers its
+  durations; `imgMode` and the presence of images pick the id. All three were
+  run, see below.
+
+Video-capable ids in the key's `GET /v1/models` on 2026-10-10 that are not in
+the catalog, none of them run: `grok-imagine-1.0-video`,
+`grok-imagine-video-1.5`, `grok-imagine-video-edit`, `sd-2.0`, `sd-2.0-fast`,
+`sd-2.0-mini`, `seedance-2.0`, `seedance-2.0-fast`, `seedance-2.0-mini`,
+`seedance-2.5`, and `omni_flash_6s` (see above).
 
 The `chat` section was supplied by the product owner on 2026-10-10 as a list
 of display name, model id and type:
@@ -198,9 +233,41 @@ of display name, model id and type:
   site adds reference images it puts one more text part ("以下为参考图…")
   between the video and the images; LoomCanvas sends the images straight
   after the video, without that sentence.
-- **Not run from LoomCanvas against the real 高瑞 API.** The request shape is
-  pinned against a fake upstream only (`server/test/providers.test.js`,
-  `server/test/vendors.e2e.test.js`).
+- Run from LoomCanvas against the real 高瑞 API on 2026-10-10 (see the next
+  section): the `image_url` form works, and a `video_url` part is ignored.
 - 8 images for the two that read images is the figure a custom 高瑞 chat model
-  gets; the owner's list gives no number. **Unverified.**
-- None of the five has been called from LoomCanvas.
+  gets; the owner's list gives no number. **Unverified** (one image was sent).
+
+## 高瑞: run against the real service
+
+On 2026-10-10, against `https://gaorui.cc`, with a real key, through a
+LoomCanvas instance with local storage and no public address (the whole path:
+`POST /api/runs` or `/api/llm/tasks`, submit, poll, download, store, usage
+record). One run per row at the lowest settings, count 1. The recorded
+answers, with ids and file names replaced, are the fixtures of the tests named
+"real service" in `server/test/providers.test.js`.
+
+"verified" = that run completed and the result was looked at. A catalog entry
+gets `"verified": "2026-10-10"` when its text-only run is verified (for
+`omni-flash-edit`, which has no text-only use, when its edit run is).
+
+| Entry | Text only | With reference images / first and last frame | What was sent, what came back |
+| --- | --- | --- | --- |
+| `nano-banana-pro` | verified | not verified | 1K, 1:1 |
+| `nano-banana-2` | verified | verified | 1K, 1:1. Reference: one image as an http(s) URL, aspect ratio not sent (`auto`). The same as a base64 data URI is refused: HTTP 400 `image_must_be_url` |
+| `nano-banana-2.1` | verified | not verified | 1K, 1:1 |
+| `nano-banana-2-lite` | verified | not verified | 1K, 1:1 |
+| `omni-flash` | verified | verified | `omni_flash_8s`, 720p, 16:9: 1280x720, 8 s, with audio, about 70 s. Reference: `input_reference` with one URL, `imgMode` multi; the clip starts from the reference image. `first_last_frame` not run; `omni_flash_10s` not run |
+| `omni-flash-edit` | n/a | not verified | Edit run verified: `omni_flash_abra_edit`, `source_video_url`, 16:9, 720p; edited clip returned (1280x720), about 2.5 min. `input_reference` not run |
+| `veo-3.1` | verified | verified | `veo_3_1`, `lite`, 16:9: 1280x720, 8 s, with audio, about 90 s. `veo_3_1-components` with `images: [one URL]`: the subject of the reference is kept, about 80 s. `veo_3_1-fl` with `images: [first, last]`: the clip goes from the first image to the last, about 80 s. Status answers name the model with its tier: `veo_3_1-lite`, `veo_3_1-lite-components`, `veo_3_1-lite-fl` |
+| `grok-imagine-video-1.5-preview` | verified | not verified | `size` 1280x720, `resolution` 480p, `seconds` "4": the clip was 848x480 and 6 s long, not 4 s (a single sample). The `durations` list is therefore **not confirmed**: 4 may not be a real option. `image_urls` not run |
+| `deepseek-v4-pro`, `gpt-5.5`, `glm-5.3` | verified | n/a | text; answered, usage returned |
+| `gpt-6-astra` | verified | verified | text; text with one image as a data URI, the image was read: `acceptsImage: true` holds |
+| `gemini-3.5-flash-c` | verified | verified | text; one image as a data URI, read. A 6-second video by public URL in an `image_url` part, described correctly: `acceptsVideo: true` holds. Control: the same with a `video_url` part, answer "no video", prompt tokens those of the text alone |
+
+Not verified for 高瑞: every option value not named above (2K, 4K, 1080p, 4k,
+Veo's 720p and above, the other aspect ratios and durations),
+`maxReferenceImages` of every entry (one image was sent each time, two for
+first and last frame), reference images sent inline to the video endpoint,
+the three text-only chat models' refusal of images (LoomCanvas does not send
+them any, so the upstream's answer was not looked at), and custom models.

@@ -12,7 +12,7 @@ process.env.ACCESS_PASSWORD = 'pw'
 
 const { resetConfig, getConfig, ConfigError } = require('../src/config')
 const { loginRateLimit, clientKey, LOGIN_LIMITS } = require('../src/middleware/auth')
-const { messageFromBody, redactSecrets } = require('../src/providers/http')
+const { messageFromBody, errorCodeFromBody, redactSecrets } = require('../src/providers/http')
 const { buildContentSecurityPolicy, inlineScriptHashes } = require('../src/middleware/security')
 const { createLocalStorage } = require('../src/storage/local')
 
@@ -78,6 +78,18 @@ test('upstream error text: credentials are blanked, and a hostile body cannot st
   assert.ok(Date.now() - started < 1000, 'linear, not quadratic')
   assert.ok(out.length <= 300)
   assert.equal(messageFromBody('<html><body><h1>502 Bad Gateway</h1></body></html>'), '502 Bad Gateway')
+
+  // An error body passed on as a JSON string is unwrapped, to a bounded depth; other text is left alone.
+  const wrapped = { code: 'fail_to_fetch_task', message: '{"error":{"code":"model_not_found","message":"no channel"}}' }
+  assert.equal(messageFromBody(wrapped), 'no channel')
+  assert.equal(errorCodeFromBody(wrapped), 'model_not_found')
+  assert.equal(messageFromBody({ message: '{not json' }), '{not json')
+  assert.equal(messageFromBody({ message: '{"unrelated":1}' }), '{"unrelated":1}')
+  const nest = (n) => (n ? { message: JSON.stringify(nest(n - 1)) } : { message: 'bottom' })
+  assert.equal(messageFromBody(nest(2)), 'bottom')
+  assert.ok(messageFromBody(nest(4)).startsWith('{'), 'stops unwrapping after two levels')
+  assert.equal(errorCodeFromBody({ error: { message: 'x' } }), '')
+  assert.equal(errorCodeFromBody('text'), '')
 })
 
 test('local storage: file addresses are site-relative whatever PUBLIC_URL says, and old absolute ones still resolve', () => {

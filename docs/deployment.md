@@ -188,7 +188,7 @@ It is optional. Leave it empty for local or LAN use; the stock `docker-compose.y
 **It is used for reference media sent to upstream models.** When a node sends a reference image or a source video to a model, the upstream has to read it. For a file on the local disk:
 
 - If `PUBLIC_URL` is a public address, the upstream receives `<PUBLIC_URL>/files/<key>`.
-- If it is empty, or points at `localhost` or a private address, images are sent inline as base64 to providers that accept that. Inputs that must be a URL (the source video of a video edit, reference images for some video models) fail with a message asking you to set `PUBLIC_URL` or switch to object storage.
+- If it is empty, or points at `localhost` or a private address, images are sent inline as base64 to providers that accept that. Inputs that must be a URL (reference images for the Gaorui image models, the source video of a video edit, a video given to a chat model, reference images for some video models) fail with a message asking you to set `PUBLIC_URL` or switch to object storage.
 
 A file in a bucket is handed to the upstream straight from the bucket instead: its public address, or a presigned URL that is valid for one hour. `PUBLIC_URL` is only the fallback when neither is publicly reachable. So with a bucket on the internet, `PUBLIC_URL` is not needed for reference media. See [Storage](storage.md#reference-media-for-upstream-models).
 

@@ -6,7 +6,7 @@
 
 LoomCanvas 本身不带模型。你用自己的 API Key 添加一个服务商，画布替你去调用它的模型。
 
-> 状态：早期开发中。内置的几家服务商（高瑞、OpenAI、Google Gemini）都有针对「假上游」的测试，但在本项目里还没有对着真实服务跑过。如果发现请求格式不对，请提 issue。
+> 状态：早期开发中。内置的三家服务商（高瑞、OpenAI、Google Gemini）都有针对「假上游」的测试。高瑞清单里的每个模型另外在 2026-10-10 对着真实服务跑通过（[每个模型验证了什么](providers.zh-CN.md#高瑞已经验证过的内容)）；OpenAI 和 Google Gemini 全部未验证。如果发现请求格式不对，请提 issue。
 
 ## 1. 准备
 
@@ -34,7 +34,7 @@ cp .env.example .env
    openssl rand -base64 32
    ```
 
-2. 本机或内网使用时，`PUBLIC_URL` 留空即可。上传和生成的文件按「当前打开的地址」寻址，换主机、换端口都能用。需要上游模型按地址读取参考素材时（本地存储下用视频做输入就需要），再把它设成实例的公网地址（例如 `https://canvas.example.com`）。详见[部署](deployment.zh-CN.md#public_url)。
+2. 本机或内网使用时，`PUBLIC_URL` 留空即可。上传和生成的文件按「当前打开的地址」寻址，换主机、换端口都能用。需要上游模型按地址读取参考素材时（本地存储下用视频做输入、或者给高瑞的图片模型传参考图就需要），再把它设成实例的公网地址（例如 `https://canvas.example.com`）。详见[部署](deployment.zh-CN.md#public_url)。
 
 3. 如果别人也能访问这台机器，建议设置 `ACCESS_PASSWORD`。
 

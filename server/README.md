@@ -150,4 +150,5 @@ Unit tests need nothing. The end-to-end tests need a MongoDB: set `TEST_MONGODB_
 `mongodb-memory-server` is used (it downloads a MongoDB binary on first run), and those tests are skipped if neither works.
 The storage tests against a real S3 API (`test/storage.live.test.js`) are skipped unless `TEST_S3_ENDPOINT` and the
 related variables are set; see [`../docs/development.md`](../docs/development.md#live-s3-tests).
-No test calls a real model API: vendor modules are tested against a fake upstream.
+No test calls a real model API: vendor modules are tested against a fake upstream. For Gaorui, part of that fake upstream's answers
+were recorded from the real service on 2026-10-10 (the tests named "real service").

@@ -34,8 +34,22 @@ const AMBIGUOUS = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EPIPE', '
 
 const MAX_RESPONSE_BYTES = 80 * 1024 * 1024
 
+/**
+ * A relay passes the error body of the service behind it on as a JSON string:
+ *   { code: 'fail_to_fetch_task', message: '{"error":{"code":"model_not_found","message":"..."}}' }
+ * Returns that inner body, or null when the text is not one.
+ */
+function nestedBody(text) {
+  const s = String(text || '').trim()
+  if (s[0] !== '{' || s.length > 20000) return null
+  try {
+    const inner = JSON.parse(s)
+    return inner && typeof inner === 'object' ? inner : null
+  } catch { return null }
+}
+
 /** Pull a human-readable message out of the usual error body shapes. */
-function messageFromBody(body) {
+function messageFromBody(body, depth = 0) {
   if (!body) return ''
   // Cut first: this is text from another server, and it can be megabytes of "<".
   if (typeof body === 'string') return body.slice(0, 4000).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
@@ -49,10 +63,34 @@ function messageFromBody(body) {
     body.fail_reason,
   ]
   for (const c of candidates) {
-    if (typeof c === 'string' && c.trim()) return c.trim().slice(0, 300)
+    if (typeof c !== 'string' || !c.trim()) continue
+    const inner = depth < 2 ? nestedBody(c) : null
+    return (inner && messageFromBody(inner, depth + 1)) || c.trim().slice(0, 300)
   }
   return ''
 }
+
+/** The machine-readable error code of an error body ('' when it has none), nested bodies included. */
+function errorCodeFromBody(body, depth = 0) {
+  if (!body || typeof body !== 'object') return ''
+  const e = body.error
+  if (e && typeof e === 'object' && typeof e.code === 'string' && e.code) return e.code
+  if (depth < 2) {
+    for (const c of [typeof e === 'string' ? e : '', body.message, body.msg]) {
+      const inner = typeof c === 'string' ? nestedBody(c) : null
+      const code = inner ? errorCodeFromBody(inner, depth + 1) : ''
+      if (code) return code
+    }
+  }
+  return typeof body.code === 'string' ? body.code : ''
+}
+
+/**
+ * Error codes that say "this will not work however often it is asked", whatever
+ * the HTTP status is. A relay answers 503 when none of its channels serves the
+ * model for this key; asking again changes nothing.
+ */
+const PERMANENT_CODES = new Set(['model_not_found'])
 
 const SECRET_HEADERS = new Set(['authorization', 'x-goog-api-key', 'x-api-key', 'api-key'])
 
@@ -114,11 +152,14 @@ async function request({ method = 'GET', url, headers = {}, data, params, signal
   if (status === 401 || status === 403) {
     throw new ProviderError(detail ? 'upstream.auth_rejected_detail' : 'upstream.auth_rejected', { status, detail }, { status })
   }
+  const upstreamCode = errorCodeFromBody(res.data)
+  const permanent = PERMANENT_CODES.has(upstreamCode)
   throw new ProviderError(detail ? 'upstream.http_error_detail' : 'upstream.http_error', { status, detail }, {
     status,
-    transient: [408, 429, 500, 502, 503, 504].includes(status),
+    upstreamCode,
+    transient: !permanent && [408, 429, 500, 502, 503, 504].includes(status),
     // 429/503 are explicit "not now" answers; the request was not processed.
-    safeToResubmit: status === 429 || status === 503,
+    safeToResubmit: !permanent && (status === 429 || status === 503),
   })
 }
 
@@ -132,4 +173,4 @@ function openaiBase(baseUrl) {
   return /\/v\d+$/.test(base) ? base : `${base}/v1`
 }
 
-module.exports = { request, ProviderError, messageFromBody, redactSecrets, trimBase, openaiBase }
+module.exports = { request, ProviderError, messageFromBody, errorCodeFromBody, redactSecrets, trimBase, openaiBase }

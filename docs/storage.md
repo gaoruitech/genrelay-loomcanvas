@@ -300,7 +300,7 @@ When a node sends a reference image or a source video to a model, the upstream h
 2. Otherwise a **presigned GET URL**, valid for 1 hour, built from the configured endpoint.
 3. Otherwise `<PUBLIC_URL>/files/<key>`, when `PUBLIC_URL` is set.
 
-A candidate is used only if it looks publicly reachable: `http(s)`, not `localhost`, not a private IP address. If none is, images are sent inline as base64 to providers that accept that, and inputs that must be a URL (a source video, reference images of some video models) fail with `media.needs_public_url`. Which provider uses which form is in [Providers](providers.md#how-media-reaches-the-upstream).
+A candidate is used only if it looks publicly reachable: `http(s)`, not `localhost`, not a private IP address. If none is, images are sent inline as base64 to providers that accept that, and inputs that must be a URL (reference images of the Gaorui image models, a source video, a video given to a chat model, reference images of some video models) fail with `media.needs_public_url`. Which provider uses which form is in [Providers](providers.md#how-media-reaches-the-upstream).
 
 So with a bucket whose endpoint is on the internet (AWS S3, R2, OSS with its public endpoint), reference media by URL works without `PUBLIC_URL` and without a public bucket.
 

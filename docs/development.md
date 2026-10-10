@@ -114,7 +114,7 @@ npm test
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
   ```
 
-- Vendor modules are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API.
+- Vendor modules are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API; the fixtures of the tests named "real service" in `server/test/providers.test.js` are answers recorded from the Gaorui service on 2026-10-10.
 - The S3 storage tests against a real service are skipped unless `TEST_S3_ENDPOINT` is set; see [Live S3 tests](#live-s3-tests).
 
 The frontend has no unit tests. `npm run build` (type-check) and `npm run i18n:check` are its gates.

@@ -6,7 +6,7 @@ An open-source, self-hosted infinite canvas for AI image and video creation. Con
 
 LoomCanvas does not sell credits and ships no models. You bring your own API keys; the canvas shows the estimated cost of each step and keeps a usage log.
 
-> Status: early development. Interfaces may change before the first tagged release. The built-in providers are tested against a fake upstream and have not yet been exercised against the real services as part of this project; the S3 storage driver is verified against MinIO only, and has not been run against AWS S3, Cloudflare R2 or Aliyun OSS.
+> Status: early development. Interfaces may change before the first tagged release. Verification status of the built-in providers: every Gaorui catalog model completed a real run against the real service on 2026-10-10 at the lowest settings (which models were also run with reference images, and what was not run, is in [one table](docs/providers.md#gaorui-what-has-been-verified)); OpenAI and Google Gemini are all unverified: they are tested against a fake upstream only; the S3 storage driver is verified against MinIO only, and has not been run against AWS S3, Cloudflare R2 or Aliyun OSS.
 
 ![The canvas editor](docs/images/11-editor-en.png)
 
@@ -45,7 +45,7 @@ docker compose up -d
 Open http://localhost:3000 (or the host's address, with the `PORT` you set) and follow the setup page to add a provider. The recommended one is Gaorui; get a key at https://gaorui.cc.
 
 - `SECRET_KEY` encrypts your provider API keys in the database. Keep it safe and do not change it afterwards, or the saved keys can no longer be decrypted.
-- `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs when files are kept on the local disk).
+- `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs, and for reference images with the Gaorui image models, when files are kept on the local disk).
 - Set `ACCESS_PASSWORD` if anyone else can reach the machine.
 
 Step by step: [Getting started](docs/getting-started.md).

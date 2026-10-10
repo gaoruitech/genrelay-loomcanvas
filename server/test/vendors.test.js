@@ -30,7 +30,7 @@ test('catalogs: every vendor file loads, validates and states all three kinds', 
   // What each catalog holds today. Changing a catalog means changing this on purpose.
   const ids = (vendor, kind) => loadCatalog(vendor).filter((m) => m.kind === kind).map((m) => m.id)
   assert.deepEqual(ids('gaorui', 'image'), ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1', 'nano-banana-2-lite'])
-  assert.deepEqual(ids('gaorui', 'video'), ['omni-flash', 'omni-flash-edit', 'sora-2-openai-12s', 'grok-imagine-video-1.5-preview'])
+  assert.deepEqual(ids('gaorui', 'video'), ['omni-flash', 'omni-flash-edit', 'veo-3.1', 'grok-imagine-video-1.5-preview'])
   assert.deepEqual(ids('gaorui', 'chat'), ['deepseek-v4-pro', 'gpt-5.5', 'glm-5.3', 'gpt-6-astra', 'gemini-3.5-flash-c'])
   assert.deepEqual(ids('openai', 'image'), ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2'])
   assert.deepEqual(ids('openai', 'video'), [])
@@ -91,6 +91,25 @@ test('catalogs: the provider docs name every catalog model, in both languages', 
   }
 })
 
+test('catalogs: "verified" is the day a model was really run, and is only ever on catalog models that were', () => {
+  const day = (vendor) => Object.fromEntries(loadCatalog(vendor).map((m) => [m.id, m.verified]))
+  // Every 高瑞 entry completed a real run on 2026-10-10 (catalog/SOURCES.md says which). Adding a model does not add a date.
+  assert.deepEqual(Object.entries(day('gaorui')).filter(([, d]) => d !== '2026-10-10'), [])
+  // Nothing of OpenAI or Gemini has been run against the real API.
+  for (const vendor of ['openai', 'gemini']) assert.deepEqual(Object.values(day(vendor)).filter(Boolean), [], vendor)
+
+  // Served with the vendor's model list and with an instance's models...
+  const vendors = registry.listVendors('en')
+  assert.equal(vendors.find((v) => v.type === 'gaorui').models.find((m) => m.model === 'veo-3.1').verified, '2026-10-10')
+  assert.equal(vendors.find((v) => v.type === 'openai').models.some((m) => 'verified' in m), false)
+  const instance = { id: '1', slug: 'gaorui', name: '', type: 'gaorui' }
+  const [spec] = registry.buildSpecs(instance, [loadCatalog('gaorui').find((m) => m.id === 'omni-flash')])
+  assert.equal(spec.verified, '2026-10-10')
+  // ...and never for a custom model, whatever its stored row says.
+  const [custom] = registry.buildSpecs(instance, [{ id: 'mine', kind: 'chat', custom: true, verified: '2026-10-10' }])
+  assert.equal('verified' in custom, false)
+})
+
 test('catalogs: the validator refuses anything half-declared', () => {
   const ok = { id: 'm', label: 'M', acceptsImage: true, acceptsVideo: false, videoEdit: false, maxReferenceImages: 2, options: { aspectRatios: ['1:1'] }, defaults: { aspectRatio: '1:1' } }
   const wrap = (entry, kind = 'image') => ({ image: [], video: [], chat: [], [kind]: [entry] })
@@ -111,6 +130,9 @@ test('catalogs: the validator refuses anything half-declared', () => {
     [wrap({ ...ok, defaults: { aspectRatio: '16:9' } }), /not one of options.aspectRatios/],
     [wrap({ ...ok, defaults: { resolution: '1K' } }), /not one of options.resolutions/],
     [wrap({ ...ok, pricing: {} }), /unknown field "pricing"/],
+    [wrap({ ...ok, verified: true }), /verified must be a date/],
+    [wrap({ ...ok, verified: '2026-13-01' }), /verified must be a date/],
+    [wrap({ ...ok, verified: '10/10/2026' }), /verified must be a date/],
   ]
   for (const [data, message] of bad) assert.throws(() => validateCatalog('t', data), message)
   // Private fields are for the vendor module and pass through.

@@ -114,7 +114,7 @@ npm test
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
   ```
 
-- 服务商模块是对着测试里现起的假上游测的，见[编写服务商模块](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口。
+- 服务商模块是对着测试里现起的假上游测的，见[编写服务商模块](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口；`server/test/providers.test.js` 里名字带 "real service" 的测试，用的样本是 2026-10-10 从高瑞服务录下来的回答。
 - 对着真实服务的 S3 存储测试，没设 `TEST_S3_ENDPOINT` 时是跳过的，见[对着真实的 S3 测试](#对着真实的-s3-测试)。
 
 前端没有单元测试，把关的是 `npm run build`（类型检查）和 `npm run i18n:check`。

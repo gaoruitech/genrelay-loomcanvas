@@ -300,7 +300,7 @@ mc mirror /path/to/data/files ALIAS/BUCKET/PREFIX
 2. 否则给一个**预签名的 GET 地址**，有效期 1 小时，按所填的 Endpoint 生成。
 3. 再否则，设了 `PUBLIC_URL` 的话，给 `<PUBLIC_URL>/files/<key>`。
 
-候选地址只有「看起来公网可达」才会用：`http(s)`，不是 `localhost`，不是内网 IP。一个都不满足时，图片以 base64 内联发给支持这种方式的服务商；必须是地址的输入（原视频、交给对话模型分析的视频、部分视频模型的参考图）以 `media.needs_public_url` 失败。哪家服务商用哪种形式，见[服务商](providers.zh-CN.md#素材怎么送到上游)。
+候选地址只有「看起来公网可达」才会用：`http(s)`，不是 `localhost`，不是内网 IP。一个都不满足时，图片以 base64 内联发给支持这种方式的服务商；必须是地址的输入（高瑞图片模型的参考图、原视频、交给对话模型分析的视频、部分视频模型的参考图）以 `media.needs_public_url` 失败。哪家服务商用哪种形式，见[服务商](providers.zh-CN.md#素材怎么送到上游)。
 
 所以，只要桶的 Endpoint 在公网上（AWS S3、R2、用公网 Endpoint 的 OSS），不设 `PUBLIC_URL`、桶不公开，也能按地址把参考素材交给上游。
 
