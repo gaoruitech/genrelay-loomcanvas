@@ -30,7 +30,7 @@ test('catalogs: every vendor file loads, validates and states all three kinds', 
   // What each catalog holds today. Changing a catalog means changing this on purpose.
   const ids = (vendor, kind) => loadCatalog(vendor).filter((m) => m.kind === kind).map((m) => m.id)
   assert.deepEqual(ids('gaorui', 'image'), ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1', 'nano-banana-2-lite'])
-  assert.deepEqual(ids('gaorui', 'video'), ['omni-flash', 'omni-flash-edit', 'veo-3.1', 'grok-imagine-video-1.5-preview'])
+  assert.deepEqual(ids('gaorui', 'video'), ['omni-flash', 'omni-flash-edit', 'veo-3.1', 'grok-imagine-video-1.5-preview', 'grok-imagine-1.0-video'])
   assert.deepEqual(ids('gaorui', 'chat'), ['deepseek-v4-pro', 'gpt-5.5', 'glm-5.3', 'gpt-6-astra', 'gemini-3.5-flash-c'])
   assert.deepEqual(ids('openai', 'image'), ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2'])
   assert.deepEqual(ids('openai', 'video'), [])
@@ -42,6 +42,16 @@ test('catalogs: every vendor file loads, validates and states all three kinds', 
   assert.deepEqual(ids('gemini', 'video'), [])
   assert.deepEqual(ids('gemini', 'chat'), ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview'])
   assert.equal(loadCatalog('gaorui').find((m) => m.id === 'omni-flash-edit').videoEdit, true)
+  // What is offered for the options that have had values removed (a stored value that is gone falls back; see providers.test.js).
+  const opt = (id) => loadCatalog('gaorui').find((m) => m.id === id).options
+  assert.deepEqual([opt('omni-flash').resolutions, opt('omni-flash').durations], [['720p', '1080p'], [8, 10]])
+  assert.deepEqual(opt('omni-flash-edit').resolutions, ['720p'])
+  assert.deepEqual(opt('grok-imagine-video-1.5-preview').durations, [6, 8, 10, 12, 15])
+  assert.deepEqual([opt('grok-imagine-1.0-video').resolutions, opt('grok-imagine-1.0-video').durations], [['480p'], [6, 10, 15]])
+  // The models whose reference images go out as public URLs only.
+  const urlOnly = (vendor) => loadCatalog(vendor).filter((m) => m.imageByUrlOnly).map((m) => m.id)
+  assert.deepEqual(urlOnly('gaorui'), ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1', 'nano-banana-2-lite', 'veo-3.1', 'grok-imagine-video-1.5-preview', 'grok-imagine-1.0-video'])
+  assert.deepEqual([urlOnly('openai'), urlOnly('gemini')], [[], []])
 })
 
 test('catalogs: the 高瑞 chat models, text-only or image-reading as stated, and the one that takes a video', () => {
@@ -133,6 +143,8 @@ test('catalogs: the validator refuses anything half-declared', () => {
     [wrap({ ...ok, verified: true }), /verified must be a date/],
     [wrap({ ...ok, verified: '2026-13-01' }), /verified must be a date/],
     [wrap({ ...ok, verified: '10/10/2026' }), /verified must be a date/],
+    [wrap({ ...ok, imageByUrlOnly: false }), /imageByUrlOnly is either true/],
+    [wrap({ ...ok, acceptsImage: false, maxReferenceImages: 0, imageByUrlOnly: true }), /imageByUrlOnly is either true/],
   ]
   for (const [data, message] of bad) assert.throws(() => validateCatalog('t', data), message)
   // Private fields are for the vendor module and pass through.

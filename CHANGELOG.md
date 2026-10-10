@@ -107,8 +107,8 @@ Removed (**breaking**)
 
 **Verified against the real Gaorui service (2026-10-10)**
 
-- Every model in the Gaorui catalog completed one real run with a real key at the lowest settings: the four Nano Banana image models (text-to-image, 1K); all five chat models; `omni-flash` (text-to-video, 8 s, 720p); `veo-3.1` (text-to-video, lite); `grok-imagine-video-1.5-preview` (text-to-video, 480p); `omni-flash-edit` (video edit, 720p). The connection test as well.
-- Also verified with inputs: `nano-banana-2` and `omni-flash` with one reference image; `veo-3.1` with one reference image and with a first and a last frame; `gpt-6-astra` and `gemini-3.5-flash-c` with an image; video analysis with `gemini-3.5-flash-c`.
+- Every model in the Gaorui catalog completed one real run with a real key at the lowest settings: the four Nano Banana image models (text-to-image, 1K); all five chat models; `omni-flash` (text-to-video, 8 s, 720p); `veo-3.1` (text-to-video, lite); `grok-imagine-video-1.5-preview` (text-to-video, 480p); `grok-imagine-1.0-video` (text-to-video, 6 s, 480p); `omni-flash-edit` (video edit, 720p). The connection test as well.
+- Also verified with inputs: `nano-banana-2`, `omni-flash` and `grok-imagine-1.0-video` with one reference image; `veo-3.1` with one reference image and with a first and a last frame; `gpt-6-astra` and `gemini-3.5-flash-c` with an image; video analysis with `gemini-3.5-flash-c`.
 - Not verified: reference images for `nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2-lite`, `omni-flash-edit` and `grok-imagine-video-1.5-preview`; the first-and-last-frame mode of `omni-flash`; every resolution above the lowest; OpenAI and Google Gemini as a whole. The table, one row per model: [docs/providers.md](docs/providers.md#gaorui-what-has-been-verified).
 - Catalog entries can carry a `verified` date. Models that have one show a "Verified" badge in the provider's model list and on Settings → Models.
 - Added `veo-3.1` (Veo 3.1: text, up to 3 reference images, or first and last frame; 8 s fixed).
@@ -116,7 +116,10 @@ Removed (**breaking**)
 - `omni-flash` no longer offers 6 s: the service lists `omni_flash_6s` but answers HTTP 503 `model_not_found` for it. 8 s is the default; a node that stored 6 s falls back to 8 s.
 - Fixed as a result: reference images of the Gaorui image models are now sent as public URLs only. The real service refuses inline base64 (`image_must_be_url`), so an image without a public address is refused before the request is sent, with the usual "A publicly reachable URL is needed…" message.
 - Fixed as a result: an upstream error that arrives as a JSON string inside another error body is shown as its message, not as raw JSON; and a `model_not_found` answer is no longer retried, whatever its HTTP status (the service sends it with 503).
-- Observed, not changed: `grok-imagine-video-1.5-preview` asked for 4 seconds returned a 6-second clip (a single sample).
+- Added `grok-imagine-1.0-video` (Grok Video 1.0: text or up to 3 reference images; 6, 10 or 15 s; 480p).
+- `omni-flash` no longer offers 4k (720p and 1080p, as on the Gaorui main site), and `omni-flash-edit` has no resolution to choose: an edit is always 720p. A node that stored 4k falls back to 720p.
+- `grok-imagine-video-1.5-preview` no longer offers 4 s: asked for 4 seconds, the service returned a 6-second clip. The shortest is 6 s; a node that stored 4 s falls back to 6 s.
+- Models that only take reference images by public URL (the Gaorui image models, Veo 3.1, Grok Video) are marked as such, and the canvas says so before a run: on an instance without a public address, a node that uses one of them with an image connected shows the reason and what to do, and Run stops there. The same for the source video of a video edit. Gaorui has no upload endpoint that would take a local file with just the key (checked 2026-10-10).
 
 **Known limitations**
 
@@ -223,8 +226,8 @@ Removed (**breaking**)
 
 **对着真实的高瑞服务验证过的内容（2026-10-10）**
 
-- 高瑞清单里的每个模型都用真实的 Key、最低档参数真实跑通过一次：四个 Nano Banana 图片模型（文生图，1K）；五个对话模型；`omni-flash`（文生视频，8 秒，720p）；`veo-3.1`（文生视频，lite）；`grok-imagine-video-1.5-preview`（文生视频，480p）；`omni-flash-edit`（视频编辑，720p）。连接测试也验证了。
-- 带输入也验证了的：`nano-banana-2` 和 `omni-flash` 带一张参考图；`veo-3.1` 带一张参考图、以及首尾帧；`gpt-6-astra` 和 `gemini-3.5-flash-c` 带一张图片；用 `gemini-3.5-flash-c` 做视频分析。
+- 高瑞清单里的每个模型都用真实的 Key、最低档参数真实跑通过一次：四个 Nano Banana 图片模型（文生图，1K）；五个对话模型；`omni-flash`（文生视频，8 秒，720p）；`veo-3.1`（文生视频，lite）；`grok-imagine-video-1.5-preview`（文生视频，480p）；`grok-imagine-1.0-video`（文生视频，6 秒，480p）；`omni-flash-edit`（视频编辑，720p）。连接测试也验证了。
+- 带输入也验证了的：`nano-banana-2`、`omni-flash` 和 `grok-imagine-1.0-video` 带一张参考图；`veo-3.1` 带一张参考图、以及首尾帧；`gpt-6-astra` 和 `gemini-3.5-flash-c` 带一张图片；用 `gemini-3.5-flash-c` 做视频分析。
 - 未验证：`nano-banana-pro`、`nano-banana-2.1`、`nano-banana-2-lite`、`omni-flash-edit`、`grok-imagine-video-1.5-preview` 的参考图；`omni-flash` 的首尾帧模式；最低档以外的所有分辨率；OpenAI 和 Google Gemini 全部。每个模型一行的表见 [docs/providers.zh-CN.md](docs/providers.zh-CN.md#高瑞已经验证过的内容)。
 - 模型清单的条目可以带一个 `verified` 日期。带日期的模型在服务商的模型列表和「设置 → 模型」页显示「已实测」标记。
 - 新增 `veo-3.1`（Veo 3.1：文生视频、最多 3 张参考图、或首尾帧；固定 8 秒）。
@@ -232,7 +235,10 @@ Removed (**breaking**)
 - `omni-flash` 不再提供 6 秒：该服务列着 `omni_flash_6s`，但对它返回 HTTP 503 `model_not_found`。默认改为 8 秒；存着 6 秒的节点会回落到 8 秒。
 - 由此修正：高瑞图片模型的参考图现在只按公网地址发送。真实服务不接受内联的 base64（`image_must_be_url`），所以没有公网地址的图片会在请求发出之前被拒绝，提示还是那句「…需要公网可访问的地址…」。
 - 由此修正：上游的错误如果是包在另一个错误体里的 JSON 字符串，现在显示其中的文字，而不是整段 JSON；`model_not_found` 不管 HTTP 状态码是什么都不再重试（该服务是用 503 返回的）。
-- 观察到、未改动：`grok-imagine-video-1.5-preview` 请求 4 秒，返回的是 6 秒的视频（只有这一次样本）。
+- 新增 `grok-imagine-1.0-video`（Grok Video 1.0：文生视频、或最多 3 张参考图；6、10、15 秒；480p）。
+- `omni-flash` 不再提供 4k（只有 720p 和 1080p，和高瑞主站一致）；`omni-flash-edit` 没有分辨率可选，视频编辑一律是 720p。存着 4k 的节点会回落到 720p。
+- `grok-imagine-video-1.5-preview` 不再提供 4 秒：请求 4 秒，该服务返回的是 6 秒的视频。最短是 6 秒；存着 4 秒的节点会回落到 6 秒。
+- 参考图只能给公网地址的模型（高瑞的图片模型、Veo 3.1、Grok Video）现在有标记，画布在运行之前就会说明：实例没有公网地址时，节点用的是这类模型又连着图片，节点上会写明原因和做法，点运行也停在这里。视频编辑的原视频同样处理。高瑞没有只凭 Key 就能上传本地文件的接口（2026-10-10 查过）。
 
 **已知的局限**
 

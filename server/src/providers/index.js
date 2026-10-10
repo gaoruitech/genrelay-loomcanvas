@@ -132,6 +132,8 @@ function buildSpecs(instance, rawSpecs) {
       options,
       defaults: raw.defaults && typeof raw.defaults === 'object' ? { ...raw.defaults } : {},
     }
+    // Reference images go to the upstream as public URLs only (see catalog/index.js).
+    if (raw.imageByUrlOnly === true && spec.acceptsImage) spec.imageByUrlOnly = true
     // Catalog entries only: the day the project ran this model against the real service.
     if (!spec.custom && typeof raw.verified === 'string' && raw.verified) spec.verified = raw.verified
     if (raw.desc) spec.desc = String(raw.desc)

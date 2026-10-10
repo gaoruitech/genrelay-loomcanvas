@@ -198,6 +198,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
+import { useAppStore } from '@/stores/app'
 import LcSelect from '@/components/LcSelect.vue'
 import type { StoragePreset, StorageS3Form, StorageStatus, StorageTestResult } from '@/types'
 
@@ -339,6 +340,8 @@ async function save(force: boolean) {
     confirmForce.value = false
     if (!force) testResult.value = null
     MessagePlugin.success(t('settings.storage.savedS3'))
+    // 「上游能不能按地址读到文件」跟着存储变，画布上的提示要用新的
+    void useAppStore().loadBootstrap()
   } catch (err: any) {
     const data = err?.response?.data
     if (data?.code === 'storage.save_needs_test' && data.data?.test) {
@@ -357,6 +360,7 @@ async function switchToLocal() {
   saving.value = true
   try {
     applyStatus(unwrap(await adminApi.saveStorage({ driver: 'local' })))
+    void useAppStore().loadBootstrap()
     confirmLocal.value = false
     testResult.value = null
     error.value = ''

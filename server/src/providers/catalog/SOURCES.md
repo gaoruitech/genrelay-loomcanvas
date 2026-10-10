@@ -184,8 +184,42 @@ Changed on 2026-10-10 after the runs against the real service:
   the same body with `omni_flash_8s` is accepted. The main site's own code
   offers 8 and 10 s only and marks 6 s as taken offline
   (`backend/src/routes/omni.js`, `FLASH_DURATIONS`). The request body was
-  right; the duration was not served. The main site also hides 4k for this
-  model (`FLASH_RESOLUTIONS`); 4k stays in the catalog, **unverified**.
+  right; the duration was not served.
+- `omni-flash`: 4k removed from `resolutions` (owner's decision). The main
+  site offers 720p and 1080p only (`backend/src/routes/omni.js`,
+  `FLASH_RESOLUTIONS = ['720p', '1080p'] // 4k 已隐藏`; the same two in
+  `frontend/src/views/Omni.vue` and in the canvas adapter). The upstream
+  caller still accepts 4k; it was never run. A stored 4k is sent as 720p.
+- `omni-flash-edit`: `resolutions` is now `["720p"]`. The main site offers no
+  resolution for an edit: its page shows the resolution choice only when the
+  mode is not video edit and sends `resolution: undefined` for one
+  (`Omni.vue`), its canvas edit adapter has aspect ratios only, and the route
+  then falls back to `FLASH_DEFAULT_RESOLUTION = '720p'`, which the caller
+  sends upstream. So every edit the main site makes is 720p, which is also
+  the one that was run here. `gaorui.js` always sends 720p for an edit.
+- `grok-imagine-video-1.5-preview`: 4 s removed from `durations` (owner: the
+  minimum is 6 s). It agrees with the run below (asked for 4, got 6) and with
+  the main site's pages, which offer 6 to 15 s. A stored 4 is sent as 6.
+- `grok-imagine-1.0-video`: added as "Grok Video 1.0". Protocol from the main
+  site (`backend/src/routes/grok.js`,
+  `services/batch-video/callers/GrokCaller.js`, whose default address is
+  `https://gaorui.cc/v1/videos`): `POST /v1/videos` with
+  `{ model, prompt, size, seconds: "<n>" (a string), quality, resolution, image_urls?: [URL] (max 3) }`,
+  polled like the other video models. Sizes are those of Grok Video 1.5
+  (`GROK_RATIO_SIZE_MAP`). Durations 6 / 10 / 15 s are what the main site's
+  pages offer (its route still accepts 12, 16 and 20 for old canvases; not
+  offered here). Quality: the caller maps 480p to `quality: "standard"` and
+  720p to `"high"` and sends `resolution` as well, but the main site offers
+  480p only (`GROK_10_RESOLUTIONS = ['480p']`), and so does the catalog. With
+  more than one reference image the main site's page caps the clip at 10 s;
+  `gaorui.js` does the same. The main site has a second caller for 1.0
+  (`GrokV2Caller`: `input_reference` as one `|`-joined string, 10 s forced)
+  behind a configuration switch; it was not used: the two runs below went
+  through with `image_urls`, and the reference image is visibly the first
+  frame of the returned clip.
+- `imageByUrlOnly: true` on the four image models, `veo-3.1` and the two Grok
+  models: `gaorui.js` hands their reference images over as public URLs and
+  refuses one that has none. The canvas reads the flag to say so before a run.
 - `sora-2-openai-12s`: removed. HTTP 503 `model_not_found` from the relay
   itself, and the id is not in the key's `/v1/models`.
 - `veo-3.1`: added. Protocol from the main site (`backend/src/routes/veo.js`,
@@ -199,8 +233,8 @@ Changed on 2026-10-10 after the runs against the real service:
   run, see below.
 
 Video-capable ids in the key's `GET /v1/models` on 2026-10-10 that are not in
-the catalog, none of them run: `grok-imagine-1.0-video`,
-`grok-imagine-video-1.5`, `grok-imagine-video-edit`, `sd-2.0`, `sd-2.0-fast`,
+the catalog, none of them run: `grok-imagine-video-1.5`,
+`grok-imagine-video-edit`, `sd-2.0`, `sd-2.0-fast`,
 `sd-2.0-mini`, `seedance-2.0`, `seedance-2.0-fast`, `seedance-2.0-mini`,
 `seedance-2.5`, and `omni_flash_6s` (see above).
 
@@ -260,12 +294,27 @@ gets `"verified": "2026-10-10"` when its text-only run is verified (for
 | `omni-flash` | verified | verified | `omni_flash_8s`, 720p, 16:9: 1280x720, 8 s, with audio, about 70 s. Reference: `input_reference` with one URL, `imgMode` multi; the clip starts from the reference image. `first_last_frame` not run; `omni_flash_10s` not run |
 | `omni-flash-edit` | n/a | not verified | Edit run verified: `omni_flash_abra_edit`, `source_video_url`, 16:9, 720p; edited clip returned (1280x720), about 2.5 min. `input_reference` not run |
 | `veo-3.1` | verified | verified | `veo_3_1`, `lite`, 16:9: 1280x720, 8 s, with audio, about 90 s. `veo_3_1-components` with `images: [one URL]`: the subject of the reference is kept, about 80 s. `veo_3_1-fl` with `images: [first, last]`: the clip goes from the first image to the last, about 80 s. Status answers name the model with its tier: `veo_3_1-lite`, `veo_3_1-lite-components`, `veo_3_1-lite-fl` |
-| `grok-imagine-video-1.5-preview` | verified | not verified | `size` 1280x720, `resolution` 480p, `seconds` "4": the clip was 848x480 and 6 s long, not 4 s (a single sample). The `durations` list is therefore **not confirmed**: 4 may not be a real option. `image_urls` not run |
+| `grok-imagine-video-1.5-preview` | verified | not verified | `size` 1280x720, `resolution` 480p, `seconds` "4": the clip was 848x480 and 6 s long, not 4 s. 4 has since been removed from `durations`; no run has been made with `seconds` "6" or more. `image_urls` not run |
+| `grok-imagine-1.0-video` | verified | verified | `size` 1280x720, `seconds` "6", `quality` standard, `resolution` 480p: 752x416, 6.04 s, h264 with audio, about 40 s. With `image_urls: [one URL]`: same format, 6.04 s, about 55 s, the clip starts from the reference image. The create answer names no model; status answers are flat (`status: in_progress` / `completed`, the link in `video_url`, `url`, `output_url` and `metadata.url`). 10 and 15 s not run |
 | `deepseek-v4-pro`, `gpt-5.5`, `glm-5.3` | verified | n/a | text; answered, usage returned |
 | `gpt-6-astra` | verified | verified | text; text with one image as a data URI, the image was read: `acceptsImage: true` holds |
 | `gemini-3.5-flash-c` | verified | verified | text; one image as a data URI, read. A 6-second video by public URL in an `image_url` part, described correctly: `acceptsVideo: true` holds. Control: the same with a `video_url` part, answer "no video", prompt tokens those of the text alone |
 
-Not verified for 高瑞: every option value not named above (2K, 4K, 1080p, 4k,
+Whether the public API can take a local file with just the key, looked into
+on 2026-10-10 (main site code, and calls that cost nothing):
+
+| Call | Answer |
+| --- | --- |
+| `GET` / `POST /v1/uploads`, `/v1/upload`, `GET /v1/assets`, `/v1/images/uploads`, `/v1/media` | HTTP 404 `Invalid URL` |
+| `POST /v1/assets/uploads` with `{}` | HTTP 400 `purpose is required`. The route exists. In the main site (`services/taskWorker.js`) it is called with `{ url, model, mode: 'asset', type, purpose, role, subject_type }` to register material that already has a public URL for the Seedance models, and returns `asset_url` (`asset://…`) |
+| `GET` / `POST /v1/files` | HTTP 400 "未指定模型名称": a relay route that needs a model. Not used anywhere in the main site |
+| `POST /v1/nano-banana` with a data URI in `images` | HTTP 400 `image_must_be_url` ("图片/参考图仅支持 http/https URL"), recorded earlier |
+
+Nothing here turns a local file into an http(s) address the image models
+accept, so nothing was built on it. The main site itself uploads to its own
+object storage first and passes that address on.
+
+Not verified for 高瑞: every option value not named above (2K, 4K, 1080p,
 Veo's 720p and above, the other aspect ratios and durations),
 `maxReferenceImages` of every entry (one image was sent each time, two for
 first and last frame), reference images sent inline to the video endpoint,

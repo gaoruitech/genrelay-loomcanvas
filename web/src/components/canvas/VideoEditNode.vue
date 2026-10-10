@@ -95,6 +95,7 @@
       />
 
       <div v-if="displayError" class="cv-error">{{ displayError }}</div>
+      <div v-else-if="publicUrlNotice" class="cv-notice">{{ publicUrlNotice }}</div>
 
       <NodeImageRefs
         :refs="imageRefs"
@@ -236,6 +237,7 @@ import NodeImageRefs from '@/components/canvas/NodeImageRefs.vue'
 import MentionPicker from '@/components/canvas/MentionPicker.vue'
 import { useMentionInput } from '@/composables/useMentionInput'
 import { useEstimateCost } from '@/composables/useEstimateCost'
+import { usePublicUrlNotice } from '@/composables/usePublicUrlNotice'
 import { formatEstimate } from '@/utils/cost'
 import type { Cost } from '@/types'
 import {
@@ -432,6 +434,8 @@ const panelOpen = ref(false)
  * 只读画布（分享页）没有 provide 执行器，退化成空数组，整块不渲染。
  */
 const imageRefs = computed(() => executor?.collectImageRefs(props.id) || [])
+// 参考素材只能按公网地址交给上游、而实例没有公网地址：运行之前就说明
+const publicUrlNotice = usePublicUrlNotice(props.id, adapter, imageRefs)
 const refsReorderable = computed(() => true)
 
 const mention = useMentionInput({

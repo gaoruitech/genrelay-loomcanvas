@@ -22,6 +22,10 @@ export default {
       promptOnly: '首尾帧模式下只用提示词',
       manage: '管理品牌包',
     },
+    publicUrl: {
+      image: '{model} 的参考图只能以公网地址交给上游，而这个实例没有公网地址，带参考图运行会被拒绝。请把 PUBLIC_URL 设为实例的公网域名，或在「设置 → 存储」改用公网能访问的对象存储；不带参考图可以照常运行。',
+      video: '源视频只能以公网地址交给上游，而这个实例没有公网地址，运行会被拒绝。请把 PUBLIC_URL 设为实例的公网域名，或在「设置 → 存储」改用公网能访问的对象存储。',
+    },
     params: {
       title: '比例 / 分辨率 / 时长 / 数量',
     },
@@ -79,6 +83,10 @@ export default {
       refCount: 'Uses {used}/{max} reference images',
       promptOnly: 'Prompt only in first/last frame mode',
       manage: 'Manage brand kits',
+    },
+    publicUrl: {
+      image: '{model} takes reference images by public URL only, and this instance has no public address, so a run with a reference image will be refused. Set PUBLIC_URL to the public domain of this instance, or switch to a bucket reachable from the internet under Settings → Storage. Without a reference image it runs as usual.',
+      video: 'The source video is handed over by public URL only, and this instance has no public address, so the run will be refused. Set PUBLIC_URL to the public domain of this instance, or switch to a bucket reachable from the internet under Settings → Storage.',
     },
     params: {
       title: 'Aspect ratio / resolution / duration / count',

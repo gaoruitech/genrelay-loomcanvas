@@ -443,6 +443,25 @@ test('connection test errors name the cause', () => {
   assert.deepEqual([other.code, other.params.code], ['storage.err_other', 'SlowDown'])
 })
 
+test('can an upstream be given a stored file by URL: a public PUBLIC_URL, or a bucket reachable from outside', async () => {
+  const { newFilesReachable } = require('../src/services/media')
+  const AWS = { ...MINIO, preset: 'aws', endpoint: '', region: 'eu-west-1', forcePathStyle: false }
+  const ask = async (plan) => { storage.resetStorage(); if (plan) storage.configure(plan); const out = await newFilesReachable(); storage.resetStorage(); return out }
+  // Local disk, no PUBLIC_URL: the default install. The canvas warns before a run that has to hand over a URL.
+  assert.equal(await ask(null), false)
+  assert.equal(await withEnv({ PUBLIC_URL: 'http://localhost:3000' }, () => ask(null)), false, 'an address only this machine can open does not count')
+  assert.equal(await withEnv({ PUBLIC_URL: 'http://192.168.1.20:3000' }, () => ask(null)), false)
+  assert.equal(await withEnv({ PUBLIC_URL: 'https://canvas.example.com' }, () => ask(null)), true)
+  // New files in a bucket: its signed address is enough when the endpoint is on the internet...
+  assert.equal(await ask({ active: parseS3Config(AWS) }), true)
+  // ...and not when the endpoint is a private address, unless files are delivered from a public domain.
+  const PRIVATE = { ...MINIO, endpoint: 'http://10.0.0.5:9000' }
+  assert.equal(await ask({ active: parseS3Config(PRIVATE) }), false)
+  assert.equal(await ask({ active: parseS3Config({ ...PRIVATE, publicBaseUrl: 'https://cdn.example.com', delivery: 'redirect' }) }), true)
+  // A bucket that is only read from (storage was switched back to the disk) does not help new files.
+  assert.equal(await ask({ active: null, readable: [parseS3Config(AWS)] }), false)
+})
+
 test('Content-Security-Policy lists the public domains files are delivered from', () => {
   const plain = buildContentSecurityPolicy({ scriptHashes: [] })
   const csp = buildContentSecurityPolicy({ scriptHashes: [], mediaOrigins: ['https://cdn.example.com', 'http://127.0.0.1:9100', "https://x.test; script-src 'unsafe-inline'", 'javascript:alert(1)'] })

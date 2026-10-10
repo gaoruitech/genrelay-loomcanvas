@@ -59,7 +59,7 @@ loomcanvas/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/app/bootstrap` | `{ authRequired, authed, site:{name,logoUrl,defaultTheme,defaultLocale}, hasProvider, limits:{maxUploadMb}, version }`。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
+| GET | `/api/app/bootstrap` | `{ authRequired, authed, site:{name,logoUrl,defaultTheme,defaultLocale}, hasProvider, limits:{maxUploadMb}, media:{upstreamByUrl}, version }`。`media.upstreamByUrl` 表示上游能不能按地址读到站内文件（配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里），画布据此在运行前提示「参考图只能给公网地址」的模型用不了参考图。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
 | POST | `/api/auth/login` | `{ password }` → `{ token }` |
 | POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height?, thumbnailUrl? }`（后三项只有图片有） |
 | POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上。只接受图片：地址指向本实例存储时也一样，存储里的视频返回 400（`file.image_only`） |
@@ -236,7 +236,7 @@ module.exports = {
 
 - `customSpec`、`test`、`submit`、`poll`、`chat` 五个函数都必须存在（用不到的也要写出来并在里面抛错），`catalog` 和 `customKinds` 必须是数组，否则注册时报错。模块没有表单字段（`fields`），也没有列模型的函数：每家的表单都是 API Key、名称，加上「高级」里的接口地址。
 - `cfg` 只有 `{ baseUrl, apiKey }`。`baseUrl` 是实例保存的地址，没保存时是 `defaultBaseUrl`。
-- 清单文件是 `{ "image": [...], "video": [...], "chat": [...] }`，三段都必须有，没有就写 `[]`。条目的字段：`id`（上游模型名，原样发送）、`label`、`acceptsImage`、`maxReferenceImages`、`acceptsVideo`、`videoEdit`、`options`、`defaults`，以及只给模块自己用、不对外返回的 `_` 开头的私有字段（如 `_protocol`）。条目里不写 `kind`、说明文字和价格。
+- 清单文件是 `{ "image": [...], "video": [...], "chat": [...] }`，三段都必须有，没有就写 `[]`。条目的字段：`id`（上游模型名，原样发送）、`label`、`acceptsImage`、`maxReferenceImages`、`acceptsVideo`、`videoEdit`、`options`、`defaults`、可选的 `verified`（真实跑通的日期）和 `imageByUrlOnly`（参考图只能以公网地址交给上游），以及只给模块自己用、不对外返回的 `_` 开头的私有字段（如 `_protocol`）。条目里不写 `kind`、说明文字和价格。
 - 高瑞的接口是我们自己的，可以不标准；其他服务商的模块只走那家的官方接口。接口地址可以改成别的（代理或中转），但对方必须使用完全相同的官方接口，不为第三方的私有格式做适配。
 - 内置三家：`gaorui`（默认 `https://gaorui.cc`）、`openai`（默认 `https://api.openai.com/v1`；对话走 `/chat/completions`，图片没有参考图时走 `/images/generations`、有参考图时走 `/images/edits`）、`gemini`（默认 `https://generativelanguage.googleapis.com`；`/v1beta/models/{model}:generateContent`）。三家的 `customKinds` 都是 `['image', 'chat']`，都不能添加自定义视频模型。
 

@@ -134,14 +134,19 @@ test('gaorui videos: request body per model', async (t) => {
   await gaorui.submit(cfg, run('omni-flash', { params: { duration: 6 } }))
   assert.equal(up.calls.at(-1).body.model, 'omni_flash_8s')
   up.calls.pop()
+  // 4k is not offered either; a canvas that still stores it gets 720p.
+  await gaorui.submit(cfg, run('omni-flash', { params: { resolution: '4k' } }))
+  assert.equal(up.calls.at(-1).body.resolution, '720p')
+  up.calls.pop()
 
   await gaorui.submit(cfg, run('omni-flash', { params: { imgMode: 'frames' }, imageUrls: ['a', 'b', 'c'] }))
   assert.deepEqual(up.calls[2].body.input_reference, ['ref(a)', 'ref(b)'])
   assert.equal(up.calls[2].body.first_last_frame, true)
 
+  // An edit has no resolution to choose: always 720p, whatever the node stored.
   await gaorui.submit(cfg, run('omni-flash-edit', { videoUrls: ['/files/v.mp4'], imageUrls: ['r'], params: { resolution: '4k' } }))
   assert.deepEqual(up.calls[3].body, {
-    model: 'omni_flash_abra_edit', prompt: 'go', source_video_url: 'public(/files/v.mp4)', aspect_ratio: '16:9', resolution: '4k', input_reference: ['ref(r)'],
+    model: 'omni_flash_abra_edit', prompt: 'go', source_video_url: 'public(/files/v.mp4)', aspect_ratio: '16:9', resolution: '720p', input_reference: ['ref(r)'],
   })
   await assert.rejects(gaorui.submit(cfg, run('omni-flash-edit')), (e) => e.i18n.code === 'provider.video_edit_needs_source')
 
@@ -172,6 +177,30 @@ test('gaorui videos: request body per model', async (t) => {
   await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 99 } }))
   assert.equal(up.calls[6].body.seconds, '15', 'clamped, and sent as a string')
   assert.equal('image_urls' in up.calls[6].body, false)
+  // The shortest Grok 1.5 clip is 6 s; a canvas that still stores 4 s gets 6.
+  await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 4 } }))
+  assert.equal(up.calls.at(-1).body.seconds, '6')
+
+  // Grok Video 1.0: fixed lengths, one quality tier, at most 3 reference images.
+  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 10, resolution: '480p', aspectRatio: '2:3' }, imageUrls: ['a', 'b', 'c', 'd'] }))
+  assert.deepEqual(up.calls.at(-1).body, {
+    model: 'grok-imagine-1.0-video', prompt: 'go', size: '1024x1792', seconds: '10', quality: 'standard', resolution: '480p', image_urls: ['public(a)', 'public(b)', 'public(c)'],
+  })
+  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 8, resolution: '720p', aspectRatio: '4:3' } }))
+  assert.deepEqual(up.calls.at(-1).body, { model: 'grok-imagine-1.0-video', prompt: 'go', size: '720x1280', seconds: '6', quality: 'standard', resolution: '480p' }, 'values that are not offered fall back')
+  // A length that is not offered becomes the nearest one that is (the shorter on a tie); the canvas picks the same way.
+  for (const [asked, sent] of [[12, '10'], [13, '15'], [20, '15'], [3, '6'], ['x', '6'], [undefined, '6']]) {
+    await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: asked } }))
+    assert.equal(up.calls.at(-1).body.seconds, sent, `asked ${asked}`)
+  }
+  for (const [asked, sent] of [[9, 'omni_flash_8s'], [10, 'omni_flash_10s'], [15, 'omni_flash_10s'], [undefined, 'omni_flash_8s']]) {
+    await gaorui.submit(cfg, run('omni-flash', { params: { duration: asked } }))
+    assert.equal(up.calls.at(-1).body.model, sent, `asked ${asked}`)
+  }
+  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 15 }, imageUrls: ['a', 'b'] }))
+  assert.equal(up.calls.at(-1).body.seconds, '10', 'more than one reference image: 10 s at most')
+  await gaorui.submit(cfg, run('grok-imagine-1.0-video', { params: { duration: 15 }, imageUrls: ['a'] }))
+  assert.equal(up.calls.at(-1).body.seconds, '15')
 
   await assert.rejects(gaorui.submit(cfg, run('omni-flash', { prompt: '' })), (e) => e.i18n.code === 'run.prompt_required')
 })
@@ -272,10 +301,11 @@ test('gaorui real service: video task shapes (flat), result link without credent
   const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
   const run = (model, extra) => ({ kind: 'video', model, prompt: 'a boat', imageUrls: [], videoUrls: [], params: {}, media, signal, ...extra })
 
-  // Grok Video 1.5, text only: the body the upstream accepted.
+  // Grok Video 1.5, text only. The run recorded here was sent with seconds "4" and came back as a
+  // 6-second clip: 6 s is the shortest there is, so 4 is no longer offered and is raised to 6.
   assert.deepEqual(await gaorui.submit(cfg, run('grok-imagine-video-1.5-preview', { params: { duration: 4, resolution: '480p', aspectRatio: '16:9' } })), { externalId: 'video_0001' })
   assert.equal(up.calls[0].headers.authorization, 'Bearer sk-example')
-  assert.deepEqual(up.calls[0].body, { model: 'grok-imagine-video-1.5-preview', prompt: 'a boat', size: '1280x720', seconds: '4', resolution: '480p' })
+  assert.deepEqual(up.calls[0].body, { model: 'grok-imagine-video-1.5-preview', prompt: 'a boat', size: '1280x720', seconds: '6', resolution: '480p' })
   // Omni Flash Edit: the source video is a URL the upstream fetches itself.
   const publicMedia = { ...media, async toPublicUrl() { return REAL_VID } }
   await gaorui.submit(cfg, run('omni-flash-edit', { videoUrls: [REAL_VID], params: { resolution: '720p', aspectRatio: '16:9' }, media: publicMedia }))
@@ -291,6 +321,41 @@ test('gaorui real service: video task shapes (flat), result link without credent
     model: 'grok-imagine-video-1.5-preview', object: 'video', output_url: REAL_VID, progress: 100, status: 'completed', url: REAL_VID, video_url: REAL_VID,
   }
   // A plain public link: downloaded without our key.
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'succeeded', progress: 100, outputs: [{ type: 'video', url: REAL_VID }] })
+})
+
+test('gaorui real service: Grok Video 1.0, text only and with a reference image given as a URL', async (t) => {
+  let poll = {}
+  const up = await fakeUpstream({
+    // The create answer names no model, as for Grok Video 1.5.
+    'POST /v1/videos': () => ({ body: { id: 'video_0002', object: 'video', model: '', status: 'queued', progress: 0, created_at: 0 } }),
+    'GET /v1/videos/video_0002': () => ({ body: poll }),
+  })
+  t.after(up.close)
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'sk-example' }
+  const publicMedia = { ...media, async toPublicUrl(url) { return url } }
+  const run = (extra) => ({ kind: 'video', model: 'grok-imagine-1.0-video', prompt: 'a boat', imageUrls: [], videoUrls: [], params: { duration: 6, resolution: '480p', aspectRatio: '16:9' }, media: publicMedia, signal, ...extra })
+
+  // The two bodies the upstream accepted. Both came back as 6-second clips, 752x416.
+  assert.deepEqual(await gaorui.submit(cfg, run()), { externalId: 'video_0002' })
+  assert.equal(up.calls[0].headers.authorization, 'Bearer sk-example')
+  assert.deepEqual(up.calls[0].body, { model: 'grok-imagine-1.0-video', prompt: 'a boat', size: '1280x720', seconds: '6', quality: 'standard', resolution: '480p' })
+  await gaorui.submit(cfg, run({ imageUrls: [REAL_IMG] }))
+  assert.deepEqual(up.calls[1].body, { model: 'grok-imagine-1.0-video', prompt: 'a boat', size: '1280x720', seconds: '6', quality: 'standard', resolution: '480p', image_urls: [REAL_IMG] })
+  // An image without a public address is refused before anything is sent.
+  const local = { ...media, async toPublicUrl() { const e = new Error('needs a public URL'); e.code = 'media.needs_public_url'; throw e } }
+  await assert.rejects(gaorui.submit(cfg, run({ imageUrls: ['/files/a.jpg'], media: local })), (e) => e.code === 'media.needs_public_url')
+  assert.equal(up.calls.length, 2)
+
+  const req = run({ externalId: 'video_0002' })
+  poll = { created_at: 1791603358, id: 'video_0002', metadata: { url: '' }, model: 'grok-imagine-1.0-video', object: 'video', progress: 1, status: 'in_progress' }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 1 })
+  poll = { ...poll, progress: 10 }
+  assert.deepEqual(await gaorui.poll(cfg, req), { status: 'running', progress: 10 })
+  poll = {
+    completed_at: 1791603386, created_at: 1791603358, id: 'video_0002', metadata: { url: REAL_VID, video_url: REAL_VID },
+    model: 'grok-imagine-1.0-video', object: 'video', output_url: REAL_VID, progress: 100, status: 'completed', url: REAL_VID, video_url: REAL_VID,
+  }
   assert.deepEqual(await gaorui.poll(cfg, req), { status: 'succeeded', progress: 100, outputs: [{ type: 'video', url: REAL_VID }] })
 })
 

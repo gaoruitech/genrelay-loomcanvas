@@ -49,10 +49,11 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 | `nano-banana-2` | Nano Banana 2 | image | up to 8 | same | 1K, 2K, 4K | |
 | `nano-banana-2.1` | Nano Banana 2.1 | image | up to 8 | same | 1K, 2K, 4K | |
 | `nano-banana-2-lite` | Nano Banana 2 Lite | image | up to 8 | same | 1K | |
-| `omni-flash` | Omni Flash | video | up to 5, or first + last frame | 16:9, 9:16 | 720p, 1080p, 4k | 8, 10 s |
-| `omni-flash-edit` | Omni Flash Edit | video (video edit) | up to 5, plus a source video | 16:9, 9:16 | 720p, 1080p, 4k | |
+| `omni-flash` | Omni Flash | video | up to 5, or first + last frame | 16:9, 9:16 | 720p, 1080p | 8, 10 s |
+| `omni-flash-edit` | Omni Flash Edit | video (video edit) | up to 5, plus a source video | 16:9, 9:16 | 720p | |
 | `veo-3.1` | Veo 3.1 | video | up to 3, or first + last frame | 16:9, 9:16 | lite, 720p, 1080p, 4k | 8 s fixed |
-| `grok-imagine-video-1.5-preview` | Grok Video 1.5 | video | up to 5 | 9:16, 16:9, 1:1, 3:2, 2:3 | 480p, 720p | 4, 6, 8, 10, 12, 15 s |
+| `grok-imagine-video-1.5-preview` | Grok Video 1.5 | video | up to 5 | 9:16, 16:9, 1:1, 3:2, 2:3 | 480p, 720p | 6, 8, 10, 12, 15 s |
+| `grok-imagine-1.0-video` | Grok Video 1.0 | video | up to 3 | 9:16, 16:9, 1:1, 3:2, 2:3 | 480p | 6, 10, 15 s |
 | `deepseek-v4-pro` | DeepSeek V4 Pro | chat | text only | | | |
 | `gpt-5.5` | GPT 5.5 | chat | text only | | | |
 | `glm-5.3` | GLM 5.3 | chat | text only | | | |
@@ -65,7 +66,10 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 - `omni-flash-edit` is the only model offered in the Video edit node.
 - Each video model has its own request body, written out in `server/src/providers/gaorui.js`.
 - **Omni Flash and Veo 3.1 each map to several upstream model names.** `omni-flash` is sent as `omni_flash_8s` or `omni_flash_10s`, by duration (the upstream still lists `omni_flash_6s`, but no channel serves it, so 6 s is not offered). `veo-3.1` is sent as one of three names, by input: `veo_3_1` without images, `veo_3_1-components` with reference images (up to 3), `veo_3_1-fl` with a first and a last frame. The Veo resolution `lite` is the upstream's fast tier; the clip it returned was 1280×720. Veo takes images as public URLs only.
+- **Omni Flash: no 6 s and no 4k.** Omni Flash offers 720p and 1080p, as the Gaorui main site does (the upstream also takes 4k; it is not offered). Omni Flash Edit has no resolution to choose: an edit is always sent as 720p, which is what the main site does. A node that still stores a value that is no longer offered falls back: 6 s becomes 8 s, 4k becomes 720p.
+- **Grok Video.** The shortest Grok Video 1.5 clip is 6 s (a request for 4 s came back as a 6 s clip), so 4 s is not offered; a node that stores 4 s gets 6 s. Grok Video 1.0 (`grok-imagine-1.0-video`) comes in 6, 10 or 15 s and in one quality tier, 480p, sent as `quality: "standard"` together with `resolution: "480p"`; with more than one reference image the clip is 10 s at most. Both take reference images as public URLs only (`image_urls`).
 - **Reference images of the image models must have a public URL.** The real service refuses an inline (base64) image with HTTP 400, `image_must_be_url`. On an instance without a public address, image-to-image with a Gaorui image model therefore fails with "A publicly reachable URL is needed…" before anything is sent; see [How media reaches the upstream](#how-media-reaches-the-upstream). Text-to-image is not affected.
+- **There is no way to upload a local file to Gaorui with just the key.** Checked on 2026-10-10 in the main site's code and against the public API with free calls: `/v1/uploads` and `/v1/upload` do not exist (404); `/v1/assets/uploads` exists, but it registers material that already has a public URL (it takes a `url`, for the Seedance models) and returns an `asset://` id, not an address the image models accept; `/v1/files` is a relay route that asks for a model name. So LoomCanvas cannot work around the missing public address, and says so before the run: when a node uses one of these models, has an image connected, and the instance has neither a public `PUBLIC_URL` nor a bucket reachable from the internet, the node shows the reason and what to do, and Run stops there instead of sending anything.
 
 #### Gaorui: what has been verified
 
@@ -80,7 +84,8 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 | `omni-flash` | Verified (2026-10-10) | Verified (2026-10-10) | 8 s, 720p, 16:9; one reference image (reference-image mode), given as a public URL. First-and-last-frame mode was not run |
 | `omni-flash-edit` | n/a | Not verified | Video edit (source video + prompt): verified (2026-10-10), 720p, 16:9, the source video given as a public URL. Not run with reference images |
 | `veo-3.1` | Verified (2026-10-10) | Verified (2026-10-10) | lite, 16:9, 8 s; one run with a reference image and one with a first and a last frame, images given as public URLs |
-| `grok-imagine-video-1.5-preview` | Verified (2026-10-10) | Not verified | 480p, 16:9; 4 s was asked for and a 6 s clip came back (a single sample) |
+| `grok-imagine-video-1.5-preview` | Verified (2026-10-10) | Not verified | 480p, 16:9; 4 s was asked for and a 6 s clip came back, so 6 s is now the shortest offered |
+| `grok-imagine-1.0-video` | Verified (2026-10-10) | Verified (2026-10-10) | 6 s, 480p, 16:9; one reference image, given as a public URL. Both clips came back 6.0 s long, 752×416 |
 | `deepseek-v4-pro` | Verified (2026-10-10) | n/a | text-only model |
 | `gpt-5.5` | Verified (2026-10-10) | n/a | text-only model |
 | `glm-5.3` | Verified (2026-10-10) | n/a | text-only model |
@@ -96,8 +101,8 @@ In the product, the models whose "Text only" cell says verified (and `omni-flash
 
 Not exercised for Gaorui:
 
-- Resolutions above the lowest: 2K and 4K for images; 1080p and 4k for Omni Flash and Omni Flash Edit; 720p, 1080p and 4k for Veo 3.1; 720p for Grok Video.
-- Aspect ratios and durations other than the one that was run: 9:16 and the other ratios; 10 s for Omni Flash; durations other than 4 s for Grok Video.
+- Resolutions above the lowest: 2K and 4K for images; 1080p for Omni Flash; 720p, 1080p and 4k for Veo 3.1; 720p for Grok Video 1.5.
+- Aspect ratios and durations other than the one that was run: 9:16 and the other ratios; 10 s for Omni Flash; Grok Video 1.5 at 6 s and above as a request (the one run asked for 4 s); 10 and 15 s for Grok Video 1.0.
 - More than one reference image, and everything the table marks "Not verified" in the reference column; the first-and-last-frame mode of Omni Flash.
 - Reference images of the video models sent inline (base64). Every run used public URLs. The image endpoint refuses an inline image (HTTP 400 `image_must_be_url`).
 - Handing over a file of your own through `PUBLIC_URL` or a presigned bucket URL. The inputs used were addresses on the service's own file host.
@@ -277,7 +282,7 @@ Reference images and source videos on a canvas are files in **your** storage. Th
 | --- | --- | --- |
 | Sent with the request | Gemini (always, as inline base64); OpenAI reference images (uploaded as file parts to `/images/edits`) | Works. Up to 20 MB each. |
 | URL if there is a public one, otherwise an inline data URI | Images in chat requests to OpenAI and Gaorui; reference images of Omni Flash and Omni Flash Edit | Chat: works, images are sent inline, up to 20 MB each (verified with Gaorui). The two video models: sent inline, but whether the real service accepts that has not been verified (the verified runs used public URLs). |
-| URL only | **Reference images of the Gaorui image models** (custom ones included), Omni Flash Edit **source video**, Veo 3.1 and Grok Video reference images, video in chat (Gaorui `gemini-3.5-flash-c` and custom chat models) | **Fails** with "A publicly reachable URL is needed…". |
+| URL only | **Reference images of the Gaorui image models** (custom ones included), Omni Flash Edit **source video**, Veo 3.1 and Grok Video (1.5 and 1.0) reference images, video in chat (Gaorui `gemini-3.5-flash-c` and custom chat models) | **Fails** with "A publicly reachable URL is needed…". For reference images and the source video of a video edit, the node says so before the run. |
 
 A "public address" is an `http(s)` URL that is not `localhost` and not a private IP. A file has one when:
 
@@ -296,7 +301,7 @@ LoomCanvas does not know what your upstream charges. You enter the rates you pay
 
 ![Models tab](images/08-settings-models.png)
 
-*The prices in this screenshot were typed in for the screenshot. A new install has none.*
+*No prices are shipped: every model starts as "Not set (cost unknown)" until you enter the rate you pay.*
 
 ### Entering a price
 
@@ -314,7 +319,7 @@ With the billing unit "per 1M tokens", **Price varies by** is replaced by **Inpu
 - **Priced separately**: an input price and an output price, each per million tokens. This is the default for a new chat model price.
 - **Same price**: one rate for input and output.
 
-In the model list a separately priced model reads "Input $1.50 / output $6.00 · per 1M tokens".
+In the model list a separately priced model reads like "Input $1.50 / output $6.00 · per 1M tokens" (made-up numbers, to show the format).
 
 Table keys, matched case-insensitively against the run's parameters:
 

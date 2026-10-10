@@ -237,7 +237,9 @@ export function isModelSupported(modelId: string): boolean {
 
 /**
  * 让节点参数跟模型声明对齐：没设过的取模型默认值；模型不支持的值回落到默认值或
- * 第一个可选项；模型压根没有的那一项清掉。
+ * 第一个可选项；模型压根没有的那一项清掉。时长例外：存着的秒数已经不提供时，取最接近
+ * 的那一档（一样近取短的），和后端 gaorui.js 的 nearestDuration 同一个规则 ——
+ * 存着 6 秒的 Omni Flash 变 8 秒，存着 4 秒的 Grok Video 1.5 变 6 秒。
  *
  * 执行器是直接拿 data 里的参数去提交的 —— 换模型后留着上一个模型的分辨率、数量，
  * 界面上已经没有对应的选项，用户看不见也改不了，却照样会被送出去。
@@ -261,7 +263,14 @@ export function alignParams(a: ModelAdapter, data: Record<string, any>): Record<
     const has = (v: any) => !!list?.some(x => String(x.value) === String(v))
     let next = cur
     if (list?.length) {
-      if (!has(cur)) next = has(def) ? def : list[0].value
+      if (!has(cur)) {
+        const n = Number(cur)
+        if (k === 'duration' && cur !== undefined && cur !== null && cur !== '' && Number.isFinite(n) && n > 0) {
+          next = list.map(x => Number(x.value)).reduce((best, d) => (Math.abs(d - n) < Math.abs(best - n) ? d : best))
+        } else {
+          next = has(def) ? def : list[0].value
+        }
+      }
     } else {
       next = k === 'duration' && o.fixedDuration ? o.fixedDuration : def
     }

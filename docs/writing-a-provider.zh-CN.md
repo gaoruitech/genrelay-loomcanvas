@@ -97,6 +97,7 @@ module.exports = {
 | `options.counts` | number[] | 点一次出几个结果。 |
 | `options.imgModes` | string[] | `"multi"`（多图参考）和 / 或 `"frames"`（首尾帧）。以 `params.imgMode` 传入。 |
 | `defaults` | object | 参数的初始值，节点提交的参数会盖在它上面：`aspectRatio`、`resolution`、`duration`、`imgMode`、`count`。 |
+| `imageByUrlOnly` | `true`，可选 | 这个模型的参考图只能以公网地址交给上游：你的 `submit` 对它们用的是 `run.media.toPublicUrl()`，没有公网地址的图会被拒绝。写了这个标记，画布就会在运行之前说明，而不是等失败之后。也能收内联数据的模型（`toRef`、`toBase64`）不要写。 |
 | `verified` | 字符串，可选 | `"YYYY-MM-DD"`：项目用真实接口把这个模型跑通的那一天（只给文字的一次完整运行；视频编辑模型是一次编辑）。只有真的跑过才写。带日期的模型在界面上显示「已实测」标记；不写就没有标记。 |
 | `_任意名字` | 任意 | 服务商模块私有，不会对外返回。见下。 |
 
@@ -291,6 +292,7 @@ throw new ProviderError('upstream.unrecognized', {}, { transient: true })
 | `custom` | | 自定义模型为 `true`，清单里的模型为 `false`。 |
 | `desc` | `model.<type>.<模型 id>.desc` | 一句话说明，按读的人的语言给出。只有清单里的模型有。 |
 | `acceptsImage`、`acceptsVideo`、`videoEdit`、`maxReferenceImages`、`options`、`defaults` | 条目或 `customSpec(kind)` | 含义同[模型清单文件](#模型清单文件)。管理端的覆盖项可以改 `defaults`。 |
+| `imageByUrlOnly` | 条目或 `customSpec(kind)` | 参考图只能以公网地址发送时为 `true`，否则没有这个字段。 |
 | `verified` | 条目的 `verified` | 项目用真实接口跑通这个模型的日期。只有清单里的模型可能有，自定义模型没有。 |
 | `pricing` | 管理端的覆盖项 | 部署者填了价格才有。没有的话模型显示「成本未知」。见[服务商](providers.zh-CN.md#价格)。 |
 

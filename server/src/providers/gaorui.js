@@ -26,9 +26,9 @@
  *      -> { id, object: 'video', status: 'queued', progress }
  *    GET  /v1/videos/{id}
  *      -> { id, status: queued|in_progress|completed, progress, video_url, url, output_url, metadata: { url } }
- *      Seen for grok-imagine-video-1.5-preview, omni_flash_8s,
- *      omni_flash_abra_edit and the three veo_3_1 models. The link is a plain
- *      public address.
+ *      Seen for grok-imagine-video-1.5-preview, grok-imagine-1.0-video,
+ *      omni_flash_8s, omni_flash_abra_edit and the three veo_3_1 models. The
+ *      link is a plain public address.
  *    GET  /v1/videos/{id}/content    authenticated stream, used when no direct link is returned
  *
  *  chat
@@ -62,6 +62,7 @@ const CUSTOM = {
   // Same parameters as the catalog's nano-banana models.
   image: {
     acceptsImage: true,
+    imageByUrlOnly: true,
     acceptsVideo: false,
     videoEdit: false,
     maxReferenceImages: 8,
@@ -174,9 +175,24 @@ const SIZE_16_9 = { '16:9': '1280x720', '9:16': '720x1280' }
 const GROK_SIZES = { '9:16': '720x1280', '16:9': '1280x720', '1:1': '1024x1024', '3:2': '1792x1024', '2:3': '1024x1792' }
 // omni_flash_6s is still listed by the upstream but no channel serves it
 // (HTTP 503 model_not_found on 2026-10-10), so 6 s is not offered.
-const OMNI_DURATIONS = new Set([8, 10])
+const OMNI_DURATIONS = [8, 10]
 const VEO_RESOLUTIONS = new Set(['lite', '720p', '1080p', '4k'])
-const OMNI_RESOLUTIONS = new Set(['720p', '1080p', '4k'])
+// The upstream also takes 4k for Omni Flash; it is not offered (the main
+// site hides it too). A node that stored 4k gets 720p.
+const OMNI_RESOLUTIONS = new Set(['720p', '1080p'])
+// Grok Video 1.0 comes in fixed lengths.
+const GROK_10_DURATIONS = [6, 10, 15]
+
+/**
+ * The offered length closest to the one asked for (the shorter one on a tie);
+ * the first when nothing usable was asked for. A canvas saved before a length
+ * was withdrawn still stores it, and the canvas UI picks the same way.
+ */
+function nearestDuration(list, value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return list[0]
+  return list.reduce((best, d) => (Math.abs(d - n) < Math.abs(best - n) ? d : best))
+}
 
 async function refs(run, max) {
   const out = []
@@ -188,13 +204,13 @@ async function refs(run, max) {
 const VIDEO_BODY = {
   /**
    * Omni Flash generation. The duration is part of the model name.
-   *   { model: 'omni_flash_{8|10}s', prompt, resolution: 720p|1080p|4k,
+   *   { model: 'omni_flash_{8|10}s', prompt, resolution: 720p|1080p,
    *     aspect_ratio: 16:9|9:16, input_reference?: string[] (max 5),
    *     first_last_frame?: true (params.imgMode === 'frames'; input_reference = [first, last]) }
    */
   async 'videos-omni-flash'(run) {
     const p = run.params || {}
-    const duration = OMNI_DURATIONS.has(Number(p.duration)) ? Number(p.duration) : 8
+    const duration = nearestDuration(OMNI_DURATIONS, p.duration)
     const frames = p.imgMode === 'frames'
     const body = {
       model: `omni_flash_${duration}s`,
@@ -211,7 +227,9 @@ const VIDEO_BODY = {
   /**
    * Omni Flash video edit.
    *   { model: 'omni_flash_abra_edit', prompt, source_video_url (required),
-   *     aspect_ratio, resolution, input_reference?: string[] (max 5) }
+   *     aspect_ratio, resolution: '720p', input_reference?: string[] (max 5) }
+   * There is no resolution to choose: the main site always sends 720p for an
+   * edit, and so do we, whatever the node stored.
    */
   async 'videos-omni-flash-edit'(run) {
     const p = run.params || {}
@@ -222,7 +240,7 @@ const VIDEO_BODY = {
       prompt: run.prompt,
       source_video_url: await run.media.toPublicUrl(source, msg('noun.source_video')),
       aspect_ratio: SIZE_16_9[p.aspectRatio] ? p.aspectRatio : '16:9',
-      resolution: OMNI_RESOLUTIONS.has(String(p.resolution)) ? String(p.resolution) : '720p',
+      resolution: '720p',
     }
     const input = await refs(run, 5)
     if (input.length) body.input_reference = input
@@ -255,13 +273,14 @@ const VIDEO_BODY = {
 
   /**
    * Grok Video 1.5.
-   *   { model, prompt, size, seconds: "<4-15>" (must be a string),
+   *   { model, prompt, size, seconds: "<6-15>" (must be a string),
    *     resolution: 480p|720p, image_urls?: string[] (max 5, URLs) }
-   * No image_urls = text-to-video.
+   * No image_urls = text-to-video. The shortest clip is 6 s: asked for 4,
+   * the service returned 6 (2026-10-10).
    */
   async 'videos-grok-15'(run) {
     const p = run.params || {}
-    const seconds = Math.min(15, Math.max(4, Math.round(Number(p.duration)) || 10))
+    const seconds = Math.min(15, Math.max(6, Math.round(Number(p.duration)) || 10))
     const body = {
       model: run.model,
       prompt: run.prompt,
@@ -272,6 +291,32 @@ const VIDEO_BODY = {
     const urls = []
     for (const url of (run.imageUrls || []).slice(0, 5)) urls.push(await run.media.toPublicUrl(url, msg('noun.reference_image')))
     if (urls.length) body.image_urls = urls
+    return body
+  },
+
+  /**
+   * Grok Video 1.0.
+   *   { model: 'grok-imagine-1.0-video', prompt, size, seconds: "6"|"10"|"15" (a string),
+   *     quality: 'standard', resolution: '480p', image_urls?: string[] (max 3, URLs) }
+   * 480p is the only tier offered (as on the main site); the main site names
+   * it in both `quality` and `resolution`, and so do we. No image_urls =
+   * text-to-video.
+   */
+  async 'videos-grok-10'(run) {
+    const p = run.params || {}
+    const body = {
+      model: run.model,
+      prompt: run.prompt,
+      size: GROK_SIZES[p.aspectRatio] || '720x1280',
+      seconds: String(nearestDuration(GROK_10_DURATIONS, p.duration)),
+      quality: 'standard',
+      resolution: '480p',
+    }
+    const urls = []
+    for (const url of (run.imageUrls || []).slice(0, 3)) urls.push(await run.media.toPublicUrl(url, msg('noun.reference_image')))
+    if (urls.length) body.image_urls = urls
+    // The main site caps the clip at 10 s once there is more than one reference image.
+    if (urls.length > 1 && body.seconds === '15') body.seconds = '10'
     return body
   },
 }

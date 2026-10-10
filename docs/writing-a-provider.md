@@ -97,6 +97,7 @@ There are no form fields to declare. Every vendor has the same form: API key, na
 | `options.counts` | number[] | How many results per click. |
 | `options.imgModes` | string[] | `"multi"` (reference images) and/or `"frames"` (first and last frame). Arrives as `params.imgMode`. |
 | `defaults` | object | Initial parameter values, merged under what the node sends: `aspectRatio`, `resolution`, `duration`, `imgMode`, `count`. |
+| `imageByUrlOnly` | `true`, optional | Reference images reach this model as public URLs only: your `submit` uses `run.media.toPublicUrl()` for them, which refuses an image that has no public address. With the flag, the canvas says so before the run instead of after. Leave it out for models that also take inline data (`toRef`, `toBase64`). |
 | `verified` | string, optional | `"YYYY-MM-DD"`: the day the project completed a real run of this model against the vendor's API (one full text-only run; for a video edit model, one edit). Write it only when that run happened. A model that has it shows a "Verified" badge in the UI; without it there is no badge. |
 | `_anything` | any | Private to the vendor module, never served. See below. |
 
@@ -291,6 +292,7 @@ What the server serves for each model (`GET /api/models`, `run.spec`). It is bui
 | `custom` | | `true` for a custom model, `false` for a catalog model. |
 | `desc` | `model.<type>.<model id>.desc` | One-line description, in the reader's language. Catalog models only. |
 | `acceptsImage`, `acceptsVideo`, `videoEdit`, `maxReferenceImages`, `options`, `defaults` | the entry or `customSpec(kind)` | As in [the catalog file](#the-catalog-file). An admin override can change `defaults`. |
+| `imageByUrlOnly` | the entry or `customSpec(kind)` | `true` when reference images go out as public URLs only. Absent otherwise. |
 | `verified` | the entry's `verified` | The day the project ran this model against the real API. Catalog models only; a custom model never has it. |
 | `pricing` | the admin override | Only when the operator entered a price. Without it the model shows "Cost unknown". See [Providers](providers.md#pricing). |
 

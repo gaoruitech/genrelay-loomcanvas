@@ -146,6 +146,7 @@ test('LoomCanvas API end to end', async (t) => {
     const boot = await call('GET', '/api/app/bootstrap')
     assert.deepEqual([boot.status, boot.body.data.authRequired, boot.body.data.authed, boot.body.data.hasProvider], [200, true, false, false])
     assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
+    assert.deepEqual(boot.body.data.media, { upstreamByUrl: false })
     for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['GET', '/api/admin/storage'], ['POST', '/api/admin/storage/test'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
       const r = await call(m, p, m === 'POST' ? {} : undefined)
       assert.equal(r.status, 401, `${m} ${p}`)
@@ -157,6 +158,9 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal(ok.status, 200)
     token = ok.body.data.token
     assert.equal((await call('GET', '/api/app/bootstrap')).body.data.authed, true)
+    // No PUBLIC_URL and files on the local disk: an upstream cannot be given a stored file by URL.
+    // The canvas reads this to warn before a run with a model that only takes URLs (ModelSpec.imageByUrlOnly).
+    assert.deepEqual((await call('GET', '/api/app/bootstrap')).body.data.media, { upstreamByUrl: false })
 
     // A forged or foreign-signed token is not accepted.
     const forged = require('jsonwebtoken').sign({ sub: 'local' }, 'some-other-key')

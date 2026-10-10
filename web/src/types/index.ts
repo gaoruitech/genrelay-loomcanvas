@@ -22,6 +22,8 @@ export interface BootstrapInfo {
   version?: string
   /** 服务端的硬限制；老版本后端没有这一项 */
   limits?: { maxUploadMb?: number }
+  /** 上游能不能按地址读到站内文件（配了公网的 PUBLIC_URL，或文件在公网能访问的桶里）；老版本后端没有这一项 */
+  media?: { upstreamByUrl?: boolean }
 }
 
 export interface UploadedFile {
@@ -58,6 +60,8 @@ export interface ModelSpec {
   /** 用户自己添加的模型（不在服务商的模型清单里） */
   custom?: boolean
   maxReferenceImages?: number
+  /** 参考图只能以公网地址交给上游（不收内联数据）；没有公网地址的图会在请求发出前被拒绝 */
+  imageByUrlOnly?: boolean
   options?: {
     aspectRatios?: string[]
     resolutions?: string[]

@@ -28,7 +28,7 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 | --- | --- |
 | ![Editor](docs/images/04-editor.png) Editor | ![A finished run](docs/images/06-editor-result.png) Results on the canvas |
 | ![Dark theme](docs/images/09-editor-dark.png) Dark theme | ![Setup](docs/images/01-setup.png) First-run setup |
-| ![Models and prices](docs/images/08-settings-models.png) Models and prices (example prices) | ![English interface](docs/images/11-editor-en.png) English interface |
+| ![Models and prices](docs/images/08-settings-models.png) Models and prices (none are shipped; you enter your own) | ![English interface](docs/images/11-editor-en.png) English interface |
 
 ## Quick start
 

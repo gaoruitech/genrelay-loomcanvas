@@ -29,7 +29,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/app/bootstrap` | 公开。站点信息、是否需要登录、版本号、`limits.maxUploadMb`（服务端的上传上限）；也用作健康检查。 |
+| GET | `/api/app/bootstrap` | 公开。站点信息、是否需要登录、版本号、`limits.maxUploadMb`（服务端的上传上限）、`media.upstreamByUrl`（上游能不能按地址读到站内文件：配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里；未登录时恒为 `false`）；也用作健康检查。 |
 | POST | `/api/auth/login` | 公开。`{ password }` → `{ token }`。每个客户端 10 分钟内最多 10 次（IPv6 客户端按 /64 网段计），所有客户端合计最多 300 次；超出返回 429（`auth.too_many_attempts`）。 |
 
 ### 文件

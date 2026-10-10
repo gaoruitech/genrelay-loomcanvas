@@ -241,6 +241,17 @@
   word-break: break-word;
 }
 
+.cv-notice {
+  padding: 6px 8px;
+  background: rgba(230, 160, 40, 0.12);
+  border: 1px solid rgba(230, 160, 40, 0.4);
+  border-radius: 4px;
+  color: var(--t-strong);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .cv-pick-btn {
   display: flex;
   align-items: center;

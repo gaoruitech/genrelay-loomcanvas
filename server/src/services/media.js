@@ -108,6 +108,28 @@ async function upstreamUrl(url) {
 }
 
 /**
+ * Would a file stored now be loadable by an upstream on the internet? True
+ * with a public PUBLIC_URL, or when new files go to a bucket whose address is
+ * reachable from outside. The canvas uses it to say, before a run, that a
+ * model which only takes URLs cannot be given a reference image.
+ */
+async function newFilesReachable() {
+  const { publicUrl } = getConfig()
+  if (publicUrl && isPubliclyReachable(`${publicUrl}/files/x`)) return true
+  const active = getStorage().active
+  if (!active || active.driver !== 's3') return false
+  try {
+    // No such file: only the shape of the address matters, and signing is done locally.
+    const probe = 'uploads/2000/01/00000000000000000000000000000000.png'
+    const urls = active.delivery === 'redirect' ? [active.publicUrl(probe)] : []
+    urls.push(await active.presignGet(probe, 60))
+    return urls.some(isPubliclyReachable)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Helpers handed to providers for one request. Reference media on the canvas
  * may sit in storage that the upstream cannot reach (the local disk without a
  * public address); these turn a canvas URL into something the upstream can
@@ -141,4 +163,4 @@ function createMediaHelpers(signal) {
   }
 }
 
-module.exports = { loadBuffer, loadImage, openStream, createMediaHelpers, isPubliclyReachable, absoluteUrl, upstreamUrl, ownKey, MediaError, MAX_IMAGE_BYTES }
+module.exports = { loadBuffer, loadImage, openStream, createMediaHelpers, isPubliclyReachable, absoluteUrl, upstreamUrl, newFilesReachable, ownKey, MediaError, MAX_IMAGE_BYTES }

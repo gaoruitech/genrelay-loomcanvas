@@ -105,11 +105,12 @@ Response `data`:
   "site": { "name": "LoomCanvas", "logoUrl": "", "defaultTheme": "light", "defaultLocale": "zh-CN" },
   "hasProvider": false,
   "limits": { "maxUploadMb": 50 },
+  "media": { "upstreamByUrl": false },
   "version": "0.1.0"
 }
 ```
 
-`hasProvider` is `true` when at least one enabled provider exists; it is always `false` for a caller who is not signed in. `limits.maxUploadMb` is the server's `MAX_UPLOAD_MB`, so a client can refuse a file that is too large before uploading it.
+`hasProvider` is `true` when at least one enabled provider exists; it is always `false` for a caller who is not signed in. `limits.maxUploadMb` is the server's `MAX_UPLOAD_MB`, so a client can refuse a file that is too large before uploading it. `media.upstreamByUrl` says whether an upstream model can be given a stored file by URL: `true` with a public `PUBLIC_URL`, or when new files go to a bucket reachable from the internet; always `false` for a caller who is not signed in. The canvas uses it to warn, before a run, when a model that only takes URLs (`imageByUrlOnly` in its ModelSpec) has a reference image connected.
 
 ### POST /api/auth/login
 
@@ -205,7 +206,7 @@ Response: an array of ModelSpec, for the enabled models of enabled providers.
 }
 ```
 
-`providerType` is the vendor id (`gaorui`, `openai` or `gemini`). `custom` is `true` for a model the user added by hand and `false` for a model from the vendor's catalog. `options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional; a custom model has no `desc`. See [Writing a provider](writing-a-provider.md#modelspec-reference).
+`providerType` is the vendor id (`gaorui`, `openai` or `gemini`). `custom` is `true` for a model the user added by hand and `false` for a model from the vendor's catalog. `options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional; a custom model has no `desc`. The `pricing` in the example is a placeholder: no prices are shipped, and the field is only present once the operator has entered one. `imageByUrlOnly: true` is present on models whose reference images are handed over as public URLs only. See [Writing a provider](writing-a-provider.md#modelspec-reference).
 
 The list is the catalog of each provider's vendor plus that provider's custom models. It is not fetched from an upstream, and a model's `kind` is never derived from its name.
 

@@ -5,6 +5,7 @@ const express = require('express')
 const Provider = require('../models/Provider')
 const settings = require('../services/settings')
 const { getConfig } = require('../config')
+const { newFilesReachable } = require('../services/media')
 const { ok, wrap, ApiError, badRequest } = require('../utils/http')
 const { authRequired, isAuthed, checkPassword, issueToken, loginRateLimit } = require('../middleware/auth')
 const { LOCAL_USER } = require('../constants')
@@ -29,6 +30,9 @@ router.get('/app/bootstrap', wrap(async (req, res) => {
     hasProvider: authed ? !!(await Provider.exists({ userId: LOCAL_USER, enabled: true })) : false,
     // So the browser can refuse a file that is too large before uploading it.
     limits: { maxUploadMb: Math.floor(getConfig().maxUploadBytes / (1024 * 1024)) },
+    // Can an upstream load a stored file by URL (public PUBLIC_URL, or a bucket reachable from outside)?
+    // When it cannot, the canvas warns before a run that needs to hand over a reference by URL.
+    media: { upstreamByUrl: authed ? await newFilesReachable() : false },
     version,
   })
 }))

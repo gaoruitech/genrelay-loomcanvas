@@ -28,7 +28,7 @@ LoomCanvas 不卖积分，也不自带模型。你填自己的 API Key，画布�
 | --- | --- |
 | ![编辑器](docs/images/04-editor.png) 编辑器 | ![运行完成](docs/images/06-editor-result.png) 画布上的结果 |
 | ![深色主题](docs/images/09-editor-dark.png) 深色主题 | ![引导页](docs/images/01-setup.png) 首次使用的引导页 |
-| ![模型与价格](docs/images/08-settings-models.png) 模型与价格（示例价格） | ![英文界面](docs/images/11-editor-en.png) 英文界面 |
+| ![模型与价格](docs/images/08-settings-models.png) 模型与价格（项目不带价格，由你自己填） | ![英文界面](docs/images/11-editor-en.png) 英文界面 |
 
 ## 快速开始
 

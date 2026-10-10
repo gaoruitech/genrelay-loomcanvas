@@ -15,6 +15,10 @@
  *   maxReferenceImages  how many (0 when acceptsImage is false)
  *   acceptsVideo        takes a video (chat: to read; video: as the source)
  *   videoEdit           video section only: a "video edit" model
+ *   imageByUrlOnly      optional, true: reference images reach this model as
+ *                       public URLs only (no inline data), so an image that
+ *                       has no public address is refused before the request
+ *                       is sent. The canvas says so before the run.
  *   options             { aspectRatios?, resolutions?, durations?, counts?, imgModes? }
  *   defaults            { aspectRatio?, resolution?, duration?, count?, imgMode? }
  *   verified            optional "YYYY-MM-DD": the day this model completed a
@@ -29,7 +33,7 @@ const KINDS = ['image', 'video', 'chat']
 // Also the rule for a custom model's name (see routes/admin.js).
 const MODEL_NAME = /^[\w.:/@-]{1,120}$/
 
-const ENTRY_KEYS = new Set(['id', 'label', 'acceptsImage', 'acceptsVideo', 'videoEdit', 'maxReferenceImages', 'options', 'defaults', 'verified'])
+const ENTRY_KEYS = new Set(['id', 'label', 'acceptsImage', 'acceptsVideo', 'videoEdit', 'maxReferenceImages', 'options', 'defaults', 'verified', 'imageByUrlOnly'])
 const OPTION_LISTS = { aspectRatios: 'string', resolutions: 'string', durations: 'number', counts: 'number', imgModes: 'string' }
 // defaults key -> the options list its value has to come from
 const DEFAULT_OF = { aspectRatio: 'aspectRatios', resolution: 'resolutions', duration: 'durations', imgMode: 'imgModes' }
@@ -91,6 +95,7 @@ function validateCatalog(vendor, data) {
         if (!DEFAULT_OF[name]) fail(`${at}: unknown default "${name}"`)
         if (!list || !list.includes(value)) fail(`${at}: defaults.${name} is not one of options.${DEFAULT_OF[name]}`)
       }
+      if (entry.imageByUrlOnly !== undefined && (entry.imageByUrlOnly !== true || !entry.acceptsImage)) fail(`${at}: imageByUrlOnly is either true on a model that accepts images, or absent`)
       if (entry.verified !== undefined && !isDay(entry.verified)) fail(`${at}: verified must be a date written as YYYY-MM-DD`)
       out.push({ ...entry, kind })
     }

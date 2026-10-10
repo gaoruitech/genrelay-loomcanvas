@@ -12,6 +12,7 @@ import { t } from '@/locales'
 import type { Cost, LlmTask } from '@/types'
 import { applyBrandKitPrompt, applyBrandKitImages, type BrandKit } from '@/composables/useBrandKits'
 import { recordGroupResult } from '@/composables/platformExportGroups'
+import { publicUrlProblem } from '@/composables/usePublicUrlNotice'
 import {
   applyImageOrder, buildImageRefs, resolveMentions, danglingMentions,
   type RawImageRef, type ImageRef,
@@ -393,6 +394,9 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       // 视频编辑必须连入一个视频；提示词/参考图可选
       if (!inputs.videoUrl) return t('executor.needVideo')
     }
+    // 参考素材只能按公网地址交给上游、而实例没有公网地址：后端反正会拒绝，这里先拦下并说清楚
+    const unreachable = publicUrlProblem(getAdapter(modelId), { imageUrls: inputs.imageUrls, videoUrl: inputs.videoUrl })
+    if (unreachable) return unreachable
     return null
   }
 
