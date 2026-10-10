@@ -1,8 +1,8 @@
 'use strict'
 
 /**
- * Administrator only: the accounts of this instance and whether new ones may be
- * created. The administrator manages accounts, not their contents - nothing here
+ * Super admin only: the accounts of this instance and whether new ones may be
+ * created. The super admin manages accounts, not their contents - nothing here
  * returns a canvas, a key or a file of another account, only how many there are.
  */
 const express = require('express')

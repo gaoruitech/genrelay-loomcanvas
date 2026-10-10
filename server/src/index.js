@@ -27,7 +27,7 @@ async function main() {
   await settings.load()
   // REGISTRATION_OPEN is the first value of that setting, not an override of a saved one.
   if (config.registrationOpen !== null && await settings.seed('registrationOpen', config.registrationOpen)) {
-    console.log(`[auth] registration is ${config.registrationOpen ? 'open' : 'closed'} (REGISTRATION_OPEN); the administrator can change it under Settings > Site`)
+    console.log(`[auth] registration is ${config.registrationOpen ? 'open' : 'closed'} (REGISTRATION_OPEN); the super admin can change it under Settings > Site`)
   }
   // Storage: what was saved on the settings page wins over the environment.
   const storage = await require('./services/storageSettings').load()
@@ -40,14 +40,14 @@ async function main() {
   // A custom model the vendor's catalog now lists itself is served from the catalog.
   const shadowed = await require('./services/providerMigration').dropShadowedCustomModels()
   if (shadowed) console.log(`[providers] ${shadowed} custom model(s) are now in their vendor's catalog; the custom entries were removed, settings for them are kept`)
-  // Accounts: per-account indexes, the administrator, and data from before accounts (see services/accounts.js).
+  // Accounts: per-account indexes, the super admin, and data from before accounts (see services/accounts.js).
   if (config.legacyAccessPassword) {
     console.warn('[auth] ACCESS_PASSWORD is set but no longer used: LoomCanvas has accounts now. Remove it from the environment; see docs/getting-started.md#accounts.')
   }
-  // Creates the administrator when there is none. A generated password is printed here, once, in a framed block.
+  // Creates the super admin when there is none. A generated password is printed here, once, in a framed block.
   const accountState = await require('./services/accounts').prepare()
   if (accountState.admin.created && !accountState.admin.generated) {
-    console.log(`[auth] created the administrator account "${accountState.admin.username}" with the password from ADMIN_PASSWORD`)
+    console.log(`[auth] created the super admin account "${accountState.admin.username}" with the password from ADMIN_PASSWORD`)
   }
   if (accountState.adopted) {
     console.log(`[auth] the data from before accounts now belongs to "${accountState.admin.username}": ${JSON.stringify(accountState.adopted)}`)

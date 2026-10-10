@@ -170,7 +170,7 @@ async function submit() {
     if (f.fields.username) errors.username = f.fields.username
     if (f.fields.email) errors.email = f.fields.email
     if (f.fields.password) errors.password = f.fields.password
-    // 管理员刚关了注册：重取一次启动信息，页面跟着变
+    // 超级管理员刚关了注册：重取一次启动信息，页面跟着变
     if (f.code === 'auth.registration_closed') await app.loadBootstrap()
   } finally {
     busy.value = false

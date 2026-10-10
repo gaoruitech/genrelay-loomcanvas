@@ -288,7 +288,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - 凡是来自用户或上游响应的地址，都通过 `utils/safeFetch.js` 去取。文件类型按内容判断（`utils/sniff.js`），不看文件名，也不看对方声明的类型。
 - 存储 key 由 `storage/keys.js` 生成，用户输入的任何内容都不会进入 key。
 - 读写文件一律通过 `getStorage()`（`storage/index.js`），文件在哪个后端它就去哪找。存下来的、返回给客户端的地址永远是 `storage.urlFor(key)`，也就是 `/files/<key>`。预签名地址（`storage.externalUrls()`）只给那一次上游请求用：不要保存，不要返回给客户端，也不要写进日志。
-- 每张按账号区分的数据表都带 `userId`（所属账号的 id），对它的每一次查询都要带上 `req.userId`：别的账号的数据必须返回 404，不是 403，更不能返回内容。新增按账号区分的表时，要把它加进 `server/src/services/accounts.js` 的 `OWNED`（接手旧数据和删除账号都按这份清单走），并补进隔离测试 `server/test/accounts.e2e.test.js`。查服务商和模型一律经过 `providers/index.js`，不给账号 id 它会直接报错。站点级的东西（设置、存储、内置模板）只有管理员能改（`requireOwner`）。
+- 每张按账号区分的数据表都带 `userId`（所属账号的 id），对它的每一次查询都要带上 `req.userId`：别的账号的数据必须返回 404，不是 403，更不能返回内容。新增按账号区分的表时，要把它加进 `server/src/services/accounts.js` 的 `OWNED`（接手旧数据和删除账号都按这份清单走），并补进隔离测试 `server/test/accounts.e2e.test.js`。查服务商和模型一律经过 `providers/index.js`，不给账号 id 它会直接报错。站点级的东西（设置、存储、内置模板）只有超级管理员能改（`requireOwner`）。
 - 执行器核心（`runner/core.js`）的存储、服务商查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
 - 没有理由不加新的运行时依赖：响应头、跨域、限流各自只有几行代码，没有引入包。
 

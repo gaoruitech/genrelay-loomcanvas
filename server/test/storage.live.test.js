@@ -487,7 +487,7 @@ test('settings API against live S3: test, save, switch, and everything that read
   const s3 = { ...form, preset: 'minio' }
 
   try {
-    // Storage is the administrator's to configure; that account is created at start-up.
+    // Storage is the super admin's to configure; that account is created at start-up.
     await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
     token = (await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).body.data.token
     let status = (await call('GET', '/api/admin/storage')).body.data

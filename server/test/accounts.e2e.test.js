@@ -1,10 +1,10 @@
 'use strict'
 
 /**
- * Accounts over real HTTP: the administrator the server creates at start-up
+ * Accounts over real HTTP: the super admin the server creates at start-up
  * (and the data of the version without accounts being handed to it), the
  * forced change of a password somebody else knows, registering and signing in,
- * sessions, the administrator's endpoints, and - above all - that one account
+ * sessions, the super admin's endpoints, and - above all - that one account
  * never reaches another account's data, by id or in a list.
  *
  * Generated passwords never reach the test output: start-up is given a
@@ -39,7 +39,7 @@ process.env.STORAGE_LOCAL_DIR = filesDir
 process.env.PUBLIC_URL = ''
 process.env.WEB_DIST = ''
 process.env.BILLING_HOOK = hookFile
-// What a deployment might have set. Every start-up below names its administrator itself.
+// What a deployment might have set. Every start-up below names its super admin itself.
 delete process.env.ADMIN_USERNAME
 delete process.env.ADMIN_EMAIL
 delete process.env.ADMIN_PASSWORD
@@ -111,7 +111,7 @@ async function scratchDb(t, name) {
   return mongoose.connection
 }
 
-test('accounts: the automatic administrator and old data, sign-in, sessions, the administrator, and isolation between accounts', async (t) => {
+test('accounts: the automatic super admin and old data, sign-in, sessions, the super admin, and isolation between accounts', async (t) => {
   const mongo = await findMongo()
   if (!mongo) return t.skip('no MongoDB available (set TEST_MONGODB_URI)')
 
@@ -158,12 +158,12 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
   await settings.load()
   const accounts = require('../src/services/accounts')
   const auth = require('../src/middleware/auth')
-  // No ADMIN_PASSWORD: the administrator gets a generated one, shown once through the log.
+  // No ADMIN_PASSWORD: the super admin gets a generated one, shown once through the log.
   const startLog = collector()
   const started = await accounts.prepare({ admin: { username: 'Alice', email: 'Alice@Example.com', password: '' }, log: startLog })
   assert.deepEqual(started.admin, { created: true, username: 'Alice', generated: true })
   assert.equal(started.users, 1)
-  assert.deepEqual(started.adopted, { workflows: 1, shares: 1, userassets: 1, brandkits: 1, providers: 1, modeloverrides: 1, runs: 2, templates: 1 }, 'the old data went to the administrator at start-up')
+  assert.deepEqual(started.adopted, { workflows: 1, shares: 1, userassets: 1, brandkits: 1, providers: 1, modeloverrides: 1, runs: 2, templates: 1 }, 'the old data went to the super admin at start-up')
   assert.ok(!JSON.stringify(started).match(/[A-Za-z0-9]{16}/), 'the password is not part of what start-up reports')
   for (const [name, index] of [['providers', 'slug_1'], ['modeloverrides', 'modelId_1'], ['templates', 'key_1']]) {
     assert.ok(!(await db.collection(name).indexes()).some((i) => i.name === index), `${name}.${index} (unique across the whole database) is gone`)
@@ -214,7 +214,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     return self
   }
   const anon = client()
-  const A = client() // the administrator (role owner)
+  const A = client() // the super admin (role owner)
   const B = client() // an ordinary account
   async function waitRun(c, pathname, timeoutMs = 20000) {
     const end = Date.now() + timeoutMs
@@ -232,7 +232,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
   }
   const fileExists = (key) => fs.existsSync(path.join(filesDir, key))
 
-  await t.test('start-up without ADMIN_PASSWORD: an administrator with a generated password that has to be replaced, and all the old data', async () => {
+  await t.test('start-up without ADMIN_PASSWORD: a super admin with a generated password that has to be replaced, and all the old data', async () => {
     // One framed block with the name and the password, and how to get back in.
     const block = startLog.text()
     const generated = /Password:\s+(\S+)/.exec(block)[1]
@@ -247,13 +247,13 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.match(stored.passwordHash, /^scrypt\$/)
     assert.ok(!JSON.stringify(await db.collection('users').find({}).toArray()).includes(generated) && !JSON.stringify(await db.collection('settings').find({}).toArray()).includes(generated), 'stored as a hash only')
 
-    // Everything from before accounts is the administrator's, before anybody signed in.
+    // Everything from before accounts is the super admin's, before anybody signed in.
     const adminId = String(stored._id)
-    for (const name of ownedCollections) assert.deepEqual(await ownersOf(name), [adminId], `${name} belongs to the administrator`)
+    for (const name of ownedCollections) assert.deepEqual(await ownersOf(name), [adminId], `${name} belongs to the super admin`)
     assert.deepEqual(await ownersOf('templates', { builtin: true }), ['system'], 'built-in templates belong to the site')
-    assert.deepEqual(await ownersOf('templates', { builtin: { $ne: true } }), [adminId], 'a hand-made template is the administrator\'s')
+    assert.deepEqual(await ownersOf('templates', { builtin: { $ne: true } }), [adminId], 'a hand-made template is the super admin\'s')
 
-    // A fresh visitor sees a site that can be signed in to; nothing says who the administrator is.
+    // A fresh visitor sees a site that can be signed in to; nothing says who the super admin is.
     const boot = (await anon.data('GET', '/api/bootstrap'))
     assert.deepEqual([boot.auth, boot.user], [{ registrationOpen: true }, null])
     assert.ok(!JSON.stringify(boot).includes('Alice'))
@@ -301,13 +301,13 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
       const later = await accounts.prepare({ admin, log: laterLog })
       assert.deepEqual([later.admin, later.adopted, later.users, laterLog.lines], [{ created: false, username: 'Alice', generated: false }, null, 1, []], JSON.stringify(admin))
     }
-    assert.deepEqual(await row(), before, 'not a field of the administrator was touched')
+    assert.deepEqual(await row(), before, 'not a field of the super admin was touched')
     assert.deepEqual(await anon.refused('POST', '/api/auth/login', { account: 'root', password: 'another-password-9' }), [401, 'auth.invalid_credentials'])
     assert.equal((await anon.call('POST', '/api/auth/login', { account: 'alice', password: 'alice-password-1' })).status, 200)
     auth.resetRateLimits()
 
-    // The run the upgrade interrupted was resumed at this start - by then it was the administrator's,
-    // so it used the old provider's key and its file landed under the administrator's prefix.
+    // The run the upgrade interrupted was resumed at this start - by then it was the super admin's,
+    // so it used the old provider's key and its file landed under the super admin's prefix.
     const end = Date.now() + 20000
     let resumed
     do {
@@ -319,7 +319,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.equal(resumed.userId, adminId)
     assert.ok(resumed.outputs[0].key.startsWith(`outputs/${adminId}/`), resumed.outputs[0].key)
 
-    // The administrator sees the old data through the API, and the stored key still works.
+    // The super admin sees the old data through the API, and the stored key still works.
     assert.deepEqual((await A.data('GET', '/api/workflow/list')).map((w) => w.name), ['Old canvas'])
     assert.equal((await A.data('GET', `/api/workflow/${legacy.workflow}`)).nodes[0].data.text, 'hi')
     const [provider] = await A.data('GET', '/api/admin/providers')
@@ -384,7 +384,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.deepEqual([again.adopted, again.admin.created], [null, false])
     assert.equal((await db.collection('workflows').findOne({ _id: stray })).userId, 'local')
     for (const c of [A, B]) assert.ok(!(await c.data('GET', '/api/workflow/list')).some((w) => w.name === 'Stray'))
-    // ...except when the hand-over to the administrator was cut short: that one is finished at the next start.
+    // ...except when the hand-over to the super admin was cut short: that one is finished at the next start.
     await db.collection('users').updateOne({ role: 'owner' }, { $set: { legacyAdoption: 'pending' } })
     assert.deepEqual((await accounts.prepare({ log: collector() })).adopted, { workflows: 1 })
     assert.equal((await db.collection('workflows').findOne({ _id: stray })).userId, A.user.id)
@@ -782,7 +782,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.deepEqual(await A.refused('GET', `/api/runs/${rb._id}`), [404, 'run.not_found'])
   })
 
-  await t.test('the administrator: site settings, storage and accounts are the administrator\'s; an ordinary account gets 403', async () => {
+  await t.test('the super admin: site settings, storage and accounts are the super admin\'s; an ordinary account gets 403', async () => {
     for (const [m, p, body] of [
       ['GET', '/api/admin/users'], ['PATCH', `/api/admin/users/${A.user.id}`, { disabled: true }], ['DELETE', `/api/admin/users/${A.user.id}?confirm=Alice`],
       ['POST', `/api/admin/users/${A.user.id}/reset-password`], ['GET', '/api/admin/site'], ['PUT', '/api/admin/site', { registrationOpen: false }],
@@ -812,7 +812,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.equal((await anon.call('POST', '/api/auth/login', { account: 'bob', password: 'bob-password-2' })).status, 200)
     await A.data('PUT', '/api/admin/site', { registrationOpen: true })
 
-    // The administrator account itself is not a target.
+    // The super admin account itself is not a target.
     for (const [m, p, body] of [['PATCH', `/api/admin/users/${A.user.id}`, { disabled: true }], ['DELETE', `/api/admin/users/${A.user.id}?confirm=Alice`], ['POST', `/api/admin/users/${A.user.id}/reset-password`]]) {
       assert.deepEqual(await A.refused(m, p, body), [400, 'auth.cannot_modify_self'], `${m} ${p}`)
     }
@@ -837,7 +837,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     const back = await anon.data('POST', '/api/auth/login', { account: 'bob', password: temporaryPassword })
     assert.equal(back.user.mustChangePassword, true)
     B.token = back.token
-    assert.equal((await A.data('GET', '/api/admin/users')).find((x) => x.id === B.user.id).mustChangePassword, true, 'the administrator sees it is still pending')
+    assert.equal((await A.data('GET', '/api/admin/users')).find((x) => x.id === B.user.id).mustChangePassword, true, 'the super admin sees it is still pending')
     assert.deepEqual(await B.refused('GET', '/api/workflow/list'), [403, 'auth.password_change_required'])
     assert.deepEqual(await B.refused('POST', '/api/runs', { model: 'gaorui:nano-banana-2', prompt: 'x' }), [403, 'auth.password_change_required'])
     assert.equal((await B.data('GET', '/api/auth/me')).user.mustChangePassword, true)
@@ -864,7 +864,7 @@ test('accounts: the automatic administrator and old data, sign-in, sessions, the
     assert.equal((await B.data('GET', '/api/auth/me')).user.mustChangePassword, false)
     assert.equal((await B.call('GET', '/api/workflow/list')).status, 200, 'everything is open again')
 
-    // The same command is how the administrator gets back in: no email needed, and the same forced change.
+    // The same command is how the super admin gets back in: no email needed, and the same forced change.
     const admin = await run('alice')
     assert.equal(admin.code, 0, admin.stderr)
     const adminPassword = /Temporary password: (\S+)/.exec(admin.stdout)[1]
@@ -974,14 +974,14 @@ test('start-up with ADMIN_PASSWORD: that is the password, no forced change; a ba
   await assert.rejects(accounts.register({ username: 'visitor', email: 'visitor@example.com', password: 'visitor-password' }), (err) => err.code === 'auth.registration_closed')
   assert.equal(await settings.seed('registrationOpen', true), false, 'seeded once')
   assert.equal(settings.get('registrationOpen'), false)
-  // What the administrator saved stands, whatever the variable says at the next start.
+  // What the super admin saved stands, whatever the variable says at the next start.
   await settings.update({ registrationOpen: true })
   assert.equal(await settings.seed('registrationOpen', false), false)
   await settings.load()
   assert.equal(settings.get('registrationOpen'), true)
 })
 
-test('several processes starting at once: one administrator, one password shown, and the old data goes to that account alone', async (t) => {
+test('several processes starting at once: one super admin, one password shown, and the old data goes to that account alone', async (t) => {
   const db = await scratchDb(t, 'race')
   if (!db) return
   const accounts = require('../src/services/accounts')
@@ -1013,7 +1013,7 @@ test('several processes starting at once: one administrator, one password shown,
   assert.equal(await db.collection('users').countDocuments({ usernameLower: 'twin' }), 1)
 })
 
-test('registration never makes an administrator, not even on a database without one', async (t) => {
+test('registration never makes a super admin, not even on a database without one', async (t) => {
   const db = await scratchDb(t, 'plain')
   if (!db) return
   const accounts = require('../src/services/accounts')
@@ -1025,7 +1025,7 @@ test('registration never makes an administrator, not even on a database without 
   assert.deepEqual(await db.collection('workflows').distinct('userId'), ['local'], 'and it was given nothing')
   assert.equal(await db.collection('users').countDocuments({ role: 'owner' }), 0)
 
-  // The start after that still creates the administrator, next to the account that registered,
+  // The start after that still creates the super admin, next to the account that registered,
   // and the name of an ordinary account is not taken over.
   await assert.rejects(accounts.prepare({ admin: { username: 'First', email: '', password: 'admin-password-1' }, log: collector() }), /ADMIN_USERNAME "First" is already the name of another account/)
   await assert.rejects(accounts.prepare({ admin: { username: 'admin', email: 'FIRST@example.com', password: 'admin-password-1' }, log: collector() }), /ADMIN_EMAIL is already the email of another account/)
@@ -1042,7 +1042,7 @@ test('an owner account that is already there, under a name of its own, is kept a
   const { hashPassword } = require('../src/utils/password')
   const { ObjectId } = require('mongoose').Types
   const then = new Date('2026-01-02T03:04:05Z')
-  // An instance set up by a build from before the administrator was created automatically:
+  // An instance set up by a build from before the super admin was created automatically:
   // an owner with a name of its choosing, and no mustChangePassword field at all.
   const owner = { _id: new ObjectId(), username: 'Carol', usernameLower: 'carol', email: 'carol@example.com', emailLower: 'carol@example.com', passwordHash: await hashPassword('carol-password-1'), role: 'owner', disabled: false, lastLoginAt: then, legacyAdoption: 'done', createdAt: then, updatedAt: then, __v: 0 }
   const member = { ...owner, _id: new ObjectId(), username: 'dan', usernameLower: 'dan', email: 'dan@example.com', emailLower: 'dan@example.com', role: 'user', legacyAdoption: '' }

@@ -1,5 +1,5 @@
 <template>
-  <div ref="pageEl" class="lc-page" @scroll.passive="onScroll">
+  <div ref="pageEl" class="lc-page">
     <div class="lc-page-inner">
       <div class="lc-page-head">
         <div class="lc-sp">
@@ -10,29 +10,39 @@
 
       <div class="set">
         <nav ref="navEl" class="set-nav" :aria-label="t('settings.navLabel')">
-          <a
-            v-for="s in sections"
-            :key="s.id"
-            :href="'#' + s.id"
-            :class="{ on: active === s.id }"
-            :aria-current="active === s.id ? 'true' : undefined"
-            :data-nav="s.id"
-            @click.prevent="go(s.id)"
-          ><LcIcon :name="s.icon" />{{ t('settings.nav.' + s.id) }}</a>
+          <div v-for="g in groups" :key="g.id" class="grp" role="group" :aria-labelledby="'set-grp-' + g.id">
+            <p :id="'set-grp-' + g.id" class="grp-h">
+              {{ t('settings.group.' + g.id) }}
+              <span v-if="g.owner" class="only">{{ t('shell.roleOwner') }}</span>
+            </p>
+            <router-link
+              v-for="s in g.items"
+              :key="s.id"
+              :to="{ name: 'settings', params: { section: s.id } }"
+              class="item"
+              :class="{ on: current === s.id }"
+              :aria-current="current === s.id ? 'page' : undefined"
+              :data-nav="s.id"
+            ><LcIcon :name="s.icon" />{{ t('settings.nav.' + s.id) }}</router-link>
+          </div>
         </nav>
 
-        <div ref="colEl" class="set-col">
-          <template v-if="app.isOwner">
-            <StorageSection />
-            <LimitsSection />
-          </template>
-          <AppearanceSection />
-          <AccountSection />
-          <template v-if="app.isOwner">
-            <SiteSection />
-            <UsersSection />
-          </template>
+        <div class="set-main" :class="{ wide: current === 'users' }">
+          <!-- 一次只有一个分区；换分区就是换地址 -->
+          <component :is="SECTIONS[current]" :key="current" />
           <p v-if="app.bootstrap?.version" class="version">LoomCanvas {{ app.bootstrap.version }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 有没保存的修改就离开 -->
+    <div v-if="asking" class="lc-mask" @click.self="answer(false)">
+      <div class="lc-dialog leave" role="alertdialog" aria-modal="true" aria-labelledby="set-leave-h" data-testid="settings-leave">
+        <div class="lc-dialog-head"><span id="set-leave-h">{{ t('settings.leave.title') }}</span></div>
+        <div class="lc-dialog-body"><p>{{ t('settings.leave.text', { section: t('settings.nav.' + current) }) }}</p></div>
+        <div class="lc-dialog-foot">
+          <button ref="stayBtn" class="lc-btn" data-testid="settings-leave-stay" @click="answer(false)">{{ t('settings.leave.stay') }}</button>
+          <button class="lc-btn danger" data-testid="settings-leave-discard" @click="answer(true)">{{ t('settings.leave.discard') }}</button>
         </div>
       </div>
     </div>
@@ -41,11 +51,12 @@
 
 <script setup lang="ts">
 /**
- * 设置：一页到底。左边是分区的锚点目录（滚动时高亮跟随，点一下滚到那个分区），右边各分区的卡片依次排开。
- * 存储 / 运行限制 / 站点 / 用户管理只有所有者有；其他人只看到外观和账号与安全，对应的接口也不会去调。
+ * 设置：左边是分组的导航（「个人」人人都有，「站点管理」只有超级管理员有），右边一次只显示一个分区。
+ * 当前分区写在地址里（/settings/<分区>，由路由守卫补全和纠正），所以能直接打开某个分区，浏览器的前进 / 后退也照常。
+ * 分区里有改了没保存的东西时，换分区或离开设置页之前先问一句。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'
@@ -55,172 +66,140 @@ import AppearanceSection from '@/components/settings/AppearanceSection.vue'
 import AccountSection from '@/components/settings/AccountSection.vue'
 import SiteSection from '@/components/settings/SiteSection.vue'
 import UsersSection from '@/components/settings/UsersSection.vue'
+import { provideSectionDirty } from '@/components/settings/dirty'
+import { resolveSettingsSection, settingsGroups, type SettingsSectionId } from '@/components/settings/sections'
 
 const { t } = useI18n()
 const route = useRoute()
 const app = useAppStore()
 
-const ALL = [
-  { id: 'storage', icon: 'disk', owner: true },
-  { id: 'limits', icon: 'bolt', owner: true },
-  { id: 'appearance', icon: 'eye', owner: false },
-  { id: 'account', icon: 'shield', owner: false },
-  { id: 'site', icon: 'site', owner: true },
-  { id: 'users', icon: 'users', owner: true },
-] as const
-const sections = computed(() => ALL.filter(s => !s.owner || app.isOwner))
+const SECTIONS: Record<SettingsSectionId, Component> = {
+  account: AccountSection,
+  appearance: AppearanceSection,
+  site: SiteSection,
+  users: UsersSection,
+  storage: StorageSection,
+  limits: LimitsSection,
+}
+
+const groups = computed(() => settingsGroups(app.isOwner))
+const current = computed(() => resolveSettingsSection(app.isOwner, route.params.section))
 
 const pageEl = ref<HTMLElement | null>(null)
 const navEl = ref<HTMLElement | null>(null)
-const colEl = ref<HTMLElement | null>(null)
-const active = ref<string>('')
 
-const sectionEl = (id: string) => colEl.value?.querySelector<HTMLElement>('#' + id) || null
-
-/** 窄屏上目录是贴在顶上的一排，滚到分区时要把它的高度让出来 */
-function topGap(): number {
-  const nav = navEl.value
-  return nav && getComputedStyle(nav).position === 'sticky' && nav.offsetHeight < 80 ? nav.offsetHeight + 12 : 24
-}
-
-/** 分区顶边相对滚动容器内容的位置 */
-function offsetOf(el: HTMLElement): number {
-  const page = pageEl.value!
-  return el.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop
-}
-
-// ---- 滚动时高亮跟随 ----
-function spy() {
-  const page = pageEl.value
-  if (!page) return
-  const list = sections.value
-  let cur: string = list[0]?.id || ''
-  // 到底了：最后几个分区可能矮到永远够不着顶，直接算最后一个
-  if (page.scrollTop > 0 && page.scrollTop + page.clientHeight >= page.scrollHeight - 2) {
-    cur = list[list.length - 1]?.id || cur
-  } else {
-    const line = page.scrollTop + topGap() + 40
-    for (const s of list) {
-      const el = sectionEl(s.id)
-      if (el && offsetOf(el) <= line) cur = s.id
-    }
-  }
-  if (cur !== active.value) {
-    active.value = cur
-    void nextTick(revealNav)
-  }
-}
-
-/** 窄屏的横向目录：当前项滚到看得见的地方 */
+/** 窄屏的横向导航：当前项滚到看得见的地方 */
 function revealNav() {
   const nav = navEl.value
   const item = nav?.querySelector<HTMLElement>('a.on')
   if (!nav || !item || nav.scrollWidth <= nav.clientWidth) return
-  const left = item.offsetLeft - 16
-  const right = item.offsetLeft + item.offsetWidth + 16
-  if (left < nav.scrollLeft) nav.scrollTo({ left: Math.max(0, left) })
-  else if (right > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: right - nav.clientWidth })
+  const box = nav.getBoundingClientRect()
+  const it = item.getBoundingClientRect()
+  if (it.left < box.left + 16) nav.scrollLeft -= box.left + 16 - it.left
+  else if (it.right > box.right - 16) nav.scrollLeft += it.right - (box.right - 16)
 }
-
-// ---- 滚到某个分区 ----
-/** 正在往哪个分区去。上面的分区还在加载、高度会变，到位之前跟着重新对齐；用户自己一滚就放手 */
-let target = ''
-let targetTimer = 0
-let raf = 0
-
-function align(smooth: boolean) {
-  const page = pageEl.value
-  const el = target ? sectionEl(target) : null
-  if (!page || !el) return
-  const top = Math.max(0, offsetOf(el) - topGap())
-  page.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' })
-}
-
-function release() {
-  target = ''
-  window.clearTimeout(targetTimer)
-}
-
-function go(id: string, smooth = true) {
-  if (!sectionEl(id)) return
-  target = id
-  active.value = id
+watch(current, () => {
+  // 新的分区从头看起
+  pageEl.value?.scrollTo({ top: 0 })
   void nextTick(revealNav)
-  align(smooth)
-  window.clearTimeout(targetTimer)
-  targetTimer = window.setTimeout(release, 2500)
+})
+onMounted(() => void nextTick(revealNav))
+
+// ---- 没保存就离开 ----
+const { isDirty } = provideSectionDirty()
+const asking = ref(false)
+const stayBtn = ref<HTMLButtonElement | null>(null)
+let settle: ((leave: boolean) => void) | null = null
+
+function answer(leave: boolean) {
+  asking.value = false
+  settle?.(leave)
+  settle = null
 }
 
-function onScroll() {
-  if (raf) return
-  raf = requestAnimationFrame(() => {
-    raf = 0
-    // 正在去某个分区的路上：高亮已经定好了，别在途中来回跳
-    if (!target) spy()
-  })
+function confirmLeave(): boolean | Promise<boolean> {
+  // 登录已经失效（被送去登录页）时不拦：留下来也存不了
+  if (!app.authed || !isDirty()) return true
+  // 上一次还没答就又来了一次导航（比如连按后退）：前一次算「留下」
+  settle?.(false)
+  asking.value = true
+  void nextTick(() => stayBtn.value?.focus())
+  return new Promise<boolean>((resolve) => { settle = resolve })
 }
 
-let ro: ResizeObserver | null = null
-const USER_SCROLL = ['wheel', 'touchstart', 'keydown', 'mousedown'] as const
+onBeforeRouteUpdate((to, from) => (to.params.section === from.params.section ? true : confirmLeave()))
+onBeforeRouteLeave(() => confirmLeave())
 
-function fromHash(smooth: boolean) {
-  const id = route.hash.replace(/^#/, '')
-  if (id && sections.value.some(s => s.id === id)) go(id, smooth)
-  else spy()
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && asking.value) answer(false)
 }
-
+/** 关标签页 / 刷新：只能交给浏览器自己的提示 */
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (isDirty()) e.preventDefault()
+}
 onMounted(() => {
-  const page = pageEl.value
-  if (page) for (const ev of USER_SCROLL) page.addEventListener(ev, release, { passive: true })
-  if (colEl.value && typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => { if (target) align(false); else spy() })
-    ro.observe(colEl.value)
-  }
-  void nextTick(() => fromHash(false))
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
-  const page = pageEl.value
-  if (page) for (const ev of USER_SCROLL) page.removeEventListener(ev, release)
-  ro?.disconnect()
-  release()
-  if (raf) cancelAnimationFrame(raf)
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  settle?.(true)
 })
-// 已经在设置页时从用户菜单点「账号与安全」
-watch(() => route.hash, () => fromHash(true))
 </script>
 
 <style scoped>
-.lc-page-inner { max-width: 1280px; }
-.set { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 32px; margin-top: 24px; align-items: start; }
-.set-nav { display: grid; gap: 2px; position: sticky; top: 24px; }
-.set-nav a {
+.lc-page-inner { max-width: 1240px; }
+.set { display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: 36px; margin-top: 28px; align-items: start; }
+
+.set-nav { display: grid; gap: 20px; position: sticky; top: 24px; }
+.grp { display: grid; gap: 2px; }
+.grp-h {
+  display: flex; align-items: center; gap: 8px; min-height: 22px; padding: 0 12px; margin-bottom: 6px;
+  font-size: 12px; color: var(--text-3); white-space: nowrap;
+}
+.only { padding: 2px 6px; border-radius: 6px; font-size: 11px; color: var(--cyan-soft); background: rgba(63, 216, 255, .1); white-space: nowrap; }
+.item {
   height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px;
   color: var(--text-2); text-decoration: none; font-size: 14px; border-left: 2px solid transparent; white-space: nowrap;
   transition: background .15s, color .15s;
 }
-.set-nav a:hover { color: var(--text); background: rgba(124, 160, 255, .08); }
-.set-nav a.on { color: var(--text); background: rgba(59, 123, 255, .14); border-left-color: var(--cyan); }
-.set-nav a.on :deep(.lc-ic) { color: var(--cyan); }
-.set-col { min-width: 0; }
-.version { margin-top: 24px; font: 12px var(--f-mono); color: var(--text-3); }
+.item:hover { color: var(--text); background: rgba(124, 160, 255, .08); text-decoration: none; }
+.item:focus-visible { outline: none; box-shadow: var(--ring); }
+.item.on { color: var(--text); background: rgba(59, 123, 255, .14); border-left-color: var(--cyan); }
+.item.on :deep(.lc-ic) { color: var(--cyan); }
+
+/* 表单不跟着宽屏无限拉长；用户表格多给一点 */
+.set-main { min-width: 0; max-width: 880px; }
+.set-main.wide { max-width: 960px; }
+.version { margin-top: 32px; font: 12px var(--f-mono); color: var(--text-3); }
+
+.leave { width: 440px; }
+.leave p { line-height: 1.7; color: var(--text-2); }
 
 @media (max-width: 900px) {
-  .set { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
-  /* 目录变成贴在顶上的一排，自己横向滚动，页面不跟着变宽 */
+  .set { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 16px; }
+  /* 导航变成贴在顶上的一排选择条，自己横向滚动，页面不跟着变宽 */
   .set-nav {
-    display: flex; gap: 8px; top: 0; z-index: 5; margin: 0 -20px; padding: 10px 20px;
+    display: flex; align-items: center; gap: 8px; top: 0; z-index: 5; margin: 0 -20px; padding: 10px 20px;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
     background: var(--bg-0); border-bottom: 1px solid var(--line);
   }
   .set-nav::-webkit-scrollbar { display: none; }
-  .set-nav a {
+  .grp { display: flex; align-items: center; gap: 8px; flex: none; }
+  .grp + .grp { padding-left: 12px; margin-left: 4px; border-left: 1px solid var(--line-2); }
+  .grp-h { padding: 0; margin: 0; flex: none; }
+  .only { display: none; }
+  .item {
     flex: none; height: 32px; padding: 0 12px; gap: 6px; border-radius: 16px; font-size: 13px;
     border: 1px solid var(--line-2);
   }
-  .set-nav a.on { border-color: var(--cyan); background: rgba(63, 216, 255, .1); color: var(--text); }
-  .set-nav a :deep(.lc-ic) { width: 14px; height: 14px; }
+  .item.on { border-color: var(--cyan); background: rgba(63, 216, 255, .1); }
+  .item :deep(.lc-ic) { width: 14px; height: 14px; }
+  .set-main, .set-main.wide { max-width: none; }
 }
 @media (max-width: 600px) {
   .set-nav { margin: 0 -16px; padding: 10px 16px; }
+  .version { margin-top: 24px; }
 }
 </style>

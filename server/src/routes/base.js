@@ -23,7 +23,7 @@ router.get(['/bootstrap', '/app/bootstrap'], wrap(async (req, res) => {
   const who = await identify(req)
   const user = who ? who.user : null
   ok(res, {
-    // May a visitor create an account (a plain user)? The administrator's setting.
+    // May a visitor create an account (a plain user)? The super admin's setting.
     auth: { registrationOpen: s.registrationOpen },
     user: user ? accounts.serializeUser(user) : null,
     site: {

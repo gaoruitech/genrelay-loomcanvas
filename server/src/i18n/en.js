@@ -20,11 +20,11 @@ module.exports = {
 
   /* ---- accounts and sign-in ---- */
   'auth.required': 'Please sign in first',
-  'auth.forbidden': 'Only the administrator of this site can do that',
+  'auth.forbidden': 'Only the super admin of this site can do that',
   'auth.too_many_attempts': 'Too many attempts. Please try again later',
   'auth.credentials_required': 'Please enter your username or email and your password',
   'auth.invalid_credentials': 'Incorrect username, email or password',
-  'auth.account_disabled': 'This account has been disabled. Contact the administrator of this site',
+  'auth.account_disabled': 'This account has been disabled. Contact the super admin of this site',
   'auth.registration_closed': 'Registration is closed on this site',
   'auth.username_taken': 'This username is already taken',
   'auth.email_taken': 'This email is already registered',
@@ -37,7 +37,7 @@ module.exports = {
   'auth.session_not_found': 'Session not found',
   'auth.user_not_found': 'Account not found',
   'auth.cannot_modify_self': 'You cannot disable, delete or reset your own account here',
-  'auth.cannot_modify_owner': 'The administrator account cannot be disabled, deleted or reset here',
+  'auth.cannot_modify_owner': 'The super admin account cannot be disabled, deleted or reset here',
   'auth.confirm_mismatch': 'Type the username of the account to confirm deleting it',
 
   /* ---- validation ---- */

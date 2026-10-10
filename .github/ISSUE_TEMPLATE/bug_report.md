@@ -34,7 +34,7 @@ For a security problem, do not open an issue: see SECURITY.md.
 - Storage (`local` / `s3`; for `s3` the service: AWS S3, Cloudflare R2, Aliyun OSS, MinIO, other; delivery `proxy` / `redirect`) / 存储（`local` / `s3`；`s3` 请写明服务商和分发方式）:
 - Browser and OS / 浏览器与操作系统:
 - Page (Workbench / Canvases / editor / Assets / Models / History / Settings / sign-in) / 出问题的页面（工作台 / 画布 / 编辑器 / 素材库 / 模型管理 / 生成记录 / 设置 / 登录注册）:
-- Owner account or another account? / 是所有者账号还是普通账号？:
+- Super admin or an ordinary user account? / 是超级管理员还是普通用户账号？:
 
 ## If a run failed / 如果是运行失败
 

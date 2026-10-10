@@ -1,6 +1,6 @@
 # LoomCanvas server
 
-Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Accounts (the first one registered is the owner), each with its own canvases, files and model API keys.
+Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Accounts (the super admin is created by the server at start-up; everyone who registers is an ordinary user), each with its own canvases, files and model API keys.
 
 The HTTP API is documented in [`../docs/api.md`](../docs/api.md) (reference, English) and
 [`../docs/architecture.md`](../docs/architecture.md) (design contract, Chinese).
@@ -141,7 +141,7 @@ When each function is called, and what is not guaranteed after a crash, is in
 
 ## Accounts
 
-Signing in is always required. `POST /api/auth/register` creates an account; the first one is the owner (site settings, storage, registration, user list; in the web app these are the owner-only sections of the Settings page), every later one a plain user. Each account sees only its own data, and another account's resource answers 404. Sessions are stored in the database (hashed token, 12 hours, or 30 days with `remember`) and travel as `Authorization: Bearer <token>`. Changing the password ends every session of the account and returns a fresh token to the caller. `ACCESS_PASSWORD` of earlier versions is ignored.
+Signing in is always required. `POST /api/auth/register` creates an ordinary user, never the super admin. The super admin (role `owner` in the API: site settings, storage, registration, user list; in the web app the "Site management" group of the Settings page) is created by the server at start-up from the `ADMIN_*` variables. Each account sees only its own data, and another account's resource answers 404. Sessions are stored in the database (hashed token, 12 hours, or 30 days with `remember`) and travel as `Authorization: Bearer <token>`. Changing the password ends every session of the account and returns a fresh token to the caller. `ACCESS_PASSWORD` of earlier versions is ignored.
 
 Sign-in attempts are rate limited in memory, per 10 minutes: 10 per account name and client address, 30 per client address, 100 per account name and 3000 in total; the last two are not applied to an address the account is known at, so guessing at a name does not lock its holder out. Registration: 20 per address per hour. Profile changes: 20 per account per hour. Details: [`../docs/security.md`](../docs/security.md#rate-limits).
 

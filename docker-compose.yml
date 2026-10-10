@@ -24,7 +24,7 @@ services:
       # Empty is fine: files are addressed relative to whatever address the app is opened at.
       # Set it to the public address when an upstream has to download reference files from here.
       PUBLIC_URL: ${PUBLIC_URL:-}
-      # The administrator account, created at the first start and only then: later these are ignored.
+      # The super admin account, created at the first start and only then: later these are ignored.
       # Set ADMIN_PASSWORD in .env (8+ characters). Left empty, a random password is printed once
       # in the start-up log: `docker compose logs app`. It has to be replaced at the first sign-in.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}

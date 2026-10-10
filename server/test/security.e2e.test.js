@@ -118,7 +118,7 @@ test('security review findings stay fixed', async (t) => {
   })
   const asJson = { 'Content-Type': 'application/json' }
 
-  // The administrator is created at start-up; this file runs as that account.
+  // The super admin is created at start-up; this file runs as that account.
   await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
   token = (await data('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).token
 

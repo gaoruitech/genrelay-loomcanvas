@@ -19,11 +19,11 @@ module.exports = {
 
   /* ---- 账号与登录 ---- */
   'auth.required': '请先登录',
-  'auth.forbidden': '只有站点管理员可以进行这项操作',
+  'auth.forbidden': '只有超级管理员可以进行这项操作',
   'auth.too_many_attempts': '尝试次数过多，请稍后再试',
   'auth.credentials_required': '请输入用户名或邮箱，以及密码',
   'auth.invalid_credentials': '用户名、邮箱或密码不正确',
-  'auth.account_disabled': '这个账号已被停用，请联系站点管理员',
+  'auth.account_disabled': '这个账号已被停用，请联系超级管理员',
   'auth.registration_closed': '本站已关闭注册',
   'auth.username_taken': '这个用户名已被使用',
   'auth.email_taken': '这个邮箱已注册',
@@ -36,7 +36,7 @@ module.exports = {
   'auth.session_not_found': '登录会话不存在',
   'auth.user_not_found': '账号不存在',
   'auth.cannot_modify_self': '不能在这里停用、删除或重置自己的账号',
-  'auth.cannot_modify_owner': '管理员账号不能在这里停用、删除或重置',
+  'auth.cannot_modify_owner': '超级管理员账号不能在这里停用、删除或重置',
   'auth.confirm_mismatch': '请输入该账号的用户名以确认删除',
 
   /* ---- 参数校验 ---- */

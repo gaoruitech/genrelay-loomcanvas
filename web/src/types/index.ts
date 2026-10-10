@@ -11,16 +11,16 @@ export type LocaleCode = 'zh-CN' | 'en'
 export interface User {
   id: string
   username: string
-  /** 服务端启动时自动创建的管理员可以没有邮箱（空串）；注册的账号一定有 */
+  /** 服务端启动时自动创建的超级管理员可以没有邮箱（空串）；注册的账号一定有 */
   email: string
-  /** owner：这台实例的管理员（服务端启动时自动创建，不靠注册产生），能管存储、运行限制、站点和其他用户 */
+  /** owner：这台实例的超级管理员（服务端启动时自动创建，不靠注册产生），能管存储、运行限制、站点和其他用户 */
   role: 'owner' | 'user'
   /** 现在的密码是别人知道的（启动时生成的 / 被重置出来的临时密码）：改掉之前接口只放行改密码 */
   mustChangePassword?: boolean
   createdAt: string
 }
 
-/** 管理员在「用户管理」里看到的一行 */
+/** 超级管理员在「用户管理」里看到的一行 */
 export interface AdminUser extends User {
   disabled: boolean
   lastLoginAt?: string | null
@@ -41,7 +41,7 @@ export interface SiteSettings {
 }
 
 export interface BootstrapInfo {
-  /** 注册是否开放（管理员的设置）；注册出来的永远是普通成员 */
+  /** 注册是否开放（超级管理员的设置）；注册出来的永远是普通用户 */
   auth?: { registrationOpen: boolean }
   /** 当前登录的账号；没登录是 null */
   user?: User | null

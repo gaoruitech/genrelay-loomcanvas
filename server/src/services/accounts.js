@@ -3,7 +3,7 @@
 /**
  * Accounts, sessions and who owns what.
  *
- *  - An account is a row in `users`. One of them is the administrator (role
+ *  - An account is a row in `users`. One of them is the super admin (role
  *    `owner`). Nobody registers as it: the server creates it at start-up when
  *    there is none (ensureAdministrator), and a partial unique index makes
  *    sure there is exactly one, however many processes start together.
@@ -13,7 +13,7 @@
  *    password reset all work by deleting rows, so they take effect at once.
  *  - Every per-account collection carries the account's id in `userId`
  *    (OWNED below is the one list of them). Data written before accounts
- *    existed carries the constant 'local' and is handed to the administrator
+ *    existed carries the constant 'local' and is handed to the super admin
  *    when that account is created.
  */
 const crypto = require('crypto')
@@ -72,7 +72,7 @@ function serializeUser(u) {
   return {
     id: String(u._id),
     username: u.username,
-    // '' for an administrator that was created without ADMIN_EMAIL and has not added one yet.
+    // '' for a super admin that was created without ADMIN_EMAIL and has not added one yet.
     email: u.email || '',
     role: u.role,
     // True while the password is one somebody else knows; the API then serves only the change of it.
@@ -113,7 +113,7 @@ const taken = (what) => new ApiError(409, what === 'username' ? 'auth.username_t
 
 /**
  * Create an account: a plain user, always, and only while registration is
- * open. There is no way to become the administrator from here.
+ * open. There is no way to become the super admin from here.
  */
 async function register({ username, email, password }) {
   const name = parseUsername(username)
@@ -141,10 +141,10 @@ async function register({ username, email, password }) {
   }
 }
 
-/* --------------------------------------------------- the administrator */
+/* --------------------------------------------------- the super admin */
 
 /**
- * Make sure the instance has its administrator. With an owner account already
+ * Make sure the instance has its super admin. With an owner account already
  * there - whoever created it, under whatever name - nothing is read from
  * `admin` and nothing is changed. Otherwise the account is created from
  * ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD (config.admin), takes over the
@@ -193,17 +193,17 @@ async function ensureAdministrator(admin) {
       passwordHash: await hashPassword(password),
       role: ROLES.OWNER,
       mustChangePassword: !given,
-      // Stored with the account, so "an administrator exists" and "the old data
+      // Stored with the account, so "a super admin exists" and "the old data
       // still has to be handed over" can never be seen apart.
       legacyAdoption: 'pending',
     })
   } catch (err) {
     const dup = duplicateOf(err)
     if (!dup) throw err
-    // Another process created the administrator in the meantime: that one stands.
+    // Another process created the super admin in the meantime: that one stands.
     owner = await existing()
     if (owner) return none(owner)
-    // No administrator, yet the name or the address belongs to an ordinary account.
+    // No super admin, yet the name or the address belongs to an ordinary account.
     if (dup === 'email') throw new ConfigError('ADMIN_EMAIL is already the email of another account. Set a different ADMIN_EMAIL, or leave it empty.')
     throw new ConfigError(`ADMIN_USERNAME "${username}" is already the name of another account. Set a different ADMIN_USERNAME.`)
   }
@@ -212,12 +212,12 @@ async function ensureAdministrator(admin) {
 }
 
 /**
- * The one place a generated administrator password is shown: a framed block,
+ * The one place a generated super admin password is shown: a framed block,
  * line by line through `log` (the console at start-up, a collector in tests).
  */
 function announceGeneratedPassword({ username, generatedPassword }, log = console.log) {
   const lines = [
-    'LoomCanvas created the administrator account.',
+    'LoomCanvas created the super admin account.',
     '',
     `    Username:  ${username}`,
     `    Password:  ${generatedPassword}`,
@@ -401,7 +401,7 @@ async function revokeSessions(userId, { except } = {}) {
 const legacyFilter = (filter) => ({ userId: { $in: [LEGACY_USER, null] }, ...(filter || {}) })
 
 /**
- * Hand everything the pre-account version wrote to the administrator. Each step is a
+ * Hand everything the pre-account version wrote to the super admin. Each step is a
  * plain "whatever is still unowned becomes yours", so running it again after
  * an interruption finishes the job and running it once more changes nothing.
  * Timestamps are left alone (the raw collection is used on purpose).
@@ -432,7 +432,7 @@ async function dropIndex(model, name) {
  *  - slugs, model ids and template keys used to be unique across the whole
  *    database; they are unique per account now, so the old indexes go;
  *  - built-in templates move from the old single user to the site;
- *  - the administrator is created when there is none (ensureAdministrator)
+ *  - the super admin is created when there is none (ensureAdministrator)
  *    and takes over the data from before accounts;
  *  - a hand-over that was interrupted is finished.
  * `admin` defaults to the ADMIN_* variables. A generated password goes through

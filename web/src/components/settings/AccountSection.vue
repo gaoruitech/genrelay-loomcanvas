@@ -1,19 +1,16 @@
 <template>
   <SettingsSection id="account" icon="shield" :title="t('account.title')">
     <template #desc>
-      {{ t('account.current') }}<b class="who">{{ app.user?.username }}</b> · {{ app.isOwner ? t('shell.roleOwner') : t('shell.roleUser') }}
+      {{ t('account.current') }}<b class="who">{{ app.user?.username }}</b>
+      <span class="lc-bd role" :class="{ own: app.isOwner }">{{ app.isOwner ? t('shell.roleOwner') : t('shell.roleUser') }}</span>
     </template>
 
     <!-- 用户名 / 邮箱 -->
-    <form class="srow top" novalidate @submit.prevent="saveProfile">
-      <div class="k">
-        <b>{{ t('account.profile.title') }}</b>
-        <small>{{ t('account.profile.help') }}</small>
-      </div>
-      <div class="v">
-        <div class="g2">
-          <div class="fld">
-            <label for="ac-username">{{ t('account.profile.username') }}</label>
+    <form novalidate @submit.prevent="saveProfile">
+      <SettingsCard :title="t('account.profile.title')" :desc="t('account.profile.help')">
+        <div class="srow">
+          <div class="k"><label for="ac-username">{{ t('account.profile.username') }}</label></div>
+          <div class="v">
             <input
               id="ac-username" v-model.trim="profile.username" class="lc-input" :class="{ 'is-err': profileErr.username }"
               maxlength="32" autocomplete="username" spellcheck="false" :disabled="profileBusy"
@@ -21,8 +18,10 @@
             />
             <span v-if="profileErr.username" class="lc-help err" role="alert">{{ profileErr.username }}</span>
           </div>
-          <div class="fld">
-            <label for="ac-email">{{ t('account.profile.email') }}</label>
+        </div>
+        <div class="srow">
+          <div class="k"><label for="ac-email">{{ t('account.profile.email') }}</label></div>
+          <div class="v">
             <input
               id="ac-email" v-model.trim="profile.email" class="lc-input" :class="{ 'is-err': profileErr.email }"
               type="email" autocomplete="email" spellcheck="false" :disabled="profileBusy"
@@ -31,23 +30,22 @@
             <span v-if="profileErr.email" class="lc-help err" role="alert">{{ profileErr.email }}</span>
           </div>
         </div>
-        <p v-if="profileErr.form" class="lc-error-text msg" role="alert">{{ profileErr.form }}</p>
-        <button class="lc-btn act" type="submit" :disabled="profileBusy || !profileDirty" data-testid="account-save-profile">
-          {{ profileBusy ? t('common.saving') : t('account.profile.save') }}
-        </button>
-      </div>
+        <template #foot>
+          <button class="lc-btn primary quiet" type="submit" :disabled="profileBusy || !profileDirty" data-testid="account-save-profile">
+            {{ profileBusy ? t('common.saving') : t('account.profile.save') }}
+          </button>
+          <button v-if="profileDirty" class="lc-btn ghost" type="button" :disabled="profileBusy" @click="resetProfile">{{ t('settings.discard') }}</button>
+          <p v-if="profileErr.form" class="lc-error-text" role="alert">{{ profileErr.form }}</p>
+        </template>
+      </SettingsCard>
     </form>
 
     <!-- 修改密码 -->
-    <form class="srow top" novalidate autocomplete="off" @submit.prevent="savePassword">
-      <div class="k">
-        <b>{{ t('account.password.title') }}</b>
-        <small>{{ t('account.password.help') }}</small>
-      </div>
-      <div class="v">
-        <div class="g3">
-          <div class="fld">
-            <label for="ac-pw-cur">{{ t('account.password.current') }}</label>
+    <form novalidate autocomplete="off" @submit.prevent="savePassword">
+      <SettingsCard :title="t('account.password.title')" :desc="t('account.password.help')">
+        <div class="srow">
+          <div class="k"><label for="ac-pw-cur">{{ t('account.password.current') }}</label></div>
+          <div class="v">
             <input
               id="ac-pw-cur" v-model="pw.current" class="lc-input" :class="{ 'is-err': pwErr.current }" type="password"
               autocomplete="current-password" :placeholder="t('account.password.currentPh')" :disabled="pwBusy"
@@ -55,8 +53,10 @@
             />
             <span v-if="pwErr.current" class="lc-help err" role="alert">{{ pwErr.current }}</span>
           </div>
-          <div class="fld">
-            <label for="ac-pw-new">{{ t('account.password.next') }}</label>
+        </div>
+        <div class="srow">
+          <div class="k"><label for="ac-pw-new">{{ t('account.password.next') }}</label></div>
+          <div class="v">
             <input
               id="ac-pw-new" v-model="pw.next" class="lc-input" :class="{ 'is-err': pwErr.next }" type="password"
               autocomplete="new-password" :placeholder="t('account.password.nextPh')" :disabled="pwBusy"
@@ -64,8 +64,10 @@
             />
             <span v-if="pwErr.next" class="lc-help err" role="alert">{{ pwErr.next }}</span>
           </div>
-          <div class="fld">
-            <label for="ac-pw-again">{{ t('account.password.confirm') }}</label>
+        </div>
+        <div class="srow">
+          <div class="k"><label for="ac-pw-again">{{ t('account.password.confirm') }}</label></div>
+          <div class="v">
             <input
               id="ac-pw-again" v-model="pw.again" class="lc-input" :class="{ 'is-err': pwErr.again }" type="password"
               autocomplete="new-password" :placeholder="t('account.password.confirmPh')" :disabled="pwBusy"
@@ -74,56 +76,53 @@
             <span v-if="pwErr.again" class="lc-help err" role="alert">{{ pwErr.again }}</span>
           </div>
         </div>
-        <p v-if="pwErr.form" class="lc-error-text msg" role="alert">{{ pwErr.form }}</p>
-        <button class="lc-btn act" type="submit" :disabled="pwBusy" data-testid="account-save-password">
-          {{ pwBusy ? t('common.saving') : t('account.password.submit') }}
-        </button>
-      </div>
+        <template #foot>
+          <button class="lc-btn primary quiet" type="submit" :disabled="pwBusy" data-testid="account-save-password">
+            {{ pwBusy ? t('common.saving') : t('account.password.submit') }}
+          </button>
+          <p v-if="pwErr.form" class="lc-error-text" role="alert">{{ pwErr.form }}</p>
+        </template>
+      </SettingsCard>
     </form>
 
     <!-- 登录会话 -->
-    <div class="srow top">
-      <div class="k">
-        <b>{{ t('account.sessions.title') }}</b>
-        <small>{{ t('account.sessions.help') }}</small>
-      </div>
-      <div class="v" data-testid="account-sessions">
-        <div v-if="sessLoading && !sessions.length" class="sk flat" aria-busy="true"><i /><i /></div>
-        <div v-else-if="sessError" class="sess-state">
+    <SettingsCard :title="t('account.sessions.title')" :desc="t('account.sessions.help')">
+      <template v-if="others > 0" #aside>
+        <button
+          class="lc-btn danger sm"
+          type="button"
+          :disabled="revokingAll"
+          data-testid="account-revoke-others"
+          @click="confirmAll = true"
+        >{{ t('account.sessions.revokeOthers') }}</button>
+      </template>
+      <div data-testid="account-sessions">
+        <div v-if="sessLoading && !sessions.length" class="sk" aria-busy="true"><i /><i /></div>
+        <div v-else-if="sessError" class="sec-state">
           <p class="lc-error-text">{{ sessError }}</p>
           <button class="lc-btn sm" @click="loadSessions">{{ t('common.retry') }}</button>
         </div>
-        <template v-else>
-          <ul class="sess-list">
-            <li v-for="s in sorted" :key="s.id" class="sess">
-              <span class="dv"><LcIcon :name="device(s).mobile ? 'phone' : 'monitor'" /></span>
-              <div class="who-dev">
-                <b>{{ deviceName(s) }}</b>
-                <small>{{ ipText(s) || t('account.sessions.noIp') }}</small>
-              </div>
-              <span v-if="s.current" class="lc-st ok">{{ t('account.sessions.current') }}</span>
-              <span v-else class="seen">{{ seenText(s) }}</span>
-              <button
-                v-if="!s.current"
-                class="lc-btn sm"
-                type="button"
-                :disabled="revoking === s.id || revokingAll"
-                @click="revoke(s)"
-              >{{ t('account.sessions.revoke') }}</button>
-              <span v-else class="pad" />
-            </li>
-          </ul>
-          <button
-            v-if="others > 0"
-            class="lc-btn danger sm all"
-            type="button"
-            :disabled="revokingAll"
-            data-testid="account-revoke-others"
-            @click="confirmAll = true"
-          >{{ t('account.sessions.revokeOthers') }}</button>
-        </template>
+        <ul v-else class="sess-list">
+          <li v-for="s in sorted" :key="s.id" class="sess">
+            <span class="dv"><LcIcon :name="device(s).mobile ? 'phone' : 'monitor'" /></span>
+            <div class="who-dev">
+              <b>{{ deviceName(s) }}</b>
+              <small>{{ ipText(s) || t('account.sessions.noIp') }}</small>
+            </div>
+            <span v-if="s.current" class="lc-st ok">{{ t('account.sessions.current') }}</span>
+            <span v-else class="seen">{{ seenText(s) }}</span>
+            <button
+              v-if="!s.current"
+              class="lc-btn sm"
+              type="button"
+              :disabled="revoking === s.id || revokingAll"
+              @click="revoke(s)"
+            >{{ t('account.sessions.revoke') }}</button>
+            <span v-else class="pad" />
+          </li>
+        </ul>
       </div>
-    </div>
+    </SettingsCard>
 
     <div v-if="confirmAll" class="lc-mask" @click.self="confirmAll = false">
       <div class="lc-dialog dlg" role="dialog" aria-modal="true">
@@ -139,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-/** 账号与安全：改用户名 / 邮箱、改密码、看和下线登录会话。每个登录的人都有。 */
+/** 账号与安全：改用户名 / 邮箱、改密码、看和下线登录会话，各占一张卡片、各有各的按钮。每个登录的人都有。 */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -148,6 +147,8 @@ import { describeAuthError, EMAIL_RE, PASSWORD_MAX, PASSWORD_MIN, USERNAME_RE } 
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'
 import SettingsSection from './SettingsSection.vue'
+import SettingsCard from './SettingsCard.vue'
+import { useSectionDirty } from './dirty'
 import { parseUserAgent } from './userAgent'
 import { formatWhen } from './when'
 import type { AuthSession } from '@/types'
@@ -167,11 +168,17 @@ watch(() => app.user, (u, old) => {
   if (profile.email === (old?.email || '')) profile.email = u.email
 })
 
+function resetProfile() {
+  profile.username = app.user?.username || ''
+  profile.email = app.user?.email || ''
+  profileErr.username = profileErr.email = profileErr.form = ''
+}
+
 async function saveProfile() {
   profileErr.form = ''
   profileErr.username = !profile.username ? t('auth.errors.usernameRequired')
     : USERNAME_RE.test(profile.username) ? '' : t('auth.errors.usernameInvalid')
-  // 自动创建的管理员可以没有邮箱：本来就没有、这次也没填，就不拦（只改用户名）；有过邮箱的不能改成空
+  // 自动创建的超级管理员可以没有邮箱：本来就没有、这次也没填，就不拦（只改用户名）；有过邮箱的不能改成空
   profileErr.email = !profile.email ? (app.user?.email ? t('auth.errors.emailRequired') : '')
     : EMAIL_RE.test(profile.email) ? '' : t('auth.errors.emailInvalid')
   if (profileErr.username || profileErr.email) return
@@ -201,6 +208,11 @@ async function saveProfile() {
 const pw = reactive({ current: '', next: '', again: '' })
 const pwErr = reactive({ current: '', next: '', again: '', form: '' })
 const pwBusy = ref(false)
+// 「当前密码」可能是浏览器自动填的，不算改动；动了新密码才算
+const pwDirty = computed(() => !!(pw.next || pw.again))
+
+// 填了一半就去别的分区：先问一句
+useSectionDirty(() => profileDirty.value || pwDirty.value)
 
 async function savePassword() {
   pwErr.form = ''
@@ -306,25 +318,23 @@ async function revokeOthers() {
 
 <style scoped>
 @import './section-shared.css';
-.who { font-weight: 500; color: var(--text); margin-left: 2px; }
-.act { margin-top: 12px; }
-.msg { margin-top: 10px; }
+.who { font-weight: 500; color: var(--text); margin: 0 8px 0 2px; }
+.role { vertical-align: 1px; }
+.role.own { color: var(--cyan-soft); background: rgba(63, 216, 255, .12); }
 
-.sess-list { list-style: none; }
+.sess-list { list-style: none; margin-top: 8px; }
 .sess {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, auto) 72px; gap: 16px; align-items: center;
-  min-height: 56px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
+  min-height: 60px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px;
 }
-.sess:first-child { border-top: 0; padding-top: 0; }
+.sess:first-child { border-top: 0; }
+.sess:last-child { padding-bottom: 0; min-height: 50px; }
 .dv { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgba(124, 160, 255, .1); color: var(--text-2); }
 .who-dev { min-width: 0; }
 .who-dev b { display: block; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who-dev small { display: block; color: var(--text-3); font: 12px var(--f-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seen { color: var(--text-2); text-align: right; }
 .sess .lc-btn { justify-self: end; }
-.all { margin-top: 8px; }
-.sk.flat { border-top: 0; padding-top: 4px; }
-.sess-state .lc-btn { margin-top: 10px; }
 
 @media (max-width: 600px) {
   .sess { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 4px 12px; }

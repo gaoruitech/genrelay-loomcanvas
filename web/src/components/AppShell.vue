@@ -27,7 +27,7 @@
             <b>{{ app.user?.username }}</b>
             <small>{{ app.user?.email }}</small>
           </div>
-          <router-link class="lc-menu-item" role="menuitem" :to="{ name: 'settings', hash: '#account' }" @click="menuOpen = false">
+          <router-link class="lc-menu-item" role="menuitem" :to="{ name: 'settings', params: { section: 'account' } }" @click="menuOpen = false">
             <LcIcon name="shield" size="s" />{{ t('shell.account') }}
           </router-link>
           <a class="lc-menu-item" role="menuitem" :href="LINKS.docs" target="_blank" rel="noopener" @click="menuOpen = false">

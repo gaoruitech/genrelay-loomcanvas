@@ -1,5 +1,5 @@
 <template>
-  <div class="ed" :class="{ 'q-open': queueOpen, 'sheet-open': !!fly || queueOpen }">
+  <div class="ed" :class="{ 'sheet-open': !!fly }">
     <!-- 素材库 / 我的分享 / 模板 / 教程 -->
     <LibraryDialog v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
     <CanvasTemplateDialog v-model="templateDialogOpen" @apply="applyTemplate" />
@@ -340,16 +340,6 @@
         :aria-label="t('canvas.menu.exitImmersive')"
         @click="appStore.setImmersive(false)"
       ><svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.exitFull" /></button>
-      <button
-        v-if="!queueOpen"
-        class="lc-btn icon ed-btn ed-qbtn"
-        :title="t('queue.toggle')"
-        :aria-label="t('queue.toggle')"
-        @click="setQueueOpen(true)"
-      >
-        <LcIcon name="queue" />
-        <i v-if="activeRunCount" class="ed-badge">{{ activeRunCount }}</i>
-      </button>
       <button class="lc-btn ed-btn ed-share" :disabled="saving || publishing" :title="t('canvas.topbar.share')" @click="openShareDialog">
         <LcIcon name="share" /><span>{{ t('canvas.act.share') }}</span>
       </button>
@@ -394,18 +384,16 @@
       <button class="lc-btn text sm" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
     </div>
 
-    <!-- 右侧：生成队列 -->
+    <!-- 生成队列：一颗悬浮圆钮，默认在右下角，可以拖走；点开是贴着它的清单卡片 -->
     <QueuePanel
-      v-show="queueOpen"
       :nodes="nodes"
       :workflow-id="currentId"
       :title-of="nodeTypeLabel"
       :cancel-node="executor.cancelNode"
       @focus="gotoNode"
-      @close="setQueueOpen(false)"
     />
-    <!-- 手机上抽屉（节点面板 / 队列）后面的遮罩 -->
-    <div class="ed-scrim" @click="closeSheets" />
+    <!-- 手机上节点面板抽屉后面的遮罩 -->
+    <div class="ed-scrim" @click="fly = ''" />
 
     <!-- 节点右键菜单 -->
     <div
@@ -791,7 +779,7 @@ const MAX_ZOOM = 4
 const zoomPct = computed(() => Math.round((viewport.value.zoom || 1) * 100))
 
 const {
-  updateNodeData, updateNode, removeNodes, setViewport, screenToFlowCoordinate, getNodes, fitView,
+  updateNodeData, updateNode, removeNodes, setViewport, screenToFlowCoordinate, getNodes,
   onNodesInitialized, zoomIn, zoomOut, zoomTo, findNode,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
@@ -2024,9 +2012,9 @@ function freeSpot(): { x: number; y: number } {
   const zoom = viewport.value.zoom || 1
   const toFlow = (sx: number, sy: number) => ({ x: (sx - viewport.value.x) / zoom, y: (sy - viewport.value.y) / zoom })
   const pane = document.querySelector('.vf-wrap') as HTMLElement | null
-  // 右边让给生成队列，底下让给工具条
-  const paneW = (pane?.clientWidth || 1200) - (queueOpen.value && window.innerWidth > 1100 ? 280 : 0)
-  const paneH = (pane?.clientHeight || 800) - 72
+  // 底下让给工具条和右下角的生成队列圆钮（两者一样高）
+  const paneW = pane?.clientWidth || 1200
+  const paneH = (pane?.clientHeight || 800) - 80
   // 新节点还没量过尺寸，按常见节点大小留地方；组是一大片底板，不算占位
   const BOX_W = 300, BOX_H = 320, GAP = 24
   const boxes = getNodes.value.filter((n: any) => n.type !== 'frame').map(nodeBox)
@@ -2937,9 +2925,11 @@ async function checkLegacyLayout() {
 /**
  * 把内容框进「没被控件盖住」的那块区域。
  *
- * vue-flow 自带的 fitView 按整块画布居中，而画布四周浮着标题块、节点面板、工具条和
- * 生成队列 —— 照它的算法，最右边的节点正好压在队列面板底下。这里按四边各自让出的
- * 宽度算视口，其余（只框某几个节点、缩放上限、动画时长）与 fitView 的用法一致。
+ * vue-flow 自带的 fitView 按整块画布居中，而画布四周浮着标题块、节点面板、工具条、
+ * 小地图和右下角的生成队列圆钮 —— 照它的算法，边上的节点正好压在这些块底下。这里按
+ * 四边各自让出的宽度算视口，其余（只框某几个节点、缩放上限、动画时长）与 fitView 的用法一致。
+ * 圆钮不单独让位：桌面上它和工具条、小地图同在底边那一条里；手机上底边多让出它那一层。
+ * 它被拖到别处之后不再跟着让 —— 那是用户自己挑的位置，和别的小控件一样允许节点从底下过。
  */
 function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number } = {}) {
   const pane = document.querySelector('.vf-wrap') as HTMLElement | null
@@ -2963,9 +2953,10 @@ function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number }
   if (!pane || !boxes.length) return
   const W = pane.clientWidth, H = pane.clientHeight
   const inset = W <= 640
-    ? { l: 12, t: 60, r: 12, b: 66 }
-    // 底边多让一截：左下角的小地图比工具条高
-    : { l: 88, t: 76, r: (queueOpen.value && window.innerWidth > QUEUE_WIDE ? 280 : 0) + 24, b: 140 }
+    // 手机：底边除了工具条，还有它上面右角的生成队列圆钮
+    ? { l: 12, t: 60, r: 12, b: 126 }
+    // 底边多让一截：左下角的小地图比工具条高（右下角的圆钮也在这一条里）
+    : { l: 88, t: 76, r: 24, b: 140 }
   const freeW = Math.max(120, W - inset.l - inset.r)
   const freeH = Math.max(120, H - inset.t - inset.b)
   const minX = Math.min(...boxes.map((b) => b.left)), maxX = Math.max(...boxes.map((b) => b.right))
@@ -3147,38 +3138,14 @@ function openSearch() {
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
 function gotoNode(id: string) {
-  const n = getNodes.value.find((x: any) => x.id === id)
+  // 不能从 getNodes 里找：开了 only-render-visible-elements，视野外的节点不在里面，
+  // 而从队列 / 搜索点过来的恰恰多半是看不见的那个
+  const n = findNode(id)
   if (!n) return
-  fitView({ nodes: [id], padding: 0.6, duration: 300 })
+  fitFree({ nodes: [id], maxZoom: 1, duration: 300 })
   // 只留这一个选中：从队列或搜索点过来，要的是「就是它」
   removeSelectedNodes(getSelectedNodes.value)
   addSelectedNodes([n as any])
-  // 手机上队列是盖住画布的抽屉，定位之后收起来才看得见节点
-  if (window.innerWidth <= 640) setQueueOpen(false)
-}
-
-/* ==================== 生成队列面板 ==================== */
-// 桌面默认展开并记住上次的开合；窄于 1100 每次进来都是收起的（那时它盖在画布上）
-const QUEUE_KEY = 'lc-queue-open'
-const QUEUE_WIDE = 1100
-function readQueueOpen(): boolean {
-  if (window.innerWidth <= QUEUE_WIDE) return false
-  try { return localStorage.getItem(QUEUE_KEY) !== '0' } catch { return true }
-}
-const queueOpen = ref(readQueueOpen())
-function setQueueOpen(v: boolean) {
-  queueOpen.value = v
-  if (v) fly.value = ''
-  if (window.innerWidth <= QUEUE_WIDE) return
-  try { localStorage.setItem(QUEUE_KEY, v ? '1' : '0') } catch { /* 记不住就算了 */ }
-}
-/** 收起时按钮角标上的数：正在跑 + 在排队的节点 */
-const activeRunCount = computed(() =>
-  nodes.value.filter((n) => n.data?.status === 'running' || n.data?.status === 'queued').length)
-/** 手机上点遮罩：收起节点面板抽屉和队列抽屉 */
-function closeSheets() {
-  fly.value = ''
-  if (window.innerWidth <= 640) setQueueOpen(false)
 }
 
 /* ==================== 键盘快捷键 ==================== */
@@ -3353,16 +3320,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* 编辑器：画布铺满外壳给的整块区域，所有控件都是浮在上面的玻璃块。
-   --q 是右侧生成队列占掉的宽度，右上按钮组和底部工具条靠它让位。 */
+/* 编辑器：画布铺满外壳给的整块区域，所有控件都是浮在上面的玻璃块。 */
 .ed {
-  --q: 0px;
   position: absolute;
   inset: 0;
   overflow: hidden;
   color: var(--text);
 }
-.ed.q-open { --q: 280px; }
 
 /* ---------- 画布 ---------- */
 .vf-wrap {
@@ -3475,7 +3439,7 @@ onBeforeUnmount(() => {
 .ed-title {
   left: 16px; top: 16px; height: 44px;
   display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px;
-  max-width: calc(100% - var(--q) - 32px - 200px);
+  max-width: calc(100% - 32px - 200px);
   min-width: 0;
 }
 /* 画布名：镜像文字撑开宽度，输入框叠在上面 —— 名字多长块就多宽，超了就截断 */
@@ -3566,14 +3530,14 @@ onBeforeUnmount(() => {
 /* 没有模型的提示 */
 .ed-hint {
   position: absolute; z-index: 6; top: 16px; left: 50%; transform: translateX(-50%);
-  max-width: min(520px, calc(100% - var(--q) - 520px)); align-items: center;
+  max-width: min(520px, calc(100% - 520px)); align-items: center;
   background: rgba(40, 30, 20, .92); box-shadow: var(--sh-1);
 }
 .ed-hint a { white-space: nowrap; font-weight: 500; }
 
 /* 右上：按钮组（没有底板，每颗按钮自己是一块玻璃） */
 .ed-act {
-  position: absolute; z-index: 6; right: calc(16px + var(--q)); top: 16px; height: 44px;
+  position: absolute; z-index: 6; right: 16px; top: 16px; height: 44px;
   display: flex; align-items: center; gap: 8px;
 }
 .ed-btn {
@@ -3582,17 +3546,12 @@ onBeforeUnmount(() => {
 }
 .ed-btn:hover:not(:disabled) { background: rgba(27, 43, 94, .95); }
 .ed-btn.on { border-color: var(--line-3); color: var(--cyan); }
-.ed-badge {
-  position: absolute; right: -5px; top: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
-  background: var(--cyan); color: var(--text-inv); font: 600 10px/16px var(--f-mono); font-style: normal; text-align: center;
-  box-shadow: 0 0 8px rgba(63, 216, 255, .6);
-}
 
 /* 底部中间：工具条 */
 .ed-tools {
-  left: calc((100% - var(--q)) / 2); bottom: 20px; transform: translateX(-50%);
+  left: 50%; bottom: 20px; transform: translateX(-50%);
   height: 48px; display: flex; align-items: center; gap: 4px; padding: 0 6px;
-  max-width: calc(100% - var(--q) - 32px);
+  max-width: calc(100% - 32px);
 }
 .ed-tools hr { width: 1px; height: 20px; margin: 0 4px; }
 .ed-zoom {
@@ -3606,7 +3565,7 @@ onBeforeUnmount(() => {
 
 /* 整理后的「撤销」小条：浮在工具条上方 */
 .ed-undo {
-  left: calc((100% - var(--q)) / 2); bottom: 80px; transform: translateX(-50%);
+  left: 50%; bottom: 80px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 14px;
   font-size: 13px; color: var(--text-2); white-space: nowrap;
 }
@@ -3626,7 +3585,7 @@ onBeforeUnmount(() => {
 .ed-menu-title { font: 600 13px/1.4 var(--f-disp); color: var(--text); padding: 6px 8px 0; }
 
 /* ---------- 节点搜索 ---------- */
-.nsearch { top: 16px; left: calc((100% - var(--q)) / 2); transform: translateX(-50%); width: 360px; max-width: calc(100% - 32px); z-index: 10; padding: 6px; }
+.nsearch { top: 16px; left: 50%; transform: translateX(-50%); width: 360px; max-width: calc(100% - 32px); z-index: 10; padding: 6px; }
 .nsearch-bar { border-color: var(--line); }
 .nsearch-empty { padding: 10px 8px 6px; font-size: 12px; color: var(--text-3); }
 .nsearch-list { max-height: 264px; overflow-y: auto; margin-top: 6px; display: grid; gap: 2px; }
@@ -3651,22 +3610,18 @@ onBeforeUnmount(() => {
 
 /* ---------- 窄屏 ---------- */
 @media (max-width: 1100px) {
-  /* 队列盖在画布上，不再挤占工具条的位置 */
-  .ed.q-open { --q: 0px; }
-  .ed.q-open .ed-act { right: 296px; }
   .ed-title { max-width: calc(100% - 32px - 150px); }
-  .ed.q-open .ed-title { max-width: calc(100% - 32px - 430px); }
-  .ed-hint { top: 68px; max-width: calc(100% - 96px); }
+  /* 提示条挪到第二排：第一排放不下了，夹在节点面板和右边界之间 */
+  .ed-hint { top: 68px; left: 80px; right: 16px; transform: none; max-width: none; }
 }
 @media (max-width: 640px) {
   .ed-title { left: 8px; top: 8px; height: 40px; padding: 0 8px 0 3px; gap: 4px; max-width: calc(100% - 16px - 138px); }
-  .ed.q-open .ed-title { max-width: calc(100% - 16px - 138px); }
   .ed-name { min-width: 24px; }
   .ed-name-mirror, .ed-name input { padding: 0 4px; font-size: 13px; }
   /* 保存状态只留圆点，文字靠 title / 读屏 */
   .ed-save { padding: 6px; }
   .ed-save > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .ed-act, .ed.q-open .ed-act { right: 8px; top: 8px; height: 40px; gap: 6px; }
+  .ed-act { right: 8px; top: 8px; height: 40px; gap: 6px; }
   .ed-share { width: 36px; padding: 0; }
   .ed-share > span { display: none; }
   /* 节点面板收成一颗「+」，点开是底部抽屉（里面有全部节点和素材入口） */
@@ -3689,7 +3644,8 @@ onBeforeUnmount(() => {
   .ed-arrange { width: 34px; padding: 0; }
   .ed-arrange > span { display: none; }
   .ed-arrange .lc-ic { width: 18px; height: 18px; color: var(--text-2); }
-  .ed-undo { left: 8px; right: 8px; bottom: 62px; transform: none; justify-content: space-between; }
+  /* 「撤销」贴在工具条上面；右边留出生成队列圆钮默认待的那一角 */
+  .ed-undo { left: 8px; right: 76px; bottom: 62px; transform: none; justify-content: space-between; }
   .vf-wrap :deep(.vue-flow__minimap) { display: none; }
   .nsearch { top: 56px; left: 8px; right: 8px; transform: none; width: auto; max-width: none; }
   .ed-hint { top: 56px; left: 62px; right: 8px; transform: none; max-width: none; }

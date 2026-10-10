@@ -145,7 +145,7 @@ watch(() => props.section, () => { if (open.value) jump() })
   .cg-card-actions { flex-direction: column; }
 }
 
-/* 抽屉：贴着编辑器右边的一块玻璃，盖在生成队列上面 */
+/* 抽屉：贴着编辑器右边的一块玻璃，盖在生成队列圆钮上面 */
 .cg-drawer {
   position: absolute; top: 16px; right: 16px; bottom: 16px; z-index: 30;
   width: 400px; max-width: calc(100% - 32px); display: flex; flex-direction: column;

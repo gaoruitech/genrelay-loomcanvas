@@ -96,7 +96,7 @@ test('LoomCanvas API end to end', async (t) => {
   setAllowedHosts(['127.0.0.1']) // what SSRF_ALLOW_HOSTS=127.0.0.1 does at boot
   const settings = require('../src/services/settings')
   await settings.load()
-  // As at start-up: the administrator exists before anybody can reach the server. This file runs as that account.
+  // As at start-up: the super admin exists before anybody can reach the server. This file runs as that account.
   await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
   await require('../src/services/seed').seed()
   const { getRunner } = require('../src/runner')
@@ -159,7 +159,7 @@ test('LoomCanvas API end to end', async (t) => {
       assert.deepEqual([r.status, r.body.code], [401, 'auth.required'], `${m} ${p}`)
       assert.notEqual(r.body.result, 0)
     }
-    // Nobody registers as the administrator: whoever registers is a plain user, on an instance of any age.
+    // Nobody registers as the super admin: whoever registers is a plain user, on an instance of any age.
     const reg = await call('POST', '/api/auth/register', { username: 'visitor', email: 'visitor@example.com', password: 'correct horse' })
     assert.deepEqual([reg.status, reg.body.data.user.role, reg.body.data.user.mustChangePassword], [200, 'user', false])
     assert.equal((await call('POST', '/api/auth/login', { account: 'owner', password: 'wrong horse' })).status, 401)

@@ -2,7 +2,7 @@
 
 /**
  * Before accounts existed every document was owned by this constant. Documents
- * that still carry it are handed to the administrator when that account is
+ * that still carry it are handed to the super admin when that account is
  * created at start-up, see services/accounts.js.
  */
 const LEGACY_USER = 'local'

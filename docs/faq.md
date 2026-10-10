@@ -120,7 +120,7 @@ A storage service the app is configured to read (the active bucket, or an earlie
 
 ### A run seems stuck
 
-- **Queued** for a long time: all slots are busy, or your account already holds as many as one account may. The administrator can raise **Concurrent runs** and **Concurrent runs per account** under **Settings → Run limits**; otherwise wait.
+- **Queued** for a long time: all slots are busy, or your account already holds as many as one account may. The super admin can raise **Concurrent runs** and **Concurrent runs per account** under **Settings → Run limits**; otherwise wait.
 - **Running** for a long time: the upstream has not finished. A run cannot wait forever: image runs fail after 10 minutes and video runs after 30 by default (**Settings → Run limits**). Chat requests fail after 5 minutes (`chatTimeoutSec`).
 - A node that is running shows a **Cancel run** button. A queued or running run can also be canceled through the API: `POST /api/runs/<id>/cancel` ([API](api.md#models-and-runs)). The run id is the `id` of the record returned by `GET /api/admin/usage/records`.
 - After a server restart, queued runs and runs that already have an upstream task continue by themselves. The time limit counts from the original submission, so a restart does not extend it. Runs that were being sent when the server stopped fail instead; see "The server stopped while this task was being sent…" below.
@@ -130,7 +130,7 @@ The failure reason is in the node's task details and on the **History** page (**
 
 ### "There are already 500 unfinished runs"
 
-The number in the message is whichever limit was reached. One account may have `userQueueLimit` runs queued or in flight (200 by default; the administrator can change it, see [Configuration](configuration.md#admin-settings)), and the instance as a whole 500. Wait for some to finish or cancel some. A large batch run can reach this.
+The number in the message is whichever limit was reached. One account may have `userQueueLimit` runs queued or in flight (200 by default; the super admin can change it, see [Configuration](configuration.md#admin-settings)), and the instance as a whole 500. Wait for some to finish or cancel some. A large batch run can reach this.
 
 ### "The server stopped while this task was being sent…"
 
@@ -151,12 +151,12 @@ Provider keys are encrypted with `SECRET_KEY`. With a different key they cannot 
 - If you still have the old `SECRET_KEY`, put it back and restart. Everything works again.
 - If not, open the **Models** page, click **Edit** on each provider card and enter its API key again. Every account has to do this for its own providers. Nothing else is lost, and nobody is signed out: sessions do not depend on `SECRET_KEY`.
 
-### Where is the administrator password?
+### Where is the super admin password?
 
-The administrator account is created by the server at the first start; nobody registers as it. Its username is `admin` unless `ADMIN_USERNAME` was set.
+The super admin account is created by the server at the first start; nobody registers as it. Its username is `admin` unless `ADMIN_USERNAME` was set.
 
 - If `ADMIN_PASSWORD` was set at that first start, that is the password.
-- If it was not, the server generated one and printed it once in the start-up log, in a framed block that begins with `LoomCanvas created the administrator account.` With Docker Compose: `docker compose logs app`, and search for `Password:`. Without Docker it is in the terminal where `npm start` ran. Sign in with it and you are asked to choose your own before anything else.
+- If it was not, the server generated one and printed it once in the start-up log, in a framed block that begins with `LoomCanvas created the super admin account.` With Docker Compose: `docker compose logs app`, and search for `Password:`. Without Docker it is in the terminal where `npm start` ran. Sign in with it and you are asked to choose your own before anything else.
 - If it is lost (the log is gone, or the password was changed and forgotten), reset it from the command line: `docker compose exec app node src/cli/reset-password.js admin`, or without Docker `node server/src/cli/reset-password.js admin`. See the next question.
 
 `ADMIN_PASSWORD` is only read when the account is created. Setting or changing it later does nothing.
@@ -165,8 +165,8 @@ The administrator account is created by the server at the first start; nobody re
 
 LoomCanvas sends no email, so there is no reset link. There are two ways:
 
-- **Ask the administrator.** Under **Settings → Users** the administrator chooses **Reset password** for your account and gets a temporary password to pass on to you.
-- **You are the administrator, or you run the server.** Reset it from the command line; for the administrator this is the only way. The server can keep running:
+- **Ask the super admin.** Under **Settings → Users** the super admin chooses **Reset password** for your account and gets a temporary password to pass on to you.
+- **You are the super admin, or you run the server.** Reset it from the command line; for the super admin this is the only way. The server can keep running:
 
   ```bash
   docker compose exec app node src/cli/reset-password.js <username-or-email>
@@ -200,8 +200,8 @@ If everyone hits this behind a reverse proxy, the server sees all visitors as th
 Registration is open by default, and it only ever creates ordinary accounts. There are three ways to close it:
 
 - Before the first start, set `REGISTRATION_OPEN=false` in `.env`. The variable gives the setting its first value only; once the setting has been saved (by this variable, on the settings page or through the API) it is ignored.
-- The administrator switches **Open sign-up** off under **Settings → Site**.
-- Or the administrator sends a request:
+- The super admin switches **Open sign-up** off under **Settings → Site**.
+- Or the super admin sends a request:
 
 ```bash
 curl -X PUT http://localhost:3000/api/admin/site \
@@ -214,9 +214,9 @@ Existing accounts keep signing in. New registrations are refused with "Registrat
 
 ### What happens to my existing data when I upgrade to the version with accounts?
 
-Nothing is lost and nothing has to be migrated by hand. At the first start of the new version the server creates the administrator account and **hands it all of the existing data**: canvases, share links (the same links keep working), assets, brand kits, providers and their keys, models and prices, usage records and your own templates.
+Nothing is lost and nothing has to be migrated by hand. At the first start of the new version the server creates the super admin account and **hands it all of the existing data**: canvases, share links (the same links keep working), assets, brand kits, providers and their keys, models and prices, usage records and your own templates.
 
-So before that first start, set `ADMIN_PASSWORD` in `.env` (or read the generated password from the start-up log afterwards), keep `SECRET_KEY` unchanged, and remove `ACCESS_PASSWORD`. Then sign in as the administrator and everything is there. An account that registers starts empty and sees none of the old data. The full list is in [Deployment](deployment.md#upgrading-from-a-version-without-accounts).
+So before that first start, set `ADMIN_PASSWORD` in `.env` (or read the generated password from the start-up log afterwards), keep `SECRET_KEY` unchanged, and remove `ACCESS_PASSWORD`. Then sign in as the super admin and everything is there. An account that registers starts empty and sees none of the old data. The full list is in [Deployment](deployment.md#upgrading-from-a-version-without-accounts).
 
 ### After the upgrade a canvas looks rearranged
 
@@ -235,8 +235,8 @@ Read the last lines of the log (`docker compose logs app`). The usual causes:
 | `SECRET_KEY is required` | Missing or shorter than 16 characters. |
 | `must be an integer between` / `must be one of` | An environment variable has an invalid value; the message names it. |
 | `TRUST_PROXY must be …` | `TRUST_PROXY` is not a number of proxies (1 to 10) or a list of addresses. `true` and host names are rejected. |
-| `ADMIN_PASSWORD must be 8 to 128 characters long` | The administrator is about to be created and `ADMIN_PASSWORD` is too short or too long. Set a longer one, or remove it and a password is generated. |
-| `ADMIN_USERNAME … is already the name of another account` / `ADMIN_EMAIL is already the email of another account` | There is no administrator yet, and an ordinary account already uses that name or address. Set a different value. |
+| `ADMIN_PASSWORD must be 8 to 128 characters long` | The super admin is about to be created and `ADMIN_PASSWORD` is too short or too long. Set a longer one, or remove it and a password is generated. |
+| `ADMIN_USERNAME … is already the name of another account` / `ADMIN_EMAIL is already the email of another account` | There is no super admin yet, and an ordinary account already uses that name or address. Set a different value. |
 | `REGISTRATION_OPEN must be true or false` | The variable has another value. |
 | `STORAGE_DRIVER=oss is no longer supported` | The `oss` driver was removed. Use `STORAGE_DRIVER=s3` with the OSS S3-compatible endpoint. See [Storage](storage.md#migrating-from-storage_driveross). |
 | `STORAGE_DRIVER=s3 requires …` | `S3_BUCKET`, `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY` is empty. |
@@ -258,7 +258,7 @@ Generated files are kept forever by default. Options:
 
 ### Can several people use one instance with their own accounts?
 
-Yes. Everyone registers an account of their own, and each account has its own canvases, files, providers and API keys, models, prices and usage. The administrator, the one account the server creates itself, manages the site and the list of accounts, but cannot read what the others make.
+Yes. Everyone registers an account of their own, and each account has its own canvases, files, providers and API keys, models, prices and usage. The super admin, the one account the server creates itself, manages the site and the list of accounts, but cannot read what the others make.
 
 There are no teams and no shared workspaces: two accounts cannot edit the same canvas. To pass a canvas on, publish a share link and let the other account copy it. Note that model ids are per account, so the copy only finds its models if the other account has a provider with the same slug.
 

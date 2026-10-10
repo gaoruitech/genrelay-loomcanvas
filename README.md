@@ -21,7 +21,7 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 - **Templates, brand kits, asset library, share links.** Read-only share links with expiry and revocation.
 - **Workbench, history, model management.** A start page with your recent canvases, templates, the queue and this month's usage; a History page with every run, filters and CSV export; a Models page for providers, models and prices.
 - **Chinese and English** interface and server messages. One dark theme.
-- **Accounts.** People register and sign in; each account has its own canvases, files, providers and API keys. The administrator account is built in: the server creates it at the first start. It manages the site and the list of accounts and can close registration.
+- **Accounts.** People register and sign in; each account has its own canvases, files, providers and API keys. The super admin account is built in: the server creates it at the first start. It manages the site and the list of accounts and can close registration.
 - **No teams.** Accounts do not share canvases or workspaces, and the separation between them is not a hardened multi-tenant boundary. See [Security](docs/security.md).
 
 ## Screenshots
@@ -42,7 +42,7 @@ You need Docker with Compose v2.
 git clone https://gitee.com/jishulin/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
-# edit .env: set SECRET_KEY to a long random string, and ADMIN_PASSWORD to the administrator's password
+# edit .env: set SECRET_KEY to a long random string, and ADMIN_PASSWORD to the super admin's password
 docker compose up -d
 ```
 
@@ -50,8 +50,8 @@ Open http://localhost:3000 (or the host's address, with the `PORT` you set), cli
 
 - `SECRET_KEY` encrypts your provider API keys in the database. Keep it safe and do not change it afterwards, or the saved keys can no longer be decrypted.
 - `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs, and for reference images with the Gaorui image models, when files are kept on the local disk).
-- The administrator account is created by the server at the first start; nobody registers as it. Its username is `admin` unless you set `ADMIN_USERNAME`. `ADMIN_PASSWORD` (8 to 128 characters) is its password. If you leave it empty, a random password is generated and printed once in the start-up log (`docker compose logs app`); sign in with it and you are asked to choose your own. These variables are read only when the account is created.
-- Other people click **Sign up** and get ordinary accounts. Registration is open by default; the administrator can close it under **Settings → Site**, or you can start with `REGISTRATION_OPEN=false`. See [Accounts](docs/getting-started.md#accounts).
+- The super admin account is created by the server at the first start; nobody registers as it. Its username is `admin` unless you set `ADMIN_USERNAME`. `ADMIN_PASSWORD` (8 to 128 characters) is its password. If you leave it empty, a random password is generated and printed once in the start-up log (`docker compose logs app`); sign in with it and you are asked to choose your own. These variables are read only when the account is created.
+- Other people click **Sign up** and get ordinary accounts. Registration is open by default; the super admin can close it under **Settings → Site**, or you can start with `REGISTRATION_OPEN=false`. See [Accounts](docs/getting-started.md#accounts).
 
 Step by step: [Getting started](docs/getting-started.md).
 

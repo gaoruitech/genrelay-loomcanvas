@@ -23,7 +23,7 @@ After signing in, every page has the same frame: a top bar with the site name, t
 | **Assets** | Your uploaded and saved images and videos. |
 | **Models** | Providers, their models and the prices you enter. See [Providers](providers.md). |
 | **History** | Every run, with totals, filters and CSV export. See [History](#history). |
-| **Settings** | Interface language, your account and your sign-in sessions. The administrator also sees Storage, Run limits, the site's name, logo and default language, Site (registration) and Users. See [Configuration](configuration.md#admin-settings). |
+| **Settings** | Interface language, your account and your sign-in sessions. The super admin also sees Storage, Run limits, the site's name, logo and default language, Site (registration) and Users. See [Configuration](configuration.md#admin-settings). |
 
 ![Workbench](images/14-workbench.png)
 
@@ -36,11 +36,11 @@ In the editor the sidebar shrinks to icons, to leave the width to the canvas.
 | Area | What is there |
 | --- | --- |
 | Top left | Back to your canvases, the canvas name (click it to rename) and the save status. Click the status to save at once. |
-| Top right | The queue button, **Share** and **More ⋯**. |
+| Top right | **Share** and **More ⋯**. |
 | Left palette | **+** lists every node. The buttons below it are one per category: text, image, video, chat / analysis, output and tools. The last button opens the asset library, the canvas templates, brand kits and your share links. |
 | Bottom toolbar | Zoom out / in, reset to 100%, fit to screen, undo / redo, **Tidy up**, **Run all**. |
 | Bottom left | Minimap. Drag or scroll it to jump around. |
-| Right side | The queue: the nodes of this canvas that are running, queued or finished. Click a row to jump to its node. Close the panel to give the width back to the canvas. |
+| Queue button | A round floating button, in the bottom-right corner by default. While something runs it shows a progress ring and the number of unfinished nodes; a badge counts what has finished since you last looked, in red when something failed or could not start. Click it for the list: the nodes of this canvas that are running, queued or finished since you opened it. Click a row to jump to its node. Drag the button anywhere on the canvas (it snaps to the left or right edge and the browser remembers the spot); double-click it, or use **Reset** in the list, to send it back. On a phone it sits above the bottom toolbar. |
 | Right-click on empty canvas | Add nodes and canvas actions. **More ⋯** opens the same canvas actions. |
 | Right-click on a node | Actions for that node. |
 
@@ -126,7 +126,7 @@ Status badge on the result frame:
 
 | Badge | Meaning |
 | --- | --- |
-| Queued | Waiting for a free slot. How many run at once, for the whole instance and for one account, is set by the administrator under **Settings → Run limits**. |
+| Queued | Waiting for a free slot. How many run at once, for the whole instance and for one account, is set by the super admin under **Settings → Run limits**. |
 | Running | Submitted to the upstream; progress is shown when the upstream reports it. |
 | Done | The result is stored on your server. |
 | Failed | Open the task details (right-click the node) for the reason. |
@@ -138,7 +138,7 @@ Status badge on the result frame:
 
 **Reloading.** If you reload the page while something is running, the canvas keeps waiting for the result. It does not submit the job twice. This also holds for Language model and Video analysis nodes.
 
-A run that takes longer than its timeout is marked failed: 10 minutes for images, 30 for videos and 5 for Language model and Video analysis nodes by default. These limits, and the timeouts for submitting a task and for downloading a result, are set by the administrator under **Settings → Run limits**.
+A run that takes longer than its timeout is marked failed: 10 minutes for images, 30 for videos and 5 for Language model and Video analysis nodes by default. These limits, and the timeouts for submitting a task and for downloading a result, are set by the super admin under **Settings → Run limits**.
 
 ## Results and history
 
@@ -263,7 +263,7 @@ On macOS use ⌘ instead of Ctrl.
 
 ## Language and appearance
 
-- **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the administrator set under **Settings → Appearance** applies.
+- **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the super admin set under **Settings → Appearance** applies.
 - **Theme**: the interface has one dark theme. There is no light theme and nothing to switch.
 - **Canvas appearance** (More ⋯ or right-click): background colour, pattern and density of one canvas. It is saved with the canvas and travels with its share links.
 

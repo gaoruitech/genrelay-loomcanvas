@@ -17,7 +17,7 @@ export const useAppStore = defineStore('app', () => {
   const user = computed<User | null>(() => bootstrap.value?.user || null)
   const authed = computed(() => !!user.value)
   const isOwner = computed(() => user.value?.role === 'owner')
-  /** 管理员是服务端启动时自动建好的，注册出来的都是普通成员；开不开放注册由管理员定 */
+  /** 超级管理员是服务端启动时自动建好的，注册出来的都是普通用户；开不开放注册由超级管理员定 */
   const registrationOpen = computed(() => !!bootstrap.value?.auth?.registrationOpen)
   /** 还在用临时密码（启动时生成的 / 被重置出来的）：改掉之前哪儿也去不了，见路由守卫 */
   const mustChangePassword = computed(() => !!user.value?.mustChangePassword)
@@ -122,7 +122,7 @@ export const useAppStore = defineStore('app', () => {
 
   // 任意接口返回 401：令牌失效。这里只清状态，跳去登录页由 App.vue 看着 authed 做。
   setUnauthorizedHandler(dropSession)
-  // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被管理员重置了）。
+  // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被超级管理员重置了）。
   // 这里只改状态，跳去「设置新密码」由 App.vue 看着 mustChangePassword 做。
   setPasswordChangeHandler(() => {
     const u = bootstrap.value?.user

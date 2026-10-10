@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { resolveSettingsSection } from '@/components/settings/sections'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -25,7 +26,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/assets', name: 'assets', component: () => import('@/views/Assets.vue'), meta: { nav: 'assets' } },
   { path: '/models', name: 'models', component: () => import('@/views/Models.vue'), meta: { nav: 'models' } },
   { path: '/history', name: 'history', component: () => import('@/views/History.vue'), meta: { nav: 'history' } },
-  { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue'), meta: { nav: 'settings' } },
+  // 一次只看一个分区，分区写在地址里：/settings/account、/settings/storage……不带分区的由守卫补上
+  { path: '/settings/:section?', name: 'settings', component: () => import('@/views/Settings.vue'), meta: { nav: 'settings' } },
   { path: '/setup', name: 'setup', component: () => import('@/views/Setup.vue'), meta: { shell: 'none' } },
   // 还在用临时密码的账号唯一能待的地方；见下面的守卫
   { path: '/password', name: 'change-password', component: () => import('@/views/ChangePassword.vue'), meta: { shell: 'none' } },
@@ -91,6 +93,11 @@ router.beforeEach((to) => {
   // 还没有添加任何服务商：先带去引导页
   if (!app.hasProvider && !setupSkipped() && !NO_SETUP_NEEDED.has(String(to.name))) {
     return { name: 'setup' }
+  }
+  if (to.name === 'settings') {
+    // /settings、老的 /settings#account、?section=、不认识或没权限看的分区：都落到一个确定的分区地址上
+    const section = resolveSettingsSection(app.isOwner, to.params.section, to.hash, to.query.section)
+    if (to.params.section !== section) return { name: 'settings', params: { section }, replace: true }
   }
   return true
 })

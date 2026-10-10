@@ -39,7 +39,7 @@ export function setPasswordChangeHandler(fn: () => void) {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 任何接口回 403 auth.password_change_required：这个账号得先换掉临时密码（比如开着页面时被管理员重置了）
+    // 任何接口回 403 auth.password_change_required：这个账号得先换掉临时密码（比如开着页面时被超级管理员重置了）
     if (error.response?.status === 403 && error.response?.data?.code === 'auth.password_change_required') {
       onPasswordChangeRequired?.()
     }
@@ -106,7 +106,7 @@ export const authApi = {
   revokeOtherSessions: () => api.delete<ApiResponse>('/auth/sessions'),
 }
 
-/** 只有管理员能调（其他人 403 auth.forbidden） */
+/** 只有超级管理员能调（其他人 403 auth.forbidden） */
 export const ownerApi = {
   users: () => api.get<ApiResponse<AdminUser[]>>('/admin/users'),
   setUserDisabled: (id: string, disabled: boolean) =>

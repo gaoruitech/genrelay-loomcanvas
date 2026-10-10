@@ -1,77 +1,85 @@
 <template>
   <SettingsSection id="appearance" icon="eye" :title="t('settings.appearance.title')" :desc="app.isOwner ? t('settings.appearance.descOwner') : t('settings.appearance.desc')">
     <!-- 每个人自己的：只存在这台浏览器里 -->
-    <div class="srow">
-      <div class="k">
-        <b id="ap-lang-lbl">{{ t('settings.appearance.language') }}</b>
-        <small>{{ t('settings.appearance.languageHelp') }}</small>
-      </div>
-      <div class="v lang">
-        <LcIcon name="globe" />
-        <LcSelect
-          :model-value="app.locale"
-          :options="LOCALE_OPTIONS"
-          aria-labelledby="ap-lang-lbl"
-          data-testid="appearance-language"
-          @update:model-value="app.setLocale($event)"
-        />
-      </div>
-    </div>
-
-    <!-- 所有者：这台实例的默认值 -->
-    <template v-if="app.isOwner">
-      <div v-if="loading" class="sk" aria-busy="true"><i /><i /><i /></div>
-      <div v-else-if="loadError" class="sec-state">
-        <p class="lc-error-text">{{ loadError }}</p>
-        <button class="lc-btn sm" @click="load">{{ t('common.retry') }}</button>
-      </div>
-
-      <form v-else @submit.prevent="submit">
-        <div class="srow">
-          <div class="k">
-            <b><label for="ap-name">{{ t('settings.appearance.siteName') }}</label></b>
-            <small>{{ t('settings.appearance.siteNameHelp') }}</small>
-          </div>
-          <div class="v narrow">
-            <input id="ap-name" v-model.trim="form.siteName" class="lc-input" maxlength="40" placeholder="LoomCanvas" :disabled="saving" />
-          </div>
-        </div>
-
-        <div class="srow">
-          <div class="k">
-            <b><label for="ap-logo">{{ t('settings.appearance.logo') }}</label></b>
-            <small>{{ t('settings.appearance.logoHelp') }}</small>
-          </div>
-          <div class="v logo-row">
-            <span class="logo-preview">
-              <img v-if="form.logoUrl" :src="form.logoUrl" alt="" />
-              <LcIcon v-else name="image" />
-            </span>
-            <input id="ap-logo" v-model.trim="form.logoUrl" class="lc-input" :placeholder="t('settings.appearance.logoPlaceholder')" :disabled="saving" />
-            <button type="button" class="lc-btn" :disabled="saving || uploading" @click="fileRef?.click()">
-              <LcIcon name="upload" size="s" />{{ uploading ? t('common.uploading') : t('common.upload') }}
-            </button>
-            <input ref="fileRef" type="file" accept="image/*" hidden @change="onFile" />
-          </div>
-        </div>
-
-        <div class="srow">
-          <div class="k">
-            <b id="ap-locale-lbl">{{ t('settings.appearance.defaultLocale') }}</b>
-            <small>{{ t('settings.appearance.defaultsHelp') }}</small>
-          </div>
-          <div class="v lang">
+    <SettingsCard :title="t('settings.appearance.personalTitle')" :desc="t('settings.appearance.personalDesc')">
+      <div class="srow">
+        <div id="ap-lang-lbl" class="k">{{ t('settings.appearance.language') }}</div>
+        <div class="v">
+          <div class="ctl lang">
             <LcIcon name="globe" />
-            <LcSelect v-model="form.defaultLocale" :options="LOCALE_OPTIONS" :disabled="saving" aria-labelledby="ap-locale-lbl" />
+            <LcSelect
+              :model-value="app.locale"
+              :options="LOCALE_OPTIONS"
+              aria-labelledby="ap-lang-lbl"
+              data-testid="appearance-language"
+              @update:model-value="app.setLocale($event)"
+            />
           </div>
+          <span class="lc-help">{{ t('settings.appearance.languageHelp') }}</span>
         </div>
+      </div>
+    </SettingsCard>
+
+    <!-- 超级管理员：这台实例对所有人的默认值 -->
+    <template v-if="app.isOwner">
+      <SettingsCard v-if="loading" :title="t('settings.appearance.brandTitle')">
+        <div class="sk" aria-busy="true"><i /><i /><i /></div>
+      </SettingsCard>
+      <SettingsCard v-else-if="loadError" :title="t('settings.appearance.brandTitle')">
+        <div class="sec-state">
+          <p class="lc-error-text">{{ loadError }}</p>
+          <button class="lc-btn sm" @click="load">{{ t('common.retry') }}</button>
+        </div>
+      </SettingsCard>
+
+      <form v-else class="stack" @submit.prevent="submit">
+        <SettingsCard :title="t('settings.appearance.brandTitle')" :desc="t('settings.appearance.brandDesc')">
+          <template #tag><span class="lc-tag">{{ t('settings.everyone') }}</span></template>
+          <div class="srow">
+            <div class="k"><label for="ap-name">{{ t('settings.appearance.siteName') }}</label></div>
+            <div class="v">
+              <input id="ap-name" v-model.trim="form.siteName" class="lc-input" maxlength="40" placeholder="LoomCanvas" :disabled="saving" />
+              <span class="lc-help">{{ t('settings.appearance.siteNameHelp') }}</span>
+            </div>
+          </div>
+
+          <div class="srow">
+            <div class="k"><label for="ap-logo">{{ t('settings.appearance.logo') }}</label></div>
+            <div class="v">
+              <div class="logo-row">
+                <span class="logo-preview">
+                  <img v-if="form.logoUrl" :src="form.logoUrl" alt="" />
+                  <LcIcon v-else name="image" />
+                </span>
+                <input id="ap-logo" v-model.trim="form.logoUrl" class="lc-input" :placeholder="t('settings.appearance.logoPlaceholder')" :disabled="saving" />
+                <button type="button" class="lc-btn" :disabled="saving || uploading" @click="fileRef?.click()">
+                  <LcIcon name="upload" size="s" />{{ uploading ? t('common.uploading') : t('common.upload') }}
+                </button>
+                <input ref="fileRef" type="file" accept="image/*" hidden @change="onFile" />
+              </div>
+              <span class="lc-help">{{ t('settings.appearance.logoHelp') }}</span>
+            </div>
+          </div>
+
+          <div class="srow">
+            <div id="ap-locale-lbl" class="k">{{ t('settings.appearance.defaultLocale') }}</div>
+            <div class="v">
+              <div class="ctl lang">
+                <LcIcon name="globe" />
+                <LcSelect v-model="form.defaultLocale" :options="LOCALE_OPTIONS" :disabled="saving" aria-labelledby="ap-locale-lbl" data-testid="appearance-default-locale" />
+              </div>
+              <span class="lc-help">{{ t('settings.appearance.defaultsHelp') }}</span>
+            </div>
+          </div>
+        </SettingsCard>
 
         <p v-if="error" class="lc-error-text sec-err" role="alert">{{ error }}</p>
-        <div class="sec-foot">
-          <button class="lc-btn primary quiet" type="submit" :disabled="saving" data-testid="appearance-save">
+        <SaveBar :dirty="dirty" :note="t('settings.appearance.saveNote')">
+          <button v-if="dirty" class="lc-btn ghost" type="button" :disabled="saving" @click="discard">{{ t('settings.discard') }}</button>
+          <button class="lc-btn primary quiet" type="submit" :disabled="saving || !dirty" data-testid="appearance-save">
             {{ saving ? t('common.saving') : t('common.save') }}
           </button>
-        </div>
+        </SaveBar>
       </form>
     </template>
   </SettingsSection>
@@ -79,7 +87,7 @@
 
 <script setup lang="ts">
 /**
- * 外观：界面语言（每个人自己的，存在浏览器里），以及所有者才能改的实例默认值（站点名称、Logo、默认语言）。
+ * 外观：界面语言（每个人自己的，存在浏览器里），以及超级管理员才能改的实例默认值（站点名称、Logo、默认语言）。
  * 界面只有一套霓虹深色主题，所以这里没有主题选项；服务端已经没有「默认主题」这个设置项。
  */
 import { onMounted, ref } from 'vue'
@@ -93,16 +101,20 @@ import { LOCALE_OPTIONS } from '@/locales'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import SettingsSection from './SettingsSection.vue'
+import SettingsCard from './SettingsCard.vue'
+import SaveBar from './SaveBar.vue'
+import { useSectionDirty } from './dirty'
 
 const { t } = useI18n()
 const app = useAppStore()
 
-const { form, loading, loadError, saving, load, save } = useAdminSettings(
+const { form, loading, loadError, saving, dirty, load, save, reset } = useAdminSettings(
   ['siteName', 'logoUrl', 'defaultLocale'] as const,
   { siteName: '', logoUrl: '', defaultLocale: 'zh-CN' },
 )
-// 实例设置只有所有者能读（其他人 403），不是所有者就不去取
+// 实例设置只有超级管理员能读（其他人 403），不是就不去取
 onMounted(() => { if (app.isOwner) void load() })
+useSectionDirty(() => app.isOwner && dirty.value)
 
 const error = ref('')
 const uploading = ref(false)
@@ -123,6 +135,11 @@ async function onFile(e: Event) {
   }
 }
 
+function discard() {
+  error.value = ''
+  reset()
+}
+
 async function submit() {
   error.value = ''
   try {
@@ -138,21 +155,21 @@ async function submit() {
 
 <style scoped>
 @import './section-shared.css';
-.lang { position: relative; max-width: 220px; }
+.stack { display: grid; gap: 24px; min-width: 0; }
+.srow > .v > .lang { position: relative; max-width: 260px; }
 .lang > .lc-ic { position: absolute; left: 12px; top: 11px; color: var(--text-3); pointer-events: none; z-index: 1; }
 .lang :deep(.lcs-trigger) { padding-left: 38px; }
-.logo-row { display: flex; align-items: center; gap: 10px; }
+.logo-row { display: flex; align-items: center; gap: 10px; max-width: 560px; }
 .logo-row .lc-input { flex: 1; min-width: 0; }
+.logo-row .lc-btn { height: 40px; }
 .logo-preview {
   flex: none; display: grid; place-items: center; width: 40px; height: 40px; color: var(--text-3);
   border-radius: var(--r-sm); border: 1px dashed var(--line-3); background: var(--well); overflow: hidden;
 }
 .logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
-form > .srow:last-of-type { margin-bottom: 0; }
-.sec-foot { margin-top: 0; }
-@media (max-width: 900px) { .lang { max-width: 320px; } }
+@media (max-width: 720px) { .srow > .v > .lang { max-width: none; } }
 @media (max-width: 600px) {
-  .lang { max-width: none; }
+  .stack { gap: 16px; }
   .logo-row { flex-wrap: wrap; }
   .logo-row .lc-input { flex: 1 1 60%; }
 }

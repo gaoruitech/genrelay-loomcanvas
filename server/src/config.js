@@ -132,7 +132,7 @@ function build() {
     mongodbUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017/loomcanvas'),
     secretKey,
     publicUrl,
-    // The administrator the server creates when there is none. Read at that
+    // The super admin the server creates when there is none. Read at that
     // moment only, and checked there (services/accounts.js): once the account
     // exists these are not looked at again. The password is taken as written.
     admin: Object.freeze({

@@ -6,12 +6,12 @@ How to run a LoomCanvas instance safely, and what it does and does not protect. 
 
 ## The model in one paragraph
 
-LoomCanvas has **accounts**, and signing in is always required. The administrator account is built in: the server creates it at the first start, and nobody registers as it. Anyone who can reach the instance can register an ordinary account of their own until the administrator closes registration. Each account sees only its own canvases, files, providers, API keys and usage. The administrator also manages the site (registration, storage, run limits, the site's name, logo and default language, the user list) but cannot read other accounts' data through the API. There are no teams and no shared workspaces. Accounts are kept apart by the API, not by a hardened boundary: they share one process, one database, one storage area and one queue. Generated and uploaded files are public to anyone who has their URL. Design your deployment around that.
+LoomCanvas has **accounts**, and signing in is always required. The super admin account is built in: the server creates it at the first start, and nobody registers as it. Anyone who can reach the instance can register an ordinary account of their own until the super admin closes registration. Each account sees only its own canvases, files, providers, API keys and usage. The super admin also manages the site (registration, storage, run limits, the site's name, logo and default language, the user list) but cannot read other accounts' data through the API. There are no teams and no shared workspaces. Accounts are kept apart by the API, not by a hardened boundary: they share one process, one database, one storage area and one queue. Generated and uploaded files are public to anyone who has their URL. Design your deployment around that.
 
 ## Checklist
 
 1. Set a long random `SECRET_KEY` and back it up.
-2. Set `ADMIN_PASSWORD` yourself before the first start, or take the generated administrator password out of the start-up log and replace it at the first sign-in. Until it has been replaced, treat the log of that first start as sensitive. Close registration unless everyone who can reach the instance may have an account: `REGISTRATION_OPEN=false` from the first start, or the switch under **Settings → Site**. Use long passwords.
+2. Set `ADMIN_PASSWORD` yourself before the first start, or take the generated super admin password out of the start-up log and replace it at the first sign-in. Until it has been replaced, treat the log of that first start as sensitive. Close registration unless everyone who can reach the instance may have an account: `REGISTRATION_OPEN=false` from the first start, or the switch under **Settings → Site**. Use long passwords.
 3. Put it behind HTTPS, and send `Strict-Transport-Security` from the proxy that terminates TLS (the app does not).
 4. Behind a reverse proxy, set `TRUST_PROXY`.
 5. Do not expose MongoDB or the app's port directly; publish only the proxy.
@@ -32,7 +32,7 @@ It has no part in signing in. Sessions are random tokens kept in the database (s
 Rules:
 
 - At least 16 characters; use 32 random bytes or more. The server refuses to start without it and never generates one.
-- Keep it stable. If it changes, saved provider keys cannot be decrypted, and every account has to enter its own keys again. A saved S3 secret cannot be decrypted either: the server logs it, writes new files to what the environment says (the local disk by default) and the storage settings ask the administrator for the secret again; until then the files in that bucket do not load.
+- Keep it stable. If it changes, saved provider keys cannot be decrypted, and every account has to enter its own keys again. A saved S3 secret cannot be decrypted either: the server logs it, writes new files to what the environment says (the local disk by default) and the storage settings ask the super admin for the secret again; until then the files in that bucket do not load.
 - It lives in `.env`. Protect that file, keep it out of version control, and back it up together with the database. A database backup without the key cannot restore provider keys. A database backup **with** the key reveals them.
 
 ## Accounts
@@ -45,12 +45,12 @@ There are two roles and nothing in between.
 
 | Role | Who | What it can do |
 | --- | --- | --- |
-| `owner` (the administrator) | Created by the server at the first start (the `ADMIN_*` variables). There is exactly one. | Everything a user can, on its own data. In addition it manages the site, in the sections of **Settings** that only the administrator sees: storage, run limits (concurrency, timeouts, retries, retention), the site's name, logo and default language, whether registration is open, and the user list (disable or enable an account, delete it, reset its password). |
+| `owner` (the super admin) | Created by the server at the first start (the `ADMIN_*` variables). There is exactly one. | Everything a user can, on its own data. In addition it manages the site, in the sections of **Settings** that only the super admin sees: storage, run limits (concurrency, timeouts, retries, retention), the site's name, logo and default language, whether registration is open, and the user list (disable or enable an account, delete it, reset its password). |
 | `user` | Every other account: everyone who registers. | Works in its own space: canvases, share links it published, assets, brand kits, runs, usage records, saved templates, and its own providers, API keys, custom models and prices. |
 
-The administrator role is about managing the site, not about reading data. The administrator's requests are scoped to the administrator's own data like anybody else's. The user list shows, per account, the username, the email, the state and two numbers (canvases and runs), never content. The administrator cannot disable, delete or reset the administrator account from the user list.
+The super admin role is about managing the site, not about reading data. The super admin's requests are scoped to the super admin's own data like anybody else's. The user list shows, per account, the username, the email, the state and two numbers (canvases and runs), never content. The super admin cannot disable, delete or reset the super admin account from the user list.
 
-The administrator is created at start-up when no account with the `owner` role exists, from `ADMIN_USERNAME` (default `admin`), `ADMIN_PASSWORD` and `ADMIN_EMAIL`. These are read at that moment only: afterwards they are ignored, and an existing administrator is never overwritten from the environment. Registration cannot produce an administrator, so there is no race for the role, also when several processes start at once. See [Deployment](deployment.md#accounts).
+The super admin is created at start-up when no account with the `owner` role exists, from `ADMIN_USERNAME` (default `admin`), `ADMIN_PASSWORD` and `ADMIN_EMAIL`. These are read at that moment only: afterwards they are ignored, and an existing super admin is never overwritten from the environment. Registration cannot produce a super admin, so there is no race for the role, also when several processes start at once. See [Deployment](deployment.md#accounts).
 
 ### What is separated, and what is not
 
@@ -65,7 +65,7 @@ The administrator is created at start-up when no account with the `owner` role e
 - Signing in returns a token: 32 random bytes, opaque. The browser sends it as `Authorization: Bearer <token>` on every request. The server stores only its SHA-256, in the `sessions` collection, together with the account, the expiry, when it was last seen, the browser's user agent and the client address.
 - A session lasts 12 hours, or 30 days when "remember" was chosen at sign-in. The time is fixed at sign-in; using the session does not extend it.
 - Because sessions live in the database, ending one takes effect at once: signing out, ending another device's session, changing the password, a password reset, disabling an account, deleting it.
-- Changing the password ends **every** session of the account, the one that made the change included. The response carries a fresh token for the caller, with the remaining lifetime of the session it replaces, and the web client swaps it in without anyone noticing. A token that was copied out of the browser before the change is dead. A password reset (by the administrator or from the command line) ends all sessions and hands out none.
+- Changing the password ends **every** session of the account, the one that made the change included. The response carries a fresh token for the caller, with the remaining lifetime of the session it replaces, and the web client swaps it in without anyone noticing. A token that was copied out of the browser before the change is dead. A password reset (by the super admin or from the command line) ends all sessions and hands out none.
 - Each account can list its live sessions and end any of them, under **Settings → Account & security**.
 - The web client keeps the token in the browser's web storage under the key `loomcanvas-token`: in `localStorage` when "Remember me" was ticked at sign-in, in `sessionStorage` (gone when the tab is closed) otherwise. Anyone with access to that browser profile is signed in until the session expires or is ended from another device.
 - No cookie is involved, so cross-site request forgery does not apply. What a token in web storage is exposed to is script running in the page (XSS); the defence against that is the content security policy, which allows no inline script and no script from another origin (see [Browser-side protections](#browser-side-protections)).
@@ -74,10 +74,10 @@ The administrator is created at start-up when no account with the `owner` role e
 
 - 8 to 128 characters. No other composition rules.
 - Stored as scrypt hashes (`N=32768, r=8, p=1`) with a random 16-byte salt per account; the parameters are stored with the hash. Comparison is constant-time. Tokens are never logged, and passwords are not either, with the one exception described below.
-- **The generated administrator password is printed once in the start-up log.** When the administrator is created and `ADMIN_PASSWORD` is not set, the server generates a random 16-character password and prints it in a framed block at that start-up. Only its hash is stored; it is never printed again. The account has to replace it at the first sign-in, and from then on the printed value is worthless. Until then, whoever can read that log can sign in as the administrator, so treat the log as sensitive, or set `ADMIN_PASSWORD` yourself and nothing is printed.
-- **A password somebody else knows is always replaced.** The generated administrator password, a temporary password from the administrator's **Reset password** and one from the command line all mark the account (`mustChangePassword`). While the mark is set, a session of that account can do four things: read who it is (`GET /api/auth/me`, `GET /api/bootstrap`), change the password (`PUT /api/auth/password`) and sign out. Every other endpoint that needs a session answers 403 `auth.password_change_required`, and the web app shows only the **Set a new password** screen. The new password must differ from the temporary one.
+- **The generated super admin password is printed once in the start-up log.** When the super admin is created and `ADMIN_PASSWORD` is not set, the server generates a random 16-character password and prints it in a framed block at that start-up. Only its hash is stored; it is never printed again. The account has to replace it at the first sign-in, and from then on the printed value is worthless. Until then, whoever can read that log can sign in as the super admin, so treat the log as sensitive, or set `ADMIN_PASSWORD` yourself and nothing is printed.
+- **A password somebody else knows is always replaced.** The generated super admin password, a temporary password from the super admin's **Reset password** and one from the command line all mark the account (`mustChangePassword`). While the mark is set, a session of that account can do four things: read who it is (`GET /api/auth/me`, `GET /api/bootstrap`), change the password (`PUT /api/auth/password`) and sign out. Every other endpoint that needs a session answers 403 `auth.password_change_required`, and the web app shows only the **Set a new password** screen. The new password must differ from the temporary one.
 - Sign-in gives the same answer, after the same amount of work, for an account that does not exist and for a wrong password. That an account is disabled is only said after the correct password.
-- No email is ever sent, so there is no "forgot password" mail. A forgotten password is reset by the administrator under **Settings → Users** or, by whoever runs the server, from the command line (`node server/src/cli/reset-password.js <username-or-email>`). The administrator's own password can only be reset from the command line. Both produce a temporary password that is shown once, end all sessions of that account, and force a new password at the next sign-in. See [Deployment](deployment.md#forgotten-password).
+- No email is ever sent, so there is no "forgot password" mail. A forgotten password is reset by the super admin under **Settings → Users** or, by whoever runs the server, from the command line (`node server/src/cli/reset-password.js <username-or-email>`). The super admin's own password can only be reset from the command line. Both produce a temporary password that is shown once, end all sessions of that account, and force a new password at the next sign-in. See [Deployment](deployment.md#forgotten-password).
 
 ### Rate limits
 
@@ -107,13 +107,13 @@ And two more:
 
 ### Registration
 
-Registration only ever creates ordinary users (`role: "user"`); there is no way to become the administrator through it. It is open by default. On an instance that strangers can reach, close it: set `REGISTRATION_OPEN=false` before the first start, or the administrator switches **Open sign-up** off under **Settings → Site**, or calls `PUT /api/admin/site` with `{ "registrationOpen": false }`. Existing accounts keep signing in; nobody new can register, without exception. `REGISTRATION_OPEN` only gives the setting its first value; once the setting has been saved, the stored value stands.
+Registration only ever creates ordinary users (`role: "user"`); there is no way to become the super admin through it. It is open by default. On an instance that strangers can reach, close it: set `REGISTRATION_OPEN=false` before the first start, or the super admin switches **Open sign-up** off under **Settings → Site**, or calls `PUT /api/admin/site` with `{ "registrationOpen": false }`. Existing accounts keep signing in; nobody new can register, without exception. `REGISTRATION_OPEN` only gives the setting its first value; once the setting has been saved, the stored value stands.
 
 What an open registration means: every account can use the instance's storage and queue (bounded by `userQueueLimit` and the upload limit; there is no storage quota), and every account can add providers, whose base URL is not behind the SSRF guard ([below](#ssrf-protection)). Leave registration open only if you trust everyone who can reach the instance.
 
 **Registration tells whether a username or an email is taken.** It has to: a second account with the same name cannot be created, and since no email is ever sent there is no way to answer "check your inbox" instead. So anyone who can reach an open registration form can test whether an address has an account here, at most 20 times per client address per hour. Changing one's own username or email gives the same two answers, which is why it is limited to 20 changes per account per hour. Sign-in never tells (see [Passwords](#passwords)). If it matters that nobody can find out who has an account, close registration.
 
-To take access away from one person, the administrator disables or deletes that account (**Settings → Users**). Disabling signs it out at once and keeps its data; deleting removes the account with its canvases, share links, assets, providers and keys, usage records and stored files, and cannot be undone.
+To take access away from one person, the super admin disables or deletes that account (**Settings → Users**). Disabling signs it out at once and keeps its data; deleting removes the account with its canvases, share links, assets, providers and keys, usage records and stored files, and cannot be undone.
 
 ### Its limits
 
@@ -142,8 +142,8 @@ These work without signing in:
 | --- | --- | --- |
 | `GET /files/<key>` | Share pages and upstream models must be able to load media. This is the address of every stored file, on the local disk and in a bucket alike. | Keys contain 128 random bits and cannot be listed or guessed. There is no expiry. |
 | `GET /api/canvas-share/<token>` and the `/share/<token>` page | That is what a share link is. | A 256-bit random token; optional expiry; revocation. |
-| `GET /api/bootstrap` (also answered at `/api/app/bootstrap`) | The sign-in and registration pages need it. | To an anonymous caller it reveals the site name, logo URL, default language, the upload size limit, the version, and whether registration is open (`auth.registrationOpen`). Nothing about anybody's data, and not the administrator's username. |
-| `POST /api/auth/register` | Creating an account. | Rate limit. Refused with `auth.registration_closed` when the administrator has closed registration. |
+| `GET /api/bootstrap` (also answered at `/api/app/bootstrap`) | The sign-in and registration pages need it. | To an anonymous caller it reveals the site name, logo URL, default language, the upload size limit, the version, and whether registration is open (`auth.registrationOpen`). Nothing about anybody's data, and not the super admin's username. |
+| `POST /api/auth/register` | Creating an account. | Rate limit. Refused with `auth.registration_closed` when the super admin has closed registration. |
 | `POST /api/auth/login` | Signing in. | Rate limits. |
 
 Consequences:
@@ -175,7 +175,7 @@ The server downloads URLs on behalf of users in several places: "fetch from URL"
 Three things are deliberately **not** behind the guard:
 
 - **A provider's base URL.** It defaults to the vendor's official address. It can be changed in the provider's advanced settings, and pointing it at a server on your own network that speaks the same API is legitimate. Every account has its own providers, so every account can make the server send requests to internal addresses. With registration open, that is anyone who can reach the instance. This is one more reason to close registration unless you trust who registers.
-- **The S3 endpoint and the public base URL of the storage settings.** They are set by the administrator under **Settings → Storage** (or by the operator in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. Only the administrator can do this. The guard for URLs that users and upstreams supply is unchanged.
+- **The S3 endpoint and the public base URL of the storage settings.** They are set by the super admin under **Settings → Storage** (or by the operator in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. Only the super admin can do this. The guard for URLs that users and upstreams supply is unchanged.
 - **Hosts in `SSRF_ALLOW_HOSTS`.** Use it only when an upstream on your own network returns result links that point at itself. Every host you list becomes reachable for all the download features above. List exact host names or IPs, as few as possible, and never in a deployment where people you do not trust have accounts.
 
 ## Upload validation
@@ -228,7 +228,7 @@ The stock Compose file runs MongoDB without authentication, reachable only from 
 
 - **Content moderation.** Prompts and results are not screened. Whatever filtering exists is the upstream's. You are responsible for what you generate and publish, and for complying with your provider's terms and local law.
 - **Hardened multi-tenant isolation.** Accounts are kept apart by the API on every query, but they share one process, one database, one storage area and one queue, and file URLs and share links are public. It is not a base for a service for mutually untrusted tenants without your own isolation layer.
-- **Teams, shared workspaces, roles other than administrator and user.**
+- **Teams, shared workspaces, roles other than super admin and user.**
 - **Email verification, password reset by email, single sign-on, two-factor authentication.**
 - **Audit logging.**
 - **Private or expiring file URLs.** A bucket can be private, but `/files/<key>` in front of it is public and does not expire.

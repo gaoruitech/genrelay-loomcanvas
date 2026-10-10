@@ -41,7 +41,7 @@ The server serves the built frontend when `WEB_DIST` points at `dist/`. The Dock
 src/
   views/                 CanvasList, Canvas, CanvasShareView, Settings, Setup, NotFound
   components/canvas/     nodes and dialogs of the editor / 编辑器的节点和对话框
-  components/settings/   tabs of the Settings page / 设置页的各个标签页
+  components/settings/   sections of the Settings page, one shown at a time / 设置页的各个分区，一次显示一个
   composables/           executor, batch, history, layout / 执行器、批量、历史、布局
   utils/                 api.ts and helpers / 接口封装与工具
   locales/               zh-CN.ts, en.ts, modules/ / 语言文件
