@@ -134,8 +134,6 @@ function buildSpecs(instance, rawSpecs) {
     }
     // Reference images go to the upstream as public URLs only (see catalog/index.js).
     if (raw.imageByUrlOnly === true && spec.acceptsImage) spec.imageByUrlOnly = true
-    // Catalog entries only: the day the project ran this model against the real service.
-    if (!spec.custom && typeof raw.verified === 'string' && raw.verified) spec.verified = raw.verified
     if (raw.desc) spec.desc = String(raw.desc)
     if (raw.tag) spec.tag = String(raw.tag)
     if (raw.pricing && typeof raw.pricing === 'object') spec.pricing = { ...raw.pricing }

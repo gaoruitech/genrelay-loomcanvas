@@ -20,10 +20,3 @@
 .kind-badge.image { background: var(--chip-bg); color: var(--chip-fg); }
 .kind-badge.video { background: var(--warning-dim); color: var(--warning); }
 .kind-badge.chat { background: var(--success-dim); color: var(--success); }
-/* 「已实测」：中性色的小标记，只表示项目用真实接口跑通过这个模型 */
-.verified-tag {
-  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; flex: none;
-  border: 1px solid var(--n-6); border-radius: 4px;
-  font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap;
-  background: none; color: var(--t-body);
-}

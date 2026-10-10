@@ -42,9 +42,10 @@ Added
 
 - Vendors with explicit model catalogs. A provider is now a vendor (Gaorui, OpenAI or Google Gemini) plus your API key. The models each vendor supports are written down in `server/src/providers/catalog/<vendor>.json`, in `image`, `video` and `chat` sections; the section is the kind. Gaorui is listed first and marked as recommended.
 - Custom models: under Settings → Models a model outside the vendor's catalog can be added to a provider by its upstream name, with a kind chosen by hand (image or chat) and an optional display name. Up to 100 per provider. Custom video models are refused for all three vendors.
+- Settings → Models can be grouped by provider or by type, with collapsible groups, and filtered by provider, type, status, source and price, plus a search over the display name and the model ID. The choices are remembered in the browser.
 - The OpenAI vendor goes through the official OpenAI API: `/chat/completions`, `/images/generations`, and `/images/edits` (multipart) when reference images are connected, so OpenAI image models now take reference images.
 - Admin API: `GET /api/admin/vendors`; `POST`, `PUT` and `DELETE /api/admin/providers/:id/models[/:model]` for custom models. Provider objects carry `customBaseUrl` and `customModels`; ModelSpec objects carry `custom`.
-- Video analysis through Gaorui with a catalog model: `gemini-3.5-flash-c` accepts a video and is offered in the Video analysis node. A Gaorui provider sends the video as an `image_url` content part holding its public URL, right after the text part (a `video_url` part is dropped by the Gaorui relay without an error). This follows what the Gaorui main site does in production; it was run from LoomCanvas against the real Gaorui API on 2026-10-10 (see below).
+- Video analysis through Gaorui with a catalog model: `gemini-3.5-flash-c` accepts a video and is offered in the Video analysis node. A Gaorui provider sends the video as an `image_url` content part holding its public URL, right after the text part (a `video_url` part is dropped by the Gaorui relay without an error). This follows what the Gaorui main site does.
 - Token prices with separate input and output rates can be entered and edited under Settings → Models (two fields), and the model list shows them as "Input … / output … · per 1M tokens". Before, such a price could only be set through the API and was listed as 0.00.
 - Automatic migration of stored providers at start-up, once per provider: `openai-compatible` becomes `openai` with the same slug, so model ids on canvases, prices and usage keep working; models typed into the old fields, and models that were in use where the old code fetched the list from the upstream, are carried over as custom models. A Gaorui provider still called by the old default name ("Gaorui API" / 「高瑞 API」) is renamed to "Gaorui" / 「高瑞」; any other name is left alone. Keys, addresses, the enabled flag, order and model overrides are not touched. See [docs/providers.md](docs/providers.md#upgrading-from-the-previous-version).
 
@@ -105,25 +106,21 @@ Removed (**breaking**)
 - AGPL-3.0 license with a separate commercial license, CLA, trademark policy, third-party notices.
 - Documentation in English and Chinese under `docs/`.
 
-**Verified against the real Gaorui service (2026-10-10)**
+**Gaorui models**
 
-- Every model in the Gaorui catalog completed one real run with a real key at the lowest settings: the four Nano Banana image models (text-to-image, 1K); all five chat models; `omni-flash` (text-to-video, 8 s, 720p); `veo-3.1` (text-to-video, lite); `grok-imagine-video-1.5-preview` (text-to-video, 480p); `grok-imagine-1.0-video` (text-to-video, 6 s, 480p); `omni-flash-edit` (video edit, 720p). The connection test as well.
-- Also verified with inputs: `nano-banana-2`, `omni-flash` and `grok-imagine-1.0-video` with one reference image; `veo-3.1` with one reference image and with a first and a last frame; `gpt-6-astra` and `gemini-3.5-flash-c` with an image; video analysis with `gemini-3.5-flash-c`.
-- Not verified: reference images for `nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2-lite`, `omni-flash-edit` and `grok-imagine-video-1.5-preview`; the first-and-last-frame mode of `omni-flash`; every resolution above the lowest; OpenAI and Google Gemini as a whole. The table, one row per model: [docs/providers.md](docs/providers.md#gaorui-what-has-been-verified).
-- Catalog entries can carry a `verified` date. Models that have one show a "Verified" badge in the provider's model list and on Settings → Models.
 - Added `veo-3.1` (Veo 3.1: text, up to 3 reference images, or first and last frame; 8 s fixed).
 - Removed `sora-2-openai-12s`: the service has no channel for it (HTTP 503 `model_not_found`) and does not list it. A canvas node that still names it shows the model as unavailable and asks for another one.
 - `omni-flash` no longer offers 6 s: the service lists `omni_flash_6s` but answers HTTP 503 `model_not_found` for it. 8 s is the default; a node that stored 6 s falls back to 8 s.
-- Fixed as a result: reference images of the Gaorui image models are now sent as public URLs only. The real service refuses inline base64 (`image_must_be_url`), so an image without a public address is refused before the request is sent, with the usual "A publicly reachable URL is needed…" message.
-- Fixed as a result: an upstream error that arrives as a JSON string inside another error body is shown as its message, not as raw JSON; and a `model_not_found` answer is no longer retried, whatever its HTTP status (the service sends it with 503).
+- Fixed: reference images of the Gaorui image models are now sent as public URLs only. The service refuses inline base64 (`image_must_be_url`), so an image without a public address is refused before the request is sent, with the usual "A publicly reachable URL is needed…" message.
+- Fixed: an upstream error that arrives as a JSON string inside another error body is shown as its message, not as raw JSON; and a `model_not_found` answer is no longer retried, whatever its HTTP status (the service sends it with 503).
 - Added `grok-imagine-1.0-video` (Grok Video 1.0: text or up to 3 reference images; 6, 10 or 15 s; 480p).
 - `omni-flash` no longer offers 4k (720p and 1080p, as on the Gaorui main site), and `omni-flash-edit` has no resolution to choose: an edit is always 720p. A node that stored 4k falls back to 720p.
 - `grok-imagine-video-1.5-preview` no longer offers 4 s: asked for 4 seconds, the service returned a 6-second clip. The shortest is 6 s; a node that stored 4 s falls back to 6 s.
-- Models that only take reference images by public URL (the Gaorui image models, Veo 3.1, Grok Video) are marked as such, and the canvas says so before a run: on an instance without a public address, a node that uses one of them with an image connected shows the reason and what to do, and Run stops there. The same for the source video of a video edit. Gaorui has no upload endpoint that would take a local file with just the key (checked 2026-10-10).
+- Models that only take reference images by public URL (the Gaorui image models, Veo 3.1, Grok Video) are marked as such, and the canvas says so before a run: on an instance without a public address, a node that uses one of them with an image connected shows the reason and what to do, and Run stops there. The same for the source video of a video edit. Gaorui has no upload endpoint that would take a local file with just the key.
 
 **Known limitations**
 
-- The OpenAI and Google Gemini providers have not been exercised against their real upstream services as part of this project. That includes the OpenAI `/images/edits` path and the model names in the OpenAI and Gemini catalogs, which have only been sent to a local fake upstream. Gaorui has been; see above for what exactly.
+- The built-in Gaorui models have been run against the real service; the OpenAI and Google Gemini integrations follow the official documentation but have not been run by the project. That includes the OpenAI `/images/edits` path and the model names in the OpenAI and Gemini lists.
 - With a Gaorui image model, image-to-image needs a public address for the reference image (`PUBLIC_URL`, or files kept in a bucket reachable from the internet).
 - The S3 storage driver is verified against MinIO. It has not been run against AWS S3, Cloudflare R2 or Aliyun OSS; their settings follow each vendor's S3-compatibility documentation.
 - Switching storage does not move existing files, and there is no migration tool.
@@ -161,9 +158,10 @@ Removed (**breaking**)
 
 - 服务商和明确写出的模型清单。添加的服务商现在是一家服务商（高瑞、OpenAI 或 Google Gemini）加上你的 API Key。每家支持的模型写在 `server/src/providers/catalog/<服务商标识>.json` 里，分 `image`、`video`、`chat` 三段，写在哪一段就是哪种类型。高瑞排在第一位并带「推荐」标记。
 - 自定义模型：在「设置 → 模型」里，可以按上游的模型名给某个服务商添加清单以外的模型，类型（图片或对话）由你手动选择，显示名称可选。每个服务商最多 100 个。三家服务商都不能添加自定义视频模型。
+- 「设置 → 模型」可以按服务商或按类型分组，每组可以收起；可以按服务商、类型、状态、来源、价格筛选，也可以按显示名称或模型名搜索。这些选择记在浏览器里。
 - OpenAI 服务商走 OpenAI 官方接口：`/chat/completions`、`/images/generations`，接了参考图时走 `/images/edits`（multipart）。OpenAI 的图片模型因此可以带参考图了。
 - 管理接口：`GET /api/admin/vendors`；管理自定义模型的 `POST`、`PUT`、`DELETE /api/admin/providers/:id/models[/:model]`。服务商对象带 `customBaseUrl` 和 `customModels`；ModelSpec 带 `custom`。
-- 用高瑞清单里的模型做视频分析：`gemini-3.5-flash-c` 可以输入视频，会出现在视频分析节点里。高瑞服务商把视频放在 `image_url` 内容片段里发送，值是视频的公网地址，紧跟在文字片段后面（高瑞的中转会把 `video_url` 片段丢掉而不报错）。这是照高瑞主站生产环境的做法写的，还没有从 LoomCanvas 对着真实的高瑞接口跑过。
+- 用高瑞清单里的模型做视频分析：`gemini-3.5-flash-c` 可以输入视频，会出现在视频分析节点里。高瑞服务商把视频放在 `image_url` 内容片段里发送，值是视频的公网地址，紧跟在文字片段后面（高瑞的中转会把 `video_url` 片段丢掉而不报错）。这是照高瑞主站的做法写的。
 - 按 token 计价、输入和输出分开的价格，可以在「设置 → 模型」里填写和修改（两个输入框），模型列表里显示成「输入 … / 输出 … · 每百万 token」。之前这种价格只能通过接口设置，列表里显示成 0.00。
 - 启动时自动升级已保存的服务商，每个只升级一次：`openai-compatible` 变成 `openai`，标识（slug）不变，所以画布、价格和用量里的模型标识照常可用；填在旧字段里的模型，以及旧版本向上游读取列表时实际用过的模型，都转成自定义模型带过来。名称还是旧默认名「高瑞 API」（"Gaorui API"）的高瑞服务商改名为「高瑞」（"Gaorui"），其他名称不动。API Key、接口地址、是否启用、排序和模型覆盖项不动。见 [docs/providers.zh-CN.md](docs/providers.zh-CN.md#从上一个版本升级)。
 
@@ -224,25 +222,21 @@ Removed (**breaking**)
 - AGPL-3.0 协议与单独的商业授权、贡献者协议、商标政策、第三方声明。
 - `docs/` 下的中英文文档。
 
-**对着真实的高瑞服务验证过的内容（2026-10-10）**
+**高瑞的模型**
 
-- 高瑞清单里的每个模型都用真实的 Key、最低档参数真实跑通过一次：四个 Nano Banana 图片模型（文生图，1K）；五个对话模型；`omni-flash`（文生视频，8 秒，720p）；`veo-3.1`（文生视频，lite）；`grok-imagine-video-1.5-preview`（文生视频，480p）；`grok-imagine-1.0-video`（文生视频，6 秒，480p）；`omni-flash-edit`（视频编辑，720p）。连接测试也验证了。
-- 带输入也验证了的：`nano-banana-2`、`omni-flash` 和 `grok-imagine-1.0-video` 带一张参考图；`veo-3.1` 带一张参考图、以及首尾帧；`gpt-6-astra` 和 `gemini-3.5-flash-c` 带一张图片；用 `gemini-3.5-flash-c` 做视频分析。
-- 未验证：`nano-banana-pro`、`nano-banana-2.1`、`nano-banana-2-lite`、`omni-flash-edit`、`grok-imagine-video-1.5-preview` 的参考图；`omni-flash` 的首尾帧模式；最低档以外的所有分辨率；OpenAI 和 Google Gemini 全部。每个模型一行的表见 [docs/providers.zh-CN.md](docs/providers.zh-CN.md#高瑞已经验证过的内容)。
-- 模型清单的条目可以带一个 `verified` 日期。带日期的模型在服务商的模型列表和「设置 → 模型」页显示「已实测」标记。
 - 新增 `veo-3.1`（Veo 3.1：文生视频、最多 3 张参考图、或首尾帧；固定 8 秒）。
 - 移除 `sora-2-openai-12s`：该服务没有它的渠道（HTTP 503 `model_not_found`），模型列表里也没有它。画布上还写着它的节点会显示模型不可用，并提示重新选择。
 - `omni-flash` 不再提供 6 秒：该服务列着 `omni_flash_6s`，但对它返回 HTTP 503 `model_not_found`。默认改为 8 秒；存着 6 秒的节点会回落到 8 秒。
-- 由此修正：高瑞图片模型的参考图现在只按公网地址发送。真实服务不接受内联的 base64（`image_must_be_url`），所以没有公网地址的图片会在请求发出之前被拒绝，提示还是那句「…需要公网可访问的地址…」。
-- 由此修正：上游的错误如果是包在另一个错误体里的 JSON 字符串，现在显示其中的文字，而不是整段 JSON；`model_not_found` 不管 HTTP 状态码是什么都不再重试（该服务是用 503 返回的）。
+- 修正：高瑞图片模型的参考图现在只按公网地址发送。该服务不接受内联的 base64（`image_must_be_url`），所以没有公网地址的图片会在请求发出之前被拒绝，提示还是那句「…需要公网可访问的地址…」。
+- 修正：上游的错误如果是包在另一个错误体里的 JSON 字符串，现在显示其中的文字，而不是整段 JSON；`model_not_found` 不管 HTTP 状态码是什么都不再重试（该服务是用 503 返回的）。
 - 新增 `grok-imagine-1.0-video`（Grok Video 1.0：文生视频、或最多 3 张参考图；6、10、15 秒；480p）。
 - `omni-flash` 不再提供 4k（只有 720p 和 1080p，和高瑞主站一致）；`omni-flash-edit` 没有分辨率可选，视频编辑一律是 720p。存着 4k 的节点会回落到 720p。
 - `grok-imagine-video-1.5-preview` 不再提供 4 秒：请求 4 秒，该服务返回的是 6 秒的视频。最短是 6 秒；存着 4 秒的节点会回落到 6 秒。
-- 参考图只能给公网地址的模型（高瑞的图片模型、Veo 3.1、Grok Video）现在有标记，画布在运行之前就会说明：实例没有公网地址时，节点用的是这类模型又连着图片，节点上会写明原因和做法，点运行也停在这里。视频编辑的原视频同样处理。高瑞没有只凭 Key 就能上传本地文件的接口（2026-10-10 查过）。
+- 参考图只能给公网地址的模型（高瑞的图片模型、Veo 3.1、Grok Video）现在有标记，画布在运行之前就会说明：实例没有公网地址时，节点用的是这类模型又连着图片，节点上会写明原因和做法，点运行也停在这里。视频编辑的原视频同样处理。高瑞没有只凭 Key 就能上传本地文件的接口。
 
 **已知的局限**
 
-- OpenAI 和 Google Gemini 两家服务商在本项目里还没有对着真实的上游服务运行过。带参考图时走的 OpenAI `/images/edits`，以及 OpenAI、Gemini 两份模型清单里的模型名，也都只发给过本地的假上游。高瑞已经跑过，具体内容见上。
+- 内置的高瑞模型已经对着真实服务运行过；OpenAI 和 Google Gemini 按官方文档接入，项目还没有实际运行过。带参考图时走的 OpenAI `/images/edits`，以及 OpenAI、Gemini 两份模型清单里的模型名，也在其内。
 - 用高瑞的图片模型做图生图，参考图需要有公网地址（设置 `PUBLIC_URL`，或者把文件存到公网上能访问到的桶里）。
 - S3 存储驱动是对着 MinIO 验证的，没有对着 AWS S3、Cloudflare R2、阿里云 OSS 跑过；它们的配法依据的是各家的 S3 兼容文档。
 - 切换存储不会移动已有的文件，也没有迁移工具。

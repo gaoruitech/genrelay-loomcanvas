@@ -5,10 +5,9 @@
  * our own and not bound to anyone's standard.
  *
  * Supported models are listed in catalog/gaorui.json. Three protocol
- * families, selected per model by `_protocol` there. A catalog entry with a
- * `verified` date was run against the real service on that day; what exactly
- * was run is listed in catalog/SOURCES.md, and the recorded answers are the
- * fixtures of the "real service" tests in test/providers.test.js.
+ * families, selected per model by `_protocol` there. What was run against the
+ * real service is listed in catalog/SOURCES.md, and the recorded answers are
+ * the fixtures of the "real service" tests in test/providers.test.js.
  *
  *  nano-banana (images, asynchronous)
  *    POST /v1/nano-banana            header  Authorization: <key>   (no "Bearer")

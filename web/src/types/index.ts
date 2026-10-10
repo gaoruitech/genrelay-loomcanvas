@@ -72,8 +72,6 @@ export interface ModelSpec {
   }
   defaults?: Record<string, any>
   pricing?: ModelPricing | null
-  /** 项目用真实接口跑通这个模型的日期（YYYY-MM-DD）；只有服务商清单里的模型可能有 */
-  verified?: string
 }
 
 /** 一笔花费。unknown 为真表示该模型没有配置价格，amount 无意义 */

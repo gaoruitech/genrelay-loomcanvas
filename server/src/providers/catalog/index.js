@@ -21,10 +21,6 @@
  *                       is sent. The canvas says so before the run.
  *   options             { aspectRatios?, resolutions?, durations?, counts?, imgModes? }
  *   defaults            { aspectRatio?, resolution?, duration?, count?, imgMode? }
- *   verified            optional "YYYY-MM-DD": the day this model completed a
- *                       real text-to-image / text-to-video / chat run against
- *                       the vendor's service, made by the project. Absent = the
- *                       entry follows the vendor's documentation and was not run.
  *   _anything           private to the vendor module, never served
  *
  * Where each OpenAI / Gemini entry comes from is recorded in SOURCES.md.
@@ -33,17 +29,10 @@ const KINDS = ['image', 'video', 'chat']
 // Also the rule for a custom model's name (see routes/admin.js).
 const MODEL_NAME = /^[\w.:/@-]{1,120}$/
 
-const ENTRY_KEYS = new Set(['id', 'label', 'acceptsImage', 'acceptsVideo', 'videoEdit', 'maxReferenceImages', 'options', 'defaults', 'verified', 'imageByUrlOnly'])
+const ENTRY_KEYS = new Set(['id', 'label', 'acceptsImage', 'acceptsVideo', 'videoEdit', 'maxReferenceImages', 'options', 'defaults', 'imageByUrlOnly'])
 const OPTION_LISTS = { aspectRatios: 'string', resolutions: 'string', durations: 'number', counts: 'number', imgModes: 'string' }
 // defaults key -> the options list its value has to come from
 const DEFAULT_OF = { aspectRatio: 'aspectRatios', resolution: 'resolutions', duration: 'durations', imgMode: 'imgModes' }
-
-/** A real calendar day written as YYYY-MM-DD. */
-function isDay(v) {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
-  const d = new Date(`${v}T00:00:00Z`)
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
-}
 
 const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
 
@@ -96,7 +85,6 @@ function validateCatalog(vendor, data) {
         if (!list || !list.includes(value)) fail(`${at}: defaults.${name} is not one of options.${DEFAULT_OF[name]}`)
       }
       if (entry.imageByUrlOnly !== undefined && (entry.imageByUrlOnly !== true || !entry.acceptsImage)) fail(`${at}: imageByUrlOnly is either true on a model that accepts images, or absent`)
-      if (entry.verified !== undefined && !isDay(entry.verified)) fail(`${at}: verified must be a date written as YYYY-MM-DD`)
       out.push({ ...entry, kind })
     }
   }

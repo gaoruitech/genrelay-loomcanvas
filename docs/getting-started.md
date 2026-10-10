@@ -6,7 +6,7 @@ This page takes you from an empty machine to your first generated image.
 
 LoomCanvas does not include any models. You add a provider with your own API key, and the canvas calls its models for you.
 
-> Status: early development. All three built-in providers (Gaorui, OpenAI, Google Gemini) are covered by tests against a fake upstream. Every Gaorui catalog model was also run against the real service on 2026-10-10 ([what is verified, per model](providers.md#gaorui-what-has-been-verified)); OpenAI and Google Gemini are all unverified. If a request shape turns out to be wrong, please open an issue.
+> Status: early development. The built-in Gaorui models have been run against the real service; the OpenAI and Google Gemini integrations follow the official documentation but have not been run by the project. If a request shape turns out to be wrong, please open an issue.
 
 ## 1. Prerequisites
 

@@ -8,9 +8,14 @@
 
       <div class="lc-dialog-body">
         <p class="hint">
-          <span class="hint-provider">{{ providerTitle }}</span>
+          <span v-if="!pickProvider" class="hint-provider">{{ titleOf(target) }}</span>
           {{ t('settings.models.customHint') }}
         </p>
+
+        <div v-if="pickProvider" class="lc-field">
+          <label :for="uid + '-provider'">{{ t('settings.models.filter.provider') }}<span class="lc-required">*</span></label>
+          <LcSelect :id="uid + '-provider'" v-model="targetId" :options="providerOptions" :disabled="saving" />
+        </div>
 
         <div class="lc-field">
           <label :for="uid + '-model'">{{ t('settings.models.customName') }}<span v-if="!existing" class="lc-required">*</span></label>
@@ -88,6 +93,10 @@ const props = defineProps<{
   vendor: Vendor
   /** 编辑时传入；模型名不可改 */
   existing?: CustomModel | null
+  /** 添加时可以加到哪几个服务商上（多于一个才出现「服务商」这一项）；不传就只有 provider 那一个 */
+  choices?: { provider: ProviderInstance; vendor: Vendor }[]
+  /** 添加时先选好的类型：从「按类型」分组里某个类型下面点的添加，仍然可以改 */
+  presetKind?: ModelKind
 }>()
 const emit = defineEmits<{
   (e: 'close'): void
@@ -99,29 +108,39 @@ const uid = useId()
 
 const ALL_KINDS: ModelKind[] = ['image', 'video', 'chat']
 const model = ref(props.existing?.model || '')
-const kind = ref<ModelKind | undefined>(props.existing?.kind)
+
+// 加到哪个服务商上
+const targetId = ref(props.provider.id)
+const pickProvider = computed(() => !props.existing && (props.choices?.length || 0) > 1)
+const target = computed(() => props.choices?.find(c => c.provider.id === targetId.value) || { provider: props.provider, vendor: props.vendor })
+const vendor = computed(() => target.value.vendor)
+
+const kind = ref<ModelKind | undefined>(props.existing?.kind ?? (props.presetKind && props.vendor.customKinds.includes(props.presetKind) ? props.presetKind : undefined))
 const label = ref(props.existing?.label || '')
 const saving = ref(false)
 const error = ref('')
 
-const kindOptions = computed(() => props.vendor.customKinds.map(k => ({ value: k, label: t('settings.models.kinds.' + k) })))
+const kindOptions = computed(() => vendor.value.customKinds.map(k => ({ value: k, label: t('settings.models.kinds.' + k) })))
 const missingKinds = computed(() => ALL_KINDS
-  .filter(k => !props.vendor.customKinds.includes(k))
+  .filter(k => !vendor.value.customKinds.includes(k))
   .map(k => t('settings.models.kinds.' + k))
   .join(' / '))
 const caps = computed(() => {
-  const d = kind.value && props.vendor.customDefaults[kind.value]
+  const d = kind.value && vendor.value.customDefaults[kind.value]
   return d ? capsSummary(d) : []
 })
 
 // 服务商名；实例名是用户自己起的（比如同一家加了两个）才带上实例名
-const providerTitle = computed(() => {
-  const v = vendorLabel(props.vendor)
-  return isVendorDefaultName(props.vendor, props.provider.name) ? v : `${v} · ${props.provider.name}`
-})
+function titleOf(c: { provider: ProviderInstance; vendor: Vendor }): string {
+  const v = vendorLabel(c.vendor)
+  return isVendorDefaultName(c.vendor, c.provider.name) ? v : `${v} · ${c.provider.name}`
+}
+const providerOptions = computed(() => (props.choices || []).map(c => ({ value: c.provider.id, label: titleOf(c) })))
+// 换了服务商，选好的类型它不一定能加
+watch(vendor, (v) => { if (kind.value && !v.customKinds.includes(kind.value)) kind.value = undefined })
 
 // 改了任何一项，上一次的报错就不再成立
-watch([model, kind, label], () => { error.value = '' })
+watch([model, kind, label, targetId], () => { error.value = '' })
 
 function close() {
   if (!saving.value) emit('close')
@@ -135,7 +154,7 @@ async function submit() {
   try {
     const saved = props.existing
       ? unwrap(await adminApi.updateCustomModel(props.provider.id, props.existing.model, { kind: kind.value, label: label.value }))
-      : unwrap(await adminApi.addCustomModel(props.provider.id, { model: model.value, kind: kind.value, label: label.value }))
+      : unwrap(await adminApi.addCustomModel(target.value.provider.id, { model: model.value, kind: kind.value, label: label.value }))
     emit('saved', saved)
   } catch (err) {
     error.value = apiErrorMessage(err, t('common.operationFailed'))

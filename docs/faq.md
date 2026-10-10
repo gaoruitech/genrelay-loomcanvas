@@ -204,7 +204,7 @@ If it is a proxy or relay that speaks exactly the official OpenAI or Gemini API,
 
 ### Have the providers been tested against the real services?
 
-Gaorui: yes. On 2026-10-10 every model in its catalog completed one real run at the lowest settings; [one table in Providers](providers.md#gaorui-what-has-been-verified) says, per model, what is verified and what is not, and in the product those models carry a "Verified" badge. OpenAI and Google Gemini: all unverified. All three are tested against a fake upstream that pins the request and response shapes. The S3 storage driver is verified against MinIO; AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services ([Storage](storage.md#what-has-been-tested)). Expect to verify these in your own environment, and please report what you find.
+The built-in Gaorui models have been run against the real service; the OpenAI and Google Gemini integrations follow the official documentation but have not been run by the project. The S3 storage driver is tested against MinIO; AWS S3, Cloudflare R2 and Aliyun OSS have not been run against the live services ([Storage](storage.md#what-has-been-tested)). Expect to check these in your own environment, and please report what you find.
 
 ## Licensing
 

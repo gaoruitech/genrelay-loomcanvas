@@ -4,7 +4,7 @@
 
 LoomCanvas has no models of its own. You pick a **vendor**, enter your own API key, and the models that vendor supports become available on the canvas. This page covers the three built-in vendors, the models each one supports, custom models, changing the address, upgrading from the previous version, how reference media reaches the upstream, and pricing.
 
-> **Gaorui was run against the real service** (`https://gaorui.cc`) on 2026-10-10. What that covered, and what it did not, is listed under [Gaorui: what has been verified](#gaorui-what-has-been-verified). **OpenAI and Google Gemini have not been exercised against their real APIs** as part of this project: their request and response shapes are pinned only by tests against a fake upstream (`server/test/providers.test.js`). That includes the OpenAI `/images/edits` path used for reference images, and the model names in the OpenAI and Gemini catalogs. Treat the first real run with those two as a test, and report mismatches.
+> Status: The built-in Gaorui models have been run against the real service; the OpenAI and Google Gemini integrations follow the official documentation but have not been run by the project. Treat the first real run with those two as a test, and report mismatches.
 
 ## Concepts
 
@@ -25,7 +25,7 @@ Things to know:
 - The API key is required. It is encrypted before it is stored and is never returned by any endpoint. The interface shows only whether a key is set and its last four characters. When editing a provider, leave the key blank to keep the current one.
 - **Test connection** calls the upstream's model-list endpoint. It only proves that the address and the key work; the list that comes back is not used.
 - A disabled provider hides all its models from the canvas. Deleting a provider also deletes its custom models and the price and display overrides of its models. Runs already recorded are kept.
-- Every model of a provider is listed under **Settings → Models**, grouped by provider, with a kind badge (Image, Video or Chat) and a **Custom** badge on custom models. A model you do not use can be disabled there.
+- Every model is listed under **Settings → Models**. The list can be grouped by provider (with Image, Video and Chat sub-groups) or by type (with a sub-group per provider), groups can be collapsed, and the bar above it filters by provider, type, status (enabled or disabled), source (built-in or custom), price (set or not) and a search over the display name and the model ID. Custom models carry a **Custom** badge. A model you do not use can be disabled there. Grouping, collapsed groups and the filters are remembered in the browser.
 
 ## Vendors
 
@@ -65,50 +65,11 @@ Supported models (`server/src/providers/catalog/gaorui.json`):
 - Image and video models are asynchronous: LoomCanvas submits a task, then polls it.
 - `omni-flash-edit` is the only model offered in the Video edit node.
 - Each video model has its own request body, written out in `server/src/providers/gaorui.js`.
-- **Omni Flash and Veo 3.1 each map to several upstream model names.** `omni-flash` is sent as `omni_flash_8s` or `omni_flash_10s`, by duration (the upstream still lists `omni_flash_6s`, but no channel serves it, so 6 s is not offered). `veo-3.1` is sent as one of three names, by input: `veo_3_1` without images, `veo_3_1-components` with reference images (up to 3), `veo_3_1-fl` with a first and a last frame. The Veo resolution `lite` is the upstream's fast tier; the clip it returned was 1280×720. Veo takes images as public URLs only.
+- **Omni Flash and Veo 3.1 each map to several upstream model names.** `omni-flash` is sent as `omni_flash_8s` or `omni_flash_10s`, by duration (the upstream still lists `omni_flash_6s`, but no channel serves it, so 6 s is not offered). `veo-3.1` is sent as one of three names, by input: `veo_3_1` without images, `veo_3_1-components` with reference images (up to 3), `veo_3_1-fl` with a first and a last frame. The Veo resolution `lite` is the upstream's fast tier; its clips are 1280×720. Veo takes images as public URLs only.
 - **Omni Flash: no 6 s and no 4k.** Omni Flash offers 720p and 1080p, as the Gaorui main site does (the upstream also takes 4k; it is not offered). Omni Flash Edit has no resolution to choose: an edit is always sent as 720p, which is what the main site does. A node that still stores a value that is no longer offered falls back: 6 s becomes 8 s, 4k becomes 720p.
-- **Grok Video.** The shortest Grok Video 1.5 clip is 6 s (a request for 4 s came back as a 6 s clip), so 4 s is not offered; a node that stores 4 s gets 6 s. Grok Video 1.0 (`grok-imagine-1.0-video`) comes in 6, 10 or 15 s and in one quality tier, 480p, sent as `quality: "standard"` together with `resolution: "480p"`; with more than one reference image the clip is 10 s at most. Both take reference images as public URLs only (`image_urls`).
-- **Reference images of the image models must have a public URL.** The real service refuses an inline (base64) image with HTTP 400, `image_must_be_url`. On an instance without a public address, image-to-image with a Gaorui image model therefore fails with "A publicly reachable URL is needed…" before anything is sent; see [How media reaches the upstream](#how-media-reaches-the-upstream). Text-to-image is not affected.
-- **There is no way to upload a local file to Gaorui with just the key.** Checked on 2026-10-10 in the main site's code and against the public API with free calls: `/v1/uploads` and `/v1/upload` do not exist (404); `/v1/assets/uploads` exists, but it registers material that already has a public URL (it takes a `url`, for the Seedance models) and returns an `asset://` id, not an address the image models accept; `/v1/files` is a relay route that asks for a model name. So LoomCanvas cannot work around the missing public address, and says so before the run: when a node uses one of these models, has an image connected, and the instance has neither a public `PUBLIC_URL` nor a bucket reachable from the internet, the node shows the reason and what to do, and Run stops there instead of sending anything.
-
-#### Gaorui: what has been verified
-
-"Verified" means one thing: on 2026-10-10, with a real key against `https://gaorui.cc`, the model completed one full run inside LoomCanvas (submit, poll, download the result, store it, usage record), at the lowest settings, count 1. "Not verified" means it was not run. "n/a" means the model has no such use.
-
-| Model | Text only | With reference images / first and last frame | Notes |
-| --- | --- | --- | --- |
-| `nano-banana-pro` | Verified (2026-10-10) | Not verified | 1K, 1:1 |
-| `nano-banana-2` | Verified (2026-10-10) | Verified (2026-10-10) | 1K, 1:1; one reference image, given as a public URL |
-| `nano-banana-2.1` | Verified (2026-10-10) | Not verified | 1K, 1:1 |
-| `nano-banana-2-lite` | Verified (2026-10-10) | Not verified | 1K, 1:1 |
-| `omni-flash` | Verified (2026-10-10) | Verified (2026-10-10) | 8 s, 720p, 16:9; one reference image (reference-image mode), given as a public URL. First-and-last-frame mode was not run |
-| `omni-flash-edit` | n/a | Not verified | Video edit (source video + prompt): verified (2026-10-10), 720p, 16:9, the source video given as a public URL. Not run with reference images |
-| `veo-3.1` | Verified (2026-10-10) | Verified (2026-10-10) | lite, 16:9, 8 s; one run with a reference image and one with a first and a last frame, images given as public URLs |
-| `grok-imagine-video-1.5-preview` | Verified (2026-10-10) | Not verified | 480p, 16:9; 4 s was asked for and a 6 s clip came back, so 6 s is now the shortest offered. 3:2 is refused by the service ("aspect_ratio must be one of: 1:1, 16:9, 9:16"), so only those three ratios are offered |
-| `grok-imagine-1.0-video` | Verified (2026-10-10) | Verified (2026-10-10) | 6 s, 480p, 16:9; one reference image, given as a public URL. Both clips came back 6.0 s long, 752×416. A 3:2 request was accepted but came back 16:9 (848×480), so only 9:16, 16:9 and 1:1 are offered |
-| `deepseek-v4-pro` | Verified (2026-10-10) | n/a | text-only model |
-| `gpt-5.5` | Verified (2026-10-10) | n/a | text-only model |
-| `glm-5.3` | Verified (2026-10-10) | n/a | text-only model |
-| `gpt-6-astra` | Verified (2026-10-10) | Verified (2026-10-10) | one image, sent inline |
-| `gemini-3.5-flash-c` | Verified (2026-10-10) | Verified (2026-10-10) | one image, sent inline; video analysis (video given as a public URL) was run once as well |
-
-Connection test (**Settings → Providers → Test**): verified (2026-10-10).
-
-In the product, the models whose "Text only" cell says verified (and `omni-flash-edit`, whose video edit is verified) carry a "Verified" badge in the "Models supported by this provider" list and on **Settings → Models**. Models without the badge follow the provider's documentation and have not been run by the project.
-
-- OpenAI: all unverified.
-- Google Gemini: all unverified.
-
-Not exercised for Gaorui:
-
-- Resolutions above the lowest: 2K and 4K for images; 1080p for Omni Flash; 720p, 1080p and 4k for Veo 3.1; 720p for Grok Video 1.5.
-- Aspect ratios and durations other than the one that was run: 9:16 and the other ratios; 10 s for Omni Flash; Grok Video 1.5 at 6 s and above as a request (the one run asked for 4 s); 10 and 15 s for Grok Video 1.0.
-- More than one reference image, and everything the table marks "Not verified" in the reference column; the first-and-last-frame mode of Omni Flash.
-- Reference images of the video models sent inline (base64). Every run used public URLs. The image endpoint refuses an inline image (HTTP 400 `image_must_be_url`).
-- Handing over a file of your own through `PUBLIC_URL` or a presigned bucket URL. The inputs used were addresses on the service's own file host.
-- Custom models.
-- What the service answers to a moderated prompt, to an exhausted balance or to a wrong key.
-- Costs. No prices are shipped, so every run was recorded as "cost unknown".
+- **Grok Video.** The shortest Grok Video 1.5 clip is 6 s (a request for 4 s came back as a 6 s clip), so 4 s is not offered; a node that stores 4 s gets 6 s. Grok Video 1.0 (`grok-imagine-1.0-video`) comes in 6, 10 or 15 s and in one quality tier, 480p, sent as `quality: "standard"` together with `resolution: "480p"`; with more than one reference image the clip is 10 s at most. Both come in 9:16, 16:9 and 1:1 only: the service refuses other ratios for 1.5, and for 1.0 it accepts a 3:2 request but returns a 16:9 clip. Both take reference images as public URLs only (`image_urls`).
+- **Reference images of the image models must have a public URL.** The service refuses an inline (base64) image with HTTP 400, `image_must_be_url`. On an instance without a public address, image-to-image with a Gaorui image model therefore fails with "A publicly reachable URL is needed…" before anything is sent; see [How media reaches the upstream](#how-media-reaches-the-upstream). Text-to-image is not affected.
+- **There is no way to upload a local file to Gaorui with just the key.** Its public API has no such endpoint: `/v1/uploads` and `/v1/upload` do not exist (404); `/v1/assets/uploads` exists, but it registers material that already has a public URL (it takes a `url`, for the Seedance models) and returns an `asset://` id, not an address the image models accept; `/v1/files` is a relay route that asks for a model name. So LoomCanvas cannot work around the missing public address, and says so before the run: when a node uses one of these models, has an image connected, and the instance has neither a public `PUBLIC_URL` nor a bucket reachable from the internet, the node shows the reason and what to do, and Run stops there instead of sending anything.
 
 ### OpenAI
 
@@ -268,9 +229,9 @@ In the request to Gaorui the video goes into an **`image_url` content part** hol
 ] }
 ```
 
-- `video_url` is not used. The Gaorui relay drops a `video_url` part without an error, and the model then answers without having seen the video. Checked against the real service on 2026-10-10: asked the same question about the same clip with a `video_url` part, the model answered that there was no video, and the reported prompt size was that of the text alone.
+- `video_url` is not used. The Gaorui relay drops a `video_url` part without an error, and the model then answers without having seen the video. Asked the same question about the same clip with a `video_url` part, the model answers that there is no video, and the reported prompt size is that of the text alone.
 - The video needs a public URL, see [How media reaches the upstream](#how-media-reaches-the-upstream). Without one the run fails and says why; no request is sent.
-- This is what the Gaorui main site does in production, and it was run from LoomCanvas against the real Gaorui API on 2026-10-10 with `gemini-3.5-flash-c`: one clip of 6 seconds, given by a public URL, was described correctly. Longer videos, a video together with reference images, and custom chat models have not been tried.
+- This is what the Gaorui main site does. A short clip (a few seconds) given by a public URL is described correctly by `gemini-3.5-flash-c`; how long a video the service takes, and whether a video can go together with reference images, is not known.
 
 The Language model node sends its connected images only to a chat model that reads images; see "Text-only chat models" under [Gaorui](#gaorui).
 
@@ -281,7 +242,7 @@ Reference images and source videos on a canvas are files in **your** storage. Th
 | Way | Used by | Without a public address |
 | --- | --- | --- |
 | Sent with the request | Gemini (always, as inline base64); OpenAI reference images (uploaded as file parts to `/images/edits`) | Works. Up to 20 MB each. |
-| URL if there is a public one, otherwise an inline data URI | Images in chat requests to OpenAI and Gaorui; reference images of Omni Flash and Omni Flash Edit | Chat: works, images are sent inline, up to 20 MB each (verified with Gaorui). The two video models: sent inline, but whether the real service accepts that has not been verified (the verified runs used public URLs). |
+| URL if there is a public one, otherwise an inline data URI | Images in chat requests to OpenAI and Gaorui; reference images of Omni Flash and Omni Flash Edit | Chat: works, images are sent inline, up to 20 MB each. The two video models: sent inline; whether the service accepts an inline image there is not known, so give them a public address if you can. |
 | URL only | **Reference images of the Gaorui image models** (custom ones included), Omni Flash Edit **source video**, Veo 3.1 and Grok Video (1.5 and 1.0) reference images, video in chat (Gaorui `gemini-3.5-flash-c` and custom chat models) | **Fails** with "A publicly reachable URL is needed…". For reference images and the source video of a video edit, the node says so before the run. |
 
 A "public address" is an `http(s)` URL that is not `localhost` and not a private IP. A file has one when:

@@ -8,11 +8,16 @@ documentation. Every page named below was fetched on 2026-10-10 as markdown
 read as text, not through a summary. "Verified" means the statement was read
 on the page named in that row on that day. It does not mean the model was
 called: none of the OpenAI and Gemini entries has been run against the real
-API, only against a local fake upstream; no OpenAI or Gemini entry carries a
-`verified` date. The 高瑞 entries are a different case: every one of them
-completed a real run on the real service on 2026-10-10 and carries
-`"verified": "2026-10-10"`, see "高瑞: run against the real service" at the
-end.
+API, only against a local fake upstream. The 高瑞 entries are a different
+case: every one of them completed a real run on the real service on
+2026-10-10, see "高瑞: run against the real service" at the end.
+
+This file is the only place that record is kept. The catalogs have no
+`verified` field (the validator refuses one), the API does not serve one, and
+the product shows no badge: users are told once, in the README status line,
+that the 高瑞 models have been run against the real service and that the
+OpenAI and Gemini integrations follow the official documentation but have not
+been run by the project.
 
 Prices are deliberately not recorded here or in the catalogs.
 
@@ -281,9 +286,8 @@ record). One run per row at the lowest settings, count 1. The recorded
 answers, with ids and file names replaced, are the fixtures of the tests named
 "real service" in `server/test/providers.test.js`.
 
-"verified" = that run completed and the result was looked at. A catalog entry
-gets `"verified": "2026-10-10"` when its text-only run is verified (for
-`omni-flash-edit`, which has no text-only use, when its edit run is).
+"verified" = that run completed and the result was looked at. Nothing is
+written into the catalog for it; update the table below when a run is made.
 
 | Entry | Text only | With reference images / first and last frame | What was sent, what came back |
 | --- | --- | --- | --- |
@@ -320,3 +324,10 @@ Veo's 720p and above, the other aspect ratios and durations),
 first and last frame), reference images sent inline to the video endpoint,
 the three text-only chat models' refusal of images (LoomCanvas does not send
 them any, so the upstream's answer was not looked at), and custom models.
+
+Also not looked at: handing over a file of the user's own through `PUBLIC_URL`
+or a presigned bucket URL (the inputs were addresses on the service's own file
+host); what the service answers to a moderated prompt, to an exhausted balance
+or to a wrong key; costs (no prices are shipped, so every run was recorded as
+"cost unknown"). The connection test (Settings -> Providers -> Test) was run
+and passed.

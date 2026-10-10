@@ -101,23 +101,18 @@ test('catalogs: the provider docs name every catalog model, in both languages', 
   }
 })
 
-test('catalogs: "verified" is the day a model was really run, and is only ever on catalog models that were', () => {
-  const day = (vendor) => Object.fromEntries(loadCatalog(vendor).map((m) => [m.id, m.verified]))
-  // Every 高瑞 entry completed a real run on 2026-10-10 (catalog/SOURCES.md says which). Adding a model does not add a date.
-  assert.deepEqual(Object.entries(day('gaorui')).filter(([, d]) => d !== '2026-10-10'), [])
-  // Nothing of OpenAI or Gemini has been run against the real API.
-  for (const vendor of ['openai', 'gemini']) assert.deepEqual(Object.values(day(vendor)).filter(Boolean), [], vendor)
-
-  // Served with the vendor's model list and with an instance's models...
-  const vendors = registry.listVendors('en')
-  assert.equal(vendors.find((v) => v.type === 'gaorui').models.find((m) => m.model === 'veo-3.1').verified, '2026-10-10')
-  assert.equal(vendors.find((v) => v.type === 'openai').models.some((m) => 'verified' in m), false)
+test('catalogs: no entry says anything about testing, and nothing of the kind is served', () => {
+  // What the project ran against a real service is a maintainer note (catalog/SOURCES.md), not product data.
+  for (const vendor of VENDORS) assert.deepEqual(loadCatalog(vendor).filter((m) => 'verified' in m), [], vendor)
+  for (const v of registry.listVendors('en')) assert.equal(v.models.some((m) => 'verified' in m), false, v.type)
   const instance = { id: '1', slug: 'gaorui', name: '', type: 'gaorui' }
-  const [spec] = registry.buildSpecs(instance, [loadCatalog('gaorui').find((m) => m.id === 'omni-flash')])
-  assert.equal(spec.verified, '2026-10-10')
-  // ...and never for a custom model, whatever its stored row says.
-  const [custom] = registry.buildSpecs(instance, [{ id: 'mine', kind: 'chat', custom: true, verified: '2026-10-10' }])
-  assert.equal('verified' in custom, false)
+  // A stored row that still carries the old field does not bring it back.
+  const specs = registry.buildSpecs(instance, [
+    { ...loadCatalog('gaorui').find((m) => m.id === 'omni-flash'), verified: '2026-10-10' },
+    { id: 'mine', kind: 'chat', custom: true, verified: '2026-10-10' },
+  ])
+  assert.equal(specs.length, 2)
+  assert.equal(specs.some((s) => 'verified' in s), false)
 })
 
 test('catalogs: the validator refuses anything half-declared', () => {
@@ -140,9 +135,7 @@ test('catalogs: the validator refuses anything half-declared', () => {
     [wrap({ ...ok, defaults: { aspectRatio: '16:9' } }), /not one of options.aspectRatios/],
     [wrap({ ...ok, defaults: { resolution: '1K' } }), /not one of options.resolutions/],
     [wrap({ ...ok, pricing: {} }), /unknown field "pricing"/],
-    [wrap({ ...ok, verified: true }), /verified must be a date/],
-    [wrap({ ...ok, verified: '2026-13-01' }), /verified must be a date/],
-    [wrap({ ...ok, verified: '10/10/2026' }), /verified must be a date/],
+    [wrap({ ...ok, verified: '2026-10-10' }), /unknown field "verified"/],
     [wrap({ ...ok, imageByUrlOnly: false }), /imageByUrlOnly is either true/],
     [wrap({ ...ok, acceptsImage: false, maxReferenceImages: 0, imageByUrlOnly: true }), /imageByUrlOnly is either true/],
   ]
