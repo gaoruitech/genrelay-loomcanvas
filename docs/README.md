@@ -8,7 +8,7 @@
 
 | Page | What it covers |
 | --- | --- |
-| [Getting started](getting-started.md) | From zero to your first generated image: start the stack, register, add a provider, run a node. Accounts. |
+| [Getting started](getting-started.md) | From zero to your first generated image: start the stack, sign in as the administrator, add a provider, run a node. Accounts. |
 | [User guide](user-guide.md) | Finding your way around (workbench, canvases, assets, models, history, settings) and the canvas: nodes, wiring, running, results and history, brand kits, templates, assets, share links, shortcuts. |
 | [FAQ](faq.md) | Problems people run into, and licensing pointers. |
 

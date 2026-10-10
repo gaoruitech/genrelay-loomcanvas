@@ -17,12 +17,13 @@
 - 请求体是 JSON，上传文件除外（`multipart/form-data`，字段名 `file`）。JSON 最大 1 MB，`/api/workflow` 下最大 6 MB，`/api/auth` 和 `/api/canvas-share` 下最大 64 KB。需要登录的接口先验凭证、再解析请求体。
 - 返回统一为 `{ "result": 0, "message": "ok", "data": … }`。失败时 `result` 非 0、HTTP 状态码相应变化，并多一个 `code`：这条提示的稳定标识（`server/src/i18n/zh-CN.js` 里的键）。程序里请按 `code` 判断，不要按 `message`。
 - `message` 的语言按请求决定：请求头 `X-Locale`（`zh-CN` 或 `en`）→ `Accept-Language` → 设置里的 `defaultLocale` → `zh-CN`。
-- 账号：每个实例都有账号，必须登录才能用，没有「免登录」的模式；旧版本的 `ACCESS_PASSWORD` 已经不起作用。第一个注册的账号是站点所有者（`owner`），之后注册的都是普通账号（`user`），没有别的角色，也没有团队。
-- 数据按账号隔离：画布、分享链接、资产、品牌包、运行、用量，以及服务商、API Key、自定义模型、模型的启用状态和价格，都是每个账号各自一份。所有者调用这些接口时同样只看得到自己的数据，接口不提供查看别人数据的途径。
+- 账号：每个实例都有账号，必须登录才能用，没有「免登录」的模式；旧版本的 `ACCESS_PASSWORD` 已经不起作用。角色只有两种：管理员（在接口里的值是 `owner`，下文所有 `role`、错误码里出现的 `owner` 指的都是它）和普通账号（`user`）。管理员不靠注册产生：还没有管理员时，服务端在启动时按 `ADMIN_USERNAME`、`ADMIN_PASSWORD`、`ADMIN_EMAIL` 自动创建，有且只有一个；注册出来的都是普通账号。没有别的角色，也没有团队。
+- 数据按账号隔离：画布、分享链接、资产、品牌包、运行、用量，以及服务商、API Key、自定义模型、模型的启用状态和价格，都是每个账号各自一份。管理员调用这些接口时同样只看得到自己的数据，接口不提供查看别人数据的途径。
 - 登录：用 `POST /api/auth/register` 注册或 `POST /api/auth/login` 登录，拿到 `token`，之后每个请求带 `Authorization: Bearer <token>`。凭证是 43 个字符的随机串，不是 JWT；服务端只存它的 SHA-256（`sessions` 集合）。不用 cookie。
-- 会话有效期 12 小时，登录时带 `remember: true` 则是 30 天；从登录那一刻算起，使用过程中不会延长。退出登录、在别的设备上被结束、修改密码（这个账号的会话全部结束，调用方在响应里拿到一个新凭证）、所有者重置密码或停用账号（该账号的会话全部结束）、账号被删除，都立即生效。改 `SECRET_KEY` 不会让任何人掉线。
+- 会话有效期 12 小时，登录时带 `remember: true` 则是 30 天；从登录那一刻算起，使用过程中不会延长。退出登录、在别的设备上被结束、修改密码（这个账号的会话全部结束，调用方在响应里拿到一个新凭证）、管理员重置密码或停用账号（该账号的会话全部结束）、账号被删除，都立即生效。改 `SECRET_KEY` 不会让任何人掉线。
 - 没登录调用需要登录的接口返回 401（`auth.required`，旧版本是 `auth.login_required`）；凭证不存在、已过期、账号被停用也是它。除了 `POST /api/auth/login` 自己的 `auth.invalid_credentials`，401 只表示「没登录」，上游接口的认证失败以 400 返回。
-- 只有所有者能调用的接口，其他账号调用返回 403（`auth.forbidden`）。
+- 只有管理员能调用的接口，其他账号调用返回 403（`auth.forbidden`）。
+- 账号还在用临时密码时（User 里的 `mustChangePassword` 为 `true`），它的会话只能调用 `GET /api/auth/me`、`GET /api/bootstrap`、`PUT /api/auth/password`、`POST /api/auth/logout`，以及公开接口。其余接口一律返回 403（`auth.password_change_required`，「请先设置新密码，再继续使用」），直到用 `PUT /api/auth/password` 改过密码。
 - 按 id 访问别的账号的东西返回 404，和 id 不存在时完全一样（`canvas.not_found`、`run.not_found`、`provider.not_found` 等），不会是 403，更不会返回数据。列表里只有自己的记录。
 - 登录、注册、修改密码、修改用户名或邮箱都有限流，超出返回 429（`auth.too_many_attempts`），`data.retryAfterSeconds` 和响应头 `Retry-After` 给出要等多少秒。计数在进程内存里，重启清零。
 - 网页端把凭证放在浏览器的本地存储里，键是 `loomcanvas-token`（勾了「记住我」用 `localStorage`，没勾用 `sessionStorage`），再放进上面那个请求头。因为不用 cookie，不存在跨站请求伪造的问题，见[安全](security.zh-CN.md#会话)。
@@ -38,19 +39,23 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/bootstrap` | 公开。客户端启动时先调它，也用作健康检查；旧路径 `/api/app/bootstrap` 仍然可用，返回相同。返回 `auth: { registrationOpen, hasUsers }`（现在能不能注册、是否已有账号；还没有任何账号时 `registrationOpen` 恒为 `true`）、`user`（带了有效凭证时是调用者的账号，否则 `null`，也就是没登录）、`site: { name, logoUrl, defaultLocale }`（站点名称、Logo、默认语言）、`hasProvider`（调用者自己的账号下有没有启用的服务商，未登录恒为 `false`）、`limits.maxUploadMb`（服务端的上传上限）、`media.upstreamByUrl`（上游能不能按地址读到站内文件：配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里；未登录时恒为 `false`）、`version`。早期版本还有 `authRequired`、`authed` 和 `site.defaultTheme`，现在都去掉了：登录是必须的（看 `user` 即可），界面只有一套主题。 |
+| GET | `/api/bootstrap` | 公开。客户端启动时先调它，也用作健康检查；旧路径 `/api/app/bootstrap` 仍然可用，返回相同。返回 `auth: { registrationOpen }`（现在能不能注册，就是 `registrationOpen` 这项设置的值；`auth` 里只有这一个字段）、`user`（带了有效凭证时是调用者的账号，否则 `null`，也就是没登录；还在用临时密码的会话也能调这个接口）、`site: { name, logoUrl, defaultLocale }`（站点名称、Logo、默认语言）、`hasProvider`（调用者自己的账号下有没有启用的服务商，未登录恒为 `false`）、`limits.maxUploadMb`（服务端的上传上限）、`media.upstreamByUrl`（上游能不能按地址读到站内文件：配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里；未登录时恒为 `false`）、`version`。早期版本还有 `authRequired`、`authed` 和 `site.defaultTheme`，现在都去掉了：登录是必须的（看 `user` 即可），界面只有一套主题。 |
 
 ### 账号与登录
 
-接口返回的账号对象（下文写作 User）：`{ id, username, email, role, createdAt }`，`role` 是 `owner` 或 `user`。
+接口返回的账号对象（下文写作 User）：`{ id, username, email, role, mustChangePassword, createdAt }`。注册、登录、`/api/auth/me`、改资料、bootstrap 里的 `user`、管理员的账号列表，给出的都是它。
+
+- `role` 是 `owner`（管理员）或 `user`。
+- `email` 对管理员可能是 `""`：管理员是唯一可以没有邮箱的账号（创建时没设 `ADMIN_EMAIL`，之后也还没用 `PUT /api/auth/profile` 补上）。
+- `mustChangePassword` 为 `true` 表示这个账号现在的密码是别人知道的：启动时生成的管理员密码、管理员「重置密码」给出的临时密码（`POST /api/admin/users/:id/reset-password`），或者命令行重置给出的临时密码。`PUT /api/auth/password` 成功后变回 `false`。为 `true` 期间接口几乎什么都不给用，见[通用约定](#通用约定)。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/register` | 公开。`{ username, email, password }` → `{ user, token }`，注册后即已登录（会话 12 小时）。用户名 3 到 32 个字符，只能用字母、数字、`_`、`-`；邮箱最长 254 个字符；两者都不区分大小写地唯一。密码 8 到 128 个字符。不发任何邮件，没有邮箱验证。实例上第一个注册的账号成为所有者；之后的注册要求 `registrationOpen` 为开。 |
-| POST | `/api/auth/login` | 公开。`{ account, password, remember? }` → `{ user, token }`。`account` 填用户名或邮箱，不区分大小写。 |
-| POST | `/api/auth/logout` | 结束发出这个请求的会话。`data` 为 `null`。 |
-| GET | `/api/auth/me` | → `{ user }`。 |
-| PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。改密码，并结束这个账号的**全部**会话，包括发出这个请求的会话。`token` 是给调用方的新凭证，有效期是被替换掉的那个会话剩下的时间；原来的凭证从此失效，之后的请求要用新的。网页端会悄悄换上。 |
+| POST | `/api/auth/register` | 公开。`{ username, email, password }` → `{ user, token }`，注册后即已登录（会话 12 小时）。用户名 3 到 32 个字符，只能用字母、数字、`_`、`-`；邮箱最长 254 个字符；两者都不区分大小写地唯一。密码 8 到 128 个字符。不发任何邮件，没有邮箱验证。注册出来的一定是普通账号（`role: "user"`），成不了管理员；要求 `registrationOpen` 为开，关着的时候一律返回 403（`auth.registration_closed`）。 |
+| POST | `/api/auth/login` | 公开。`{ account, password, remember? }` → `{ user, token }`。`account` 填用户名或邮箱，不区分大小写。`user.mustChangePassword` 为 `true` 说明用的是临时密码，下一步只能调 `PUT /api/auth/password`；网页端这时只显示「设置新密码」这一屏（`/password`）。 |
+| POST | `/api/auth/logout` | 结束发出这个请求的会话。`data` 为 `null`。还在用临时密码时也能调。 |
+| GET | `/api/auth/me` | → `{ user }`。还在用临时密码时也能调。 |
+| PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。改密码，并结束这个账号的**全部**会话，包括发出这个请求的会话。`token` 是给调用方的新凭证，有效期是被替换掉的那个会话剩下的时间；原来的凭证从此失效，之后的请求要用新的。网页端会悄悄换上。临时密码也是用它换掉的：`mustChangePassword` 为 `true` 时可以调（`currentPassword` 填临时密码），成功后这个标记变回 `false`。新密码不能和当前密码相同。 |
 | PUT | `/api/auth/profile` | `{ username?, email? }` → `{ user }`。规则同注册。每个账号每小时最多改 20 次：不限的话，`auth.username_taken` / `auth.email_taken` 这两种回答就成了可以无限次查询「这个邮箱注册过没有」的途径。 |
 | GET | `/api/auth/sessions` | 调用者还有效的会话，最近活跃的在前：`[{ id, current, createdAt, lastSeenAt, userAgent, ip }]`。`current` 标出当前会话；`lastSeenAt` 最多每分钟更新一次；`ip` 在反向代理后面要配好 `TRUST_PROXY` 才是真实的客户端地址。 |
 | DELETE | `/api/auth/sessions/:id` | 结束自己的一个会话（可以是当前这个）→ `{ id }`。 |
@@ -63,11 +68,13 @@
 | 注册、改资料 | 400 | `auth.invalid_username`、`auth.invalid_email` | 用户名或邮箱不合规则。 |
 | 注册、改密码 | 400 | `auth.weak_password` | 密码不足 8 个或超过 128 个字符。 |
 | 注册、改资料 | 409 | `auth.username_taken`、`auth.email_taken` | 用户名或邮箱已被别的账号使用。 |
-| 注册 | 403 | `auth.registration_closed` | 所有者关闭了注册。 |
+| 注册 | 403 | `auth.registration_closed` | 管理员关闭了注册。 |
 | 登录 | 400 | `auth.credentials_required` | 没填 `account` 或 `password`。 |
 | 登录 | 401 | `auth.invalid_credentials` | 账号不存在或密码不对。两种情况的返回和耗时都一样。 |
-| 登录 | 403 | `auth.account_disabled` | 密码正确，但账号已被所有者停用。 |
+| 登录 | 403 | `auth.account_disabled` | 密码正确，但账号已被管理员停用。 |
 | 改密码 | 400 | `auth.wrong_current_password` | 当前密码没填或不对。有意不用 401：会话本身没问题。 |
+| 改密码 | 400 | `auth.same_password` | `newPassword` 和 `currentPassword` 相同（「新密码不能和当前密码相同」）。 |
+| 其余需要登录的接口 | 403 | `auth.password_change_required` | 调用者还在用临时密码（`mustChangePassword` 为 `true`），要先改密码（「请先设置新密码，再继续使用」）。 |
 | 改资料 | 400 | `common.nothing_to_update` | 两个字段都没带。 |
 | 结束会话 | 404 | `auth.session_not_found` | 没有这个会话，或者它是别的账号的。 |
 | 注册、登录、改密码、改资料 | 429 | `auth.too_many_attempts` | 见下面的限流。 |
@@ -181,7 +188,7 @@
 `/api/admin` 下现在有两类接口，路径里的 admin 对第一类来说只是历史名字：
 
 - **按账号的**：服务商和 Key、自定义模型、模型设置和价格、用量。登录的账号都能调用，操作的是调用者自己的数据。
-- **只有所有者能调用的**：站点设置、存储、注册开关、账号管理。其他账号调用返回 403（`auth.forbidden`），没登录返回 401（`auth.required`）。
+- **只有管理员能调用的**：站点设置、存储、注册开关、账号管理。其他账号调用返回 403（`auth.forbidden`），没登录返回 401（`auth.required`）。
 
 | 接口 | 谁能调用 | 操作谁的数据 |
 | --- | --- | --- |
@@ -195,15 +202,15 @@
 | `PUT /api/admin/models/:modelId` | 登录的账号 | 调用者对这个模型的覆盖项（启用、名称、排序、默认参数、价格） |
 | `GET /api/admin/usage`、`GET /api/admin/usage/records` | 登录的账号 | 调用者自己的用量记录 |
 | `DELETE /api/admin/usage/records` | 登录的账号 | 调用者自己的用量记录 |
-| `GET`、`PUT /api/admin/settings` | 仅所有者 | 站点 |
-| `GET`、`PUT /api/admin/storage`，`POST /api/admin/storage/test` | 仅所有者 | 站点 |
-| `GET`、`PUT /api/admin/site` | 仅所有者 | 站点：是否开放注册 |
-| `GET /api/admin/users` | 仅所有者 | 全部账号：账号本身的信息和两个数量，不含内容 |
-| `PATCH /api/admin/users/:id` | 仅所有者 | 另一个账号：停用或启用 |
-| `DELETE /api/admin/users/:id` | 仅所有者 | 另一个账号及其全部数据 |
-| `POST /api/admin/users/:id/reset-password` | 仅所有者 | 另一个账号：密码和会话 |
+| `GET`、`PUT /api/admin/settings` | 仅管理员 | 站点 |
+| `GET`、`PUT /api/admin/storage`，`POST /api/admin/storage/test` | 仅管理员 | 站点 |
+| `GET`、`PUT /api/admin/site` | 仅管理员 | 站点：是否开放注册 |
+| `GET /api/admin/users` | 仅管理员 | 全部账号：账号本身的信息和两个数量，不含内容 |
+| `PATCH /api/admin/users/:id` | 仅管理员 | 另一个账号：停用或启用 |
+| `DELETE /api/admin/users/:id` | 仅管理员 | 另一个账号及其全部数据 |
+| `POST /api/admin/users/:id/reset-password` | 仅管理员 | 另一个账号：密码和会话 |
 
-所有者自己的服务商、模型和用量和别人一样是按账号的；没有任何接口能返回别的账号的画布、Key 或文件。`/api/admin` 下其他不存在的路径，非所有者得到 403，所有者得到 404。
+管理员自己的服务商、模型和用量和别人一样是按账号的；没有任何接口能返回别的账号的画布、Key 或文件。`/api/admin` 下其他不存在的路径，非管理员得到 403，管理员得到 404。
 
 按账号的接口：
 
@@ -224,7 +231,7 @@
 | GET | `/api/admin/usage/records` | 自己的用量明细，分页。`from`、`to`、`tz` 同上。 |
 | DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。也可带 `tz`。删除自己在这一刻之前创建、已结束（成功、失败、已取消）的用量记录；只写日期表示 `tz` 所给时区里这一天开始之前（不带 `tz` 就是 UTC 零点之前）。排队中、运行中的不动，文件不删。缺参数或日期不对返回 400（`validation.required` / `validation.bad_date`），时区名不认识返回 400（`validation.invalid`）。 |
 
-只有所有者能调用的接口：
+只有管理员能调用的接口：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -234,19 +241,19 @@
 | POST | `/api/admin/storage/test` | `{ s3 }`，用提交的、尚未保存的配置真实地走一遍：写入、查询、读回比对、（`redirect` 分发时）从公开地址加载、删除。返回 `{ ok, steps, message, code }`。测试不通过也是 HTTP 200，`ok` 为 `false`，`code` 是 `storage.err_*`。 |
 | PUT | `/api/admin/storage` | `{ driver: 'local' }` 或 `{ driver: 's3', s3, force? }`，保存并立即切换，不用重启。S3 配置会先测试；不通过就不保存，返回 400（`storage.save_needs_test`），测试结果在 `data.test` 里；带 `force: true` 则不测试直接保存。文件不会被移动。 |
 | GET | `/api/admin/site` | → `{ registrationOpen }`。和设置里的 `registrationOpen` 是同一个值，单独给一个接口。 |
-| PUT | `/api/admin/site` | `{ registrationOpen: boolean }` → `{ registrationOpen }`。关闭后，已有账号照常登录，新注册返回 403（`auth.registration_closed`）。不是布尔值返回 400（`validation.boolean`）。 |
-| GET | `/api/admin/users` | 全部账号，注册早的在前（最多 1000 个）：`[{ id, username, email, role, createdAt, disabled, lastLoginAt, counts: { workflows, runs } }]`。`counts.workflows` 是没删除的画布数，`counts.runs` 是用量记录数。只有数量，没有内容。 |
+| PUT | `/api/admin/site` | `{ registrationOpen: boolean }` → `{ registrationOpen }`。关闭后，已有账号照常登录，新注册返回 403（`auth.registration_closed`），没有例外。不是布尔值返回 400（`validation.boolean`）。在这里保存过之后，环境变量 `REGISTRATION_OPEN` 不再生效。 |
+| GET | `/api/admin/users` | 全部账号，创建早的在前（最多 1000 个）：`[{ id, username, email, role, mustChangePassword, createdAt, disabled, lastLoginAt, counts: { workflows, runs } }]`。`counts.workflows` 是没删除的画布数，`counts.runs` 是用量记录数。只有数量，没有内容。 |
 | PATCH | `/api/admin/users/:id` | `{ disabled: boolean }` → 这个账号在上面列表里的那一行。停用后它的会话立即全部结束，不能再登录（`auth.account_disabled`），数据保留；`disabled: false` 恢复。 |
-| DELETE | `/api/admin/users/:id?confirm=<用户名>` | 删除账号，不能撤销。`confirm` 必须和这个账号的用户名完全一致，否则 400（`auth.confirm_mismatch`）。先停掉它未完成的运行，再删它的会话、画布、分享链接、资产、品牌包、服务商和 Key、模型覆盖项、用量记录、模板和存下的文件，最后删账号。→ `{ id, removed: { <集合名>: <条数> }, files, filesRemoved }`：`files` 是删掉的文件数；`filesRemoved` 为 `false` 表示有存储后端中途出错（账号已删，原因在服务端日志里，剩下的文件要自己到存储里清）。key 里没有账号段的老文件不会被这样删掉，它们属于所有者。 |
-| POST | `/api/admin/users/:id/reset-password` | 不用请求体 → `{ temporaryPassword }`：16 个字符的临时密码，只在这一次返回。该账号的会话全部结束。不发邮件，由所有者转交；对方用它登录后再到「设置 → 账号与安全」里改掉（`PUT /api/auth/password`）。网页端的入口是「设置 → 用户管理」里的「重置密码」。所有者自己忘了密码，在服务器上运行 `node server/src/cli/reset-password.js <用户名或邮箱>`。 |
+| DELETE | `/api/admin/users/:id?confirm=<用户名>` | 删除账号，不能撤销。`confirm` 必须和这个账号的用户名完全一致，否则 400（`auth.confirm_mismatch`）。先停掉它未完成的运行，再删它的会话、画布、分享链接、资产、品牌包、服务商和 Key、模型覆盖项、用量记录、模板和存下的文件，最后删账号。→ `{ id, removed: { <集合名>: <条数> }, files, filesRemoved }`：`files` 是删掉的文件数；`filesRemoved` 为 `false` 表示有存储后端中途出错（账号已删，原因在服务端日志里，剩下的文件要自己到存储里清）。key 里没有账号段的老文件不会被这样删掉，它们属于管理员。 |
+| POST | `/api/admin/users/:id/reset-password` | 不用请求体 → `{ temporaryPassword }`：16 个字符的临时密码，只在这一次返回。该账号的会话全部结束，`mustChangePassword` 置为 `true`。不发邮件，由管理员转交；对方用它登录后，系统会要求先设置新密码（`PUT /api/auth/password`），在这之前接口不给用别的。网页端的入口是「设置 → 用户管理」里的「重置密码」。管理员自己忘了密码，在服务器上运行 `node server/src/cli/reset-password.js <用户名或邮箱>`，效果相同。 |
 
-带 `:id` 的三个账号接口共同的错误：`:id` 是调用者自己返回 400（`auth.cannot_modify_self`，所有者不能在这里停用、删除或重置自己）；`:id` 是所有者账号返回 400（`auth.cannot_modify_owner`）；没有这个账号返回 404（`auth.user_not_found`）。
+带 `:id` 的三个账号接口共同的错误：`:id` 是调用者自己返回 400（`auth.cannot_modify_self`，管理员不能在这里停用、删除或重置自己）；`:id` 是管理员账号返回 400（`auth.cannot_modify_owner`）；没有这个账号返回 404（`auth.user_not_found`）。
 
 `GET/PUT /api/admin/settings` 里随账号一起新增的三个键（其余各项见[配置](configuration.zh-CN.md#管理设置)）：
 
 | 键 | 默认 | 范围 | 含义 |
 | --- | --- | --- | --- |
-| `registrationOpen` | `true` | 布尔值 | 是否允许自行注册。第一个账号任何时候都能创建。 |
+| `registrationOpen` | `true` | 布尔值 | 是否允许自行注册；注册出来的都是普通账号。环境变量 `REGISTRATION_OPEN` 给它一个初始值，设置保存过之后不再理会这个变量（见[配置](configuration.zh-CN.md#账号)）。 |
 | `userConcurrency` | `4` | 1 到 32 | 一个账号同时执行的运行数。`concurrency`（默认 4）仍是整个实例的总数。 |
 | `userQueueLimit` | `200` | 1 到 500 | 一个账号未完成的运行（排队中、运行中、转存中）上限。整个实例的总上限仍是 500。 |
 

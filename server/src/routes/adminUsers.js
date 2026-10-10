@@ -1,8 +1,8 @@
 'use strict'
 
 /**
- * Owner only: the accounts of this instance and whether new ones may be
- * created. The owner manages accounts, not their contents - nothing here
+ * Administrator only: the accounts of this instance and whether new ones may be
+ * created. The administrator manages accounts, not their contents - nothing here
  * returns a canvas, a key or a file of another account, only how many there are.
  */
 const express = require('express')
@@ -72,7 +72,11 @@ router.delete('/users/:id', wrap(async (req, res) => {
   ok(res, { id: String(user._id), removed: out.removed, files: out.files, filesRemoved: !out.filesError })
 }))
 
-/** POST /api/admin/users/:id/reset-password -> { temporaryPassword } - shown once; the account is signed out everywhere */
+/**
+ * POST /api/admin/users/:id/reset-password -> { temporaryPassword }
+ * Shown once. The account is signed out everywhere and has to choose its own
+ * password at the next sign-in (mustChangePassword).
+ */
 router.post('/users/:id/reset-password', wrap(async (req, res) => {
   const user = await target(req)
   ok(res, { temporaryPassword: await accounts.resetPassword(user._id) })

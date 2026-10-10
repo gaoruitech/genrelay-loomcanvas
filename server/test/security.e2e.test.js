@@ -118,8 +118,9 @@ test('security review findings stay fixed', async (t) => {
   })
   const asJson = { 'Content-Type': 'application/json' }
 
-  // The first account is the owner; this file runs as that account.
-  token = (await data('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })).token
+  // The administrator is created at start-up; this file runs as that account.
+  await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
+  token = (await data('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).token
 
   await t.test('headers: a content security policy that only runs our own scripts', async () => {
     const page = await call('GET', '/', undefined, { raw: true, auth: false })

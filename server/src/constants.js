@@ -2,8 +2,8 @@
 
 /**
  * Before accounts existed every document was owned by this constant. Documents
- * that still carry it belong to nobody yet: the first account that registers
- * (the owner) adopts them, see services/accounts.js.
+ * that still carry it are handed to the administrator when that account is
+ * created at start-up, see services/accounts.js.
  */
 const LEGACY_USER = 'local'
 

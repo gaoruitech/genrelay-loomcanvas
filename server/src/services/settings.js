@@ -39,7 +39,7 @@ const DEFINITIONS = {
     },
   },
   defaultLocale: { default: 'zh-CN', parse: oneOf('zh-CN', 'en') },
-  // May people create accounts themselves? The first account can always be created.
+  // May people create accounts themselves? REGISTRATION_OPEN seeds it once, see seed().
   registrationOpen: { default: true, parse: bool() },
   // Runner. `concurrency` is for the whole instance; `userConcurrency` is how many of
   // those one account may hold at a time, `userQueueLimit` how many unfinished runs it may have.
@@ -103,6 +103,26 @@ async function update(patch) {
   return getAll()
 }
 
+/**
+ * Give a setting its first value, from the environment. Only a setting that was
+ * never saved takes it: once there is a row (from here or from the settings
+ * page) the stored value stands. Resolves true when the value was written.
+ */
+async function seed(key, value) {
+  const parsed = DEFINITIONS[key].parse(value, key)
+  let written = false
+  try {
+    const r = await Setting.updateOne({ key }, { $setOnInsert: { value: parsed } }, { upsert: true })
+    written = r.upsertedCount > 0
+  } catch (err) {
+    // Two processes starting together: the other one wrote the row.
+    if (!err || err.code !== 11000) throw err
+  }
+  if (written) cache.set(key, parsed)
+  else await load()
+  return written
+}
+
 function onChange(fn) { listeners.add(fn) }
 
 /** Runner timing derived from settings, in milliseconds. */
@@ -119,4 +139,4 @@ function runnerSettings() {
   }
 }
 
-module.exports = { DEFINITIONS, defaults, load, get, getAll, update, onChange, runnerSettings }
+module.exports = { DEFINITIONS, defaults, load, get, getAll, update, seed, onChange, runnerSettings }

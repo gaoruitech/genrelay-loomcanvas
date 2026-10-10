@@ -7,7 +7,7 @@ LoomCanvas is configured in three layers:
 | Layer | Where | Who changes it | Takes effect |
 | --- | --- | --- | --- |
 | [Environment variables](#environment-variables) | `.env` (Docker Compose) or `server/.env` | The operator | On restart |
-| [Admin settings](#admin-settings) | **Settings** page (site settings) and **Models** page (providers, models, prices), stored in the database | The owner (site settings); each account for its own providers and models | Immediately |
+| [Admin settings](#admin-settings) | **Settings** page (site settings) and **Models** page (providers, models, prices), stored in the database | The administrator (site settings); each account for its own providers and models | Immediately |
 | [In-canvas settings](#in-canvas-settings) | Each canvas and each browser | The person editing | Immediately |
 
 ## Environment variables
@@ -25,7 +25,21 @@ All variables are read once at startup by `server/src/config.js`. An invalid val
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload, and the largest file "fetch from URL" will take (1 to 2048). Uploads are buffered in memory. |
 | `WEB_DIST` | empty | Directory of the built frontend (`web/dist`) to serve from the server. Relative paths are resolved against `server/`. Must contain `index.html`. |
 
-There is no variable for accounts. People register in the web app, the first account is the owner, and whether registration is open is the [`registrationOpen`](#admin-settings) setting; see [Getting started](getting-started.md#accounts). `ACCESS_PASSWORD`, the shared password of earlier versions, is gone: if it is still set it is ignored, and the server logs one warning at start-up.
+### Accounts
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ADMIN_USERNAME` | `admin` | Username of the administrator account the server creates when there is none. 3 to 32 characters from letters, digits, `_` and `-`. |
+| `ADMIN_PASSWORD` | empty | Password of that account, 8 to 128 characters; the account is created with it and no change is forced. Empty: a random 16-character password is generated, printed once in the start-up log, and has to be replaced at the first sign-in. |
+| `ADMIN_EMAIL` | empty | Email address of that account. Optional: the administrator is the only account that may have none. It then signs in by username and can add an address later under **Settings → Account & security**. |
+| `REGISTRATION_OPEN` | empty | `true` or `false`. The first value of the [`registrationOpen`](#admin-settings) setting. Empty leaves the setting at its own default, open. |
+
+When these are read:
+
+- `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ADMIN_EMAIL` are used **only at the start-up that creates the administrator**, that is, when no account with the `owner` role exists. They are checked at that moment too: a password of the wrong length, an invalid name or address, or a name or address that an ordinary account already has stops the server with a `[config]` message. On every later start they are ignored. An existing administrator's name, email and password are never overwritten, so changing `ADMIN_PASSWORD` afterwards does nothing; see [Deployment](deployment.md#forgotten-password) for a lost password.
+- `REGISTRATION_OPEN` is applied **only while the `registrationOpen` setting has never been saved**. Once it has been saved, by this variable at a start-up, on the settings page or through `PUT /api/admin/site`, the stored value stands and the variable is ignored. Any value other than `true` or `false` stops the server at start-up (`REGISTRATION_OPEN must be true or false`).
+
+Registration itself needs no variable: people register in the web app and get ordinary accounts; see [Getting started](getting-started.md#accounts) and [Deployment](deployment.md#accounts). `ACCESS_PASSWORD`, the shared password of earlier versions, is gone: if it is still set it is ignored, and the server logs one warning at start-up.
 
 ### Network and integration
 
@@ -78,25 +92,25 @@ Notes that apply to both:
 
 These are stored in the database and edited on the **Settings** page, or through `GET`/`PUT /api/admin/settings` (see [API](api.md#site-settings)). Unknown keys and out-of-range values are rejected.
 
-They are one set for the whole instance and **only the owner can read or change them**. Any other account gets HTTP 403 with the code `auth.forbidden`, and its Settings page shows only **Appearance** (the interface language of that browser) and **Account & security**.
+They are one set for the whole instance and **only the administrator can read or change them**. Any other account gets HTTP 403 with the code `auth.forbidden`, and its Settings page shows only **Appearance** (the interface language of that browser) and **Account & security**.
 
 The Settings page is one long page with these sections, in this order. "Where in the UI" below names the section and the label of the field.
 
 | Section | Who sees it | What is there |
 | --- | --- | --- |
-| **Storage** | Owner | Local disk or an S3-compatible bucket. See [Storage](storage.md). |
-| **Run limits** | Owner | Concurrency, the per-account limits, retries, timeouts, result retention. |
-| **Appearance** | Everyone | **Interface language**, for this browser. The owner also sees **Site name**, **Logo** and **Default language**. |
+| **Storage** | Administrator | Local disk or an S3-compatible bucket. See [Storage](storage.md). |
+| **Run limits** | Administrator | Concurrency, the per-account limits, retries, timeouts, result retention. |
+| **Appearance** | Everyone | **Interface language**, for this browser. The administrator also sees **Site name**, **Logo** and **Default language**. |
 | **Account & security** | Everyone | Username and email, change password, sign-in sessions. |
-| **Site** | Owner | **Open sign-up**. |
-| **Users** | Owner | The list of accounts: disable, enable, reset password, delete. |
+| **Site** | Administrator | **Open sign-up**. |
+| **Users** | Administrator | The list of accounts: disable, enable, reset password, delete. |
 
 | Key | Default | Range | Where in the UI | Meaning |
 | --- | --- | --- | --- | --- |
 | `siteName` | `LoomCanvas` | up to 40 characters | Appearance → Site name | Name shown in the top bar and in the browser tab. |
 | `logoUrl` | empty | http(s) URL or `/files/…`, up to 2048 characters | Appearance → Logo | Logo in the top bar. Empty uses the default icon. |
 | `defaultLocale` | `zh-CN` | `zh-CN`, `en` | Appearance → Default language | Language for browsers that have not picked their own; also the fallback language of server messages. |
-| `registrationOpen` | `true` | `true`, `false` | Site → Open sign-up | May people create accounts themselves. When `false`, existing accounts keep signing in and nobody new can register. The very first account can always be created. Also available as `GET`/`PUT /api/admin/site`, which is what the switch uses. |
+| `registrationOpen` | `true` | `true`, `false` | Site → Open sign-up | May people create accounts themselves (always ordinary users). When `false`, existing accounts keep signing in and nobody new can register. `REGISTRATION_OPEN` can give it its first value, see [Accounts](#accounts). Also available as `GET`/`PUT /api/admin/site`, which is what the switch uses. |
 | `concurrency` | `4` | 1 to 32 | Run limits → Concurrent runs | Runs executing at the same time, for the whole instance. The rest wait in the queue. Raising it takes effect at once. |
 | `userConcurrency` | `4` | 1 to 32 | Run limits → Concurrent runs per account | Runs one account may have executing at the same time, within `concurrency`. |
 | `userQueueLimit` | `200` | 1 to 500 | Run limits → Queue limit per account | Unfinished runs (queued, running or archiving) one account may have. Further ones are refused with `run.queue_full`. The total for the whole instance stays 500. |
@@ -119,7 +133,7 @@ curl -X PUT http://localhost:3000/api/admin/settings \
   -d '{"chatTimeoutSec": 600}'
 ```
 
-`<token>` is what `POST /api/auth/login` returned for the owner account (see [API](api.md#authentication)).
+`<token>` is what `POST /api/auth/login` returned for the administrator account (see [API](api.md#authentication)).
 
 ### How the queue is shared
 
@@ -138,7 +152,7 @@ The other things you configure in the app are not settings keys and are not part
 
 - **Providers** (the **Models** page): the vendor, name, API key, enabled, a base URL when it is not the vendor's official one, and the custom models added by hand. Stored in their own collection. **Each account has its own**: nobody else sees or uses them. See [Providers](providers.md).
 - **Model overrides** (the **Models** page): per model, `enabled`, display name, order, default parameters and the price table. Stored in their own collection, also per account. Model ids (`<provider slug>:<upstream model>`) are per account too: two accounts can use the same slug, and the same id in two accounts is unrelated. See [Providers](providers.md#pricing).
-- **Storage** (**Settings → Storage**): local disk or an S3-compatible bucket, for the whole instance, **owner only**. It has its own endpoints (`/api/admin/storage`, see [API](api.md#storage)), takes effect immediately and takes precedence over `STORAGE_DRIVER` and `S3_*`. See [Storage](storage.md).
+- **Storage** (**Settings → Storage**): local disk or an S3-compatible bucket, for the whole instance, **administrator only**. It has its own endpoints (`/api/admin/storage`, see [API](api.md#storage)), takes effect immediately and takes precedence over `STORAGE_DRIVER` and `S3_*`. See [Storage](storage.md).
 
 ## In-canvas settings
 

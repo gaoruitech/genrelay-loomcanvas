@@ -18,11 +18,11 @@ The repository ships a `docker-compose.yml` with two services:
 MongoDB is not published on the host and has no authentication; it is only reachable from the `app` container over the Compose network.
 
 ```bash
-cp .env.example .env     # set SECRET_KEY
+cp .env.example .env     # set SECRET_KEY and ADMIN_PASSWORD
 docker compose up -d
 ```
 
-Then open the instance, click **Sign up** on the landing page and register. The first account becomes the owner, so do this before the instance is reachable by anyone else. See [Accounts](#accounts).
+Then open the instance, click **Sign in** on the landing page and sign in as `admin` with the password you set in `ADMIN_PASSWORD`. The server creates this administrator account at the first start. If `ADMIN_PASSWORD` was left empty, `docker compose logs app` shows a generated password once (search for `Password:`); sign in with it and choose your own. Other people then use **Sign up** and get ordinary accounts. See [Accounts](#accounts).
 
 About the image:
 
@@ -37,6 +37,8 @@ Compose reads the `.env` file next to `docker-compose.yml` and passes these on t
 | Variable | Default in Compose | Meaning |
 | --- | --- | --- |
 | `SECRET_KEY` | none, required | Compose refuses to start without it. At least 16 characters. |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL` | empty (`admin`, a generated password, no email) | The administrator account the server creates when there is none. Read at that moment only. See [Accounts](#accounts). |
+| `REGISTRATION_OPEN` | empty (open) | `true` or `false`: the first value of the **Open sign-up** setting. Ignored once the setting has been saved. |
 | `PUBLIC_URL` | empty | Optional. Public address of the instance, so upstream models can fetch reference media by URL. See [PUBLIC_URL](#public_url). |
 | `PORT` | `3000` | Port published on the host. Inside the container the server always listens on 3000. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
@@ -101,9 +103,10 @@ You need Node.js 20.9 or newer and MongoDB 7.
    SECRET_KEY=<a long random string>
    MONGODB_URI=mongodb://127.0.0.1:27017/loomcanvas
    WEB_DIST=../web/dist
+   ADMIN_PASSWORD=<the administrator's password, 8 to 128 characters>
    ```
 
-   `WEB_DIST` makes the server serve the built frontend (with a fallback to `index.html` for client-side routes). A relative path is resolved against the `server/` directory. If `WEB_DIST` is set but has no `index.html`, the server refuses to start.
+   `ADMIN_PASSWORD` is optional: without it the server generates the administrator's password and prints it once, in the terminal where `npm start` runs (see [Accounts](#accounts)). `WEB_DIST` makes the server serve the built frontend (with a fallback to `index.html` for client-side routes). A relative path is resolved against the `server/` directory. If `WEB_DIST` is set but has no `index.html`, the server refuses to start.
 
 4. Start it:
 
@@ -197,10 +200,37 @@ Share links are built by the browser from the address in the address bar, not fr
 
 ## Accounts
 
-Signing in is always required. Nothing about accounts is configured in the environment: they are created by registering in the web app and stored in the database.
+Signing in is always required. Accounts are stored in the database. The administrator is created by the server; everybody else registers in the web app.
 
-- **Register the owner first.** The first account registered on an instance becomes the owner, the one account that manages the site. Until it exists, whoever reaches the instance first can take that place. Register right after the first start, with the port still closed to the outside (or bound to `127.0.0.1`), and expose the instance afterwards. While no account exists the server logs `[auth] no account yet: the first one to register becomes the owner` at start-up.
-- **Decide about registration.** After the owner has registered, registration stays open: anyone who can reach the instance can create an account with its own private space, its own providers and its own keys. If that is not what you want, switch **Open sign-up** off under **Settings → Site**, or send a request:
+- **The administrator account.** At start-up, if no administrator exists, the server creates one. It is the one account that manages the site (its role is called `owner` in the API). Nobody registers as it, and there is nothing to do before the instance may be reached by others. Three variables say what it looks like:
+
+  | Variable | Default | Meaning |
+  | --- | --- | --- |
+  | `ADMIN_USERNAME` | `admin` | 3 to 32 characters from letters, digits, `_` and `-`. |
+  | `ADMIN_PASSWORD` | empty | 8 to 128 characters. With a shorter or longer value the server refuses to start (`[config] ADMIN_PASSWORD must be 8 to 128 characters long. ...`). Empty: a random password is generated. |
+  | `ADMIN_EMAIL` | empty | Optional. The administrator is the only account that may have no email: it signs in by username and can add an address later under **Settings → Account & security**. |
+
+  - With `ADMIN_PASSWORD` set, the account is created with that password and the log says `[auth] created the administrator account "admin" with the password from ADMIN_PASSWORD`. This is the recommended way with Compose: set it in `.env` before the first `docker compose up -d`.
+  - Without it, a random 16-character password is generated and printed **once** in the start-up log:
+
+    ```
+    =======================================================================
+    | LoomCanvas created the administrator account.                       |
+    |                                                                     |
+    |     Username:  admin                                                |
+    |     Password:  <16 random characters>                               |
+    |                                                                     |
+    | This password is shown only this once. Sign in with it: you will be |
+    | asked to choose your own before anything else.                      |
+    | Lost it? Run:  node server/src/cli/reset-password.js admin          |
+    =======================================================================
+    ```
+
+    With Docker Compose read it with `docker compose logs app` (search for `Password:`); without Docker it is in the terminal where `npm start` runs. Only its hash is stored and it is never printed again. Whoever signs in with it has to choose a new password before anything else. Until that has happened, treat the log of that first start as sensitive; afterwards the printed password is worthless.
+  - These variables are read **only when the administrator is created**. On every later start they are ignored: the existing administrator's name, email and password are never overwritten, and nothing is logged about them. Changing `ADMIN_PASSWORD` later does nothing; a lost administrator password is reset from the command line, see [Forgotten password](#forgotten-password).
+  - Several processes starting at the same moment still create one administrator and print one password.
+  - If `ADMIN_USERNAME` or `ADMIN_EMAIL` is already the name or the address of an ordinary account while no administrator exists, the server refuses to start with a `[config]` message that says which one to change.
+- **Decide about registration.** Registration only ever creates ordinary users, and it is open by default: anyone who can reach the instance can create an account with its own private space, its own providers and its own keys. If that is not what you want, set `REGISTRATION_OPEN=false` in `.env` before the first start, or switch **Open sign-up** off under **Settings → Site**, or send a request:
 
   ```bash
   curl -X PUT http://localhost:3000/api/admin/site \
@@ -209,9 +239,9 @@ Signing in is always required. Nothing about accounts is configured in the envir
     -d '{"registrationOpen": false}'
   ```
 
-  Existing accounts keep signing in. Open it again for as long as it takes someone to register, then close it.
-- **Managing accounts.** Under **Settings → Users** the owner can disable or enable an account, delete it and reset its password. Disabling signs the account out at once and keeps its data. Deleting removes the account together with everything it owns, including its stored files, and cannot be undone.
-- **Limits.** `userConcurrency` and `userQueueLimit` bound what one account can occupy of the queue. The owner sets them under **Settings → Run limits** (**Concurrent runs per account**, **Queue limit per account**); see [Configuration](configuration.md#admin-settings). There is no storage quota per account.
+  Existing accounts keep signing in. Open it again for as long as it takes someone to register, then close it. `REGISTRATION_OPEN` (`true` or `false`; any other value stops the server at start-up) only gives the setting its first value: it is applied while the setting has never been saved, and ignored from then on, whether it was saved by this variable, on the settings page or through the API.
+- **Managing accounts.** Under **Settings → Users** the administrator can disable or enable an account, delete it and reset its password. Disabling signs the account out at once and keeps its data. Deleting removes the account together with everything it owns, including its stored files, and cannot be undone.
+- **Limits.** `userConcurrency` and `userQueueLimit` bound what one account can occupy of the queue. The administrator sets them under **Settings → Run limits** (**Concurrent runs per account**, **Queue limit per account**); see [Configuration](configuration.md#admin-settings). There is no storage quota per account.
 
 No email is sent by LoomCanvas, so no mail server is needed and addresses are not verified.
 
@@ -219,8 +249,8 @@ No email is sent by LoomCanvas, so no mail server is needed and addresses are no
 
 There is no "forgot password" mail. There are two ways to get back in:
 
-1. **The owner resets it.** Under **Settings → Users**, the owner chooses **Reset password** for the account and is shown a temporary password once.
-2. **Whoever runs the server resets it from the command line.** This is the way for the owner's own password. With Docker Compose:
+1. **The administrator resets it.** Under **Settings → Users**, the administrator chooses **Reset password** for the account and is shown a temporary password once.
+2. **Whoever runs the server resets it from the command line.** This is the only way for the administrator's own password (for example `... reset-password.js admin`); the `ADMIN_*` variables do not change an existing account. With Docker Compose:
 
    ```bash
    docker compose exec app node src/cli/reset-password.js <username-or-email>
@@ -234,7 +264,7 @@ There is no "forgot password" mail. There are two ways to get back in:
 
    The command uses the server's own configuration (`MONGODB_URI` from the environment or `server/.env`), prints a temporary password and signs the account out everywhere. The server can keep running. The exit code is 0 on success, 1 when there is no such account and 2 on wrong usage.
 
-Either way, sign in with the temporary password and choose a new one under **Settings → Account & security**.
+Either way, sign in with the temporary password: you are asked to choose a new password right after signing in, on the **Set a new password** screen, and nothing else is available until you have.
 
 More in [Security](security.md#accounts).
 
@@ -296,12 +326,12 @@ Read [CHANGELOG.md](../CHANGELOG.md) before upgrading. Before the first tagged r
 Earlier versions had no accounts: all data belonged to one built-in user, and an optional shared password (`ACCESS_PASSWORD`) guarded the instance. The version with accounts takes that data over as follows.
 
 - **There is nothing to run by hand.** At its first start the new version drops three unique indexes that were site-wide (`providers.slug_1`, `modeloverrides.modelId_1`, `templates.key_1`), creates the per-account ones, and moves the built-in templates to the site.
-- **Existing data waits for the first account.** It is left exactly as it is until somebody registers. The log says: `[auth] data from before accounts is waiting: the first account to register becomes the owner and takes it over`.
-- **The first account registered becomes the owner and takes over all of it in one step**: canvases, share links (they keep working, with the same addresses), assets, brand kits, providers with their keys, custom models, overrides and prices, usage records and hand-made templates. File addresses stored in canvases keep working; files are not moved or renamed.
-- **So register right away, before anybody else can reach the instance.** Whoever registers first owns the old data. If the instance is exposed, do the upgrade with the port closed, or register immediately after the start.
+- **The existing data goes to the administrator, at the first start of the new version.** In the same start-up the server creates the administrator account (see [Accounts](#accounts)) and hands it everything the earlier version wrote: canvases, share links (they keep working, with the same addresses), assets, brand kits, providers with their keys, custom models, overrides and prices, usage records and hand-made templates. File addresses stored in canvases keep working; files are not moved or renamed. The log says, with a count per collection: `[auth] the data from before accounts now belongs to "admin": {...}`.
+- **Set `ADMIN_PASSWORD` before that first start**, in `.env` (and `ADMIN_USERNAME`, `ADMIN_EMAIL` if you want other values than the defaults). If you do not, read the generated password from the log of that start. Then sign in as the administrator: all the old data is there. Nobody else can get at it, because registering only creates ordinary accounts, which start empty.
 - **Keep `SECRET_KEY` unchanged.** The provider keys that are handed over are still encrypted with it.
-- The hand-over can be repeated safely: if the server stops in the middle, the next start finishes it. Once an account exists, data that still has no owner is never given to anybody.
-- Runs that were unfinished across the upgrade are resumed as usual, with the provider they were started with. They belong to the owner once the owner exists.
+- The hand-over can be repeated safely: if the server stops in the middle, the next start finishes it. Data without an account that turns up after the hand-over is never given to anybody.
+- An instance that already has an administrator keeps it exactly as it is: nothing is created or changed, and the `ADMIN_*` variables are ignored.
+- Runs that were unfinished across the upgrade are resumed as usual, with the provider they were started with. They belong to the administrator.
 - **Remove `ACCESS_PASSWORD`** from `.env` and from your Compose file. It is ignored; the server logs one warning at start-up while it is still set. Everybody signs in with an account now, and tokens issued for the old shared password are no longer valid.
 - **Integrations that called the API without a token** (instances that had no `ACCESS_PASSWORD`) must sign in first: `POST /api/auth/login`, then send `Authorization: Bearer <token>`. See [API](api.md#authentication).
 - **`GET /api/bootstrap` changed shape.** `authRequired` and `authed` are gone (signing in is always required; `user` is `null` for an anonymous caller), and so is `site.defaultTheme`. See [API](api.md#get-apibootstrap).

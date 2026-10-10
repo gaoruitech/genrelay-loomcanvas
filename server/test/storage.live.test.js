@@ -487,8 +487,9 @@ test('settings API against live S3: test, save, switch, and everything that read
   const s3 = { ...form, preset: 'minio' }
 
   try {
-    // Storage is the owner's to configure: the first account registered is the owner.
-    token = (await call('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })).body.data.token
+    // Storage is the administrator's to configure; that account is created at start-up.
+    await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
+    token = (await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).body.data.token
     let status = (await call('GET', '/api/admin/storage')).body.data
     assert.deepEqual([status.source, status.driver, status.s3], ['default', 'local', null])
     const localFile = await upload(await picture('#101010'))

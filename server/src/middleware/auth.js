@@ -29,8 +29,13 @@ function identify(req) {
   return req._identity
 }
 
-/** 401 `auth.required` unless the request carries a live session. Sets req.user, req.userId, req.session. */
-function requireAuth(req, _res, next) {
+/**
+ * 401 `auth.required` unless the request carries a live session. Sets req.user,
+ * req.userId, req.session. This is the bare check: only what an account may do
+ * before it has replaced a temporary password uses it directly (who am I,
+ * change the password, sign out). Everything else goes through requireAuth.
+ */
+function requireSession(req, _res, next) {
   identify(req).then((who) => {
     if (!who) return next(new ApiError(401, 'auth.required', {}, 401))
     req.user = who.user
@@ -39,6 +44,19 @@ function requireAuth(req, _res, next) {
     req.session = who.session
     next()
   }, next)
+}
+
+/**
+ * requireSession, plus: 403 `auth.password_change_required` while the account
+ * still has a password somebody else knows (generated at start-up, or handed
+ * out by a reset). Such a session can change the password and nothing else.
+ */
+function requireAuth(req, res, next) {
+  requireSession(req, res, (err) => {
+    if (err) return next(err)
+    if (req.user.mustChangePassword) return next(new ApiError(403, 'auth.password_change_required'))
+    next()
+  })
 }
 
 /** After requireAuth: 403 `auth.forbidden` unless the caller is the owner. */
@@ -227,6 +245,7 @@ function resetRateLimits({ keepKnown = false } = {}) {
 
 module.exports = {
   identify,
+  requireSession,
   requireAuth,
   requireOwner,
   loginRateLimit,

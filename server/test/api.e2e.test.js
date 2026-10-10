@@ -96,6 +96,8 @@ test('LoomCanvas API end to end', async (t) => {
   setAllowedHosts(['127.0.0.1']) // what SSRF_ALLOW_HOSTS=127.0.0.1 does at boot
   const settings = require('../src/services/settings')
   await settings.load()
+  // As at start-up: the administrator exists before anybody can reach the server. This file runs as that account.
+  await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
   await require('../src/services/seed').seed()
   const { getRunner } = require('../src/runner')
   await getRunner().start()
@@ -148,7 +150,7 @@ test('LoomCanvas API end to end', async (t) => {
     // Gone with the access password and the theme switch: nothing reads them any more.
     for (const k of ['authRequired', 'authed']) assert.equal(k in boot.body.data, false, k)
     assert.equal('defaultTheme' in boot.body.data.site, false)
-    assert.deepEqual([boot.body.data.auth, boot.body.data.user], [{ registrationOpen: true, hasUsers: false }, null])
+    assert.deepEqual([boot.body.data.auth, boot.body.data.user], [{ registrationOpen: true }, null])
     assert.deepEqual((await call('GET', '/api/bootstrap')).body.data.auth, boot.body.data.auth, 'the same answer at the path of the contract')
     assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
     assert.deepEqual(boot.body.data.media, { upstreamByUrl: false })
@@ -157,17 +159,17 @@ test('LoomCanvas API end to end', async (t) => {
       assert.deepEqual([r.status, r.body.code], [401, 'auth.required'], `${m} ${p}`)
       assert.notEqual(r.body.result, 0)
     }
-    // The first account is the owner; this file runs as that account.
-    const reg = await call('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })
-    assert.deepEqual([reg.status, reg.body.data.user.role], [200, 'owner'])
-    userId = reg.body.data.user.id
+    // Nobody registers as the administrator: whoever registers is a plain user, on an instance of any age.
+    const reg = await call('POST', '/api/auth/register', { username: 'visitor', email: 'visitor@example.com', password: 'correct horse' })
+    assert.deepEqual([reg.status, reg.body.data.user.role, reg.body.data.user.mustChangePassword], [200, 'user', false])
     assert.equal((await call('POST', '/api/auth/login', { account: 'owner', password: 'wrong horse' })).status, 401)
     assert.equal((await call('POST', '/api/auth/login', {})).status, 400)
     const ok = await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })
     assert.equal(ok.status, 200)
     token = ok.body.data.token
+    userId = ok.body.data.user.id
     const after = (await call('GET', '/api/app/bootstrap')).body.data
-    assert.deepEqual([after.user.username, after.user.role, after.auth.hasUsers], ['owner', 'owner', true])
+    assert.deepEqual([after.user.username, after.user.role, after.user.mustChangePassword, after.auth], ['owner', 'owner', false, { registrationOpen: true }])
     // No PUBLIC_URL and files on the local disk: an upstream cannot be given a stored file by URL.
     // The canvas reads this to warn before a run with a model that only takes URLs (ModelSpec.imageByUrlOnly).
     assert.deepEqual((await call('GET', '/api/app/bootstrap')).body.data.media, { upstreamByUrl: false })

@@ -30,9 +30,19 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn
 }
 
+/** 账号还在用临时密码、接口只放行改密码时的回调，同样由 stores/app 注册 */
+let onPasswordChangeRequired: (() => void) | null = null
+export function setPasswordChangeHandler(fn: () => void) {
+  onPasswordChangeRequired = fn
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 任何接口回 403 auth.password_change_required：这个账号得先换掉临时密码（比如开着页面时被管理员重置了）
+    if (error.response?.status === 403 && error.response?.data?.code === 'auth.password_change_required') {
+      onPasswordChangeRequired?.()
+    }
     // 登录接口自己的 401（账号或密码不对）不算「登录失效」
     const url = String(error.config?.url || '')
     if (error.response?.status === 401 && !url.startsWith('/auth/login') && !url.startsWith('/auth/register')) {
@@ -96,7 +106,7 @@ export const authApi = {
   revokeOtherSessions: () => api.delete<ApiResponse>('/auth/sessions'),
 }
 
-/** 只有所有者能调（其他人 403 auth.forbidden） */
+/** 只有管理员能调（其他人 403 auth.forbidden） */
 export const ownerApi = {
   users: () => api.get<ApiResponse<AdminUser[]>>('/admin/users'),
   setUserDisabled: (id: string, disabled: boolean) =>

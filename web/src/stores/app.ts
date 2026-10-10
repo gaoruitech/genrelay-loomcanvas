@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { appApi, authApi, unwrap, setUnauthorizedHandler } from '@/utils/api'
+import { appApi, authApi, unwrap, setUnauthorizedHandler, setPasswordChangeHandler } from '@/utils/api'
 import { getToken, setToken, replaceToken, clearToken } from '@/utils/authToken'
 import { normalizeLocale, savedLocale, setLocale as applyLocale, currentLocale } from '@/locales'
 import type { BootstrapInfo, LocaleCode, User } from '@/types'
@@ -17,9 +17,15 @@ export const useAppStore = defineStore('app', () => {
   const user = computed<User | null>(() => bootstrap.value?.user || null)
   const authed = computed(() => !!user.value)
   const isOwner = computed(() => user.value?.role === 'owner')
-  /** 实例上还没有任何账号：第一个注册的人成为所有者 */
-  const firstRun = computed(() => bootstrap.value?.auth?.hasUsers === false)
-  const registrationOpen = computed(() => firstRun.value || !!bootstrap.value?.auth?.registrationOpen)
+  /** 管理员是服务端启动时自动建好的，注册出来的都是普通成员；开不开放注册由管理员定 */
+  const registrationOpen = computed(() => !!bootstrap.value?.auth?.registrationOpen)
+  /** 还在用临时密码（启动时生成的 / 被重置出来的）：改掉之前哪儿也去不了，见路由守卫 */
+  const mustChangePassword = computed(() => !!user.value?.mustChangePassword)
+  /**
+   * 刚才登录用的那个临时密码，只放在内存里，给「设置新密码」那一屏当「当前密码」用，
+   * 免得让人把一串随机字符再敲一遍。不进任何存储；改完、退出、刷新页面都会没。
+   */
+  const signInPassword = ref('')
   const hasProvider = computed(() => !!bootstrap.value?.hasProvider)
   const siteName = computed(() => bootstrap.value?.site?.name || 'LoomCanvas')
   const logoUrl = computed(() => bootstrap.value?.site?.logoUrl || '')
@@ -60,7 +66,20 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function login(account: string, password: string, remember: boolean) {
-    await adopt(unwrap(await authApi.login({ account, password, remember })), remember)
+    const data = unwrap(await authApi.login({ account, password, remember }))
+    signInPassword.value = data.user?.mustChangePassword ? password : ''
+    await adopt(data, remember)
+  }
+
+  /**
+   * 换掉临时密码。服务端同时换发令牌并清掉 mustChangePassword；
+   * 这里接上新令牌、把账号状态改过来，之后的导航就不再被拦。
+   */
+  async function replaceTemporaryPassword(currentPassword: string, newPassword: string) {
+    const out = unwrap(await authApi.changePassword({ currentPassword, newPassword }))
+    swapToken(out?.token || '')
+    signInPassword.value = ''
+    if (bootstrap.value?.user) bootstrap.value = { ...bootstrap.value, user: { ...bootstrap.value.user, mustChangePassword: false } }
   }
 
   /** 注册完直接算登录；注册表单没有「记住我」，按记住处理 */
@@ -80,6 +99,7 @@ export const useAppStore = defineStore('app', () => {
 
   function dropSession() {
     token.value = ''
+    signInPassword.value = ''
     clearToken()
     if (bootstrap.value?.user) bootstrap.value = { ...bootstrap.value, user: null, hasProvider: false }
   }
@@ -91,7 +111,7 @@ export const useAppStore = defineStore('app', () => {
     leaving.value = true
     try { await authApi.logout() } catch { /* 服务端那头失败也要把本机的令牌清掉 */ }
     dropSession()
-    // 注册开关、有没有账号这些可能变了
+    // 注册开关可能变了
     await loadBootstrap()
   }
 
@@ -102,6 +122,12 @@ export const useAppStore = defineStore('app', () => {
 
   // 任意接口返回 401：令牌失效。这里只清状态，跳去登录页由 App.vue 看着 authed 做。
   setUnauthorizedHandler(dropSession)
+  // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被管理员重置了）。
+  // 这里只改状态，跳去「设置新密码」由 App.vue 看着 mustChangePassword 做。
+  setPasswordChangeHandler(() => {
+    const u = bootstrap.value?.user
+    if (u && !u.mustChangePassword) bootstrap.value = { ...bootstrap.value!, user: { ...u, mustChangePassword: true } }
+  })
 
   /** 沉浸式：画布编辑页里把外壳（顶栏 + 侧栏）整个收起来，离开编辑页时复位 */
   const immersive = ref(false)
@@ -109,7 +135,8 @@ export const useAppStore = defineStore('app', () => {
   function toggleImmersive() { immersive.value = !immersive.value }
 
   return {
-    bootstrap, bootstrapError, token, user, authed, isOwner, firstRun, registrationOpen,
+    bootstrap, bootstrapError, token, user, authed, isOwner, registrationOpen,
+    mustChangePassword, signInPassword, replaceTemporaryPassword,
     hasProvider, siteName, logoUrl,
     locale, setLocale,
     loadBootstrap, login, register, logout, setUser, swapToken, leaving,

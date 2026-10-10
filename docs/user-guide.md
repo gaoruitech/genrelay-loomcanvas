@@ -23,7 +23,7 @@ After signing in, every page has the same frame: a top bar with the site name, t
 | **Assets** | Your uploaded and saved images and videos. |
 | **Models** | Providers, their models and the prices you enter. See [Providers](providers.md). |
 | **History** | Every run, with totals, filters and CSV export. See [History](#history). |
-| **Settings** | Interface language, your account and your sign-in sessions. The owner also sees Storage, Run limits, the site's name, logo and default language, Site (registration) and Users. See [Configuration](configuration.md#admin-settings). |
+| **Settings** | Interface language, your account and your sign-in sessions. The administrator also sees Storage, Run limits, the site's name, logo and default language, Site (registration) and Users. See [Configuration](configuration.md#admin-settings). |
 
 ![Workbench](images/14-workbench.png)
 
@@ -126,7 +126,7 @@ Status badge on the result frame:
 
 | Badge | Meaning |
 | --- | --- |
-| Queued | Waiting for a free slot. How many run at once, for the whole instance and for one account, is set by the owner under **Settings → Run limits**. |
+| Queued | Waiting for a free slot. How many run at once, for the whole instance and for one account, is set by the administrator under **Settings → Run limits**. |
 | Running | Submitted to the upstream; progress is shown when the upstream reports it. |
 | Done | The result is stored on your server. |
 | Failed | Open the task details (right-click the node) for the reason. |
@@ -138,7 +138,7 @@ Status badge on the result frame:
 
 **Reloading.** If you reload the page while something is running, the canvas keeps waiting for the result. It does not submit the job twice. This also holds for Language model and Video analysis nodes.
 
-A run that takes longer than its timeout is marked failed: 10 minutes for images, 30 for videos and 5 for Language model and Video analysis nodes by default. These limits, and the timeouts for submitting a task and for downloading a result, are set by the owner under **Settings → Run limits**.
+A run that takes longer than its timeout is marked failed: 10 minutes for images, 30 for videos and 5 for Language model and Video analysis nodes by default. These limits, and the timeouts for submitting a task and for downloading a result, are set by the administrator under **Settings → Run limits**.
 
 ## Results and history
 
@@ -263,7 +263,7 @@ On macOS use ⌘ instead of Ctrl.
 
 ## Language and appearance
 
-- **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the owner set under **Settings → Appearance** applies.
+- **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the administrator set under **Settings → Appearance** applies.
 - **Theme**: the interface has one dark theme. There is no light theme and nothing to switch.
 - **Canvas appearance** (More ⋯ or right-click): background colour, pattern and density of one canvas. It is saved with the canvas and travels with its share links.
 

@@ -24,6 +24,14 @@ services:
       # Empty is fine: files are addressed relative to whatever address the app is opened at.
       # Set it to the public address when an upstream has to download reference files from here.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # The administrator account, created at the first start and only then: later these are ignored.
+      # Set ADMIN_PASSWORD in .env (8+ characters). Left empty, a random password is printed once
+      # in the start-up log: `docker compose logs app`. It has to be replaced at the first sign-in.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      # First value of "open sign-up" (true / false); once that setting has been saved it is ignored.
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-}
       # Storage is normally set in the app, under Settings > Storage; what is saved there overrides
       # these. They are the default of an instance on which nothing was saved yet. See docs/storage.md.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}

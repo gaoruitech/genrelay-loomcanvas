@@ -1,9 +1,9 @@
 <template>
   <div class="au">
     <header class="au-nav">
-      <LcLogo to="/" />
+      <LcLogo :to="back ? '/' : undefined" />
       <span class="lc-sp" />
-      <router-link to="/" class="lc-btn ghost back">{{ t('auth.backHome') }}</router-link>
+      <router-link v-if="back" to="/" class="lc-btn ghost back">{{ t('auth.backHome') }}</router-link>
       <LcSelect
         class="au-lang"
         size="sm"
@@ -31,6 +31,9 @@ import { useAppStore } from '@/stores/app'
 import { LOCALE_OPTIONS } from '@/locales'
 import LcLogo from '@/components/LcLogo.vue'
 import LcSelect from '@/components/LcSelect.vue'
+
+/** back=false：没有「返回首页」（设置新密码那一屏哪儿也去不了，给个去不成的链接没意义） */
+withDefaults(defineProps<{ back?: boolean }>(), { back: true })
 
 const { t } = useI18n()
 const app = useAppStore()

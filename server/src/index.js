@@ -25,6 +25,10 @@ async function main() {
 
   const settings = require('./services/settings')
   await settings.load()
+  // REGISTRATION_OPEN is the first value of that setting, not an override of a saved one.
+  if (config.registrationOpen !== null && await settings.seed('registrationOpen', config.registrationOpen)) {
+    console.log(`[auth] registration is ${config.registrationOpen ? 'open' : 'closed'} (REGISTRATION_OPEN); the administrator can change it under Settings > Site`)
+  }
   // Storage: what was saved on the settings page wins over the environment.
   const storage = await require('./services/storageSettings').load()
   if (storage.secretUnreadable) {
@@ -36,14 +40,18 @@ async function main() {
   // A custom model the vendor's catalog now lists itself is served from the catalog.
   const shadowed = await require('./services/providerMigration').dropShadowedCustomModels()
   if (shadowed) console.log(`[providers] ${shadowed} custom model(s) are now in their vendor's catalog; the custom entries were removed, settings for them are kept`)
-  // Accounts: per-account indexes, and data from before accounts (see services/accounts.js).
+  // Accounts: per-account indexes, the administrator, and data from before accounts (see services/accounts.js).
   if (config.legacyAccessPassword) {
     console.warn('[auth] ACCESS_PASSWORD is set but no longer used: LoomCanvas has accounts now. Remove it from the environment; see docs/getting-started.md#accounts.')
   }
+  // Creates the administrator when there is none. A generated password is printed here, once, in a framed block.
   const accountState = await require('./services/accounts').prepare()
-  if (accountState.adopted) console.log(`[auth] finished handing the data from before accounts to the owner: ${JSON.stringify(accountState.adopted)}`)
-  if (accountState.legacyWaiting) console.log('[auth] data from before accounts is waiting: the first account to register becomes the owner and takes it over')
-  else if (!accountState.users) console.log('[auth] no account yet: the first one to register becomes the owner')
+  if (accountState.admin.created && !accountState.admin.generated) {
+    console.log(`[auth] created the administrator account "${accountState.admin.username}" with the password from ADMIN_PASSWORD`)
+  }
+  if (accountState.adopted) {
+    console.log(`[auth] the data from before accounts now belongs to "${accountState.admin.username}": ${JSON.stringify(accountState.adopted)}`)
+  }
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
   const { getRunner } = require('./runner')
@@ -88,6 +96,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[fatal]', err && err.message ? err.message : err)
+  // A setting that only turns out to be wrong once the database is there (ADMIN_*).
+  if (err instanceof ConfigError) console.error(`\n[config] ${err.message}\n`)
+  else console.error('[fatal]', err && err.message ? err.message : err)
   process.exit(1)
 })

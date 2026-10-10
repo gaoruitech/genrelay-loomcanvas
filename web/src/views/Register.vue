@@ -8,15 +8,6 @@
         <li><LcIcon name="key" /><span><b>{{ t('auth.register.pt2b') }}</b>{{ t('auth.register.pt2') }}</span></li>
         <li><LcIcon name="shield" /><span><b>{{ t('auth.register.pt3b') }}</b>{{ t('auth.register.pt3') }}</span></li>
       </ul>
-      <!-- 全新安装：告诉他第一个账号就是所有者 -->
-      <div v-if="app.firstRun" class="first">
-        <span class="ti"><LcIcon name="star" size="l" /></span>
-        <div>
-          <div class="lc-row"><b class="first-t">{{ t('auth.register.firstTitle') }}</b><span class="lc-bd rec">{{ t('auth.register.firstBadge') }}</span></div>
-          <p>{{ t('auth.register.firstBody') }}</p>
-          <p class="note"><LcIcon name="shield" size="s" />{{ t('auth.register.firstNote') }}</p>
-        </div>
-      </div>
     </template>
 
     <!-- 注册已关闭 -->
@@ -27,8 +18,8 @@
     </template>
 
     <template v-else>
-      <h2>{{ app.firstRun ? t('auth.register.firstTitle') : t('auth.register.title') }}</h2>
-      <p class="sub">{{ app.firstRun ? t('auth.register.firstSub') : t('auth.register.sub') }}</p>
+      <h2>{{ t('auth.register.title') }}</h2>
+      <p class="sub">{{ t('auth.register.sub') }}</p>
 
       <form novalidate @submit.prevent="submit">
         <div v-if="formError" class="lc-alert" role="alert"><LcIcon name="warn" /><span>{{ formError }}</span></div>
@@ -94,11 +85,11 @@
         <p class="lic">{{ t('auth.register.licenseNote') }} <a :href="LINKS.license" target="_blank" rel="noopener">{{ t('auth.register.licenseLink') }}</a></p>
 
         <button type="submit" class="lc-btn primary lg block" :disabled="busy">
-          {{ busy ? t('auth.register.submitting') : app.firstRun ? t('auth.register.firstSubmit') : t('auth.register.submit') }}
+          {{ busy ? t('auth.register.submitting') : t('auth.register.submit') }}
         </button>
       </form>
 
-      <div v-if="!app.firstRun" class="foot">
+      <div class="foot">
         {{ t('auth.register.hasAccount') }}<router-link :to="{ name: 'login', query: route.query }">{{ t('auth.register.toLogin') }}</router-link>
       </div>
     </template>
@@ -179,7 +170,7 @@ async function submit() {
     if (f.fields.username) errors.username = f.fields.username
     if (f.fields.email) errors.email = f.fields.email
     if (f.fields.password) errors.password = f.fields.password
-    // 别人刚好抢先注册 / 所有者刚关了注册：重取一次启动信息，页面跟着变
+    // 管理员刚关了注册：重取一次启动信息，页面跟着变
     if (f.code === 'auth.registration_closed') await app.loadBootstrap()
   } finally {
     busy.value = false
@@ -193,18 +184,6 @@ async function submit() {
 .pts svg { color: var(--cyan); margin-top: 2px; }
 .pts b { color: var(--text); font-weight: 500; }
 
-.first {
-  margin-top: 40px; max-width: 560px; display: flex; gap: 14px; align-items: flex-start;
-  border: 1px solid rgba(63, 216, 255, .35); border-radius: 16px; padding: 20px; background: rgba(63, 216, 255, .06);
-}
-.ti {
-  width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22)); box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
-}
-.first-t { font: 600 16px var(--f-disp); color: var(--text); }
-.first p { color: var(--text-2); font-size: 13px; line-height: 1.7; margin-top: 6px; }
-.first .note { display: flex; gap: 8px; align-items: flex-start; color: #c8f3ff; }
-.first .note svg { color: var(--cyan); margin-top: 4px; }
 
 .meter { display: flex; gap: 4px; margin-top: 8px; }
 .meter i { flex: 1; height: 3px; border-radius: 2px; background: rgba(124, 160, 255, .18); }

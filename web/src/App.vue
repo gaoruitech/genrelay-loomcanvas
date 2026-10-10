@@ -12,7 +12,7 @@
       </div>
     </div>
 
-    <!-- 落地页 / 登录 / 注册 / 分享只读页 / 引导页：自己占满整屏 -->
+    <!-- 落地页 / 登录 / 注册 / 分享只读页 / 引导页 / 设置新密码：自己占满整屏 -->
     <router-view v-else-if="route.meta.public || route.meta.shell === 'none'" />
 
     <AppShell v-else>
@@ -42,7 +42,7 @@ async function retry() {
   try {
     await app.loadBootstrap()
     if (app.bootstrap) {
-      if (app.authed) await loadModels().catch(() => undefined)
+      if (app.authed && !app.mustChangePassword) await loadModels().catch(() => undefined)
       // 连不上的时候守卫没做判断，连上以后按当前地址重新走一遍
       await router.replace({ path: route.fullPath, force: true })
     }
@@ -55,7 +55,8 @@ async function retry() {
 // 模型清单是按账号的要重取；人在需要登录的页面上就送去登录页，并记下回来的地址。
 watch(() => app.authed, (authed) => {
   if (authed) {
-    loadModels().catch(() => undefined)
+    // 还在用临时密码时接口只放行改密码，模型清单等改完再取
+    if (!app.mustChangePassword) loadModels().catch(() => undefined)
     return
   }
   if (app.leaving) {
@@ -65,6 +66,19 @@ watch(() => app.authed, (authed) => {
   }
   if (app.bootstrap && !route.meta.public) {
     router.replace({ name: 'login', query: { redirect: route.fullPath } })
+  }
+})
+
+// 账号被要求先改密码（登录时就带着这个标记的由路由守卫处理；这里管的是用着用着被接口打回 403 的）：
+// 送去「设置新密码」，改完回到现在这一页。标记清掉以后把按账号的模型清单补上。
+watch(() => app.mustChangePassword, (must) => {
+  if (!app.authed) return
+  if (!must) {
+    loadModels().catch(() => undefined)
+    return
+  }
+  if (route.name !== 'change-password') {
+    router.replace({ name: 'change-password', query: route.meta.guestOnly ? {} : { redirect: route.fullPath } })
   }
 })
 </script>

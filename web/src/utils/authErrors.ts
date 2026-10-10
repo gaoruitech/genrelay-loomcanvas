@@ -70,6 +70,9 @@ export function describeAuthError(err: any): AuthFailure {
     case 'auth.weak_password':
       out.fields.password = t('auth.errors.weakPassword')
       break
+    case 'auth.same_password':
+      out.fields.password = t('auth.errors.samePassword')
+      break
     default:
       out.message = err?.response
         ? t('auth.errors.unknown', { message: apiErrorMessage(err, code || String(err.response.status)) })

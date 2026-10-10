@@ -28,7 +28,8 @@ const appStore = useAppStore(pinia)
 // 启动信息拿到之后再装路由：守卫要靠它判断「登录了没有」「有没有接入服务商」。
 // 模型清单是按账号的，登录了才取；之后登录状态变化时由 App.vue 重取。
 appStore.loadBootstrap()
-  .then(() => (appStore.authed ? loadModels().catch(() => undefined) : undefined))
+  // 还在用临时密码的账号，接口只放行改密码：模型清单等改完再取（App.vue 看着）
+  .then(() => (appStore.authed && !appStore.mustChangePassword ? loadModels().catch(() => undefined) : undefined))
   .finally(() => {
     app.use(router)
     app.mount('#app')

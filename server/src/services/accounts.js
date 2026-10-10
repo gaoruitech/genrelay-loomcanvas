@@ -3,15 +3,18 @@
 /**
  * Accounts, sessions and who owns what.
  *
- *  - An account is a row in `users`. The first one ever registered is the
- *    owner; a partial unique index makes sure there is exactly one, whatever
- *    races at that moment.
+ *  - An account is a row in `users`. One of them is the administrator (role
+ *    `owner`). Nobody registers as it: the server creates it at start-up when
+ *    there is none (ensureAdministrator), and a partial unique index makes
+ *    sure there is exactly one, however many processes start together.
+ *    Registration only ever makes plain users.
  *  - A session is a random token handed to the browser and a row holding its
  *    SHA-256. Signing out, changing the password, disabling an account and a
  *    password reset all work by deleting rows, so they take effect at once.
  *  - Every per-account collection carries the account's id in `userId`
  *    (OWNED below is the one list of them). Data written before accounts
- *    existed carries the constant 'local' and is handed to the owner once.
+ *    existed carries the constant 'local' and is handed to the administrator
+ *    when that account is created.
  */
 const crypto = require('crypto')
 const User = require('../models/User')
@@ -29,6 +32,7 @@ const settings = require('./settings')
 const { getStorage } = require('../storage')
 const { hashPassword, verifyPassword, burnVerification, temporaryPassword } = require('../utils/password')
 const { ApiError, badRequest } = require('../utils/http')
+const { getConfig, ConfigError } = require('../config')
 const { LEGACY_USER, SYSTEM_USER, ROLES } = require('../constants')
 
 const USERNAME_RE = /^[A-Za-z0-9_-]{3,32}$/
@@ -65,7 +69,16 @@ const OWNED = [
 
 /** The contract's User. Nothing else about an account leaves the server through it. */
 function serializeUser(u) {
-  return { id: String(u._id), username: u.username, email: u.email, role: u.role, createdAt: u.createdAt }
+  return {
+    id: String(u._id),
+    username: u.username,
+    // '' for an administrator that was created without ADMIN_EMAIL and has not added one yet.
+    email: u.email || '',
+    role: u.role,
+    // True while the password is one somebody else knows; the API then serves only the change of it.
+    mustChangePassword: !!u.mustChangePassword,
+    createdAt: u.createdAt,
+  }
 }
 
 function parseUsername(v) {
@@ -98,51 +111,128 @@ function duplicateOf(err) {
 
 const taken = (what) => new ApiError(409, what === 'username' ? 'auth.username_taken' : 'auth.email_taken')
 
-async function hasUsers() {
-  return !!(await User.exists({}))
-}
-
 /**
- * Create an account. The first one is the owner and takes over whatever the
- * pre-account version left behind; later ones need registration to be open.
+ * Create an account: a plain user, always, and only while registration is
+ * open. There is no way to become the administrator from here.
  */
 async function register({ username, email, password }) {
   const name = parseUsername(username)
   const mail = parseEmail(email)
   const pass = parsePassword(password)
+  if (!settings.get('registrationOpen')) throw new ApiError(403, 'auth.registration_closed')
   // The unique indexes are what makes the checks below race-free; make sure they exist.
   await User.init()
-
-  let first = !(await hasUsers())
-  if (!first && !settings.get('registrationOpen')) throw new ApiError(403, 'auth.registration_closed')
   if (await User.exists({ usernameLower: name.toLowerCase() })) throw taken('username')
   if (await User.exists({ emailLower: mail.toLowerCase() })) throw taken('email')
 
-  const passwordHash = await hashPassword(pass)
-  for (;;) {
-    try {
-      const user = await User.create({
-        username: name,
-        usernameLower: name.toLowerCase(),
-        email: mail,
-        emailLower: mail.toLowerCase(),
-        passwordHash,
-        role: first ? ROLES.OWNER : ROLES.USER,
-        // Stored with the account, so "an owner exists" and "the old data still
-        // has to be handed over" can never be seen apart.
-        legacyAdoption: first ? 'pending' : '',
-      })
-      if (first) await adoptLegacy(user._id)
-      return user
-    } catch (err) {
-      const dup = duplicateOf(err)
-      if (dup === 'username' || dup === 'email') throw taken(dup)
-      if (dup !== 'owner') throw err
-      // Somebody else became the owner in the meantime: this is an ordinary registration now.
-      first = false
-      if (!settings.get('registrationOpen')) throw new ApiError(403, 'auth.registration_closed')
-    }
+  try {
+    return await User.create({
+      username: name,
+      usernameLower: name.toLowerCase(),
+      email: mail,
+      emailLower: mail.toLowerCase(),
+      passwordHash: await hashPassword(pass),
+      role: ROLES.USER,
+    })
+  } catch (err) {
+    const dup = duplicateOf(err)
+    if (dup === 'username' || dup === 'email') throw taken(dup)
+    throw err
   }
+}
+
+/* --------------------------------------------------- the administrator */
+
+/**
+ * Make sure the instance has its administrator. With an owner account already
+ * there - whoever created it, under whatever name - nothing is read from
+ * `admin` and nothing is changed. Otherwise the account is created from
+ * ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD (config.admin), takes over the
+ * data from before accounts, and:
+ *
+ *  - with a password given, that is its password;
+ *  - without one, a random password is generated and returned here ONCE (the
+ *    caller shows it; only its hash is stored) and the account has to replace
+ *    it at the first sign-in.
+ *
+ * Any number of processes may run this at the same moment: the unique index on
+ * the owner role lets one of them create the account, the others find it there.
+ *
+ * Resolves { created, username, generatedPassword, adopted }.
+ */
+async function ensureAdministrator(admin) {
+  await User.init()
+  const existing = () => User.findOne({ role: ROLES.OWNER }).select('username').lean()
+  const none = (owner) => ({ created: false, username: owner.username, generatedPassword: '', adopted: null })
+  let owner = await existing()
+  if (owner) return none(owner)
+
+  const from = admin || getConfig().admin
+  const username = String(from.username || 'admin')
+  const email = String(from.email || '').trim()
+  const given = from.password || ''
+  if (!USERNAME_RE.test(username)) {
+    throw new ConfigError(`ADMIN_USERNAME must be 3 to 32 characters (letters, digits, _ and -), got "${username.slice(0, 40)}"`)
+  }
+  if (email && (email.length > 254 || !EMAIL_RE.test(email))) throw new ConfigError('ADMIN_EMAIL is not a valid email address')
+  if (given && (given.length < PASSWORD_MIN || given.length > PASSWORD_MAX)) {
+    throw new ConfigError(
+      `ADMIN_PASSWORD must be ${PASSWORD_MIN} to ${PASSWORD_MAX} characters long. ` +
+      'Set a longer one, or remove it: a random password is then generated and shown once in the start-up log.'
+    )
+  }
+  const password = given || temporaryPassword()
+
+  let user
+  try {
+    user = await User.create({
+      username,
+      usernameLower: username.toLowerCase(),
+      email,
+      emailLower: email.toLowerCase(),
+      passwordHash: await hashPassword(password),
+      role: ROLES.OWNER,
+      mustChangePassword: !given,
+      // Stored with the account, so "an administrator exists" and "the old data
+      // still has to be handed over" can never be seen apart.
+      legacyAdoption: 'pending',
+    })
+  } catch (err) {
+    const dup = duplicateOf(err)
+    if (!dup) throw err
+    // Another process created the administrator in the meantime: that one stands.
+    owner = await existing()
+    if (owner) return none(owner)
+    // No administrator, yet the name or the address belongs to an ordinary account.
+    if (dup === 'email') throw new ConfigError('ADMIN_EMAIL is already the email of another account. Set a different ADMIN_EMAIL, or leave it empty.')
+    throw new ConfigError(`ADMIN_USERNAME "${username}" is already the name of another account. Set a different ADMIN_USERNAME.`)
+  }
+  const adopted = await adoptLegacy(user._id)
+  return { created: true, username: user.username, generatedPassword: given ? '' : password, adopted }
+}
+
+/**
+ * The one place a generated administrator password is shown: a framed block,
+ * line by line through `log` (the console at start-up, a collector in tests).
+ */
+function announceGeneratedPassword({ username, generatedPassword }, log = console.log) {
+  const lines = [
+    'LoomCanvas created the administrator account.',
+    '',
+    `    Username:  ${username}`,
+    `    Password:  ${generatedPassword}`,
+    '',
+    'This password is shown only this once. Sign in with it: you will be',
+    'asked to choose your own before anything else.',
+    `Lost it? Run:  node server/src/cli/reset-password.js ${username}`,
+  ]
+  const width = Math.max(...lines.map((l) => l.length))
+  const bar = '='.repeat(width + 4)
+  log('')
+  log(bar)
+  for (const line of lines) log(`| ${line.padEnd(width)} |`)
+  log(bar)
+  log('')
 }
 
 /** Username or email -> the account, with its password hash. */
@@ -195,12 +285,6 @@ async function updateProfile(user, { username, email }) {
   }
 }
 
-/** Store a new password. `keepSession` survives; every other session of the account ends. */
-async function setPassword(userId, password, { keepSession } = {}) {
-  await User.updateOne({ _id: userId }, { $set: { passwordHash: await hashPassword(parsePassword(password)) } })
-  return revokeSessions(userId, { except: keepSession })
-}
-
 /**
  * The account holder changes their own password. The new password is stored,
  * a replacement for the session that asked is opened (same expiry: changing a
@@ -210,7 +294,8 @@ async function setPassword(userId, password, { keepSession } = {}) {
  */
 async function changePassword(user, password, currentSession, meta = {}) {
   const hash = await hashPassword(parsePassword(password))
-  await User.updateOne({ _id: user._id }, { $set: { passwordHash: hash } })
+  // A password the holder chose: whatever temporary one came before is replaced.
+  await User.updateOne({ _id: user._id }, { $set: { passwordHash: hash, mustChangePassword: false } })
   const { token, session } = await createSession(user, {
     ...meta,
     remember: !!currentSession.remember,
@@ -221,10 +306,15 @@ async function changePassword(user, password, currentSession, meta = {}) {
   return { token, revoked: Math.max(0, ended - 1) }
 }
 
-/** Give an account a random password and sign it out everywhere. Returns the password, once. */
+/**
+ * Give an account a random temporary password and sign it out everywhere.
+ * Returns the password, once. Whoever reads it out knows it, so the holder has
+ * to replace it at the next sign-in.
+ */
 async function resetPassword(userId) {
   const password = temporaryPassword()
-  await setPassword(userId, password)
+  await User.updateOne({ _id: userId }, { $set: { passwordHash: await hashPassword(password), mustChangePassword: true } })
+  await revokeSessions(userId)
   return password
 }
 
@@ -310,16 +400,8 @@ async function revokeSessions(userId, { except } = {}) {
 
 const legacyFilter = (filter) => ({ userId: { $in: [LEGACY_USER, null] }, ...(filter || {}) })
 
-/** Is there data from the pre-account version that nobody owns yet? */
-async function hasLegacyData() {
-  for (const { model, filter } of OWNED) {
-    if (await model.collection.findOne(legacyFilter(filter), { projection: { _id: 1 } })) return true
-  }
-  return false
-}
-
 /**
- * Hand everything the pre-account version wrote to the owner. Each step is a
+ * Hand everything the pre-account version wrote to the administrator. Each step is a
  * plain "whatever is still unowned becomes yours", so running it again after
  * an interruption finishes the job and running it once more changes nothing.
  * Timestamps are left alone (the raw collection is used on purpose).
@@ -350,10 +432,14 @@ async function dropIndex(model, name) {
  *  - slugs, model ids and template keys used to be unique across the whole
  *    database; they are unique per account now, so the old indexes go;
  *  - built-in templates move from the old single user to the site;
- *  - a hand-over to the owner that was interrupted is finished.
- * Resolves { users, adopted, legacyWaiting } for the start-up log.
+ *  - the administrator is created when there is none (ensureAdministrator)
+ *    and takes over the data from before accounts;
+ *  - a hand-over that was interrupted is finished.
+ * `admin` defaults to the ADMIN_* variables. A generated password goes through
+ * `log`, once, and is not part of what this resolves:
+ * { users, adopted, admin: { created, username, generated } }.
  */
-async function prepare() {
+async function prepare({ admin, log = console.log } = {}) {
   await dropIndex(Provider, 'slug_1')
   await dropIndex(ModelOverride, 'modelId_1')
   await dropIndex(Template, 'key_1')
@@ -362,12 +448,15 @@ async function prepare() {
   }
   await Promise.all([User, Session, Provider, ModelOverride, Template].map((m) => m.init()))
 
-  let adopted = null
+  const made = await ensureAdministrator(admin)
+  if (made.generatedPassword) announceGeneratedPassword(made, log)
+  let adopted = made.adopted && Object.keys(made.adopted).length ? made.adopted : null
+  // Also the hand-over an earlier start (or another process) began and did not finish.
   const pending = await User.findOne({ role: ROLES.OWNER, legacyAdoption: 'pending' }).lean()
-  if (pending) adopted = await adoptLegacy(pending._id)
+  if (pending) adopted = { ...(adopted || {}), ...(await adoptLegacy(pending._id)) }
   const users = await User.countDocuments({})
-  // With accounts present, unowned data stays unowned: it is never given to anyone later.
-  return { users, adopted, legacyWaiting: users === 0 && await hasLegacyData() }
+  // Unowned data that turns up after the hand-over stays unowned: it is never given to anyone later.
+  return { users, adopted, admin: { created: made.created, username: made.username, generated: !!made.generatedPassword } }
 }
 
 /* ------------------------------------------------------ account removal */
@@ -419,12 +508,12 @@ module.exports = {
   OWNED,
   SESSION_TTL_MS,
   serializeUser,
-  hasUsers,
   register,
+  ensureAdministrator,
+  announceGeneratedPassword,
   findByAccount,
   checkCredentials,
   updateProfile,
-  setPassword,
   resetPassword,
   createSession,
   resolveToken,
@@ -433,7 +522,6 @@ module.exports = {
   changePassword,
   revokeSession,
   revokeSessions,
-  hasLegacyData,
   adoptLegacy,
   prepare,
   countsByUser,

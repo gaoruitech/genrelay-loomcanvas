@@ -171,13 +171,14 @@ async function saveProfile() {
   profileErr.form = ''
   profileErr.username = !profile.username ? t('auth.errors.usernameRequired')
     : USERNAME_RE.test(profile.username) ? '' : t('auth.errors.usernameInvalid')
-  profileErr.email = !profile.email ? t('auth.errors.emailRequired')
+  // 自动创建的管理员可以没有邮箱：本来就没有、这次也没填，就不拦（只改用户名）；有过邮箱的不能改成空
+  profileErr.email = !profile.email ? (app.user?.email ? t('auth.errors.emailRequired') : '')
     : EMAIL_RE.test(profile.email) ? '' : t('auth.errors.emailInvalid')
   if (profileErr.username || profileErr.email) return
   // 只提交改了的那一项
   const body: { username?: string; email?: string } = {}
   if (profile.username !== app.user?.username) body.username = profile.username
-  if (profile.email !== app.user?.email) body.email = profile.email
+  if (profile.email !== (app.user?.email || '')) body.email = profile.email
   if (!Object.keys(body).length) return
   profileBusy.value = true
   try {

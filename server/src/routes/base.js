@@ -22,13 +22,9 @@ router.get(['/bootstrap', '/app/bootstrap'], wrap(async (req, res) => {
   const s = settings.getAll()
   const who = await identify(req)
   const user = who ? who.user : null
-  const hasUsers = user ? true : await accounts.hasUsers()
   ok(res, {
-    auth: {
-      // The very first account can always be created: it becomes the owner.
-      registrationOpen: !hasUsers || s.registrationOpen,
-      hasUsers,
-    },
+    // May a visitor create an account (a plain user)? The administrator's setting.
+    auth: { registrationOpen: s.registrationOpen },
     user: user ? accounts.serializeUser(user) : null,
     site: {
       name: s.siteName,

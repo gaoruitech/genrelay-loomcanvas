@@ -3,18 +3,20 @@
 /**
  * /api/auth - registering, signing in and out, the caller's own account and
  * sessions. Register and login are public; everything else needs a session.
+ * `me`, `password` and `logout` are all an account with a temporary password
+ * may use (requireSession); the rest is closed to it until it has chosen its own.
  */
 const express = require('express')
 const accounts = require('../services/accounts')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { isObjectId, isPlainObject } = require('../utils/validate')
-const { requireAuth, loginRateLimit, registerRateLimit, profileRateLimit, countAccountAttempt } = require('../middleware/auth')
+const { requireSession, requireAuth, loginRateLimit, registerRateLimit, profileRateLimit, countAccountAttempt } = require('../middleware/auth')
 
 const router = express.Router()
 
 const meta = (req) => ({ userAgent: req.headers['user-agent'], ip: req.ip })
 
-/** POST /api/auth/register { username, email, password } -> { user, token } */
+/** POST /api/auth/register { username, email, password } -> { user, token }; always a plain user */
 router.post('/register', registerRateLimit, wrap(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   const user = await accounts.register(body)
@@ -36,13 +38,13 @@ router.post('/login', loginRateLimit, wrap(async (req, res) => {
 }))
 
 /** POST /api/auth/logout - ends the session this request came with */
-router.post('/logout', requireAuth, wrap(async (req, res) => {
+router.post('/logout', requireSession, wrap(async (req, res) => {
   await accounts.revokeSession(req.userId, req.session._id)
   ok(res, null)
 }))
 
 /** GET /api/auth/me -> { user } */
-router.get('/me', requireAuth, wrap(async (req, res) => {
+router.get('/me', requireSession, wrap(async (req, res) => {
   ok(res, { user: accounts.serializeUser(req.user) })
 }))
 
@@ -51,8 +53,9 @@ router.get('/me', requireAuth, wrap(async (req, res) => {
  * Every session of the account ends, the one that made this request included:
  * the caller gets a fresh token in its place, so a token that was copied
  * before the change is worthless afterwards. `revokedSessions` counts the others.
+ * This is also how a temporary password is replaced: it clears `mustChangePassword`.
  */
-router.put('/password', requireAuth, wrap(async (req, res) => {
+router.put('/password', requireSession, wrap(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   // A stolen session must not become a way to guess the password without limit.
   const succeeded = await countAccountAttempt(req, res, req.user.usernameLower)
@@ -64,6 +67,8 @@ router.put('/password', requireAuth, wrap(async (req, res) => {
     throw err
   }
   succeeded()
+  // Keeping the password is not changing it - and a temporary one must not survive this call.
+  if (body.newPassword === body.currentPassword) throw badRequest('auth.same_password')
   const { token, revoked } = await accounts.changePassword(req.user, body.newPassword, req.session, meta(req))
   ok(res, { revokedSessions: revoked, token })
 }))

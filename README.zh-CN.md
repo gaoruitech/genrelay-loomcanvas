@@ -21,7 +21,7 @@ LoomCanvas 不卖积分，也不自带模型。你填自己的 API Key，画布�
 - **模板、品牌包、素材库、分享链接。** 只读分享链接，可设有效期，可撤销。
 - **工作台、生成记录、模型管理。** 工作台上是最近的画布、模板、生成队列和本月用量；「生成记录」里是每一次运行，可以筛选、导出 CSV；「模型管理」里管服务商、模型和价格。
 - **中英文**界面和服务端提示。界面只有一套深色主题。
-- **账号。** 注册、登录后使用；每个账号有自己的画布、文件、服务商和 API Key。第一个注册的账号是所有者，负责管理站点和账号列表，可以关闭注册。
+- **账号。** 注册、登录后使用；每个账号有自己的画布、文件、服务商和 API Key。管理员账号是内置的：服务端第一次启动时自动创建。它负责管理站点和账号列表，可以关闭注册。
 - **没有团队。** 账号之间不共用画布和空间；账号之间的隔离也不是加固过的多租户边界。见[安全](docs/security.zh-CN.md)。
 
 ## 截图
@@ -29,7 +29,7 @@ LoomCanvas 不卖积分，也不自带模型。你填自己的 API Key，画布�
 | | |
 | --- | --- |
 | ![落地页](docs/images/12-landing.png) 落地页 | ![登录页](docs/images/13-login.png) 登录 |
-| ![添加服务商](docs/images/01-setup.png) 注册后添加第一个服务商 | ![工作台](docs/images/14-workbench.png) 工作台 |
+| ![添加服务商](docs/images/01-setup.png) 第一次登录后添加第一个服务商 | ![工作台](docs/images/14-workbench.png) 工作台 |
 | ![编辑器](docs/images/04-editor.png) 编辑器（中文界面） | ![英文界面](docs/images/11-editor-en.png) 编辑器（英文界面） |
 | ![图生视频模板](docs/images/09-editor-dark.png) 内置的「图生视频」模板 | ![运行完成](docs/images/06-editor-result.png) 画布上的结果 |
 | ![模型与价格](docs/images/08-settings-models.png) 模型管理：服务商、模型与价格（项目不带价格，由你自己填） | ![生成记录](docs/images/15-history.png) 生成记录：每一次运行和汇总 |
@@ -42,15 +42,16 @@ LoomCanvas 不卖积分，也不自带模型。你填自己的 API Key，画布�
 git clone https://gitee.com/jishulin/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
-# 编辑 .env：把 SECRET_KEY 设成一串足够长的随机字符
+# 编辑 .env：把 SECRET_KEY 设成一串足够长的随机字符，把 ADMIN_PASSWORD 设成管理员的密码
 docker compose up -d
 ```
 
-打开 http://localhost:3000 （或这台机器的地址，端口是你设的 `PORT`），点「注册」建一个账号，再在接下来的页面上添加一个服务商即可开始使用。推荐高瑞，在 https://gaorui.cc 获取 Key。
+打开 http://localhost:3000 （或这台机器的地址，端口是你设的 `PORT`），点「登录」，用 `admin` 和你设的密码登录，再在接下来的页面上添加一个服务商即可开始使用。推荐高瑞，在 https://gaorui.cc 获取 Key。
 
 - `SECRET_KEY` 用来加密数据库里保存的上游 API Key。请妥善保存，设置后不要再改，否则已保存的 Key 将无法解密。
 - `PUBLIC_URL` 可以不填。本机或内网使用时留空即可：文件按「当前打开的地址」寻址。实例有公网地址时把它设成那个地址，上游模型才能按地址读取参考素材（文件存在本地磁盘上，又要用视频做输入、或者给高瑞的图片模型传参考图时需要）。
-- 你注册的第一个账号是这个实例的所有者，所以要赶在别人能访问到实例之前注册。之后注册仍然开放，所有者可以在「设置 → 站点」里关掉。见[账号](docs/getting-started.zh-CN.md#账号)。
+- 管理员账号由服务端在第一次启动时创建，不靠注册产生。用户名是 `admin`，除非你设了 `ADMIN_USERNAME`；`ADMIN_PASSWORD`（8 到 128 个字符）是它的密码。留空的话，服务端会生成一个随机密码，在启动日志里打印一次（`docker compose logs app`）；用它登录后，系统会要求你先换成自己的密码。这几个变量只在创建这个账号时读取。
+- 其他人点「注册」，得到的是普通账号。注册默认开放；管理员可以在「设置 → 站点」里关掉，也可以一开始就用 `REGISTRATION_OPEN=false` 启动。见[账号](docs/getting-started.zh-CN.md#账号)。
 
 逐步说明见[快速上手](docs/getting-started.zh-CN.md)。
 

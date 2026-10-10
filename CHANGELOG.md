@@ -21,7 +21,7 @@ First version. Nothing has been tagged or released yet; interfaces may still cha
 - Canvas templates and text templates (two built-in templates and a set of prompt snippets in Chinese and English), brand kits, asset library, zip download of a canvas's media.
 - Read-only share links that snapshot a canvas, with expiry and revocation; run state, task ids and costs are stripped from snapshots.
 - Chinese and English interface in one dark theme (no light theme, no theme switch). A landing page, registration and sign-in pages, and an "Add a provider" page for an account that has none yet.
-- An app shell with a top bar and a sidebar: Workbench (recent canvases, templates, recent generations, this month's usage, queue, providers), Canvases, Assets, Models (providers, models and prices), History (every run, with totals, filters, details, CSV export and clean-up) and Settings (interface language, account and sessions; for the owner also storage, run limits, site name, logo and default language, registration, users). In the editor the sidebar shrinks to icons.
+- An app shell with a top bar and a sidebar: Workbench (recent canvases, templates, recent generations, this month's usage, queue, providers), Canvases, Assets, Models (providers, models and prices), History (every run, with totals, filters, details, CSV export and clean-up) and Settings (interface language, account and sessions; for the administrator also storage, run limits, site name, logo and default language, registration, users). In the editor the sidebar shrinks to icons.
 - Canvas documents are at `schemaVersion` 2. Generation nodes became much taller, so the two built-in templates were re-spaced, and a canvas last saved by an earlier version is arranged once when it is first opened in the editor, only if its nodes overlap at the new sizes. A notice says so and Ctrl+Z undoes it; it never repeats and never touches a canvas saved by the current version.
 - Saving: panning and zooming no longer flip the save status to "Unsaved". The viewport is stored quietly on its own shortly after the view stops moving, and such a save does not change the canvas's "updated" time.
 - Tidy up now arranges every loose node on the canvas, not only the ones in view; nodes that were never on screen are placed by an estimated size.
@@ -33,11 +33,15 @@ First version. Nothing has been tagged or released yet; interfaces may still cha
 **Server**
 
 - Node.js + Express + MongoDB backend.
-- Accounts: anyone can register (username, email, password) and sign in; the first account is the owner, every other a user. Each account has its own canvases, files, share links, assets, brand kits, runs and usage, and its own providers, API keys, custom models and prices. No teams or shared workspaces. Another account's resource answers 404.
+- Accounts: signing in is always required. The administrator account is built in: at start-up the server creates it when there is none, from `ADMIN_USERNAME` (default `admin`), `ADMIN_PASSWORD` and `ADMIN_EMAIL` (optional; the administrator is the only account that may have no email). Without `ADMIN_PASSWORD` a random password is generated and printed once in the start-up log, and has to be replaced at the first sign-in. These variables are read only when the account is created; afterwards they are ignored. Its role is `owner` in the API.
+- Registration (username, email, password) only ever creates ordinary users. Whether it is open is the administrator's `registrationOpen` setting, open by default; `REGISTRATION_OPEN=true|false` gives that setting its first value and is ignored once the setting has been saved. With registration closed, `POST /api/auth/register` answers `403 auth.registration_closed`.
+- `mustChangePassword` on the User object: `true` while the password is one somebody else knows (the generated administrator password, or a temporary one from a reset). Until `PUT /api/auth/password` has replaced it, the API serves that account only `GET /api/auth/me`, `GET /api/bootstrap`, `PUT /api/auth/password` and `POST /api/auth/logout`; everything else answers `403 auth.password_change_required`, and the web app shows a **Set a new password** screen. A new password equal to the current one is refused with `400 auth.same_password`.
+- `GET /api/bootstrap` carries `auth: { registrationOpen }` and `user`.
+- Each account has its own canvases, files, share links, assets, brand kits, runs and usage, and its own providers, API keys, custom models and prices. No teams or shared workspaces. Another account's resource answers 404.
 - Sessions kept on the server (hashed token; 12 hours, or 30 days with "remember"): sign out, sign out other devices, and a password change or reset end them at once. Passwords hashed with scrypt.
 - `PUT /api/auth/password` ends every session of the account, the caller's included, and answers `{ revokedSessions, token }` with a fresh token for the caller (same remaining lifetime). The web client swaps it in silently.
-- The owner manages the site only: registration open or closed, storage, run limits, site name, logo and default language, and the user list (disable, enable, delete with its data and files, reset a password). The owner cannot read other accounts' data through the API.
-- `node server/src/cli/reset-password.js <username-or-email>` for a forgotten password; no email is sent anywhere.
+- The administrator manages the site only: registration open or closed, storage, run limits, site name, logo and default language, and the user list (disable, enable, delete with its data and files, reset a password). The administrator cannot read other accounts' data through the API.
+- `node server/src/cli/reset-password.js <username-or-email>` for a forgotten password, the administrator's included; no email is sent anywhere. Like the administrator's **Reset password**, it gives a temporary password that has to be replaced at the next sign-in.
 - Vendors with a registry and per-model overrides. Built in: Gaorui (image and video models; chat models as custom models for now), OpenAI (chat, image generation and editing) and Google Gemini (image, chat). See **Providers** below.
 - In-process run queue with bounded concurrency, shared fairly between accounts (`userConcurrency`, `userQueueLimit`), hard deadlines for every step, retries only when a resubmission is safe, cancellation, and recovery of unfinished runs after a restart.
 - Results copied into your own storage with content-type sniffing and WebP thumbnails. Storage: the local disk, or one S3-compatible driver for AWS S3, Cloudflare R2, Aliyun OSS, MinIO and similar services (see **Storage** below).
@@ -91,7 +95,7 @@ Removed (**breaking**)
 
 Added
 
-- A **Storage** section under Settings (owner only): choose the local disk or an S3-compatible bucket, with presets for AWS S3, Cloudflare R2, Aliyun OSS and MinIO. Takes effect at once, without a restart. A saved configuration takes precedence over `STORAGE_DRIVER` and `S3_*`. The secret access key is encrypted with `SECRET_KEY` and never returned.
+- A **Storage** section under Settings (administrator only): choose the local disk or an S3-compatible bucket, with presets for AWS S3, Cloudflare R2, Aliyun OSS and MinIO. Takes effect at once, without a restart. A saved configuration takes precedence over `STORAGE_DRIVER` and `S3_*`. The secret access key is encrypted with `SECRET_KEY` and never returned.
 - Options of the S3-compatible driver: key prefix (`S3_KEY_PREFIX`), delivery (`S3_DELIVERY`), object ACL (`S3_ACL`), explicit path-style addressing.
 - Private buckets: with `proxy` delivery the app streams files from the bucket itself (Range, ETag, HEAD), so the bucket needs no public access and no CORS configuration.
 - `redirect` delivery: `/files/<key>` redirects to a public domain or CDN in front of the bucket.
@@ -147,9 +151,9 @@ Removed (**breaking**)
 **Upgrading a checkout from before accounts**
 
 - `ACCESS_PASSWORD` is gone. If it is still set the server logs one warning and ignores it; remove it. Signing in is always required now, and tokens issued for the shared password no longer work.
-- Nothing is migrated by hand. Existing data stays untouched until somebody registers; the first account to register becomes the owner and takes over all of it (canvases, share links, assets, brand kits, providers and their keys, prices, usage). Register right after the upgrade, before anybody else can reach the instance. `SECRET_KEY` must stay the same for stored keys to decrypt.
+- Nothing is migrated by hand. At its first start the new version creates the administrator account and hands it all of the existing data (canvases, share links, assets, brand kits, providers and their keys, prices, usage); the log says `[auth] the data from before accounts now belongs to "admin": {...}`. Set `ADMIN_PASSWORD` before that start, or read the generated password from the start-up log, then sign in as the administrator. Accounts that register start empty. `SECRET_KEY` must stay the same for stored keys to decrypt.
 - File addresses stored in canvases keep working. New files are stored under `uploads|outputs|tools/<account id>/…`.
-- API: `POST /api/auth/login` takes `{ account, password, remember? }`; a missing session is `401 auth.required` (was `auth.login_required`); `GET /api/bootstrap` (also at `/api/app/bootstrap`) carries `auth` and `user`, and no longer `authRequired`, `authed` or `site.defaultTheme`; `/api/admin/settings` and `/api/admin/storage` are for the owner, the other `/api/admin/*` endpoints work on the caller's own providers, models and usage. Model ids and provider slugs are per account.
+- API: `POST /api/auth/login` takes `{ account, password, remember? }`; a missing session is `401 auth.required` (was `auth.login_required`); `GET /api/bootstrap` (also at `/api/app/bootstrap`) carries `auth` and `user`, and no longer `authRequired`, `authed` or `site.defaultTheme`; `/api/admin/settings` and `/api/admin/storage` are for the administrator, the other `/api/admin/*` endpoints work on the caller's own providers, models and usage. Model ids and provider slugs are per account.
 - Billing hooks: `ctx.userId` is the account id (it was the constant `local`); `ctx.username` is new.
 - The interface has one dark theme; the theme switch and the default-theme setting are gone. Providers, models and prices moved from Settings to the Models page and usage to the History page; old `/settings?tab=…` links are redirected.
 - Canvases saved before the redesign are arranged once on first open if their nodes overlap at the new node sizes (undo with Ctrl+Z).
@@ -166,7 +170,7 @@ Removed (**breaking**)
 - 画布模板和文本模板（内置两个画布模板和一组中英文提示词片段）、品牌包、素材库、把画布里的素材打包下载。
 - 只读分享链接：保存画布快照，可设有效期，可撤销；快照里不带运行状态、任务号和成本。
 - 中英文界面，只有一套深色主题（没有浅色主题，也没有主题切换）。落地页、注册页和登录页，以及账号还没有服务商时出现的「添加一个服务商」页。
-- 应用外壳是顶栏加左侧栏：工作台（最近的画布、模板、最近生成、本月用量、生成队列、服务商）、画布、素材库、模型管理（服务商、模型和价格）、生成记录（每一次运行，带汇总、筛选、详情、导出 CSV 和清理）、设置（界面语言、账号与会话；所有者另有存储、运行限制、站点名称 / Logo / 默认语言、是否开放注册、用户管理）。进入编辑器后侧栏收成图标栏。
+- 应用外壳是顶栏加左侧栏：工作台（最近的画布、模板、最近生成、本月用量、生成队列、服务商）、画布、素材库、模型管理（服务商、模型和价格）、生成记录（每一次运行，带汇总、筛选、详情、导出 CSV 和清理）、设置（界面语言、账号与会话；管理员另有存储、运行限制、站点名称 / Logo / 默认语言、是否开放注册、用户管理）。进入编辑器后侧栏收成图标栏。
 - 画布文档升到 `schemaVersion` 2。生成节点高了很多，所以内置的两个模板重新排过；最后一次保存还在旧版本的画布，第一次在编辑器里打开时会自动整理一次，而且只在节点按新尺寸互相重叠时才整理。会有提示，按 Ctrl+Z 可以撤销；不会重复，也不会动用当前版本保存过的画布。
 - 保存：平移、缩放不再让保存状态跳成「未保存」。视野停下来之后视口会单独、悄悄地存一次，这样的保存不改变画布的「更新时间」。
 - 「自动整理」现在整理画布上全部的散节点，不只是视野里的；从没进过视野的节点按估计的尺寸排。
@@ -178,11 +182,15 @@ Removed (**breaking**)
 **服务端**
 
 - Node.js + Express + MongoDB。
-- 账号：任何人都可以注册（用户名、邮箱、密码）并登录；第一个注册的账号是所有者，其余是普通用户。每个账号有自己的画布、文件、分享链接、素材、品牌包、运行记录和用量，也有自己的服务商、API Key、自定义模型和价格。没有团队，没有共享空间。访问别的账号的资源返回 404。
+- 账号：使用前必须登录。管理员账号是内置的：还没有管理员时，服务端在启动时按 `ADMIN_USERNAME`（默认 `admin`）、`ADMIN_PASSWORD`、`ADMIN_EMAIL`（可以不填；管理员是唯一可以没有邮箱的账号）自动创建。没设 `ADMIN_PASSWORD` 时生成一个随机密码，在启动日志里打印一次，第一次登录时必须换掉。这几个变量只在创建这个账号时读取，之后都被忽略。这个角色在接口里的值是 `owner`。
+- 注册（用户名、邮箱、密码）只会产生普通用户。是否开放由管理员的 `registrationOpen` 设置决定，默认开放；`REGISTRATION_OPEN=true|false` 给这项设置一个初始值，设置保存过之后不再理会它。关闭注册时，`POST /api/auth/register` 返回 `403 auth.registration_closed`。
+- User 对象带 `mustChangePassword`：账号的密码是别人知道的（生成的管理员密码，或重置给出的临时密码）时为 `true`。在 `PUT /api/auth/password` 把它换掉之前，接口只给这个账号用 `GET /api/auth/me`、`GET /api/bootstrap`、`PUT /api/auth/password`、`POST /api/auth/logout`，其余一律返回 `403 auth.password_change_required`；网页端显示「设置新密码」这一屏。新密码和当前密码相同会以 `400 auth.same_password` 拒绝。
+- `GET /api/bootstrap` 带 `auth: { registrationOpen }` 和 `user`。
+- 每个账号有自己的画布、文件、分享链接、素材、品牌包、运行记录和用量，也有自己的服务商、API Key、自定义模型和价格。没有团队，没有共享空间。访问别的账号的资源返回 404。
 - 会话保存在服务端（只存凭证的哈希；有效期 12 小时，勾选「记住我」为 30 天）：退出登录、退出其他设备、修改或重置密码都立即生效。密码用 scrypt 哈希。
 - `PUT /api/auth/password` 会结束这个账号的全部会话，包括调用方自己的；返回 `{ revokedSessions, token }`，其中 `token` 是给调用方的新凭证（有效期是原会话剩下的时间）。网页端会悄悄换上。
-- 所有者只管站点：是否开放注册、存储、运行限制、站点名称 / Logo / 默认语言，以及用户列表（停用、启用、连同数据和文件一起删除、重置密码）。所有者不能通过接口读取别的账号的数据。
-- 忘记密码用 `node server/src/cli/reset-password.js <用户名或邮箱>`；系统不发送任何邮件。
+- 管理员只管站点：是否开放注册、存储、运行限制、站点名称 / Logo / 默认语言，以及用户列表（停用、启用、连同数据和文件一起删除、重置密码）。管理员不能通过接口读取别的账号的数据。
+- 忘记密码用 `node server/src/cli/reset-password.js <用户名或邮箱>`，管理员的密码也是这样重置；系统不发送任何邮件。它和管理员的「重置密码」一样，给出一个临时密码，下次登录时必须换掉。
 - 服务商，带注册表和按模型的覆盖项。内置：高瑞（图片、视频模型；对话模型暂时作为自定义模型添加）、OpenAI（对话，图片生成与编辑）、Google Gemini（图片、对话）。见下面的「服务商」。
 - 进程内任务队列：并发有上限，在各账号之间公平分配（`userConcurrency`、`userQueueLimit`），每一步都有硬性时限，只在可以安全重新提交时才重试，支持取消，重启后接着处理未完成的运行。
 - 结果转存到自己的存储，按内容识别类型，生成 WebP 缩略图。存储：本地磁盘，或者一个 S3 兼容驱动，对接 AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等服务（见下面的「存储」）。
@@ -236,7 +244,7 @@ Removed (**breaking**)
 
 新增
 
-- 「设置」页新增「存储」分区（只有所有者看得到）：选择本地磁盘或 S3 兼容的桶，带 AWS S3、Cloudflare R2、阿里云 OSS、MinIO 的预设。保存后立即生效，不用重启。保存的配置优先于 `STORAGE_DRIVER` 和 `S3_*`。Secret Access Key 用 `SECRET_KEY` 加密保存，不再返回。
+- 「设置」页新增「存储」分区（只有管理员看得到）：选择本地磁盘或 S3 兼容的桶，带 AWS S3、Cloudflare R2、阿里云 OSS、MinIO 的预设。保存后立即生效，不用重启。保存的配置优先于 `STORAGE_DRIVER` 和 `S3_*`。Secret Access Key 用 `SECRET_KEY` 加密保存，不再返回。
 - S3 兼容驱动的选项：路径前缀（`S3_KEY_PREFIX`）、分发方式（`S3_DELIVERY`）、对象 ACL（`S3_ACL`）、明确指定的路径风格。
 - 私有桶：`proxy` 分发时由应用自己从桶里流式转发文件（支持 Range、ETag、HEAD），桶不需要公共读，也不需要配 CORS。
 - `redirect` 分发：`/files/<key>` 重定向到桶前面的公开域名或 CDN。
@@ -292,9 +300,9 @@ Removed (**breaking**)
 **从没有账号的代码升级**
 
 - `ACCESS_PASSWORD` 已经取消。仍然设置着的话，服务端启动时提示一次并忽略它，请删掉。现在必须登录才能使用，用共用口令换来的凭证不再有效。
-- 不需要手工迁移。已有的数据在有人注册之前原样不动；第一个注册的账号成为所有者，并接手全部数据（画布、分享链接、素材、品牌包、服务商及其 Key、价格、用量）。升级后请立刻注册，赶在别人能访问到实例之前。`SECRET_KEY` 必须保持不变，已保存的 Key 才能解密。
+- 不需要手工迁移。新版本第一次启动时创建管理员，并把已有的全部数据交给它（画布、分享链接、素材、品牌包、服务商及其 Key、价格、用量）；日志里有一行 `[auth] the data from before accounts now belongs to "admin": {...}`。请在这次启动之前设好 `ADMIN_PASSWORD`，或者从启动日志里读出生成的密码，然后用管理员账号登录。注册出来的账号是空的。`SECRET_KEY` 必须保持不变，已保存的 Key 才能解密。
 - 画布里保存的文件地址照常可用。新文件存放在 `uploads|outputs|tools/<账号 id>/…` 下。
-- 接口：`POST /api/auth/login` 的请求体是 `{ account, password, remember? }`；未登录返回 `401 auth.required`（原来是 `auth.login_required`）；`GET /api/bootstrap`（`/api/app/bootstrap` 仍可用）多了 `auth` 和 `user`，去掉了 `authRequired`、`authed` 和 `site.defaultTheme`；`/api/admin/settings` 和 `/api/admin/storage` 只有所有者能调用，其余 `/api/admin/*` 接口操作的是调用者自己的服务商、模型和用量。模型标识和服务商标识前缀按账号区分。
+- 接口：`POST /api/auth/login` 的请求体是 `{ account, password, remember? }`；未登录返回 `401 auth.required`（原来是 `auth.login_required`）；`GET /api/bootstrap`（`/api/app/bootstrap` 仍可用）多了 `auth` 和 `user`，去掉了 `authRequired`、`authed` 和 `site.defaultTheme`；`/api/admin/settings` 和 `/api/admin/storage` 只有管理员能调用，其余 `/api/admin/*` 接口操作的是调用者自己的服务商、模型和用量。模型标识和服务商标识前缀按账号区分。
 - 计费钩子：`ctx.userId` 现在是账号 id（原来是常量 `local`）；新增 `ctx.username`。
 - 界面只有一套深色主题，主题切换按钮和「默认主题」设置都没有了。服务商、模型和价格从「设置」搬到了「模型管理」页，用量搬到了「生成记录」页；旧的 `/settings?tab=…` 链接会被转过去。
 - 改版前保存的画布，如果节点按新的节点尺寸互相重叠，第一次打开时会自动整理一次（按 Ctrl+Z 撤销）。

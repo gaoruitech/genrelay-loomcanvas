@@ -29,6 +29,15 @@ function int(name, dft, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
   return n
 }
 
+/** true / false, or null when the variable is not set. */
+function bool(name) {
+  const raw = str(name).toLowerCase()
+  if (!raw) return null
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  throw new ConfigError(`${name} must be true or false, got "${raw}"`)
+}
+
 const TRUST_PROXY_NAMES = new Set(['loopback', 'linklocal', 'uniquelocal'])
 
 function isSubnet(v) {
@@ -123,6 +132,16 @@ function build() {
     mongodbUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017/loomcanvas'),
     secretKey,
     publicUrl,
+    // The administrator the server creates when there is none. Read at that
+    // moment only, and checked there (services/accounts.js): once the account
+    // exists these are not looked at again. The password is taken as written.
+    admin: Object.freeze({
+      username: str('ADMIN_USERNAME', 'admin') || 'admin',
+      email: str('ADMIN_EMAIL'),
+      password: process.env.ADMIN_PASSWORD === undefined ? '' : String(process.env.ADMIN_PASSWORD),
+    }),
+    // First value of the "registration open" setting; null = not set, the setting's own default (open) applies.
+    registrationOpen: bool('REGISTRATION_OPEN'),
     // Set by an install from before accounts. It no longer does anything; index.js says so once.
     legacyAccessPassword: str('ACCESS_PASSWORD') !== '',
     corsOrigins: str('CORS_ORIGIN').split(',').map((s) => s.trim()).filter(Boolean),

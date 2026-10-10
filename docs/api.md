@@ -52,11 +52,11 @@ The language of `message`, of run failure reasons and of built-in names is chose
 
 Every instance has accounts, and signing in is always required. There is no mode without it; the `ACCESS_PASSWORD` variable of earlier versions is ignored.
 
-- An account has a username, an email address and a password. The first account ever registered is the `owner`; every later one is a `user`. There are no other roles and no teams.
-- Each account sees and changes only its own data: canvases, share links, assets, brand kits, runs, usage records, and its own providers, API keys, custom models, model settings and prices. The owner is scoped the same way and cannot read another account's data through the API.
-- The owner additionally manages the site: settings, storage, registration and the list of accounts. See [Admin](#admin).
+- An account has a username, an email address and a password. There are two roles. The administrator has the role `owner` (that is its value everywhere in this API): the server creates it at start-up when there is none, from `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ADMIN_EMAIL`, and there is exactly one. Every account that registers is a `user`. There are no other roles and no teams.
+- Each account sees and changes only its own data: canvases, share links, assets, brand kits, runs, usage records, and its own providers, API keys, custom models, model settings and prices. The administrator is scoped the same way and cannot read another account's data through the API.
+- The administrator additionally manages the site: settings, storage, registration and the list of accounts. See [Admin](#admin).
 
-Register (the first account becomes the owner), or sign in, and send the token on every request:
+Register (this always creates a `user`, and only while registration is open), or sign in, and send the token on every request:
 
 ```bash
 BASE=http://localhost:3000
@@ -80,10 +80,11 @@ Authorization: Bearer <token>
 
 - The token is an opaque string of 43 characters, not a JWT. The server keeps only its SHA-256, in the `sessions` collection. There are no cookies.
 - A session lasts 12 hours, or 30 days when the login was sent with `"remember": true`. The lifetime is fixed at sign-in; using the session does not extend it. The session that registration opens lasts 12 hours.
-- A session ends before that when: it is signed out (`POST /api/auth/logout`), it is ended from another session (`DELETE /api/auth/sessions…`), the account's password is changed (every session of the account ends; the caller gets a new token in the answer, see [PUT /api/auth/password](#put-apiauthpassword)), the owner resets the account's password or disables it (all its sessions end), or the account is deleted. Each of these takes effect at once. Changing `SECRET_KEY` does not end sessions.
+- A session ends before that when: it is signed out (`POST /api/auth/logout`), it is ended from another session (`DELETE /api/auth/sessions…`), the account's password is changed (every session of the account ends; the caller gets a new token in the answer, see [PUT /api/auth/password](#put-apiauthpassword)), the administrator resets the account's password or disables it (all its sessions end), or the account is deleted. Each of these takes effect at once. Changing `SECRET_KEY` does not end sessions.
 - Public without a token: `GET /api/bootstrap`, `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/canvas-share/:token`, and `GET /files/*`.
 - Everything else answers `401` with code `auth.required` when the token is missing, unknown, expired, or belongs to a disabled account. On a protected endpoint a `401` always means "not signed in"; upstream authentication failures are reported as `400`. The only other `401` is `auth.invalid_credentials` from `POST /api/auth/login`.
-- An endpoint that only the owner may call answers `403` with code `auth.forbidden` to any other account.
+- An endpoint that only the administrator may call answers `403` with code `auth.forbidden` to any other account.
+- While an account's password is a temporary one (`mustChangePassword` is `true` in its [User](#the-user-object)), its sessions are served only `GET /api/auth/me`, `GET /api/bootstrap`, `PUT /api/auth/password` and `POST /api/auth/logout`, plus the public endpoints. Every other endpoint answers `403` with code `auth.password_change_required` until the password has been changed with [PUT /api/auth/password](#put-apiauthpassword).
 - A resource of another account, addressed by its id, answers `404` with the same code as an id that does not exist (`canvas.not_found`, `run.not_found`, `provider.not_found`…). It is never a `403` and never data. Lists contain only the caller's records.
 
 Sign-in, registration and changes of username or email are rate limited; see [POST /api/auth/login](#post-apiauthlogin), [POST /api/auth/register](#post-apiauthregister) and [PUT /api/auth/profile](#put-apiauthprofile).
@@ -98,7 +99,8 @@ The web client keeps the token in the browser's web storage under the key `loomc
 | 400 | `common.body_not_json` | The body is not valid JSON. |
 | 400 | `common.bad_request` | The request itself is malformed (bad encoding in the path, unsupported charset…). |
 | 401 | `auth.required` | No valid session. Earlier versions used `auth.login_required`. |
-| 403 | `auth.forbidden` | The endpoint is for the owner and the caller is another account. |
+| 403 | `auth.forbidden` | The endpoint is for the administrator and the caller is another account. |
+| 403 | `auth.password_change_required` | The caller's password is a temporary one and has to be replaced first ("Choose a new password before you continue"). Only `GET /api/auth/me`, `GET /api/bootstrap`, `PUT /api/auth/password` and `POST /api/auth/logout` are served until then. |
 | 404 | `common.route_not_found` | No such endpoint. |
 | 404 | `common.not_found`, `*.not_found` | No such record, or it belongs to another account. |
 | 409 | `common.duplicate` | A unique value already exists. |
@@ -123,7 +125,7 @@ Response `data`, for a caller who is not signed in:
 
 ```json
 {
-  "auth": { "registrationOpen": true, "hasUsers": true },
+  "auth": { "registrationOpen": true },
   "user": null,
   "site": { "name": "LoomCanvas", "logoUrl": "", "defaultLocale": "zh-CN" },
   "hasProvider": false,
@@ -135,9 +137,8 @@ Response `data`, for a caller who is not signed in:
 
 | Field | Meaning |
 | --- | --- |
-| `auth.registrationOpen` | Whether `POST /api/auth/register` accepts a new account now. `true` while no account exists, whatever the `registrationOpen` setting says: the first account can always be created. |
-| `auth.hasUsers` | `false` on an instance where nobody has registered yet. The next registration creates the owner. |
-| `user` | The caller's [User](#the-user-object) when the request carries a valid token, otherwise `null`. Signing in is always required, so `null` means "not signed in". |
+| `auth.registrationOpen` | Whether `POST /api/auth/register` accepts a new account now: the value of the `registrationOpen` setting. It is the only field of `auth`. |
+| `user` | The caller's [User](#the-user-object) when the request carries a valid token, otherwise `null`. Signing in is always required, so `null` means "not signed in". This endpoint also answers a session whose `user.mustChangePassword` is `true`. |
 | `site` | Name, logo and default language of the site. |
 | `hasProvider` | `true` when the caller's own account has at least one enabled provider. Always `false` for a caller who is not signed in. |
 | `limits.maxUploadMb` | The server's `MAX_UPLOAD_MB`, so a client can refuse a file that is too large before uploading it. |
@@ -151,14 +152,20 @@ Earlier versions also returned `authRequired`, `authed` and `site.defaultTheme`.
 What the API returns about an account:
 
 ```json
-{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "owner", "createdAt": "2026-10-09T02:58:01.120Z" }
+{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "user", "mustChangePassword": false, "createdAt": "2026-10-09T02:58:01.120Z" }
 ```
 
-`role` is `owner` or `user`. Nothing else about an account leaves the server through this object.
+| Field | Meaning |
+| --- | --- |
+| `role` | `owner` (the administrator) or `user`. |
+| `email` | The account's address. It may be `""` for the administrator, the only account that can exist without one (created without `ADMIN_EMAIL`, until it adds one with [PUT /api/auth/profile](#put-apiauthprofile)). |
+| `mustChangePassword` | `true` while the account's password is one somebody else knows: the administrator password the server generated at start-up, a temporary password from [`POST /api/admin/users/:id/reset-password`](#accounts), or one from the command-line reset. `PUT /api/auth/password` sets it back to `false`. While it is `true` the API serves the account almost nothing else, see [Authentication](#authentication). |
+
+Nothing else about an account leaves the server through this object. It is the same wherever a User is returned: registration, sign-in, `GET /api/auth/me`, `PUT /api/auth/profile`, `user` in the bootstrap and the rows of `GET /api/admin/users`.
 
 ### POST /api/auth/register
 
-Public. Creates an account and signs it in.
+Public. Creates an ordinary account (`role: "user"`, never the administrator) and signs it in.
 
 Body: `{ "username": string, "email": string, "password": string }`.
 
@@ -170,14 +177,14 @@ Body: `{ "username": string, "email": string, "password": string }`.
 
 Response: `{ "user": User, "token": string }`. The session lasts 12 hours.
 
-The first account registered on an instance becomes the owner and takes over the data an earlier version without accounts left behind; see [Architecture](architecture.md#11-账号与数据归属) (Chinese). Later accounts need registration to be open (the `registrationOpen` setting, `true` by default).
+Registration has to be open (the `registrationOpen` setting, `true` by default). When it is closed the answer is `403` `auth.registration_closed`, always. The administrator is not created here: the server creates it at start-up and hands it the data an earlier version without accounts left behind; see [Architecture](architecture.md#11-账号与数据归属) (Chinese).
 
 | HTTP | `code` | When |
 | --- | --- | --- |
 | 400 | `auth.invalid_username` | `username` is missing or does not fit the rules. |
 | 400 | `auth.invalid_email` | `email` is missing or does not look like an address. |
 | 400 | `auth.weak_password` | `password` is missing, shorter than 8 or longer than 128 characters. |
-| 403 | `auth.registration_closed` | The owner has closed registration. |
+| 403 | `auth.registration_closed` | The administrator has closed registration. |
 | 409 | `auth.username_taken` | Another account has that username. |
 | 409 | `auth.email_taken` | Another account has that email. |
 | 429 | `auth.too_many_attempts` | More than 20 registration attempts from one client in an hour (an IPv6 client counts as its /64). `data` is `{ "retryAfterSeconds": number }` and the response has a `Retry-After` header. |
@@ -188,13 +195,13 @@ The two `409` answers tell a caller whether a username or an email already has a
 
 Public. Body: `{ "account": string, "password": string, "remember"?: boolean }`. `account` is the username or the email, without regard to case.
 
-Response: `{ "user": User, "token": string }`. The session lasts 12 hours, or 30 days with `"remember": true`.
+Response: `{ "user": User, "token": string }`. The session lasts 12 hours, or 30 days with `"remember": true`. When `user.mustChangePassword` is `true` the password was a temporary one: the next call has to be [PUT /api/auth/password](#put-apiauthpassword). The web app then shows its **Set a new password** screen (`/password`) and nothing else.
 
 | HTTP | `code` | When |
 | --- | --- | --- |
 | 400 | `auth.credentials_required` | `account` or `password` is missing or empty. |
 | 401 | `auth.invalid_credentials` | No such account, or a wrong password. The answer and the work done are the same in both cases. |
-| 403 | `auth.account_disabled` | The password is correct and the owner has disabled the account. |
+| 403 | `auth.account_disabled` | The password is correct and the administrator has disabled the account. |
 | 429 | `auth.too_many_attempts` | A rate limit, below. `data` is `{ "retryAfterSeconds": number }` and the response has a `Retry-After` header. |
 
 Limits on sign-in attempts, per 10 minutes:
@@ -213,21 +220,24 @@ Limits on sign-in attempts, per 10 minutes:
 
 ### POST /api/auth/logout
 
-Ends the session the request came with. Response `data`: `null`.
+Ends the session the request came with. Response `data`: `null`. Available while `mustChangePassword` is `true`.
 
 ### GET /api/auth/me
 
-Response: `{ "user": User }`.
+Response: `{ "user": User }`. Available while `mustChangePassword` is `true`.
 
 ### PUT /api/auth/password
 
 Body: `{ "currentPassword": string, "newPassword": string }`. Changes the caller's password and ends **every** session of the account, the one that made the request included. The caller gets a new session in its place.
+
+This is also how a temporary password is replaced: the call is available while `mustChangePassword` is `true` (`currentPassword` is then the temporary password), and a successful change sets the flag to `false`.
 
 Response: `{ "revokedSessions": number, "token": string }`. `revokedSessions` is the number of sessions that were ended. `token` is a fresh session token for the caller, valid for as long as the session it replaces had left; the token the request was sent with no longer works, so use the new one from here on. The web client swaps it in silently.
 
 | HTTP | `code` | When |
 | --- | --- | --- |
 | 400 | `auth.wrong_current_password` | `currentPassword` is missing or wrong. Deliberately not a `401`: the session is fine. |
+| 400 | `auth.same_password` | `newPassword` equals `currentPassword` ("The new password must be different from the current one"). |
 | 400 | `auth.weak_password` | `newPassword` is missing, shorter than 8 or longer than 128 characters. |
 | 429 | `auth.too_many_attempts` | The check of `currentPassword` counts as a sign-in attempt at the account, under limits (a) and (c) of [sign-in](#post-apiauthlogin). A correct `currentPassword` clears (a). |
 
@@ -610,7 +620,7 @@ Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_
 Base path `/api/admin`. Two kinds of endpoint live under it, and "admin" in the path is historical for the first kind:
 
 - **Per account.** Vendors, providers and their keys, custom models, model settings and prices, and usage. Any signed-in account may call these, and each call works on the caller's own data. Bring-your-own-key is per account: two accounts never see or use each other's providers.
-- **Owner only.** Site settings, storage, registration and the accounts of the instance. Any other account gets `403` `auth.forbidden`; a caller who is not signed in gets `401` `auth.required`.
+- **Administrator only.** Site settings, storage, registration and the accounts of the instance. Any other account gets `403` `auth.forbidden`; a caller who is not signed in gets `401` `auth.required`.
 
 | Endpoint | Who may call it | Whose data it works on |
 | --- | --- | --- |
@@ -624,15 +634,15 @@ Base path `/api/admin`. Two kinds of endpoint live under it, and "admin" in the 
 | `PUT /api/admin/models/:modelId` | Any signed-in account | The caller's override of that model (enabled, label, order, defaults, price) |
 | `GET /api/admin/usage`, `GET /api/admin/usage/records` | Any signed-in account | The caller's usage records |
 | `DELETE /api/admin/usage/records` | Any signed-in account | The caller's usage records |
-| `GET`, `PUT /api/admin/settings` | Owner only | The site |
-| `GET`, `PUT /api/admin/storage`, `POST /api/admin/storage/test` | Owner only | The site |
-| `GET`, `PUT /api/admin/site` | Owner only | The site: whether registration is open |
-| `GET /api/admin/users` | Owner only | Every account: what identifies it and two counts, never its content |
-| `PATCH /api/admin/users/:id` | Owner only | One other account: disable or enable it |
-| `DELETE /api/admin/users/:id` | Owner only | One other account and everything it owns |
-| `POST /api/admin/users/:id/reset-password` | Owner only | One other account: its password and sessions |
+| `GET`, `PUT /api/admin/settings` | Administrator only | The site |
+| `GET`, `PUT /api/admin/storage`, `POST /api/admin/storage/test` | Administrator only | The site |
+| `GET`, `PUT /api/admin/site` | Administrator only | The site: whether registration is open |
+| `GET /api/admin/users` | Administrator only | Every account: what identifies it and two counts, never its content |
+| `PATCH /api/admin/users/:id` | Administrator only | One other account: disable or enable it |
+| `DELETE /api/admin/users/:id` | Administrator only | One other account and everything it owns |
+| `POST /api/admin/users/:id/reset-password` | Administrator only | One other account: its password and sessions |
 
-The owner's own providers, models and usage are per account like anybody else's: the owner calls the first group for the owner's own data and has no endpoint that returns another account's canvases, keys or files. Any other path under `/api/admin` answers `403` to an account that is not the owner and `404` to the owner.
+The administrator's own providers, models and usage are per account like anybody else's: the administrator calls the first group for the administrator's own data and has no endpoint that returns another account's canvases, keys or files. Any other path under `/api/admin` answers `403` to an account that is not the administrator and `404` to the administrator.
 
 ### Vendors
 
@@ -794,7 +804,7 @@ Errors: `model.bad_id`, `common.nothing_to_update`, `validation.invalid`, `valid
 
 ### Site settings
 
-Owner only. One set of settings for the whole instance.
+Administrator only. One set of settings for the whole instance.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
@@ -805,7 +815,7 @@ Keys, defaults and ranges are listed in [Configuration](configuration.md#admin-s
 
 | Key | Default | Range | Meaning |
 | --- | --- | --- | --- |
-| `registrationOpen` | `true` | boolean | Whether people may create accounts themselves. The first account can always be created. Also readable and writable through [`/api/admin/site`](#registration). |
+| `registrationOpen` | `true` | boolean | Whether people may create accounts themselves; registration only ever creates `user` accounts. The `REGISTRATION_OPEN` variable gives it its first value and is ignored once the setting has been saved (see [Configuration](configuration.md#accounts)). Also readable and writable through [`/api/admin/site`](#registration). |
 | `userConcurrency` | `4` | 1–32 | Runs one account may have executing at the same time. `concurrency` (default 4) stays the total for the whole instance. |
 | `userQueueLimit` | `200` | 1–500 | Unfinished runs (queued, running, archiving) one account may have. The total for the whole instance stays 500. |
 
@@ -817,27 +827,27 @@ Errors: `auth.forbidden` (403); `settings.unknown_key` (any key that is not a se
 
 ### Registration
 
-Owner only. The same value as the `registrationOpen` setting, on its own endpoint.
+Administrator only. The same value as the `registrationOpen` setting, on its own endpoint.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/admin/site` | | `{ "registrationOpen": boolean }` |
 | PUT | `/api/admin/site` | `{ "registrationOpen": boolean }` | `{ "registrationOpen": boolean }` |
 
-With registration closed, existing accounts keep signing in and `POST /api/auth/register` answers `403` `auth.registration_closed`.
+With registration closed, existing accounts keep signing in and `POST /api/auth/register` answers `403` `auth.registration_closed`, without exception. A `PUT` here saves the setting, after which the `REGISTRATION_OPEN` variable is no longer applied.
 
 Errors: `auth.forbidden` (403); `validation.boolean` (400) when `registrationOpen` is missing or not a boolean.
 
 ### Accounts
 
-Owner only. The owner manages accounts, not what is in them: nothing here returns a canvas, a key or a file of another account.
+Administrator only. The administrator manages accounts, not what is in them: nothing here returns a canvas, a key or a file of another account.
 
 **GET /api/admin/users** returns every account, oldest first (at most 1000):
 
 ```json
 [
   {
-    "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "owner", "createdAt": "2026-10-09T02:58:01.120Z",
+    "id": "670e…b2", "username": "admin", "email": "", "role": "owner", "mustChangePassword": false, "createdAt": "2026-10-09T02:58:01.120Z",
     "disabled": false,
     "lastLoginAt": "2026-10-09T03:40:12.004Z",
     "counts": { "workflows": 33, "runs": 35 }
@@ -849,7 +859,7 @@ The fields of a [User](#the-user-object), plus:
 
 | Field | Meaning |
 | --- | --- |
-| `disabled` | `true` when the owner has disabled the account. |
+| `disabled` | `true` when the administrator has disabled the account. |
 | `lastLoginAt` | When a session was last opened for the account, or `null`. |
 | `counts.workflows` | Canvases of the account that are not deleted. |
 | `counts.runs` | Usage records of the account. |
@@ -870,24 +880,24 @@ The fields of a [User](#the-user-object), plus:
 - `removed` maps a collection name to the number of documents deleted (`workflows`, `shares`, `userassets`, `brandkits`, `providers`, `modeloverrides`, `runs`, `templates`, `texttemplates`); a collection with nothing to delete is absent.
 - `files` is the number of stored files removed: everything under the account's key prefixes (`uploads/<account id>/`, `outputs/<account id>/`, `tools/<account id>/` and their thumbnails), on every configured backend.
 - `filesRemoved` is `false` when a storage backend failed part-way. The account is gone either way; the reason is in the server log, and the files that are left have to be removed from the storage by hand.
-- Files whose key has no account segment (stored before accounts existed) are never removed this way. They belong to the owner, who cannot be deleted.
+- Files whose key has no account segment (stored before accounts existed) are never removed this way. They belong to the administrator, who cannot be deleted.
 
-**POST /api/admin/users/:id/reset-password** takes no body, sets a random password and ends every session of the account. Response: `{ "temporaryPassword": string }`, 16 characters, returned this once and not stored in readable form. Hand it to the person; they sign in with it and change it under **Settings → Account & security** (`PUT /api/auth/password`). In the web app this is **Reset password** under **Settings → Users**. No mail is sent. The owner's own forgotten password is reset on the server, with `node server/src/cli/reset-password.js <username-or-email>`.
+**POST /api/admin/users/:id/reset-password** takes no body, sets a random password and ends every session of the account. Response: `{ "temporaryPassword": string }`, 16 characters, returned this once and not stored in readable form. It also sets the account's `mustChangePassword` to `true`. Hand the password to the person; they sign in with it and are asked to choose a new password right after signing in (`PUT /api/auth/password`), before the API serves them anything else. In the web app this is **Reset password** under **Settings → Users**. No mail is sent. The administrator's own forgotten password is reset on the server, with `node server/src/cli/reset-password.js <username-or-email>`, which does the same three things.
 
 Errors of the three endpoints that take `:id`:
 
 | HTTP | `code` | When |
 | --- | --- | --- |
-| 400 | `auth.cannot_modify_self` | `:id` is the caller. The owner changes their own password with `PUT /api/auth/password` and cannot disable or delete their own account. |
-| 400 | `auth.cannot_modify_owner` | `:id` is an owner account. |
+| 400 | `auth.cannot_modify_self` | `:id` is the caller. The administrator changes their own password with `PUT /api/auth/password` and cannot disable or delete their own account. |
+| 400 | `auth.cannot_modify_owner` | `:id` is the administrator account. |
 | 400 | `auth.confirm_mismatch` | `DELETE` only: `confirm` is missing or is not the account's username. |
 | 400 | `validation.boolean` | `PATCH` only: `disabled` is missing or not a boolean. |
-| 403 | `auth.forbidden` | The caller is not the owner. |
+| 403 | `auth.forbidden` | The caller is not the administrator. |
 | 404 | `auth.user_not_found` | No account with that id. |
 
 ### Storage
 
-Owner only (`auth.forbidden`, 403, for any other account). Where files are kept, for every account: the local disk or an S3-compatible bucket. Storage is not part of `/api/admin/settings`; it has its own endpoints. What the fields mean, per-vendor values and what happens to existing files on a switch are in [Storage](storage.md).
+Administrator only (`auth.forbidden`, 403, for any other account). Where files are kept, for every account: the local disk or an S3-compatible bucket. Storage is not part of `/api/admin/settings`; it has its own endpoints. What the fields mean, per-vendor values and what happens to existing files on a switch are in [Storage](storage.md).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |

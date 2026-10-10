@@ -10,10 +10,6 @@
     <p class="sub">{{ t('auth.login.sub') }}</p>
 
     <form novalidate @submit.prevent="submit">
-      <div v-if="app.firstRun" class="lc-alert info" role="status">
-        <LcIcon name="star" />
-        <span>{{ t('auth.login.firstRun') }} <router-link to="/register">{{ t('auth.login.firstRunLink') }}</router-link></span>
-      </div>
       <div v-if="formError" class="lc-alert" role="alert">
         <LcIcon name="warn" /><span>{{ formError }}</span>
       </div>
@@ -88,7 +84,7 @@
           </div>
           <div class="lc-dialog-body">
             <p class="fg-lead">{{ t('auth.forgotDialog.lead') }}</p>
-            <div class="fg-item"><LcIcon name="users" /><div><b>{{ t('auth.forgotDialog.ownerTitle') }}</b><p>{{ t('auth.forgotDialog.ownerBody') }}</p></div></div>
+            <div class="fg-item"><LcIcon name="users" /><div><b>{{ t('auth.forgotDialog.memberTitle') }}</b><p>{{ t('auth.forgotDialog.memberBody') }}</p></div></div>
             <div class="fg-item"><LcIcon name="server" /><div><b>{{ t('auth.forgotDialog.cliTitle') }}</b><p>{{ t('auth.forgotDialog.cliBody') }} <a :href="LINKS.faq" target="_blank" rel="noopener">{{ t('auth.forgotDialog.faq') }}</a></p></div></div>
           </div>
           <div class="lc-dialog-foot">
@@ -163,6 +159,7 @@ async function submit() {
   busy.value = true
   try {
     await app.login(account.value, password.value, remember.value)
+    // 用的是临时密码的话，守卫会先把人带去「设置新密码」，原本要去的地址跟着走
     await router.replace(safeRedirect(route.query.redirect) || { name: 'home' })
   } catch (err) {
     const f = describeAuthError(err)

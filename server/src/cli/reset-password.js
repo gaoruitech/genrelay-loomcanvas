@@ -7,8 +7,11 @@
  *   node server/src/cli/reset-password.js <username-or-email>
  *
  * Gives the account a random temporary password, prints it once and signs the
- * account out everywhere. Uses the same configuration as the server
- * (server/.env or the environment); the server may keep running.
+ * account out everywhere; at the next sign-in the account has to choose its
+ * own password. This is also how the administrator gets back in (the ADMIN_*
+ * variables are only read when that account is created). Uses the same
+ * configuration as the server (server/.env or the environment); the server
+ * may keep running.
  */
 const mongoose = require('mongoose')
 
@@ -30,9 +33,9 @@ async function main() {
       return 1
     }
     const password = await accounts.resetPassword(user._id)
-    console.log(`Account:            ${user.username} <${user.email}>${user.disabled ? '  (disabled - the owner has to enable it before it can sign in)' : ''}`)
+    console.log(`Account:            ${user.username}${user.email ? ` <${user.email}>` : ''}${user.disabled ? '  (disabled - the administrator has to enable it before it can sign in)' : ''}`)
     console.log(`Temporary password: ${password}`)
-    console.log('All sessions of this account were signed out. Sign in and choose a new password under Settings > Account & security.')
+    console.log('All sessions of this account were signed out. Sign in with the temporary password: you will be asked to choose a new one before anything else.')
     return 0
   } finally {
     await mongoose.disconnect()

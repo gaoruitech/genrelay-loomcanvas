@@ -27,6 +27,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/history', name: 'history', component: () => import('@/views/History.vue'), meta: { nav: 'history' } },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue'), meta: { nav: 'settings' } },
   { path: '/setup', name: 'setup', component: () => import('@/views/Setup.vue'), meta: { shell: 'none' } },
+  // 还在用临时密码的账号唯一能待的地方；见下面的守卫
+  { path: '/password', name: 'change-password', component: () => import('@/views/ChangePassword.vue'), meta: { shell: 'none' } },
 
   {
     path: '/share/:token',
@@ -73,6 +75,14 @@ router.beforeEach((to) => {
     const moved = OLD_SETTINGS_TABS[String(to.query.tab || '')]
     if (moved) return { name: moved }
   }
+  // 还在用临时密码：除了「设置新密码」哪儿也不让去（公开页面也一样，接口那头反正只放行改密码）。
+  // 原本要去的地址带在 redirect 里，改完接着去。
+  if (app.authed && app.mustChangePassword) {
+    if (to.name === 'change-password') return true
+    const wanted = to.meta.guestOnly ? safeRedirect(to.query.redirect) : to.fullPath
+    return { name: 'change-password', query: wanted && wanted !== '/app' ? { redirect: wanted } : {} }
+  }
+  if (to.name === 'change-password' && app.authed) return safeRedirect(to.query.redirect) || { name: 'home' }
   if (to.meta.public) {
     if (app.authed && to.meta.guestOnly) return safeRedirect(to.query.redirect) || { name: 'home' }
     return true

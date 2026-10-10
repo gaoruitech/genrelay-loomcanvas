@@ -107,7 +107,8 @@ test('vendors, custom models and the provider migration', async (t) => {
     return [r.status, r.body.code]
   }
   // Everything below runs as one account; providers, models and prices are that account's own.
-  const me = await data('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })
+  await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
+  const me = await data('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })
   token = me.token
   const userId = me.user.id
   const providers = mongoose.connection.collection('providers')

@@ -14,7 +14,7 @@ loomcanvas/
 │  │  ├─ app.js             Express 装配（中间件顺序、路由、静态前端）
 │  │  ├─ config.js          读取环境变量
 │  │  ├─ constants.js
-│  │  ├─ routes/            HTTP 接口；auth.js（注册、登录、自己的账号与会话）、adminUsers.js（所有者：账号管理、注册开关）
+│  │  ├─ routes/            HTTP 接口；auth.js（注册、登录、自己的账号与会话）、adminUsers.js（管理员：账号管理、注册开关）
 │  │  ├─ models/            Mongoose 模型；User.js（账号）、Session.js（会话）
 │  │  ├─ providers/         服务商（每家一个模块加一份模型清单）
 │  │  │  ├─ index.js        注册表
@@ -24,7 +24,7 @@ loomcanvas/
 │  │  ├─ storage/           存储层：本地磁盘与 S3 兼容对象存储（index 门面、local、s3、schema、probe、keys）
 │  │  ├─ billing/           计费钩子（默认空实现）
 │  │  ├─ services/          账号、会话与数据归属（accounts.js）、设置、存储设置（storageSettings.js）、素材读取、图片工具、内置内容、结果清理、服务商数据的一次性升级（providerMigration.js）
-│  │  ├─ middleware/        auth.js（认出调用者、要求登录 requireAuth、要求所有者 requireOwner、登录与注册的限流）、语言、错误处理、安全响应头
+│  │  ├─ middleware/        auth.js（认出调用者、只要求有会话 requireSession、要求登录且已换掉临时密码 requireAuth、要求管理员 requireOwner、登录与注册的限流）、语言、错误处理、安全响应头
 │  │  ├─ cli/               reset-password.js：在服务器上重置某个账号的密码
 │  │  ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
 │  │  └─ utils/             password.js（密码哈希，scrypt）等
@@ -40,7 +40,7 @@ loomcanvas/
 │     ├─ components/workbench/ 工作台：新建画布、模板卡片
 │     ├─ components/models/ 「模型管理」页：服务商表单、自定义模型、价格
 │     ├─ components/history/ 「生成记录」页：详情弹窗、清理弹窗
-│     ├─ components/settings/ 「设置」页的各个分区：存储、运行限制、外观、账号与安全、站点、用户管理（存储、运行限制、站点、用户管理只有所有者看得到）
+│     ├─ components/settings/ 「设置」页的各个分区：存储、运行限制、外观、账号与安全、站点、用户管理（存储、运行限制、站点、用户管理只有管理员看得到）
 │     ├─ composables/       执行器、批量、历史等
 │     ├─ utils/             api.ts、canvasModels.ts 等
 │     └─ locales/           zh-CN.ts、en.ts、modules/*.ts
@@ -56,14 +56,15 @@ loomcanvas/
 
 - 所有接口前缀 `/api`。
 - 返回统一为 `{ "result": 0, "message": "...", "data": ... }`；`result` 非 0 表示失败，同时使用合适的 HTTP 状态码。失败时多一个 `code`（这条信息的稳定标识，见第 10 节「服务端文字的语言」）。
-- 账号：实例有正常的账号体系，注册（用户名、邮箱、密码）后登录使用，没有免登录的模式。只有两种角色：第一个注册的账号是站点所有者（`owner`，有且只有一个，由唯一索引保证），其余都是普通账号（`user`）。没有团队，没有共享空间。旧版本的 `ACCESS_PASSWORD` 已废弃：变量还设着的话，启动时打一条警告，此外不起任何作用。
-- 归属：每个账号只看得到、改得了自己的数据。按账号的有：画布、分享链接、资产、品牌包、运行与对话任务、用量记录、自己存的模板，以及服务商、API Key、自定义模型、模型覆盖项（启用、名称、排序、默认参数、价格）。属于站点、由所有者管理的有：是否开放注册、存储配置、并发与超时等限制、结果保留天数、站点外观（名称、Logo、默认语言）、账号列表。内置模板、内置文本模板和只读的公共素材库属于站点，所有账号都看得到。
-- 每条按账号的记录带 `userId`，值是账号 id（24 位十六进制字符串）；每个查询都带上调用者的 `userId`（`req.userId`）。按 id 访问别的账号的东西返回 404，和 id 不存在时一样，不返回 403，更不返回数据；列表不混入别人的记录。所有者没有例外：他的请求同样只落在他自己的数据上，账号列表里只给数量。详见第 11 节。
+- 账号：实例有正常的账号体系，登录后使用，没有免登录的模式。只有两种角色：管理员（界面上叫「管理员」，在接口和数据库里的值是 `owner`；有且只有一个，由唯一索引保证）和普通账号（`user`）。管理员是内置的：还没有管理员时，服务端在启动时按 `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` 自动创建，没有人靠注册成为管理员；注册（用户名、邮箱、密码）产生的一律是普通账号。没有团队，没有共享空间。旧版本的 `ACCESS_PASSWORD` 已废弃：变量还设着的话，启动时打一条警告，此外不起任何作用。
+- 归属：每个账号只看得到、改得了自己的数据。按账号的有：画布、分享链接、资产、品牌包、运行与对话任务、用量记录、自己存的模板，以及服务商、API Key、自定义模型、模型覆盖项（启用、名称、排序、默认参数、价格）。属于站点、由管理员管理的有：是否开放注册、存储配置、并发与超时等限制、结果保留天数、站点外观（名称、Logo、默认语言）、账号列表。内置模板、内置文本模板和只读的公共素材库属于站点，所有账号都看得到。
+- 每条按账号的记录带 `userId`，值是账号 id（24 位十六进制字符串）；每个查询都带上调用者的 `userId`（`req.userId`）。按 id 访问别的账号的东西返回 404，和 id 不存在时一样，不返回 403，更不返回数据；列表不混入别人的记录。管理员没有例外：他的请求同样只落在他自己的数据上，账号列表里只给数量。详见第 11 节。
 - 两件事有意跨账号：分享链接（拿到链接的 token 就能读快照，不用登录；登录的账号可以把它复制成自己的画布）和文件地址（`/files/<key>` 对拿到地址的人公开，key 猜不出来；分享页和上游模型都要读它）。
 - 会话的传递方式没变：每个请求带 `Authorization: Bearer <token>`，前端把凭证放在浏览器的本地存储里（键 `loomcanvas-token`；勾了「记住我」放 `localStorage`，没勾放 `sessionStorage`）。不用 cookie，所以没有 CSRF 的问题；要防的是 XSS，靠的是 CSP 的 `script-src 'self'`、页面里没有内联脚本（见第 10 节「安全响应头」）。凭证不再是 JWT，而是 32 字节随机数的 base64url（43 个字符），本身不含任何信息；服务端在 `sessions` 集合里只存它的 SHA-256，连同 `userId`、`expiresAt`、`lastSeenAt`、`userAgent`、`ip`。
 - 会话有效期 12 小时，登录时带 `remember: true` 则 30 天，从登录时算起，不因使用而延长；注册返回的凭证是 12 小时。过期的记录由 MongoDB 的 TTL 索引清掉，清掉之前也已经被拒绝。因为会话存在库里，退出登录、「退出其他设备」、修改密码（该账号全部会话结束，包括发起修改的这一个；调用方在响应里拿到一个新凭证，有效期是原会话剩下的时间）、重置密码（该账号全部会话结束）、停用账号（全部会话结束）、删除账号都立即生效。
-- `SECRET_KEY` 不再参与登录，改了它不会让任何人掉线；它现在只用来加密服务商的 API Key 和保存的 S3 密钥。密码用 `node:crypto` 的 scrypt（N=32768、r=8、p=1），每个账号 16 字节随机盐，参数随哈希一起存（`scrypt$N=32768,r=8,p=1$<盐>$<哈希>`），比较用恒定时间。密码和凭证不进日志。
-- 不需要登录的只有：`GET /api/bootstrap`、`POST /api/auth/register`、`POST /api/auth/login`、`GET /api/canvas-share/:token`、`GET /files/*` 和静态前端。其余接口没带有效凭证一律返回 401、`code` 为 `auth.required`（旧版本是 `auth.login_required`）；只有所有者能调用的接口对其他账号返回 403、`auth.forbidden`。
+- `SECRET_KEY` 不再参与登录，改了它不会让任何人掉线；它现在只用来加密服务商的 API Key 和保存的 S3 密钥。密码用 `node:crypto` 的 scrypt（N=32768、r=8、p=1），每个账号 16 字节随机盐，参数随哈希一起存（`scrypt$N=32768,r=8,p=1$<盐>$<哈希>`），比较用恒定时间。凭证不进日志；密码也不进，唯一的例外是没设 `ADMIN_PASSWORD` 时生成的管理员密码，它在创建管理员的那一次启动里打印一次（见第 11 节）。
+- 不需要登录的只有：`GET /api/bootstrap`、`POST /api/auth/register`、`POST /api/auth/login`、`GET /api/canvas-share/:token`、`GET /files/*` 和静态前端。其余接口没带有效凭证一律返回 401、`code` 为 `auth.required`（旧版本是 `auth.login_required`）；只有管理员能调用的接口对其他账号返回 403、`auth.forbidden`。
+- 强制改密码：账号的密码是别人知道的（启动时生成的管理员密码、管理员重置或命令行重置给出的临时密码）时，`users.mustChangePassword` 为 `true`。`middleware/auth.js` 里有两道闸：`requireSession` 只要求请求带着有效会话，`requireAuth` 在它之上再加一条「`mustChangePassword` 为 `true` 就返回 403 `auth.password_change_required`」。只有 `GET /api/auth/me`、`PUT /api/auth/password`、`POST /api/auth/logout` 用 `requireSession`（`GET /api/bootstrap` 是公开的，同样照常应答）；其余需要登录的接口全部走 `requireAuth`，所以这样的会话除了改密码什么都做不了。`PUT /api/auth/password` 成功后标记清掉。前端的对应物是 `/password` 这一屏（「设置新密码」）：路由守卫把这样的账号一律带到那里，改完再去原本要去的地址。
 - 限流（在进程内存里，单进程，重启清零）。登录按四种口径计数，时间窗都是 10 分钟：(a) 同一个账号名 + 同一个客户端地址 10 次；(b) 同一个客户端地址、所有账号名合计 30 次；(c) 同一个账号名、所有地址合计 100 次；(d) 全部登录合计 3000 次。IPv6 按 /64 网段计。账号名不必存在，计数方式一样，所以从限流看不出哪些名字存在。这个账号的「熟悉地址」不受 (c) 和 (d) 约束：最近 30 天里它从那里成功登录过（记在内存里），或者那个地址持有它的有效会话。这样设计是为了让「拿某个账号名乱猜」锁不住账号的主人：从很多地址轮流猜，攻击者被压到每 10 分钟 100 次，主人从平时用的地址照样能登录；只有从全新的地址登录时，才可能要在攻击进行期间等一等。登录成功会清掉这一对「账号名 + 地址」在 (a) 上的计数。修改密码时的当前密码校验计入 (a) 和 (c)。注册每个客户端地址每小时 20 次；修改用户名或邮箱（`PUT /api/auth/profile`）每个账号每小时 20 次。超出一律返回 429、`auth.too_many_attempts`，`data` 为 `{ retryAfterSeconds }`，并带 `Retry-After` 响应头；已登录的会话不受影响。反向代理后面要配 `TRUST_PROXY`，限流和会话列表里的 `ip` 才是真实的客户端地址。
 - 注册必然会透露用户名或邮箱是否已被占用（`auth.username_taken`、`auth.email_taken`）：系统不发邮件，没有别的回答方式。它靠注册的限流约束；修改资料也给出同样的回答，所以单独限流。在意这一点的实例应当关闭注册。登录不透露账号是否存在。
 - 请求体大小：JSON 默认 1 MB，`/api/workflow` 下 6 MB，`/api/auth` 和 `/api/canvas-share` 下 64 KB。需要登录的接口先验凭证、再解析请求体。
@@ -75,12 +76,12 @@ loomcanvas/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/bootstrap` | 公开；旧路径 `/api/app/bootstrap` 仍然应答（Docker 的 HEALTHCHECK 还在用它）。`{ auth:{registrationOpen,hasUsers}, user, site:{name,logoUrl,defaultLocale}, hasProvider, limits:{maxUploadMb}, media:{upstreamByUrl}, version }`。`auth.registrationOpen` 表示现在能不能注册（还没有任何账号时恒为 `true`，不管设置怎么写）；`auth.hasUsers` 表示是否已有账号；`user` 是调用者的 User（请求带了有效凭证时），否则 `null`，也就是没登录；早期版本的 `authRequired`、`authed` 和 `site.defaultTheme` 已经去掉（登录是必须的，界面只有一套主题）；`hasProvider` 说的是调用者自己的服务商，未登录为 `false`。`media.upstreamByUrl` 表示上游能不能按地址读到站内文件（配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里），画布据此在运行前提示「参考图只能给公网地址」的模型用不了参考图。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
-| POST | `/api/auth/register` | 公开。`{ username, email, password }` → `{ user, token }`。错误：`auth.invalid_username`、`auth.invalid_email`、`auth.weak_password`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.registration_closed`（403），`auth.too_many_attempts`（429） |
+| GET | `/api/bootstrap` | 公开；旧路径 `/api/app/bootstrap` 仍然应答（Docker 的 HEALTHCHECK 还在用它）。`{ auth:{registrationOpen}, user, site:{name,logoUrl,defaultLocale}, hasProvider, limits:{maxUploadMb}, media:{upstreamByUrl}, version }`。`auth.registrationOpen` 表示现在能不能注册，就是 `registrationOpen` 这项设置的值，`auth` 里只有这一个字段；`user` 是调用者的 User（请求带了有效凭证时），否则 `null`，也就是没登录；早期版本的 `authRequired`、`authed` 和 `site.defaultTheme` 已经去掉（登录是必须的，界面只有一套主题）；`hasProvider` 说的是调用者自己的服务商，未登录为 `false`。`media.upstreamByUrl` 表示上游能不能按地址读到站内文件（配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里），画布据此在运行前提示「参考图只能给公网地址」的模型用不了参考图。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
+| POST | `/api/auth/register` | 公开。`{ username, email, password }` → `{ user, token }`。产生的一定是普通账号（`role: 'user'`）；`registrationOpen` 关着时一律 403，没有例外。错误：`auth.invalid_username`、`auth.invalid_email`、`auth.weak_password`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.registration_closed`（403），`auth.too_many_attempts`（429） |
 | POST | `/api/auth/login` | 公开。`{ account, password, remember? }` → `{ user, token }`，`account` 是用户名或邮箱，不区分大小写。错误：`auth.credentials_required`（400，缺字段），`auth.invalid_credentials`（401；账号不存在和密码不对是同一个返回、同样的计算量），`auth.account_disabled`（403，密码正确之后才会告知），`auth.too_many_attempts`（429） |
 | POST | `/api/auth/logout` | 结束发出请求的这个会话，`data: null` |
 | GET | `/api/auth/me` | → `{ user }` |
-| PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。该账号的会话全部结束，包括发出请求的这一个；`token` 是给调用方的新凭证（有效期是被替换的会话剩下的时间），前端悄悄换上。当前密码不对返回 400 `auth.wrong_current_password`（有意不用 401），另有 `auth.weak_password`（400）、`auth.too_many_attempts`（429） |
+| PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。该账号的会话全部结束，包括发出请求的这一个；`token` 是给调用方的新凭证（有效期是被替换的会话剩下的时间），前端悄悄换上。临时密码也是用它换掉的：`mustChangePassword` 为 `true` 时可以调，成功后清掉这个标记。当前密码不对返回 400 `auth.wrong_current_password`（有意不用 401），新密码和当前密码相同返回 400 `auth.same_password`，另有 `auth.weak_password`（400）、`auth.too_many_attempts`（429） |
 | PUT | `/api/auth/profile` | `{ username?, email? }` → `{ user }`。错误：`auth.invalid_username`、`auth.invalid_email`、`common.nothing_to_update`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.too_many_attempts`（429；每个账号每小时最多 20 次，否则前两个 409 就成了不限次数的「这个邮箱注册过没有」查询） |
 | GET | `/api/auth/sessions` | → `[{ id, current, createdAt, lastSeenAt, userAgent, ip }]`，调用者还有效的会话，最近活跃的在前；`lastSeenAt` 最多每分钟刷新一次 |
 | DELETE | `/api/auth/sessions/:id` | → `{ id }`，结束自己的一个会话（可以是当前这个）。不存在或是别人的：404 `auth.session_not_found` |
@@ -88,7 +89,7 @@ loomcanvas/
 | POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height?, thumbnailUrl? }`（后三项只有图片有） |
 | POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上。只接受图片：地址指向本实例存储时也一样，存储里的视频返回 400（`file.image_only`） |
 
-User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', createdAt }`。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：所有者在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（所有者自己的密码只能走这条）；两者都给出一个临时密码，并让这个账号在所有设备上退出登录。
+User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', mustChangePassword, createdAt }`（注册、登录、`me`、改资料、bootstrap 的 `user`、管理员的账号列表给的都是它）。`email` 对管理员可能是 `''`（见第 11 节的邮箱规则）；`mustChangePassword` 为 `true` 表示还在用别人知道的密码。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：管理员在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（管理员自己的密码只能走这条）；两者都给出一个临时密码，让这个账号在所有设备上退出登录，并把 `mustChangePassword` 置为 `true`：用临时密码登录后必须先设置新密码。
 
 ## 4. 模型与运行（新接口）
 
@@ -187,7 +188,7 @@ Run：
 
 ## 5. 管理接口（模型管理、生成记录、设置）
 
-`/api/admin` 下有两类接口。路径里的 admin 是历史名字：第一类人人可用，第二类才是真正的管理。界面上，服务商、模型和价格在「模型管理」页（`/models`），用量在「生成记录」页（`/history`）和工作台，站点设置、存储、注册开关和账号管理在「设置」页（`/settings`）只有所有者看得到的分区里。
+`/api/admin` 下有两类接口。路径里的 admin 是历史名字：第一类人人可用，第二类才是真正的管理。界面上，服务商、模型和价格在「模型管理」页（`/models`），用量在「生成记录」页（`/history`）和工作台，站点设置、存储、注册开关和账号管理在「设置」页（`/settings`）只有管理员看得到的分区里。
 
 **按账号的**：登录的账号都能调用，每个查询带调用者的 `userId`，操作的是调用者自己的服务商、Key、自定义模型、覆盖项、价格和用量。自带 Key 是按账号的；别的账号的记录按 id 访问是 404。`GET /api/admin/vendors` 返回的是服务端内置的清单，不属于任何账号。
 
@@ -205,7 +206,7 @@ Run：
 | GET | `/api/admin/usage` | `?from&to&groupBy=day|model&tz` → 自己的用量汇总；`/api/admin/usage/records` 分页明细，同样接受 `from`、`to`、`tz`。只写日期（`YYYY-MM-DD`）的 `from` / `to` 表示 `tz` 时区里的那个自然日：`from` 从这一天开始，`to` 到这一天结束；完整的 ISO 时间按原样使用。`tz` 是 IANA 时区名，默认 `UTC`（不带时和以前完全一样）；不认识的时区名返回 400 `validation.invalid`（字段 `tz`） |
 | DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。也接受 `tz`。删除自己在这一刻之前创建、已结束（成功、失败、已取消）的用量记录（`2025-01-31` 表示 `tz` 时区里这一天开始之前，不带 `tz` 即 UTC 零点之前）；排队中、运行中的不动，生成的文件不删。缺 `before` 返回 400 `validation.required`，日期不对返回 400 `validation.bad_date` |
 
-**只有所有者能调用的**：路由上挂 `requireOwner`，其他账号返回 403（`auth.forbidden`），未登录返回 401（`auth.required`）。所有者管的是站点和账号，不是别人的内容：下面没有任何接口返回别的账号的画布、Key 或文件，账号列表里只有数量。
+**只有管理员能调用的**：路由上挂 `requireOwner`，其他账号返回 403（`auth.forbidden`），未登录返回 401（`auth.required`）。管理员管的是站点和账号，不是别人的内容：下面没有任何接口返回别的账号的画布、Key 或文件，账号列表里只有数量。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -216,10 +217,10 @@ Run：
 | GET/PUT | `/api/admin/site` | → `{ registrationOpen }`；`PUT` 的请求体是 `{ registrationOpen: boolean }`。和设置里的 `registrationOpen` 是同一个值（存在 `settings` 集合里），单独给一个接口 |
 | GET | `/api/admin/users` | → `[{ id, username, email, role, createdAt, disabled, lastLoginAt, counts: { workflows, runs } }]`，注册早的在前。`counts.workflows` 是没删除的画布数，`counts.runs` 是用量记录数 |
 | PATCH | `/api/admin/users/:id` | `{ disabled: boolean }` → 这个账号的那一行。停用后它的会话立即全部结束，不能登录（`auth.account_disabled`），数据保留；启用即恢复 |
-| DELETE | `/api/admin/users/:id?confirm=<用户名>` | → `{ id, removed: { <集合名>: <条数> }, files, filesRemoved }`。`confirm` 必须和账号的用户名完全一致，否则 400 `auth.confirm_mismatch`。先停掉它未完成的运行，再删它的会话、画布、分享链接、资产、品牌包、服务商和 Key、覆盖项、用量记录、自己存的模板，以及它名下的文件（按 key 前缀，见第 10 节「文件」），最后删账号；不能撤销。有账号之前写下的文件 key 里没有账号段，不会被这样删掉（它们属于所有者，而所有者不能被删） |
-| POST | `/api/admin/users/:id/reset-password` | → `{ temporaryPassword }`，16 个字符，只出现这一次；该账号的会话全部结束 |
+| DELETE | `/api/admin/users/:id?confirm=<用户名>` | → `{ id, removed: { <集合名>: <条数> }, files, filesRemoved }`。`confirm` 必须和账号的用户名完全一致，否则 400 `auth.confirm_mismatch`。先停掉它未完成的运行，再删它的会话、画布、分享链接、资产、品牌包、服务商和 Key、覆盖项、用量记录、自己存的模板，以及它名下的文件（按 key 前缀，见第 10 节「文件」），最后删账号；不能撤销。有账号之前写下的文件 key 里没有账号段，不会被这样删掉（它们属于管理员，而管理员不能被删） |
+| POST | `/api/admin/users/:id/reset-password` | → `{ temporaryPassword }`，16 个字符，只出现这一次；该账号的会话全部结束，`mustChangePassword` 置为 `true` |
 
-- 所有者不能通过这些接口停用、删除或重置自己（400 `auth.cannot_modify_self`）；所有者账号永远不是操作对象（400 `auth.cannot_modify_owner`）；id 不存在返回 404 `auth.user_not_found`。
+- 管理员不能通过这些接口停用、删除或重置自己（400 `auth.cannot_modify_self`）；管理员账号永远不是操作对象（400 `auth.cannot_modify_owner`）；id 不存在返回 404 `auth.user_not_found`。
 - 跨域允许的方法里加了 `PATCH`。
 - 两类接口的归属一览（每个 `/api/admin/*` 路由一行）见 [api.md](api.md#admin) 的表。
 
@@ -347,7 +348,7 @@ module.exports = {
 - 以上都拿不到公网地址时，参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）以 `media.needs_public_url` 报错。
 - 预签名地址只用于那一次上游请求，不进画布、分享和运行记录。上游如果在错误信息里把它带了回来，`X-Amz-*` 查询参数的值在入库和展示之前换成 `***`。
 - S3 驱动对各家的处理：`forcePathStyle` 由配置明确给出（MinIO 为 true；AWS、R2、OSS 为 false）；始终设置 `requestChecksumCalculation: 'WHEN_REQUIRED'` 和 `responseChecksumValidation: 'WHEN_REQUIRED'`；没有配置 `acl` 就不发 ACL 头；对象写入时带 `Content-Type` 和 `Cache-Control: public, max-age=31536000, immutable`。`STORAGE_DRIVER=oss` 已移除，启动时报配置错误并提示改用 `s3`。
-- S3 的 Endpoint 和公开访问地址由站点所有者填写，不经过 SSRF 防护。服务商的接口地址同样不经过，而它现在由每个账号自己填写：注册了的账号都能让服务端向内网地址发请求，不信任注册者时请关闭注册。画布里用户给出的素材地址的防护不变。
+- S3 的 Endpoint 和公开访问地址由站点管理员填写，不经过 SSRF 防护。服务商的接口地址同样不经过，而它现在由每个账号自己填写：注册了的账号都能让服务端向内网地址发请求，不信任注册者时请关闭注册。画布里用户给出的素材地址的防护不变。
 
 **画布**
 
@@ -385,10 +386,10 @@ module.exports = {
 
 **设置与用量**
 
-- 站点设置和存储只有所有者能读写（其他账号 403 `auth.forbidden`）；服务商、模型、用量是每个账号各管各的（见第 5 节）。
+- 站点设置和存储只有管理员能读写（其他账号 403 `auth.forbidden`）；服务商、模型、用量是每个账号各管各的（见第 5 节）。
 - 存储不在 `GET/PUT /api/admin/settings` 里：它有自己的三个接口（第 5 节的 `/api/admin/storage`），存在 `settings` 集合里键为 `storage` 的一条记录中，密钥加密。把 `storage` 当作设置键提交会得到 `settings.unknown_key`。
 - `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultLocale`、`registrationOpen`、`concurrency`、`userConcurrency`、`userQueueLimit`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。界面只有一套主题，早期版本的 `defaultTheme` 已经从头到尾删除：`GET` 不再返回它，`PUT` 带上它和别的不认识的键一样返回 `settings.unknown_key`，早期版本存下来的值不再使用。各项的默认值和范围、在「设置」页的哪个分区，见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
-- 随账号新增的三个键：`registrationOpen`（布尔值，默认 `true`）是否允许自行注册，第一个账号任何时候都能创建；`userConcurrency`（1 到 32，默认 4）一个账号同时执行的运行数，`concurrency` 仍是整个实例的总数；`userQueueLimit`（1 到 500，默认 200）一个账号未完成运行的上限，整个实例的总上限仍是 500。
+- 随账号新增的三个键：`registrationOpen`（布尔值，默认 `true`）是否允许自行注册（注册出来的都是普通账号）。环境变量 `REGISTRATION_OPEN` 只给它一个初始值：启动时 `index.js` 调 `settings.seed('registrationOpen', …)`，用 `$setOnInsert` 的 upsert 写入，所以只有这项设置从没保存过时才写得进去；一旦库里有了这一条（由这次播种、设置页或 `PUT /api/admin/site` 写入），存下的值为准，变量不再起作用。写进去的那一次，日志里有一行 `[auth] registration is open|closed (REGISTRATION_OPEN); ...`；`userConcurrency`（1 到 32，默认 4）一个账号同时执行的运行数，`concurrency` 仍是整个实例的总数；`userQueueLimit`（1 到 500，默认 200）一个账号未完成运行的上限，整个实例的总上限仍是 500。
 - 结果保留天数（`retentionDays`）是站点设置，对所有账号的运行生效。没有按账号的存储配额。
 - 原有的各项上限现在都按账号计：服务商 50 个、每个服务商的自定义模型 100 个、分享链接 500 个、品牌包 50 个、资产每种分类 5000 个、画布列表 200 张。
 - `GET /api/admin/usage`（调用者自己的用量）→ `{ groupBy, timezone, totals, items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`，`totals` 与 `items` 的每一项形状相同。可带 `tz`（IANA 时区名，默认 `UTC`），它同时决定按天分组时一天的起止，以及 `from` / `to` 里只写日期时指的是哪一天。网页端（「生成记录」页、清理弹窗、工作台的本月汇总和近 14 天柱状图）总是带上浏览器的时区，所以那里的「今天」是用户本地的今天。
@@ -410,25 +411,36 @@ module.exports = {
 **哪些集合带归属**
 
 - 按账号的集合，每条记录带 `userId`（账号 id 的字符串）：`workflows`、`shares`、`userassets`、`brandkits`、`providers`、`modeloverrides`、`runs`，以及 `templates`、`texttemplates` 里不是内置的那些。
-- 新增两个集合：`users`（账号：用户名、邮箱及各自的小写形式、密码哈希、`role`、`disabled`、`lastLoginAt`、`legacyAdoption`）和 `sessions`（会话：凭证的 SHA-256、`userId`、`expiresAt`、`lastSeenAt`、`userAgent`、`ip`）。
+- 新增两个集合：`users`（账号：用户名、邮箱及各自的小写形式、密码哈希、`role`、`disabled`、`lastLoginAt`、`mustChangePassword`、`legacyAdoption`）和 `sessions`（会话：凭证的 SHA-256、`userId`、`expiresAt`、`lastSeenAt`、`userAgent`、`ip`）。
 - 属于站点的：`settings`、`canvasassets`，以及内置模板和内置文本模板（`userId` 为 `system`）。
 - 按账号唯一的索引：`providers` 的 `{ userId, slug }`、`modeloverrides` 的 `{ userId, modelId }`、`templates` 的 `{ userId, key }`。
 - `services/accounts.js` 里的 `OWNED` 是按账号集合的唯一清单，「接手旧数据」和「删除账号」都照它逐个处理。新增一个按账号的集合，必须加进 `OWNED`，并且它的每个查询都要带 `userId`。
 
+**管理员是怎么来的**
+
+- 每次启动时 `index.js` 调 `accounts.prepare()`，重复执行无害。它依次：删掉原来全站唯一的三个索引（`providers.slug_1`、`modeloverrides.modelId_1`、`templates.key_1`）并建立按账号的索引；把内置模板和内置文本模板改归站点（`system`）；调 `ensureAdministrator()`；把上次做到一半的交接做完（见下一小节）。
+- `ensureAdministrator()`：库里已经有 `role: 'owner'` 的账号（不管它是怎么来的、叫什么名字）就什么都不读、什么都不改，`ADMIN_*` 被忽略，日志里也不提。没有的话，按 `config.admin`（`ADMIN_USERNAME`，默认 `admin`；`ADMIN_EMAIL`，可空；`ADMIN_PASSWORD`，可空）创建一个，并在同一步里接手有账号之前的数据。
+- 密码：设了 `ADMIN_PASSWORD`（8 到 128 个字符）就用它，`mustChangePassword` 为 `false`，日志里一行 `[auth] created the administrator account "admin" with the password from ADMIN_PASSWORD`。没设就生成一个 16 位随机密码，`mustChangePassword` 为 `true`，由 `announceGeneratedPassword()` 在启动日志里用一个框打印一次；库里只存哈希，`prepare()` 的返回值里也不带它，以后不会再出现。
+- 这三个变量的检查也在这里做，而不是在 `config.js` 里：用户名不合规则、邮箱不像邮箱、密码长度不对，都抛 `ConfigError`，服务端带着 `[config] ...` 退出（例如 `[config] ADMIN_PASSWORD must be 8 to 128 characters long. ...`）。
+- 并发安全：`users` 上有一个部分唯一索引 `{ role: 1 }`（`partialFilterExpression: { role: 'owner' }`），最多只允许一条 `owner`。几个进程同时启动时，只有一个 `User.create` 成功，其余的撞上重复键后重新查一遍，找到那个管理员就直接返回，所以只会有一个管理员、只打印一个密码。
+- 撞上重复键、而库里仍然没有管理员，说明 `ADMIN_USERNAME` 或 `ADMIN_EMAIL` 已经是某个普通账号的用户名或邮箱：抛 `ConfigError`，提示改哪一个变量，服务端拒绝启动。
+- 邮箱规则：管理员可以没有邮箱（没设 `ADMIN_EMAIL` 时 `email` 和 `emailLower` 都存成 `''`），它用用户名登录，之后可以在「设置 → 账号与安全」里补上。`emailLower` 上是普通的唯一索引，所以全库恰好只容得下一个没有邮箱的账号，也就是它。注册和修改资料始终要求一个合法的邮箱（`parseEmail`），普通账号的邮箱不可能为空，补上之后也改不回空。
+- 管理员密码丢了：`ADMIN_PASSWORD` 改了也没用，只能跑 `node server/src/cli/reset-password.js <用户名>`，它调的是和管理员「重置密码」同一个 `accounts.resetPassword()`。
+
 **有账号之前的数据怎么交接**
 
 - 旧版本的全部数据都写着常量 `userId: 'local'`。升级后不用手工做任何事。
-- 每次启动时 `accounts.prepare()` 做三件事，重复执行无害：删掉原来全站唯一的三个索引（`providers.slug_1`、`modeloverrides.modelId_1`、`templates.key_1`）并建立按账号的索引；把内置模板和内置文本模板改归站点（`system`）；如果上次交接做到一半就停了，把它做完。
-- 还没有任何账号时，旧数据原样放着，启动日志里写：`[auth] data from before accounts is waiting: the first account to register becomes the owner and takes it over`。
-- 第一个注册的账号成为所有者，并在同一步里接手全部旧数据：画布、分享链接（token 不变，照常可用）、资产、品牌包、服务商及其 Key（`SECRET_KEY` 没变就仍能解密）、自定义模型、覆盖项和价格、用量记录、自己做的模板。画布里存的文件地址照常可用。
-- 交接是幂等的：所有者的记录在创建时就带着 `legacyAdoption: 'pending'`，接手完成后改成 `'done'`；中途停掉，下次启动时 `prepare()` 看到 `pending` 就接着做完。每一步都是「把还没有归属的改成你的」，再跑一遍什么都不会变。
-- 一旦已有账号，仍然没有归属的数据不会再交给任何人。
-- 所以升级之后要马上注册：谁先注册，旧数据就归谁。实例对外开放的话，先关掉端口再升级，或者升级后立刻注册。
-- 跨升级时还没完成的运行照常续跑，用的还是原来的服务商；所有者产生之后它们归所有者。
+- 新版本第一次启动时，`ensureAdministrator()` 创建管理员，并在同一步里把全部旧数据交给它：画布、分享链接（token 不变，照常可用）、资产、品牌包、服务商及其 Key（`SECRET_KEY` 没变就仍能解密）、自定义模型、覆盖项和价格、用量记录、自己做的模板。画布里存的文件地址照常可用。日志里写（带每个集合的条数）：`[auth] the data from before accounts now belongs to "admin": {...}`。
+- 交接是幂等的：管理员的记录在创建时就带着 `legacyAdoption: 'pending'`（和账号写在同一条记录里，所以「管理员已经有了」和「旧数据还没交接」不可能被分开看到），`adoptLegacy()` 做完后改成 `'done'`；中途停掉，下次启动时 `prepare()` 看到 `pending` 就接着做完。每一步都是「把还没有归属的改成你的」，再跑一遍什么都不会变。
+- 交接完成之后才冒出来的无主数据，不会再交给任何人。
+- 库里已经有管理员的实例，管理员原样保留，不创建、不改动，`ADMIN_*` 被忽略。
+- 升级时要做的只有：第一次启动新版本之前设好 `ADMIN_PASSWORD`（或者从那次启动的日志里读出生成的密码），`SECRET_KEY` 保持不变，删掉 `ACCESS_PASSWORD`；用管理员账号登录，旧数据都在。之后注册的账号是空的，看不到旧数据。
+- 跨升级时还没完成的运行照常续跑，用的还是原来的服务商；它们归管理员。
 - 以前没设 `ACCESS_PASSWORD`、不带凭证直接调接口的集成，现在要先 `POST /api/auth/login`，再带 `Authorization: Bearer <token>`；旧的口令凭证全部作废。
 
 **隔离的边界**
 
 - 账号之间的隔离由接口在每个查询上强制，不是加固过的多租户边界：所有账号共用一个进程、一个数据库、一块存储和一个队列。能接触数据库或服务器磁盘的人当然什么都读得到；服务商 Key 仍然用 `SECRET_KEY` 加密着。
-- 注册在第一个账号之后默认是开放的。每个账号都能占用实例的存储和队列（受 `userQueueLimit` 和上传大小限制，没有存储配额），也都能添加服务商。不想让陌生人进来，就在「设置 → 站点」里或用 `PUT /api/admin/site` 关闭注册。
+- 注册默认是开放的，产生的只会是普通账号。每个账号都能占用实例的存储和队列（受 `userQueueLimit` 和上传大小限制，没有存储配额），也都能添加服务商。不想让陌生人进来，就从第一次启动起设 `REGISTRATION_OPEN=false`，或者在「设置 → 站点」里、用 `PUT /api/admin/site` 关闭注册。
+- 没设 `ADMIN_PASSWORD` 时，第一次启动的日志里有管理员的初始密码。在它被换掉之前，这份日志要当作敏感信息；换掉之后它就没有用了。
 - 没有的东西：邮箱验证、两步验证、单点登录、审计日志、按账号的存储配额和花费上限（后者用计费钩子做，它现在知道是哪个账号）。
