@@ -1,32 +1,17 @@
 <template>
-  <div v-if="list.length > 1" class="rh" @click.stop @mousedown.stop @wheel.stop>
-    <div class="rh-head">
-      <span class="rh-title">{{ t('gen.history.title') }}</span>
-      <span class="rh-hint">{{ t('gen.history.hint', { n: list.length }) }}</span>
-    </div>
-    <div class="rh-strip">
-      <button
-        v-for="(r, i) in list"
-        :key="r.id || i"
-        class="rh-item nodrag"
-        :class="{ active: i === current }"
-        :title="itemTitle(r, i)"
-        @click.stop="select(i)"
-        @mousedown.stop
-      >
-        <img v-if="kind === 'image' && firstUrl(r)" :src="canvasImageThumb(firstUrl(r), 96)" alt="" />
-        <img v-else-if="canvasVideoPoster(firstUrl(r), 96)" :src="canvasVideoPoster(firstUrl(r), 96)" alt="" />
-        <span v-else class="rh-film">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2.5" />
-            <line x1="8" y1="4" x2="8" y2="20" />
-            <line x1="16" y1="4" x2="16" y2="20" />
-          </svg>
-        </span>
-        <span class="rh-badge">{{ i === 0 ? t('gen.history.latest') : 'v' + (list.length - i) }}</span>
-        <span v-if="(r.urls || []).length > 1" class="rh-count">{{ (r.urls || []).length }}</span>
-      </button>
-    </div>
+  <div v-if="list.length > 1" class="rh nodrag nowheel" :title="t('gen.history.hint', { n: list.length })" @click.stop @mousedown.stop @wheel.stop>
+    <button
+      v-for="(r, i) in list"
+      :key="r.id || i"
+      class="rh-item"
+      :class="{ active: i === current }"
+      :title="itemTitle(r, i)"
+      @click.stop="select(i)"
+      @mousedown.stop
+    >
+      {{ t('gen.history.nthTitle', { n: list.length - i }) }}
+      <span v-if="(r.urls || []).length > 1" class="rh-count">×{{ (r.urls || []).length }}</span>
+    </button>
   </div>
 </template>
 
@@ -46,7 +31,6 @@
 import { computed } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
-import { canvasImageThumb, canvasVideoPoster } from '@/utils/canvasMedia'
 import { formatCost } from '@/utils/cost'
 import type { Cost } from '@/types'
 
@@ -113,81 +97,29 @@ function select(i: number) {
 </script>
 
 <style scoped>
-.rh { margin-top: 8px; }
-
-.rh-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 5px;
-}
-.rh-title { font-size: 11px; color: var(--t-body); }
-.rh-hint { font-size: 10px; color: var(--t-dim); }
-
-.rh-strip {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 3px;
-}
-/* 细滚动条：这条常常有七八版，默认滚动条会把条目挤矮 */
-.rh-strip::-webkit-scrollbar { height: 4px; }
-.rh-strip::-webkit-scrollbar-thumb { background: var(--n-5); border-radius: 2px; }
-
+/* 一排版本 chip：当前这一版实心蓝，其余描边；版本多了横向滚动 */
+.rh { flex: none; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.rh::-webkit-scrollbar { height: 4px; }
 .rh-item {
-  position: relative;
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 1.5px solid var(--n-5);
-  border-radius: 6px;
-  background: var(--n-3);
-  overflow: hidden;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.rh-item:hover { border-color: var(--accent-text); }
-.rh-item.active { border-color: var(--accent-text); }
-.rh-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.rh-film {
-  display: flex;
+  flex: none;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: var(--t-dim);
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  box-shadow: 0 0 0 1px var(--line-2) inset;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.rh-film svg { width: 20px; height: 20px; }
-
-/* 版本号压在左下角，盖一层渐变免得压在亮图上看不清 */
-.rh-badge {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 1px 0 2px;
-  font-size: 9px;
-  line-height: 1.2;
-  text-align: center;
-  color: #fff;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
-}
-
-/* 这一版有几张 */
-.rh-count {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.62);
-  color: #fff;
-  font-size: 9px;
-  line-height: 13px;
-  text-align: center;
-}
+.rh-item:hover { box-shadow: 0 0 0 1px var(--line-3) inset; color: var(--text); }
+.rh-item.active { background: rgba(59, 123, 255, .3); box-shadow: none; color: var(--text); }
+.rh-count { font: 500 10.5px var(--f-mono); color: var(--text-3); }
+.rh-item.active .rh-count { color: var(--text-2); }
 </style>

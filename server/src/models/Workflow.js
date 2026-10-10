@@ -1,16 +1,18 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
 const { CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
 
 const { Mixed } = mongoose.Schema.Types
 
 /** One canvas: the node graph plus its viewport and appearance settings. */
 const workflowSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  userId: { type: String, required: true, index: true },
   name: { type: String, required: true, default: 'Untitled', maxlength: 80 },
   schemaVersion: { type: Number, default: CURRENT_SCHEMA_VERSION },
+  // True while the node positions date from before schema version 2 and the editor has
+  // not yet checked them against the current node sizes (see utils/workflowSchema.js).
+  legacyLayout: { type: Boolean, default: false },
 
   nodes: { type: [Mixed], default: [] },
   edges: { type: [Mixed], default: [] },

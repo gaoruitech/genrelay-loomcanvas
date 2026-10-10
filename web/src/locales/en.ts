@@ -7,6 +7,14 @@ import dialogs from './modules/dialogs'
 import views from './modules/views'
 import settings from './modules/settings'
 import setup from './modules/setup'
+import shell from './modules/shell'
+import authMod from './modules/auth'
+import workbench from './modules/workbench'
+import modelsPage from './modules/modelsPage'
+import history from './modules/history'
+import assetsPage from './modules/assetsPage'
+import account from './modules/account'
+import queue from './modules/queue'
 
 export default {
   common: {
@@ -59,27 +67,13 @@ export default {
 
   app: {
     name: 'LoomCanvas',
-    navCanvases: 'Canvases',
-    navSettings: 'Settings',
-    themeToLight: 'Switch to light theme',
-    themeToDark: 'Switch to dark theme',
-    language: 'Language',
-    logout: 'Sign out',
     bootstrapFailed: 'Can’t reach the server',
     bootstrapHint: 'Make sure the backend is running, then try again.',
     notFound: 'Page not found',
-    backHome: 'Back to canvases',
+    backHome: 'Back to home',
+    backWorkbench: 'Back to workbench',
   },
 
-  auth: {
-    title: 'Enter the access password',
-    subtitle: 'This instance is password-protected.',
-    password: 'Access password',
-    submit: 'Continue',
-    submitting: 'Checking…',
-    wrong: 'Incorrect password',
-    required: 'Enter the password',
-  },
 
   cost: {
     unknown: 'Cost unknown',
@@ -245,4 +239,13 @@ export default {
   views: views.en,
   settings: settings.en,
   setup: setup.en,
+  shell: shell.en,
+  auth: authMod.en.auth,
+  landing: authMod.en.landing,
+  workbench: workbench.en,
+  modelsPage: modelsPage.en,
+  history: history.en,
+  assetsPage: assetsPage.en,
+  account: account.en,
+  queue: queue.en,
 }

@@ -3,6 +3,7 @@ import type {
   ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest,
   LlmTask, Vendor, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings,
   UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult,
+  User, AdminUser, AuthSession, SiteSettings, RunStatus,
 } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
 import { localizeTemplates } from '@/utils/builtinContent'
@@ -32,7 +33,9 @@ export function setUnauthorizedHandler(fn: () => void) {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // 登录接口自己的 401（账号或密码不对）不算「登录失效」
+    const url = String(error.config?.url || '')
+    if (error.response?.status === 401 && !url.startsWith('/auth/login') && !url.startsWith('/auth/register')) {
       clearToken()
       onUnauthorized?.()
     }
@@ -53,14 +56,58 @@ export function apiErrorMessage(err: any, fallback: string): string {
   return err?.response?.data?.message || err?.message || fallback
 }
 
+/** 后端的错误码（如 auth.username_taken）；不是接口返回的错误时为空串 */
+export function apiErrorCode(err: any): string {
+  return String(err?.response?.data?.code || '')
+}
+
+/** 错误响应里附带的 data（如 auth.too_many_attempts 的 retryAfterSeconds） */
+export function apiErrorData(err: any): Record<string, any> {
+  const d = err?.response?.data?.data
+  return d && typeof d === 'object' ? d : {}
+}
+
 // ====================== 基础 ======================
 
 export const appApi = {
-  bootstrap: () => api.get<ApiResponse<BootstrapInfo>>('/app/bootstrap'),
+  bootstrap: () => api.get<ApiResponse<BootstrapInfo>>('/bootstrap'),
+}
+
+/** 浏览器所在的时区（IANA 名字，如 Asia/Shanghai）；取不到就不带，后端按 UTC 算 */
+export function browserTimeZone(): string | undefined {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined } catch { return undefined }
 }
 
 export const authApi = {
-  login: (password: string) => api.post<ApiResponse<{ token: string }>>('/auth/login', { password }),
+  register: (data: { username: string; email: string; password: string }) =>
+    api.post<ApiResponse<{ user: User; token: string }>>('/auth/register', data),
+  login: (data: { account: string; password: string; remember: boolean }) =>
+    api.post<ApiResponse<{ user: User; token: string }>>('/auth/login', data),
+  logout: () => api.post<ApiResponse>('/auth/logout'),
+  me: () => api.get<ApiResponse<{ user: User }>>('/auth/me'),
+  /** 成功后这个账号的会话全部作废，返回的 token 是给当前浏览器换发的新令牌 */
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.put<ApiResponse<{ revokedSessions: number; token: string }>>('/auth/password', data),
+  updateProfile: (data: { username?: string; email?: string }) =>
+    api.put<ApiResponse<{ user: User }>>('/auth/profile', data),
+  sessions: () => api.get<ApiResponse<AuthSession[]>>('/auth/sessions'),
+  revokeSession: (id: string) => api.delete<ApiResponse>(`/auth/sessions/${encodeURIComponent(id)}`),
+  /** 退出除当前这个以外的全部会话 */
+  revokeOtherSessions: () => api.delete<ApiResponse>('/auth/sessions'),
+}
+
+/** 只有所有者能调（其他人 403 auth.forbidden） */
+export const ownerApi = {
+  users: () => api.get<ApiResponse<AdminUser[]>>('/admin/users'),
+  setUserDisabled: (id: string, disabled: boolean) =>
+    api.patch<ApiResponse<AdminUser>>(`/admin/users/${encodeURIComponent(id)}`, { disabled }),
+  /** confirm 必须是那个用户的用户名，后端核对后才删 */
+  removeUser: (id: string, confirm: string) =>
+    api.delete<ApiResponse>(`/admin/users/${encodeURIComponent(id)}`, { params: { confirm } }),
+  resetUserPassword: (id: string) =>
+    api.post<ApiResponse<{ temporaryPassword: string }>>(`/admin/users/${encodeURIComponent(id)}/reset-password`),
+  site: () => api.get<ApiResponse<SiteSettings>>('/admin/site'),
+  updateSite: (data: SiteSettings) => api.put<ApiResponse<SiteSettings>>('/admin/site', data),
 }
 
 export const filesApi = {
@@ -154,18 +201,29 @@ export const adminApi = {
   saveStorage: (data: { driver: 'local' } | { driver: 's3'; s3: StorageS3Form; force?: boolean }) =>
     api.put<ApiResponse<StorageStatus>>('/admin/storage', data),
 
-  usage: (params: { from?: string; to?: string; groupBy: 'day' | 'model' }) =>
-    api.get<ApiResponse<{ items: UsageSummaryRow[] }>>('/admin/usage', { params }),
-  usageRecords: (params: { from?: string; to?: string; page?: number; pageSize?: number }) =>
+  /**
+   * 用量的三个接口都带上浏览器的时区：from / to / before 写成 `YYYY-MM-DD` 时指的是
+   * 用户本地的那一天（不带时区的话后端按 UTC 的一天算，东八区的「今天」会少掉早上八点前的记录），
+   * 按天分组时一天的起止也按这个时区。
+   */
+  usage: (params: {
+    from?: string; to?: string; groupBy: 'day' | 'model'; tz?: string
+    kind?: ModelKind | ''; status?: RunStatus | ''; model?: string
+  }) =>
+    api.get<ApiResponse<{ items: UsageSummaryRow[]; totals?: UsageSummaryRow }>>('/admin/usage', { params: { tz: browserTimeZone(), ...params } }),
+  usageRecords: (params: {
+    from?: string; to?: string; page?: number; pageSize?: number
+    kind?: ModelKind | ''; status?: RunStatus | ''; model?: string
+  }) =>
     api.get<ApiResponse<{ list: UsageRecord[]; total: number; page: number; pageSize: number }>>(
-      '/admin/usage/records', { params }
+      '/admin/usage/records', { params: { tz: browserTimeZone(), ...params } }
     ),
   /**
-   * 清掉早于某一刻的用量记录。before 是 `YYYY-MM-DD`（那一天 UTC 零点之前）或完整的 ISO 时间。
+   * 清掉早于某一刻的用量记录。before 是 `YYYY-MM-DD`（用户本地那一天零点之前）或完整的 ISO 时间。
    * 只删已结束的（成功 / 失败 / 已取消），排队中和运行中的不动；生成的文件不删。
    */
   clearUsageRecords: (before: string) =>
-    api.delete<ApiResponse<{ deleted: number }>>('/admin/usage/records', { params: { before } }),
+    api.delete<ApiResponse<{ deleted: number }>>('/admin/usage/records', { params: { before, tz: browserTimeZone() } }),
 }
 
 // ====================== 画布 ======================
@@ -185,6 +243,8 @@ export interface WorkflowDetail extends WorkflowSummary {
   viewport: { x: number; y: number; zoom: number }
   /** 画布级设置（背景底色/图案/密度）；老画布没有这个字段 */
   settings?: Record<string, any>
+  /** 节点位置还是改版前排的、编辑器还没查过有没有重叠；查过一次后永远是 false */
+  legacyLayout?: boolean
 }
 
 export const workflowApi = {
@@ -197,7 +257,7 @@ export const workflowApi = {
   create: (data: { name: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any }) =>
     api.post<ApiResponse<WorkflowDetail>>('/workflow', data),
 
-  update: (id: string, data: { name?: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any }) =>
+  update: (id: string, data: { name?: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any; legacyLayout?: false }) =>
     api.put<ApiResponse<WorkflowDetail>>(`/workflow/${id}`, data),
 
   /**

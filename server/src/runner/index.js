@@ -4,6 +4,10 @@
  * The application's runner instance: core.js wired to MongoDB, the provider
  * registry, storage and the billing hook. Also the one place where a Run
  * document is created, so cost and validation rules live next to execution.
+ *
+ * A run belongs to the account that started it (`userId`): it is resolved
+ * against that account's provider and key, its files go under that account's
+ * key prefix, and the billing hook is told who it is for.
  */
 const Run = require('../models/Run')
 const registry = require('../providers')
@@ -17,13 +21,14 @@ const { transferOutput } = require('./transfer')
 const { estimateCost, tokenCost } = require('./pricing')
 const { ApiError } = require('../utils/http')
 const { messageOf, renderStored } = require('../i18n')
-const { LOCAL_USER } = require('../constants')
+const User = require('../models/User')
 
 let runner = null
 
 /**
- * Runs that are queued or in flight at the same time. Past this, new ones are
- * refused instead of piling up in the queue (and at the upstream).
+ * Runs that are queued or in flight at the same time, across all accounts.
+ * Past this, new ones are refused instead of piling up in the queue (and at
+ * the upstream). One account's own ceiling is the `userQueueLimit` setting.
  */
 const limits = { unfinishedRuns: 500 }
 const UNFINISHED = ['queued', 'running', 'archiving']
@@ -33,7 +38,8 @@ async function resolveRun(run) {
   let target
   try {
     // A run that was accepted keeps running even if its model was disabled meanwhile.
-    target = await registry.resolveModel(run.modelId, { requireEnabled: false })
+    // Looked up as the run's own account: the slug in the model id means nothing without it.
+    target = await registry.resolveModel(run.modelId, { userId: run.userId, requireEnabled: false })
   } catch (err) {
     throw new RunError('NO_PROVIDER', messageOf(err) || 'run.no_provider')
   }
@@ -70,13 +76,37 @@ async function resolveRun(run) {
   return { provider, cfg, request, sync: plugin.sync === true }
 }
 
+/**
+ * The billing hook with the acting account filled in: `ctx.userId` is the
+ * account's id, `ctx.username` its current name ('' when the account is gone
+ * or the run predates accounts).
+ */
+function withUser(hook) {
+  const names = new Map() // userId -> { name, at }
+  const NAME_TTL_MS = 60 * 1000
+  async function usernameOf(userId) {
+    const hit = names.get(userId)
+    if (hit && Date.now() - hit.at < NAME_TTL_MS) return hit.name
+    let name = ''
+    if (/^[0-9a-f]{24}$/i.test(String(userId))) {
+      const user = await User.findById(userId).select('username').lean().catch(() => null)
+      name = (user && user.username) || ''
+    }
+    if (names.size > 1000) names.clear()
+    names.set(userId, { name, at: Date.now() })
+    return name
+  }
+  const wrap = (fn) => async (ctx, arg) => fn({ ...ctx, username: await usernameOf(ctx.userId) }, arg)
+  return { beforeRun: wrap(hook.beforeRun), afterRun: wrap(hook.afterRun), onFailed: wrap(hook.onFailed) }
+}
+
 function getRunner() {
   if (!runner) {
     runner = new Runner({
       store: createMongoStore(),
       resolve: resolveRun,
-      transfer: (output, { signal }) => transferOutput(output, { signal, timeoutMs: settings.runnerSettings().downloadTimeoutMs }),
-      billing: loadBillingHook(getConfig().billingHook),
+      transfer: (output, { signal, userId }) => transferOutput(output, { signal, userId, timeoutMs: settings.runnerSettings().downloadTimeoutMs }),
+      billing: withUser(loadBillingHook(getConfig().billingHook)),
       settings: settings.runnerSettings,
     })
     // A raised concurrency limit takes effect without waiting for the next run.
@@ -86,11 +116,12 @@ function getRunner() {
 }
 
 /**
- * Validate against the ModelSpec, price, persist and enqueue.
- * `input` is already shape-checked by the route.
+ * Validate against the ModelSpec, price, persist and enqueue - as `user`, the
+ * account making the request. `input` is already shape-checked by the route.
  */
-async function createRun(input) {
-  const { doc, spec, model } = await registry.resolveModel(input.model)
+async function createRun(user, input) {
+  const userId = String(user._id)
+  const { doc, spec, model } = await registry.resolveModel(input.model, { userId })
   if (!spec) throw new ApiError(400, 'model.unavailable')
   // input.kind is 'chat' (LLM task endpoint) or 'media' (run endpoint).
   const wantsChat = input.kind === 'chat'
@@ -106,7 +137,12 @@ async function createRun(input) {
   if (wantsChat && (input.imageUrls || []).length && !spec.acceptsImage) {
     throw new ApiError(400, 'model.no_image_input')
   }
-  if ((await Run.countDocuments({ userId: LOCAL_USER, status: { $in: UNFINISHED } })) >= limits.unfinishedRuns) {
+  // The account's own ceiling first, then the one for the whole instance.
+  const own = settings.get('userQueueLimit')
+  if ((await Run.countDocuments({ userId, status: { $in: UNFINISHED } })) >= own) {
+    throw new ApiError(429, 'run.queue_full', { max: own })
+  }
+  if ((await Run.countDocuments({ status: { $in: UNFINISHED } })) >= limits.unfinishedRuns) {
     throw new ApiError(429, 'run.queue_full', { max: limits.unfinishedRuns })
   }
   const params = { ...spec.defaults, ...input.params }
@@ -114,7 +150,7 @@ async function createRun(input) {
   const est = estimateCost(spec, params, count)
 
   const run = await Run.create({
-    userId: LOCAL_USER,
+    userId,
     kind: spec.kind,
     modelId: spec.id,
     modelLabel: spec.label,
@@ -131,7 +167,7 @@ async function createRun(input) {
     nodeId: input.nodeId || '',
     cost: { amount: est.totalCost, currency: est.currency, unknown: est.unknown },
   })
-  getRunner().enqueue(String(run._id))
+  getRunner().enqueue(String(run._id), userId)
   return run
 }
 

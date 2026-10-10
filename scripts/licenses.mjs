@@ -66,6 +66,7 @@ const ALLOWED_LICENSES = new Set([
   'ISC',
   'MIT',
   'MIT-0',
+  'OFL-1.1', // fonts only (SIL Open Font License): files shipped unmodified, licence text emitted into the web build
   'Python-2.0',
   'Unlicense',
   'Zlib',
@@ -173,7 +174,8 @@ const STATIC_COMPONENT_ROWS = [
 
 // Font files found under web/public or web/src must be listed here (path relative to the
 // repository root, forward slashes) with their license, otherwise the check fails. Empty today:
-// the web app ships no font files.
+// the fonts the web app ships come from the `@fontsource-variable/*` npm packages (OFL-1.1, in the
+// web inventory), not from files in the repository.
 const REVIEWED_FONT_FILES = {}
 
 const FONT_EXTENSIONS = new Set(['.woff', '.woff2', '.ttf', '.otf', '.eot'])
@@ -530,10 +532,17 @@ function renderNotices(model) {
       `| libvips and the libraries built into it | npm packages ${model.libvips.map((n) => `\`${n}\``).join(', ')} (prebuilt binaries published by the sharp project) | LGPL-3.0-or-later for libvips; each binary package carries a notice file for the libraries built into it | Image processing on the server through \`sharp\`. See "Reviewed exceptions" below. |`
     )
   }
-  if (model.fonts.length === 0) {
+  if (model.fontPackages.length > 0) {
     push(
-      '| Fonts | none | n/a | No font files are in `web/public` or `web/src`, and the web app loads none from a CDN. The stylesheets name `Inter` first and fall back to fonts already installed on the viewer\'s system. |'
+      `| Fonts (npm) | npm packages ${model.fontPackages.map((p) => `\`${p.name}\` (${p.license})`).join(', ')} | SIL Open Font License 1.1; see the web table below | The web app self-hosts the Latin variable \`.woff2\` file of each family, unmodified and under its original family name (none of the three declares a Reserved Font Name). The build writes the copyright notices and the full licence text to \`licenses/fonts-OFL-1.1.txt\` next to the bundle (\`web/vite.config.ts\`), so they travel with every deployment. No font is loaded from a CDN. |`
     )
+  }
+  if (model.fonts.length === 0) {
+    if (model.fontPackages.length === 0) {
+      push(
+        '| Fonts | none | n/a | No font files are in `web/public` or `web/src`, and the web app loads none from a CDN. |'
+      )
+    }
   } else {
     for (const file of model.fonts) {
       const known = REVIEWED_FONT_FILES[file]
@@ -641,6 +650,7 @@ function main() {
       system: systemComponents(options.root),
       fonts: fontFiles(options.root),
       libvips: [...new Set(all.filter((p) => p.name.startsWith('@img/sharp-libvips-')).map((p) => p.name))].sort(),
+      fontPackages: (projects.find((p) => p.name === 'web')?.packages || []).filter((p) => p.name.startsWith('@fontsource')),
       iconPackages: (projects.find((p) => p.name === 'web')?.packages || []).filter((p) => /(^|[-/])icons?([-/]|$)/.test(p.name)),
     }
   } catch (error) {

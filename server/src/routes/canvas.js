@@ -28,16 +28,19 @@ async function fetchImage(url, what) {
   return buffer
 }
 
-async function save(buffer, mime) {
-  const saved = await getStorage().put(newKey('tools', mime), buffer, { contentType: mime })
+async function save(req, buffer, mime) {
+  const saved = await getStorage().put(newKey('tools', mime, req.userId), buffer, { contentType: mime })
   return saved.url
 }
 
 /* ------------------------------------------------------------ templates */
 
+/** Built-in entries are the site's and shown to everyone; any other entry only to the account that owns it. */
+const visibleTo = (req) => ({ $or: [{ builtin: true }, { userId: req.userId }] })
+
 /** GET /api/canvas/templates */
-router.get('/templates', wrap(async (_req, res) => {
-  const list = await Template.find({ isActive: true }).sort({ order: 1, createdAt: 1 }).limit(200).lean()
+router.get('/templates', wrap(async (req, res) => {
+  const list = await Template.find({ isActive: true, ...visibleTo(req) }).sort({ order: 1, createdAt: 1 }).limit(200).lean()
   ok(res, list.map((t) => ({
     key: t.key,
     title: t.title,
@@ -50,7 +53,7 @@ router.get('/templates', wrap(async (_req, res) => {
 /** GET /api/canvas/text-templates?lang=zh|en */
 router.get('/text-templates', wrap(async (req, res) => {
   const lang = req.query.lang === 'en' ? 'en' : 'zh'
-  const list = await TextTemplate.find({ isActive: true, lang }).sort({ category: 1, order: 1, createdAt: 1 }).limit(500).lean()
+  const list = await TextTemplate.find({ isActive: true, lang, ...visibleTo(req) }).sort({ category: 1, order: 1, createdAt: 1 }).limit(500).lean()
   ok(res, list.map((t) => ({
     id: String(t._id),
     title: t.title,
@@ -73,7 +76,7 @@ router.post('/tool/slice', wrap(async (req, res) => {
     items.push({
       key: cell.key,
       label: t(req.locale, 'tool.slice_cell', { n: cell.index }),
-      url: await save(cell.buffer, cell.mime),
+      url: await save(req, cell.buffer, cell.mime),
       width: cell.width,
       height: cell.height,
     })
@@ -94,7 +97,7 @@ router.post('/tool/collage', wrap(async (req, res) => {
   for (let i = 0; i < used.length; i++) buffers.push(await fetchImage(used[i], msg('noun.nth_image', { n: i + 1 })))
   const out = await tools.collage(buffers, { cols, rows, gap: clampInt(b.gap, 0, 80, 0), bg: b.bg, ratio: String(b.ratio || '') })
   ok(res, {
-    url: await save(out.buffer, out.mime),
+    url: await save(req, out.buffer, out.mime),
     width: out.width,
     height: out.height,
     cols,
@@ -115,7 +118,7 @@ router.post('/tool/watermark', wrap(async (req, res) => {
     opacity: clampInt(b.opacity, 10, 100, 70),
     marginPct: clampInt(b.marginPct, 0, 20, 3),
   })
-  ok(res, { url: await save(out.buffer, out.mime), width: out.width, height: out.height })
+  ok(res, { url: await save(req, out.buffer, out.mime), width: out.width, height: out.height })
 }))
 
 /** POST /api/canvas/tool/fit { imageUrl, ratio, bg, format, quality, maxKb } */
@@ -129,7 +132,7 @@ router.post('/tool/fit', wrap(async (req, res) => {
     maxKb: clampInt(b.maxKb, 0, 20480, 0),
   })
   ok(res, {
-    url: await save(out.buffer, out.mime),
+    url: await save(req, out.buffer, out.mime),
     width: out.width,
     height: out.height,
     bytes: out.buffer.length,
@@ -144,7 +147,7 @@ router.post('/platform-export', wrap(async (req, res) => {
   const out = await tools.platformExport(await fetchImage(b.imageUrl, msg('noun.source_image')), group)
   const items = []
   for (const it of out.items) {
-    items.push({ key: it.key, label: t(req.locale, `export.${it.key}`), url: await save(it.buffer, it.mime), width: it.width, height: it.height })
+    items.push({ key: it.key, label: t(req.locale, `export.${it.key}`), url: await save(req, it.buffer, it.mime), width: it.width, height: it.height })
   }
   ok(res, { group, items, whiteBg: out.whiteBg })
 }))

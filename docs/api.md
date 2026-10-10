@@ -35,7 +35,7 @@ Failure, with a matching HTTP status:
 | `result` | `0` on success. Non-zero on failure: `-1`, or the HTTP status for `401`, `404` (unknown route) and `429`. |
 | `message` | Text for the user, in the language of the request. |
 | `code` | Failure only. Stable identifier of the message (a key of `server/src/i18n/en.js`). Branch on this, not on `message`. Empty when the text has no catalog entry, for example a billing hook's own reason. |
-| `data` | The payload, or `null` on failure. |
+| `data` | The payload, or `null` on failure. Two failures carry a payload: `auth.too_many_attempts` (`{ retryAfterSeconds }`) and `storage.save_needs_test` (`{ test }`). |
 
 Two endpoints stream a file instead of JSON on success: `POST /api/workflow/download` and `POST /api/workflow/:id/download-zip`.
 
@@ -50,23 +50,45 @@ The language of `message`, of run failure reasons and of built-in names is chose
 
 ### Authentication
 
-When `ACCESS_PASSWORD` is empty, no authentication is needed and every request passes.
+Every instance has accounts, and signing in is always required. There is no mode without it; the `ACCESS_PASSWORD` variable of earlier versions is ignored.
 
-When it is set, exchange the password for a token and send it on every request:
+- An account has a username, an email address and a password. The first account ever registered is the `owner`; every later one is a `user`. There are no other roles and no teams.
+- Each account sees and changes only its own data: canvases, share links, assets, brand kits, runs, usage records, and its own providers, API keys, custom models, model settings and prices. The owner is scoped the same way and cannot read another account's data through the API.
+- The owner additionally manages the site: settings, storage, registration and the list of accounts. See [Admin](#admin).
+
+Register (the first account becomes the owner), or sign in, and send the token on every request:
 
 ```bash
-curl -X POST http://localhost:3000/api/auth/login \
+BASE=http://localhost:3000
+
+# Create an account. The answer already contains a token.
+curl -s -X POST "$BASE/api/auth/register" \
   -H 'Content-Type: application/json' \
-  -d '{"password":"your access password"}'
+  -d '{"username":"ada","email":"ada@example.com","password":"correct horse battery"}'
+
+# Sign in. "account" is the username or the email.
+curl -s -X POST "$BASE/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"account":"ada","password":"correct horse battery","remember":true}'
 ```
+
+Both answer `{ "user": { … }, "token": "…" }` in `data`.
 
 ```
 Authorization: Bearer <token>
 ```
 
-- Tokens are valid for 30 days and stop working when `ACCESS_PASSWORD` or `SECRET_KEY` changes.
-- Public without a token: `GET /api/app/bootstrap`, `POST /api/auth/login`, `GET /api/canvas-share/:token`, and `GET /files/*`.
-- Everything else answers `401` with code `auth.login_required` when the token is missing or invalid. A `401` from this API always means "not signed in"; upstream authentication failures are reported as `400`.
+- The token is an opaque string of 43 characters, not a JWT. The server keeps only its SHA-256, in the `sessions` collection. There are no cookies.
+- A session lasts 12 hours, or 30 days when the login was sent with `"remember": true`. The lifetime is fixed at sign-in; using the session does not extend it. The session that registration opens lasts 12 hours.
+- A session ends before that when: it is signed out (`POST /api/auth/logout`), it is ended from another session (`DELETE /api/auth/sessions…`), the account's password is changed (every session of the account ends; the caller gets a new token in the answer, see [PUT /api/auth/password](#put-apiauthpassword)), the owner resets the account's password or disables it (all its sessions end), or the account is deleted. Each of these takes effect at once. Changing `SECRET_KEY` does not end sessions.
+- Public without a token: `GET /api/bootstrap`, `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/canvas-share/:token`, and `GET /files/*`.
+- Everything else answers `401` with code `auth.required` when the token is missing, unknown, expired, or belongs to a disabled account. On a protected endpoint a `401` always means "not signed in"; upstream authentication failures are reported as `400`. The only other `401` is `auth.invalid_credentials` from `POST /api/auth/login`.
+- An endpoint that only the owner may call answers `403` with code `auth.forbidden` to any other account.
+- A resource of another account, addressed by its id, answers `404` with the same code as an id that does not exist (`canvas.not_found`, `run.not_found`, `provider.not_found`…). It is never a `403` and never data. Lists contain only the caller's records.
+
+Sign-in, registration and changes of username or email are rate limited; see [POST /api/auth/login](#post-apiauthlogin), [POST /api/auth/register](#post-apiauthregister) and [PUT /api/auth/profile](#put-apiauthprofile).
+
+The web client keeps the token in the browser's web storage under the key `loomcanvas-token` (`localStorage` when "Remember me" was ticked, `sessionStorage` otherwise) and sends it in the header above. Since there are no cookies, cross-site request forgery does not apply; see [Security](security.md#sessions).
 
 ### Common errors
 
@@ -75,34 +97,35 @@ Authorization: Bearer <token>
 | 400 | `validation.*` | A field is missing or has the wrong type, format or range. `message` names the field. |
 | 400 | `common.body_not_json` | The body is not valid JSON. |
 | 400 | `common.bad_request` | The request itself is malformed (bad encoding in the path, unsupported charset…). |
-| 401 | `auth.login_required` | No valid token. |
+| 401 | `auth.required` | No valid session. Earlier versions used `auth.login_required`. |
+| 403 | `auth.forbidden` | The endpoint is for the owner and the caller is another account. |
 | 404 | `common.route_not_found` | No such endpoint. |
-| 404 | `common.not_found`, `*.not_found` | No such record. |
+| 404 | `common.not_found`, `*.not_found` | No such record, or it belongs to another account. |
 | 409 | `common.duplicate` | A unique value already exists. |
 | 413 | `common.body_too_large`, `file.too_large` | Body or upload over the limit. |
-| 429 | `auth.too_many_attempts` | Login rate limit. |
-| 429 | `run.queue_full` | Too many unfinished runs. |
+| 429 | `auth.too_many_attempts` | Sign-in, registration, password-change or profile-change rate limit. `data.retryAfterSeconds` and the `Retry-After` header say how long to wait. |
+| 429 | `run.queue_full` | The account has `userQueueLimit` unfinished runs (default 200), or the instance as a whole has 500. |
 | 500 | `common.internal` | Unexpected error. Details are in the server log only. |
 
 ### CORS
 
-No cross-origin access is granted by default. Origins listed in `CORS_ORIGIN` may call `/api` with the headers `Authorization`, `Content-Type` and `X-Locale`.
+No cross-origin access is granted by default. Origins listed in `CORS_ORIGIN` may call `/api` with the methods `GET`, `POST`, `PUT`, `PATCH` and `DELETE` and the headers `Authorization`, `Content-Type` and `X-Locale`.
 
 ---
 
 ## App and login
 
-### GET /api/app/bootstrap
+### GET /api/bootstrap
 
-Public. What a client needs before anything else; also the health check.
+Public. What a client needs before anything else; also the health check. `GET /api/app/bootstrap`, the path of earlier versions, still answers the same.
 
-Response `data`:
+Response `data`, for a caller who is not signed in:
 
 ```json
 {
-  "authRequired": true,
-  "authed": false,
-  "site": { "name": "LoomCanvas", "logoUrl": "", "defaultTheme": "light", "defaultLocale": "zh-CN" },
+  "auth": { "registrationOpen": true, "hasUsers": true },
+  "user": null,
+  "site": { "name": "LoomCanvas", "logoUrl": "", "defaultLocale": "zh-CN" },
   "hasProvider": false,
   "limits": { "maxUploadMb": 50 },
   "media": { "upstreamByUrl": false },
@@ -110,19 +133,133 @@ Response `data`:
 }
 ```
 
-`hasProvider` is `true` when at least one enabled provider exists; it is always `false` for a caller who is not signed in. `limits.maxUploadMb` is the server's `MAX_UPLOAD_MB`, so a client can refuse a file that is too large before uploading it. `media.upstreamByUrl` says whether an upstream model can be given a stored file by URL: `true` with a public `PUBLIC_URL`, or when new files go to a bucket reachable from the internet; always `false` for a caller who is not signed in. The canvas uses it to warn, before a run, when a model that only takes URLs (`imageByUrlOnly` in its ModelSpec) has a reference image connected.
+| Field | Meaning |
+| --- | --- |
+| `auth.registrationOpen` | Whether `POST /api/auth/register` accepts a new account now. `true` while no account exists, whatever the `registrationOpen` setting says: the first account can always be created. |
+| `auth.hasUsers` | `false` on an instance where nobody has registered yet. The next registration creates the owner. |
+| `user` | The caller's [User](#the-user-object) when the request carries a valid token, otherwise `null`. Signing in is always required, so `null` means "not signed in". |
+| `site` | Name, logo and default language of the site. |
+| `hasProvider` | `true` when the caller's own account has at least one enabled provider. Always `false` for a caller who is not signed in. |
+| `limits.maxUploadMb` | The server's `MAX_UPLOAD_MB`, so a client can refuse a file that is too large before uploading it. |
+| `version` | The version of the server. |
+| `media.upstreamByUrl` | Whether an upstream model can be given a stored file by URL: `true` with a public `PUBLIC_URL`, or when new files go to a bucket reachable from the internet; always `false` for a caller who is not signed in. The canvas uses it to warn, before a run, when a model that only takes URLs (`imageByUrlOnly` in its ModelSpec) has a reference image connected. |
 
-### POST /api/auth/login
+Earlier versions also returned `authRequired`, `authed` and `site.defaultTheme`. They are gone: signing in is always required (use `user`), and the interface has a single theme.
 
-Public. Body: `{ "password": string }`. Response: `{ "token": string }`.
+### The User object
 
-When no password is configured, it answers `{ "token": "" }` with the message `auth.not_enabled`.
+What the API returns about an account:
+
+```json
+{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "owner", "createdAt": "2026-10-09T02:58:01.120Z" }
+```
+
+`role` is `owner` or `user`. Nothing else about an account leaves the server through this object.
+
+### POST /api/auth/register
+
+Public. Creates an account and signs it in.
+
+Body: `{ "username": string, "email": string, "password": string }`.
+
+| Field | Rules |
+| --- | --- |
+| `username` | 3 to 32 characters from `A-Z a-z 0-9 _ -`. Unique without regard to case. |
+| `email` | Must look like an address, up to 254 characters. Unique without regard to case. No mail is ever sent to it: there is no verification and no "forgot password" mail. |
+| `password` | 8 to 128 characters. |
+
+Response: `{ "user": User, "token": string }`. The session lasts 12 hours.
+
+The first account registered on an instance becomes the owner and takes over the data an earlier version without accounts left behind; see [Architecture](architecture.md#11-账号与数据归属) (Chinese). Later accounts need registration to be open (the `registrationOpen` setting, `true` by default).
 
 | HTTP | `code` | When |
 | --- | --- | --- |
-| 400 | `auth.password_required` | No password in the body. |
-| 401 | `auth.wrong_password` | Wrong password. |
-| 429 | `auth.too_many_attempts` | More than 10 attempts from one client in 10 minutes (an IPv6 client counts as its /64), or more than 300 from all clients together in 10 minutes. Once the total is reached, every login is refused until the window ends; tokens already issued keep working. The counters are in memory, per process. |
+| 400 | `auth.invalid_username` | `username` is missing or does not fit the rules. |
+| 400 | `auth.invalid_email` | `email` is missing or does not look like an address. |
+| 400 | `auth.weak_password` | `password` is missing, shorter than 8 or longer than 128 characters. |
+| 403 | `auth.registration_closed` | The owner has closed registration. |
+| 409 | `auth.username_taken` | Another account has that username. |
+| 409 | `auth.email_taken` | Another account has that email. |
+| 429 | `auth.too_many_attempts` | More than 20 registration attempts from one client in an hour (an IPv6 client counts as its /64). `data` is `{ "retryAfterSeconds": number }` and the response has a `Retry-After` header. |
+
+The two `409` answers tell a caller whether a username or an email already has an account. That cannot be avoided: no mail is ever sent, so there is nothing else to answer. It is bounded by the rate limit above; close registration if it matters.
+
+### POST /api/auth/login
+
+Public. Body: `{ "account": string, "password": string, "remember"?: boolean }`. `account` is the username or the email, without regard to case.
+
+Response: `{ "user": User, "token": string }`. The session lasts 12 hours, or 30 days with `"remember": true`.
+
+| HTTP | `code` | When |
+| --- | --- | --- |
+| 400 | `auth.credentials_required` | `account` or `password` is missing or empty. |
+| 401 | `auth.invalid_credentials` | No such account, or a wrong password. The answer and the work done are the same in both cases. |
+| 403 | `auth.account_disabled` | The password is correct and the owner has disabled the account. |
+| 429 | `auth.too_many_attempts` | A rate limit, below. `data` is `{ "retryAfterSeconds": number }` and the response has a `Retry-After` header. |
+
+Limits on sign-in attempts, per 10 minutes:
+
+| | Counted per | Limit | Notes |
+| --- | --- | --- | --- |
+| (a) | Account name and client address | 10 | Cleared by a successful sign-in of that pair. |
+| (b) | Client address, all account names | 30 | |
+| (c) | Account name, all addresses | 100 | Not applied to an address the account is known at. |
+| (d) | All sign-in attempts together | 3000 | Not applied to an address the account is known at. |
+
+- An IPv6 client counts as its /64. Behind a reverse proxy, `TRUST_PROXY` must be set for the client address to be the real one.
+- The account name is counted whether an account by that name exists or not, so the limits never tell which names exist.
+- An address is one the account is *known at* when that account signed in successfully from it in the last 30 days, or when it holds a live session of the account. From such an address the holder can still sign in while (c) or (d) is exhausted by guesses from elsewhere; wrong guesses at a name therefore do not lock its holder out. From an address the account has never used, the holder may have to wait.
+- The counters, and the memory of where an account signed in from, are in memory, per process, and are empty after a restart.
+
+### POST /api/auth/logout
+
+Ends the session the request came with. Response `data`: `null`.
+
+### GET /api/auth/me
+
+Response: `{ "user": User }`.
+
+### PUT /api/auth/password
+
+Body: `{ "currentPassword": string, "newPassword": string }`. Changes the caller's password and ends **every** session of the account, the one that made the request included. The caller gets a new session in its place.
+
+Response: `{ "revokedSessions": number, "token": string }`. `revokedSessions` is the number of sessions that were ended. `token` is a fresh session token for the caller, valid for as long as the session it replaces had left; the token the request was sent with no longer works, so use the new one from here on. The web client swaps it in silently.
+
+| HTTP | `code` | When |
+| --- | --- | --- |
+| 400 | `auth.wrong_current_password` | `currentPassword` is missing or wrong. Deliberately not a `401`: the session is fine. |
+| 400 | `auth.weak_password` | `newPassword` is missing, shorter than 8 or longer than 128 characters. |
+| 429 | `auth.too_many_attempts` | The check of `currentPassword` counts as a sign-in attempt at the account, under limits (a) and (c) of [sign-in](#post-apiauthlogin). A correct `currentPassword` clears (a). |
+
+### PUT /api/auth/profile
+
+Body: `{ "username"?: string, "email"?: string }`, with the rules of [registration](#post-apiauthregister). Response: `{ "user": User }`.
+
+Errors: `auth.invalid_username`, `auth.invalid_email`, `common.nothing_to_update` (neither field sent) (400); `auth.username_taken`, `auth.email_taken` (409); `auth.too_many_attempts` (429, with `data.retryAfterSeconds` and `Retry-After`).
+
+Limited to 20 changes per account per hour. Without a limit the `username_taken` and `email_taken` answers would let a signed-in account test any number of addresses for whether they are registered.
+
+### GET /api/auth/sessions
+
+The caller's live sessions, most recently seen first.
+
+```json
+[
+  { "id": "6712…9c", "current": true, "createdAt": "2026-10-09T02:58:01.120Z", "lastSeenAt": "2026-10-09T03:40:12.004Z", "userAgent": "Mozilla/5.0 …", "ip": "203.0.113.7" }
+]
+```
+
+`current` marks the session the request came with. `lastSeenAt` is refreshed at most once a minute. `userAgent` and `ip` are those of the request that opened the session; `ip` is the real client address only when `TRUST_PROXY` is set correctly behind a proxy.
+
+### DELETE /api/auth/sessions/:id
+
+Ends one of the caller's sessions; it may be the current one. Response: `{ "id": string }`.
+
+Errors: `auth.session_not_found` (404) for an id that does not exist or is a session of another account.
+
+### DELETE /api/auth/sessions
+
+Ends every session of the caller except the current one ("sign out other devices"). Response: `{ "revoked": number }`.
 
 ---
 
@@ -136,15 +273,17 @@ Response `data`:
 
 ```json
 {
-  "url": "/files/uploads/2026/10/3f…c1.png",
-  "key": "uploads/2026/10/3f…c1.png",
+  "url": "/files/uploads/670e…b2/2026/10/3f…c1.png",
+  "key": "uploads/670e…b2/2026/10/3f…c1.png",
   "size": 182044,
   "mime": "image/png",
   "width": 1024,
   "height": 768,
-  "thumbnailUrl": "/files/thumbs/of/uploads/2026/10/3f…c1_png.webp"
+  "thumbnailUrl": "/files/thumbs/of/uploads/670e…b2/2026/10/3f…c1_png.webp"
 }
 ```
+
+A key is `<uploads|outputs|tools>/<account id>/<yyyy>/<mm>/<32 hex characters>.<ext>`: `uploads` for uploaded and fetched files, `outputs` for results of runs, `tools` for results of tool nodes; the second segment is the id of the account the file belongs to. Files stored before accounts existed have no account segment (`uploads/2025/01/<hex>.png`); those keys and their addresses stay valid, and nothing is moved or renamed. The account segment exists so that an account's files can be removed with it. It is not an access check: `/files/<key>` is public to whoever has the address.
 
 `width`, `height` and `thumbnailUrl` are present for images only. `url` is always site-relative (`/files/<key>`), whatever `PUBLIC_URL` is and whichever storage backend holds the file: the local disk or a bucket.
 
@@ -168,7 +307,7 @@ Public. The one address of a stored file, whichever backend holds it. `HEAD` is 
 
 Files served by the app (the first two rows) carry `Cache-Control: public, max-age=31536000, immutable`, a `Content-Type` taken from the key's extension, `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. Anything that is not an image, video or audio file is sent as a download.
 
-Thumbnails under `thumbs/of/…` are generated on first request, on every backend, and stored next to their source image; when a thumbnail cannot be made the response is a `302` to the original.
+Thumbnails under `thumbs/of/…` (`thumbs/of/<uploads|outputs|tools>/<account id>/…_<ext>.webp`) are generated on first request, on every backend, and stored next to their source image; when a thumbnail cannot be made the response is a `302` to the original.
 
 | HTTP | When |
 | --- | --- |
@@ -184,7 +323,7 @@ Thumbnails under `thumbs/of/…` are generated on first request, on every backen
 
 Query: `kind` (optional) = `image` | `video` | `chat`.
 
-Response: an array of ModelSpec, for the enabled models of enabled providers.
+Response: an array of ModelSpec, for the enabled models of the caller's enabled providers.
 
 ```json
 {
@@ -206,7 +345,7 @@ Response: an array of ModelSpec, for the enabled models of enabled providers.
 }
 ```
 
-`providerType` is the vendor id (`gaorui`, `openai` or `gemini`). `custom` is `true` for a model the user added by hand and `false` for a model from the vendor's catalog. `options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional; a custom model has no `desc`. The `pricing` in the example is a placeholder: no prices are shipped, and the field is only present once the operator has entered one. `imageByUrlOnly: true` is present on models whose reference images are handed over as public URLs only. See [Writing a provider](writing-a-provider.md#modelspec-reference).
+`providerType` is the vendor id (`gaorui`, `openai` or `gemini`). `id` is `<provider slug>:<upstream model>`. Model ids are per account: a slug is unique among the providers of one account, not across the instance, so `gaorui:nano-banana-2` in one account has nothing to do with the same id in another. `custom` is `true` for a model the user added by hand and `false` for a model from the vendor's catalog. `options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional; a custom model has no `desc`. The `pricing` in the example is a placeholder: no prices are shipped, and the field is only present once the account has entered one. `imageByUrlOnly: true` is present on models whose reference images are handed over as public URLs only. See [Writing a provider](writing-a-provider.md#modelspec-reference).
 
 The list is the catalog of each provider's vendor plus that provider's custom models. It is not fetched from an upstream, and a model's `kind` is never derived from its name.
 
@@ -234,7 +373,7 @@ Starts an image or video run.
 {
   "model": "gaorui:nano-banana-2",
   "prompt": "an orange cat on a windowsill",
-  "imageUrls": ["/files/uploads/2026/10/3f…c1.png"],
+  "imageUrls": ["/files/uploads/670e…b2/2026/10/3f…c1.png"],
   "videoUrls": [],
   "params": { "aspectRatio": "1:1", "resolution": "1K" },
   "workflowId": "665f…",
@@ -244,16 +383,18 @@ Starts an image or video run.
 
 | Field | Rules |
 | --- | --- |
-| `model` | Required. A model id from `/api/models`. Must not be a chat model. |
+| `model` | Required. A model id from `/api/models`, that is, of one of the caller's own providers. Must not be a chat model. |
 | `prompt` | String, up to 20,000 characters. |
 | `imageUrls` | Up to 16 URLs, each `http(s)://…` or `/files/…` (no `data:` URIs). Cut down to what the model accepts. |
 | `videoUrls` | Up to 4 URLs; one is used, and only by models that accept video. |
 | `params` | Flat object of short strings, numbers and booleans. Merged over the model's defaults. `count` is clamped to 1–8. |
 | `workflowId`, `nodeId` | Optional, for attribution in usage records. |
 
-Response: `{ "runId": string }`. The run is queued; poll it.
+Response: `{ "runId": string }`. The run is queued; poll it. It belongs to the caller's account and is executed with that account's provider and key, also when it is resumed after a restart.
 
-Errors (400): as for estimate, plus `model.chat_only`, `validation.array`, `validation.max_items`, `validation.bad_url_in`, `validation.too_long`. `run.queue_full` (429) when 500 runs are already queued or in flight.
+Errors (400): as for estimate, plus `model.chat_only`, `validation.array`, `validation.max_items`, `validation.bad_url_in`, `validation.too_long`. `run.queue_full` (429) when the account already has `userQueueLimit` unfinished runs (queued, running or archiving; default 200), or when the instance as a whole has 500.
+
+How the queue is shared: `concurrency` is the number of runs executing at once on the whole instance, and one account holds at most `userConcurrency` of those slots. When a slot frees, it goes to the account with the fewest runs in flight; among those, to the account that was given a slot longest ago; within an account, to its oldest run. One account with a long queue does not hold the others up. All three numbers are [site settings](#site-settings).
 
 ### GET /api/runs/:id
 
@@ -265,7 +406,7 @@ Response: a Run.
   "status": "succeeded",
   "progress": 100,
   "outputs": [
-    { "type": "image", "url": "/files/outputs/2026/10/9a…7e.png", "thumbnailUrl": "/files/thumbs/of/outputs/2026/10/9a…7e_png.webp", "width": 1024, "height": 1024 }
+    { "type": "image", "url": "/files/outputs/670e…b2/2026/10/9a…7e.png", "thumbnailUrl": "/files/thumbs/of/outputs/670e…b2/2026/10/9a…7e_png.webp", "width": 1024, "height": 1024 }
   ],
   "text": "",
   "error": "",
@@ -291,13 +432,13 @@ Response: a Run.
 | `failed` | `error` has the reason in the request's language, `errorCode` its stable code (for example `run.timeout_generate`, `upstream.failed_detail`, `media.needs_public_url`, `run.interrupted`). |
 | `canceled` | Canceled by the user. |
 
-Errors: `run.not_found` (404). Chat runs are not returned here; use `/api/llm/tasks/:id`.
+Errors: `run.not_found` (404), also for a run of another account. Chat runs are not returned here; use `/api/llm/tasks/:id`.
 
 When the server stops, nothing is sent to an upstream twice. A run that already has an upstream task, or for which nothing was sent yet, goes back to `queued` and continues after the restart. A run whose request was sent but has no upstream task id (every run of a synchronous provider, every chat run) ends as `failed` with `run.interrupted`.
 
 ### POST /api/runs/status
 
-Batch polling. Body: `{ "ids": string[] }`, up to 100. Response: an array of Run in the order requested; unknown ids are simply absent.
+Batch polling. Body: `{ "ids": string[] }`, up to 100. Response: an array of Run in the order requested; unknown ids, and ids of another account's runs, are simply absent.
 
 ### POST /api/runs/:id/cancel
 
@@ -339,20 +480,21 @@ Base path `/api/workflow`. A canvas ("workflow"):
   "settings": { },
   "thumbnail": "",
   "thumbnailType": "",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "legacyLayout": false,
   "createdAt": "…",
   "updatedAt": "…"
 }
 ```
 
-The shape of `nodes[].data` and of `settings` belongs to the frontend; the server stores them as given. Limits: 500 nodes, 2000 edges, name up to 80 characters.
+`legacyLayout` is `true` while the node positions date from before `schemaVersion` 2 and the editor has not yet checked them against the current node sizes: the server sets it when it migrates such a canvas (more than one node) on read, a copy of a flagged canvas carries it, and the editor clears it after its one-time check (see below). The shape of `nodes[].data` and of `settings` belongs to the frontend; the server stores them as given. Limits: 500 nodes, 2000 edges, name up to 80 characters. Every endpoint here works on the caller's own canvases.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/workflow/list` | | Array of `{ id, name, thumbnail, thumbnailType, createdAt, updatedAt }`, newest first, at most 200. |
 | POST | `/api/workflow` | `{ name?, nodes?, edges?, viewport?, settings? }` | The new canvas. |
 | GET | `/api/workflow/:id` | | The canvas, migrated to the current `schemaVersion` if needed. |
-| PUT | `/api/workflow/:id` | Any of `name`, `nodes`, `edges`, `viewport`, `settings` | The canvas. Only the fields sent are changed; the last write wins. |
+| PUT | `/api/workflow/:id` | Any of `name`, `nodes`, `edges`, `viewport`, `settings`, `legacyLayout` | The canvas. Only the fields sent are changed; the last write wins. A save that carries nothing but `viewport` and/or `legacyLayout` leaves `updatedAt` alone: panning and zooming are not edits. `legacyLayout` can only be sent as `false` (anything else is 400 `validation.invalid`); it is ignored on `POST`. |
 | POST | `/api/workflow/:id/duplicate` | `{ name? }` | The copy. Media is shared by reference, not copied. |
 | DELETE | `/api/workflow/:id` | | `{ id }`. Soft delete. |
 | POST | `/api/workflow/download` | `{ url, filename? }` | The file as an attachment. Download proxy for media the browser cannot fetch itself. Only media comes back out. |
@@ -368,7 +510,7 @@ Base path `/api/canvas`. The tool endpoints process images on the server; they c
 
 | Method | Path | Body / query | Response |
 | --- | --- | --- | --- |
-| GET | `/api/canvas/templates` | | Array of `{ key, title, description, cover, graph: { nodes, edges, viewport } }`. |
+| GET | `/api/canvas/templates` | | Array of `{ key, title, description, cover, graph: { nodes, edges, viewport } }`: the built-in templates, which belong to the site and are shown to every account, plus the caller's own. |
 | GET | `/api/canvas/text-templates` | `?lang=zh` or `en` (default `zh`) | Array of `{ id, title, content, category, lang }`. |
 | POST | `/api/canvas/tool/slice` | `{ imageUrl, cols, rows }` (1–6 each, default 3) | `{ cols, rows, items: [{ key, label, url, width, height }] }` |
 | POST | `/api/canvas/tool/collage` | `{ imageUrls[], cols, rows, gap, bg, ratio }` (2–64 images; cols, rows 1–4; gap 0–80) | `{ url, width, height, cols, rows, used, skipped }` |
@@ -395,7 +537,7 @@ Base path `/api/brand-kits`. A kit:
 | PUT | `/api/brand-kits/:id` | Any of the fields above | The kit. |
 | DELETE | `/api/brand-kits/:id` | | `{ id }`. Soft delete. |
 
-Limits: 50 kits; `name` 40 characters; `promptPrefix` 1000; `negativePrompt` 500; 5 reference images (URLs only). Setting `isDefault` clears it on the others.
+Limits: 50 kits per account; `name` 40 characters; `promptPrefix` 1000; `negativePrompt` 500; 5 reference images (URLs only). Setting `isDefault` clears it on the others.
 
 Errors: `brandKit.name_required`, `brandKit.max`, `brandKit.ref_images_max` (400); `brandKit.not_found` (404).
 
@@ -405,7 +547,7 @@ Errors: `brandKit.name_required`, `brandKit.max`, `brandKit.ref_images_max` (400
 
 ### User assets — /api/user-asset
 
-The user's own library. `kind` is one of `product`, `brand`, `reference`, `output`.
+The caller's own library. `kind` is one of `product`, `brand`, `reference`, `output`.
 
 | Method | Path | Body / query | Response |
 | --- | --- | --- | --- |
@@ -416,13 +558,13 @@ The user's own library. `kind` is one of `product`, `brand`, `reference`, `outpu
 | PUT | `/api/user-asset/:id` | Any of `name`, `folder`, `tags`, `kind` | The asset. |
 | DELETE | `/api/user-asset/:id` | | `{ id }`. Soft delete; the file is kept. |
 
-`nodeType` is `IMAGE` (default) or `VIDEO`. Up to 5000 assets per kind.
+`nodeType` is `IMAGE` (default) or `VIDEO`. Up to 5000 assets per kind, per account.
 
 Errors: `asset.media_url_required`, `asset.bad_thumbnail`, `asset.kind_full`, `asset.folder_required` (400); `asset.not_found` (404).
 
 ### Stock assets — /api/canvas-asset
 
-A read-only library an operator may import into the database. Empty on a new install; there is no endpoint to add to it.
+A read-only library an operator may import into the database. It belongs to the site: every account sees the same one. Empty on a new install; there is no endpoint to add to it.
 
 | Method | Path | Query | Response |
 | --- | --- | --- | --- |
@@ -433,15 +575,15 @@ A read-only library an operator may import into the database. Empty on a new ins
 
 ## Share links
 
-Base path `/api/canvas-share`. Only reading a link by its token is public.
+Base path `/api/canvas-share`. Only reading a link by its token is public. Share links are the one thing meant to cross accounts: whoever has the token can read the snapshot without signing in, and a signed-in account can copy it into its own canvases. Everything else here works on the caller's own links.
 
 | Method | Path | Auth | Body | Response |
 | --- | --- | --- | --- | --- |
 | POST | `/api/canvas-share/publish` | yes | `{ workflowId, title?, description?, expiresInDays? \| expiresAt? }` | `{ id, token, updated, expiresAt }` |
-| GET | `/api/canvas-share/mine` | yes | | `{ list }`: every link, including expired and revoked ones. |
-| GET | `/api/canvas-share/plaza` | yes | `?page&pageSize&sort=hot` | `{ list, total, page, pageSize }`: the owner's active links. |
+| GET | `/api/canvas-share/mine` | yes | | `{ list }`: every link of the caller, including expired and revoked ones. |
+| GET | `/api/canvas-share/plaza` | yes | `?page&pageSize&sort=hot` | `{ list, total, page, pageSize }`: the caller's active links. |
 | GET | `/api/canvas-share/:token` | **public** | | The snapshot: summary fields plus `description`, `nodes`, `edges`, `viewport`, `settings`. Found by the link token only. |
-| POST | `/api/canvas-share/:token/copy` | yes | `{ name? }` | `{ workflowId, isOwn }`: a new canvas made from the snapshot. |
+| POST | `/api/canvas-share/:token/copy` | yes | `{ name? }` | `{ workflowId, isOwn }`: a new canvas made from the snapshot, in the caller's account. |
 | PUT | `/api/canvas-share/:id` | yes | `{ title?, description?, expiresInDays? \| expiresAt?, revoked? }` | The link summary. |
 | POST | `/api/canvas-share/:id/revoke` | yes | | The link summary. |
 | DELETE | `/api/canvas-share/:id` | yes | | `{ id, revoked, removed }` |
@@ -452,21 +594,49 @@ Behaviour:
 - **Expiry**: `expiresInDays` from 0 to 3650, where `0` means never; or `expiresAt` as a future date, `null` for never. Without either, a new link never expires and an existing link keeps its expiry (an expiry already in the past is cleared).
 - **Reading** a token that does not exist, has expired or was revoked always answers `404` with `share.gone`, so a caller cannot tell which. Each public read increments the view count.
 - **Delete** revokes on the first call and removes the link from `mine` on the second. A revoked token is never reused.
-- `:id` in the owner endpoints is the database id from `publish` or `mine`. The public read and `copy` accept only the link token: a database id in its place answers `404`, signed in or not.
+- **Copying** needs a session, and the copy belongs to the account that made it. The snapshot keeps the model ids of the account that published it; in the copy they are looked up among the copier's own providers, and a model is simply not available when the copier has no provider with that slug.
+- `:id` in `PUT`, `revoke` and `DELETE` is the database id from `publish` or `mine`; a link of another account answers `404` (`share.not_found`). The public read and `copy` accept only the link token: a database id in its place answers `404`, signed in or not.
+- **Model names.** A viewer has none of the publisher's providers, so each node that names a model also carries `data.modelLabel`: the display name the publisher sees, written by the server when the link is published (a value sent by the client is replaced). A snapshot published before this is given the names when it is read, from the publisher's current models. A model the publisher no longer has gets no `modelLabel`; the share page then shows a neutral "Model not listed" and never the model id. A copy does not keep `modelLabel`.
+- **Layout.** A snapshot records which node sizes its positions were made for (`layoutVersion`, not returned). A copy of a snapshot from before the redesign, or of a canvas still waiting for its layout check, is created with `legacyLayout: true`.
 - **What a snapshot leaves out.** Run-time state, run ids, failure details and costs are removed from every node when the link is published, again on every public read, and from copies: `status`, `progress`, `validationError`, `validationStamp`, `errorMsg`, `taskId`, `taskIds`, `runId`, `runPending`, `generatedCount`, `cost`, `estimatedCost`, and `cost` / `taskId` / `runId` inside each entry of `results[]`. Prompts and model ids (with the provider's slug prefix) stay.
 - Run-time state (status, progress, task and run ids, error text) and costs are stripped from the nodes in a snapshot, and again when a snapshot is read publicly.
 
-Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_canvas`, `share.max`, `share.title_required`, `share.expires_in_past`, `validation.range`, `validation.bad_date` (400).
+Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_canvas`, `share.max` (500 links per account), `share.title_required`, `share.expires_in_past`, `validation.range`, `validation.bad_date` (400).
 
 ---
 
 ## Admin
 
-Base path `/api/admin`. These back the Settings page. There is no separate admin role: anyone who is signed in can call them. When `ACCESS_PASSWORD` is empty, anyone who can reach the instance can.
+Base path `/api/admin`. Two kinds of endpoint live under it, and "admin" in the path is historical for the first kind:
+
+- **Per account.** Vendors, providers and their keys, custom models, model settings and prices, and usage. Any signed-in account may call these, and each call works on the caller's own data. Bring-your-own-key is per account: two accounts never see or use each other's providers.
+- **Owner only.** Site settings, storage, registration and the accounts of the instance. Any other account gets `403` `auth.forbidden`; a caller who is not signed in gets `401` `auth.required`.
+
+| Endpoint | Who may call it | Whose data it works on |
+| --- | --- | --- |
+| `GET /api/admin/vendors` | Any signed-in account | Nobody's: the vendors and catalogs built into the server, the same for every account |
+| `GET`, `POST /api/admin/providers` | Any signed-in account | The caller's providers and keys |
+| `PUT`, `DELETE /api/admin/providers/:id` | Any signed-in account | The caller's providers and keys |
+| `POST /api/admin/providers/:id/test` | Any signed-in account | The caller's provider |
+| `POST /api/admin/providers/:id/models` | Any signed-in account | The caller's custom models |
+| `PUT`, `DELETE /api/admin/providers/:id/models/:model` | Any signed-in account | The caller's custom models |
+| `GET /api/admin/models` | Any signed-in account | The caller's models and their overrides |
+| `PUT /api/admin/models/:modelId` | Any signed-in account | The caller's override of that model (enabled, label, order, defaults, price) |
+| `GET /api/admin/usage`, `GET /api/admin/usage/records` | Any signed-in account | The caller's usage records |
+| `DELETE /api/admin/usage/records` | Any signed-in account | The caller's usage records |
+| `GET`, `PUT /api/admin/settings` | Owner only | The site |
+| `GET`, `PUT /api/admin/storage`, `POST /api/admin/storage/test` | Owner only | The site |
+| `GET`, `PUT /api/admin/site` | Owner only | The site: whether registration is open |
+| `GET /api/admin/users` | Owner only | Every account: what identifies it and two counts, never its content |
+| `PATCH /api/admin/users/:id` | Owner only | One other account: disable or enable it |
+| `DELETE /api/admin/users/:id` | Owner only | One other account and everything it owns |
+| `POST /api/admin/users/:id/reset-password` | Owner only | One other account: its password and sessions |
+
+The owner's own providers, models and usage are per account like anybody else's: the owner calls the first group for the owner's own data and has no endpoint that returns another account's canvases, keys or files. Any other path under `/api/admin` answers `403` to an account that is not the owner and `404` to the owner.
 
 ### Vendors
 
-`GET /api/admin/vendors` returns every vendor a provider can be created for, in display order, with the models it supports. Names and descriptions are in the language of the request. This replaces `GET /api/admin/provider-types` of the previous version, which now answers 404.
+`GET /api/admin/vendors` returns every vendor a provider can be created for, in display order, with the models it supports. Names and descriptions are in the language of the request. This replaces `GET /api/admin/provider-types` of the previous version, which no longer exists.
 
 ```json
 [
@@ -521,7 +691,7 @@ Base path `/api/admin`. These back the Settings page. There is no separate admin
 
 ### Providers
 
-A provider is a vendor plus a key. As returned (the key itself is never returned):
+A provider is a vendor plus a key, and belongs to the account that added it. As returned (the key itself is never returned):
 
 ```json
 {
@@ -547,6 +717,7 @@ A provider is a vendor plus a key. As returned (the key itself is never returned
 
 ```bash
 curl -X POST http://localhost:3000/api/admin/providers \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"type":"openai","apiKey":"sk-…"}'
 ```
@@ -554,7 +725,8 @@ curl -X POST http://localhost:3000/api/admin/providers \
 - `type` is the vendor id and `apiKey` is required. `name` defaults to the vendor's name. Omit `baseUrl` to use the official address.
 - The vendor is fixed at creation. A `PUT` with a different `type` is refused with `provider.vendor_fixed`; the same `type` is accepted and ignored.
 - On update, omit `apiKey` or send `""` to keep the stored key; send `"clearKey": true` to remove it. `"baseUrl": ""` goes back to the official address.
-- `slug` is set at creation (from `slug` in the body, otherwise from the vendor id) and cannot be changed.
+- `slug` is set at creation (from `slug` in the body, otherwise from the vendor id) and cannot be changed. It is unique among the caller's providers: a second provider of the same vendor gets `gaorui-2`, and so on. Another account's slugs do not matter.
+- An account can have up to 50 providers (`provider.max`).
 - The test endpoint calls the upstream's model-list endpoint to prove the address and the key; it no longer returns a model count. It answers HTTP 200 with `ok: false` and a reason when the upstream cannot be reached. A failed test is an answer, not an error.
 
 Errors: `provider.type_unsupported`, `provider.max`, `provider.api_key_required`, `provider.vendor_fixed`, `provider.type_gone`, `provider.base_url_scheme`, `provider.base_url_credentials`, `validation.bad_url`, `validation.bad_format`, `common.name_required` (400); `provider.not_found` (404); `provider.slug_exhausted` (409).
@@ -571,10 +743,12 @@ Models outside the vendor's catalog, per provider. Each call returns the provide
 
 ```bash
 curl -X POST http://localhost:3000/api/admin/providers/665f…/models \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"model":"some-chat-model","kind":"chat","label":"My chat model"}'
 
 curl -X PUT 'http://localhost:3000/api/admin/providers/665f…/models/org%2Fmodel%3Atag' \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"label":"Renamed"}'
 ```
@@ -601,10 +775,10 @@ curl -X PUT 'http://localhost:3000/api/admin/providers/665f…/models/org%2Fmode
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `/api/admin/models` | | Every model, including disabled ones and custom ones: ModelSpec (with `custom`) plus `enabled`, `providerEnabled`, `sort` and `override` (`{ enabled, label, sort, defaults, pricing }` or `null`). |
+| GET | `/api/admin/models` | | Every model of the caller's providers, including disabled ones and custom ones: ModelSpec (with `custom`) plus `enabled`, `providerEnabled`, `sort` and `override` (`{ enabled, label, sort, defaults, pricing }` or `null`). |
 | PUT | `/api/admin/models/:modelId` | `{ enabled?, label?, sort?, defaults?, pricing? }` | The merged ModelSpec. |
 
-- `:modelId` contains a colon and possibly slashes: URL-encode it (`gaorui%3Anano-banana-2`).
+- `:modelId` contains a colon and possibly slashes: URL-encode it (`gaorui%3Anano-banana-2`). It is looked up among the caller's providers, and the override is stored for the caller's account only.
 - Sending `null` for a field removes that part of the override. `"pricing": null` removes your price; the built-in catalogs declare none, so the model shows "Cost unknown" again.
 - `pricing` is `{ currency, unit, by?, price?, table? }`:
 
@@ -620,16 +794,100 @@ Errors: `model.bad_id`, `common.nothing_to_update`, `validation.invalid`, `valid
 
 ### Site settings
 
+Owner only. One set of settings for the whole instance.
+
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/admin/settings` | | A flat object with every setting. |
 | PUT | `/api/admin/settings` | Any subset of the keys | The full object after the update. |
 
-Keys, defaults and ranges are listed in [Configuration](configuration.md#admin-settings). Errors (400): `settings.unknown_key` (any key that is not a setting, including names such as `constructor` or `__proto__`), `validation.int_range`, `validation.one_of`, `validation.string`, `settings.logo_url`.
+Keys, defaults and ranges are listed in [Configuration](configuration.md#admin-settings). The keys that came with accounts:
+
+| Key | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `registrationOpen` | `true` | boolean | Whether people may create accounts themselves. The first account can always be created. Also readable and writable through [`/api/admin/site`](#registration). |
+| `userConcurrency` | `4` | 1–32 | Runs one account may have executing at the same time. `concurrency` (default 4) stays the total for the whole instance. |
+| `userQueueLimit` | `200` | 1–500 | Unfinished runs (queued, running, archiving) one account may have. The total for the whole instance stays 500. |
+
+The other limits, the timeouts and `retentionDays` are site settings too and apply to every account's runs. There is no per-account storage quota.
+
+The full set of keys is `siteName`, `logoUrl`, `defaultLocale`, `registrationOpen`, `concurrency`, `userConcurrency`, `userQueueLimit`, `maxRetries`, `imageTimeoutMinutes`, `videoTimeoutMinutes`, `chatTimeoutSec`, `submitTimeoutSec`, `downloadTimeoutSec` and `retentionDays`. `defaultTheme` of earlier versions is not among them any more: the interface has a single theme. `GET` does not return it, `PUT` refuses it with `settings.unknown_key` like any other unknown key, and a value stored by an earlier version is ignored.
+
+Errors: `auth.forbidden` (403); `settings.unknown_key` (any key that is not a setting, including names such as `constructor` or `__proto__`), `validation.int_range`, `validation.one_of`, `validation.string`, `validation.boolean`, `settings.logo_url` (400).
+
+### Registration
+
+Owner only. The same value as the `registrationOpen` setting, on its own endpoint.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| GET | `/api/admin/site` | | `{ "registrationOpen": boolean }` |
+| PUT | `/api/admin/site` | `{ "registrationOpen": boolean }` | `{ "registrationOpen": boolean }` |
+
+With registration closed, existing accounts keep signing in and `POST /api/auth/register` answers `403` `auth.registration_closed`.
+
+Errors: `auth.forbidden` (403); `validation.boolean` (400) when `registrationOpen` is missing or not a boolean.
+
+### Accounts
+
+Owner only. The owner manages accounts, not what is in them: nothing here returns a canvas, a key or a file of another account.
+
+**GET /api/admin/users** returns every account, oldest first (at most 1000):
+
+```json
+[
+  {
+    "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "owner", "createdAt": "2026-10-09T02:58:01.120Z",
+    "disabled": false,
+    "lastLoginAt": "2026-10-09T03:40:12.004Z",
+    "counts": { "workflows": 33, "runs": 35 }
+  }
+]
+```
+
+The fields of a [User](#the-user-object), plus:
+
+| Field | Meaning |
+| --- | --- |
+| `disabled` | `true` when the owner has disabled the account. |
+| `lastLoginAt` | When a session was last opened for the account, or `null`. |
+| `counts.workflows` | Canvases of the account that are not deleted. |
+| `counts.runs` | Usage records of the account. |
+
+**PATCH /api/admin/users/:id** takes `{ "disabled": boolean }` and returns that account's row, in the shape above. Disabling ends every session of the account at once; it cannot sign in (`auth.account_disabled`) and its token answers `401`. Its data is kept. `"disabled": false` restores access.
+
+**DELETE /api/admin/users/:id?confirm=&lt;username&gt;** removes the account. `confirm` must equal the account's username exactly. It stops the account's unfinished runs and deletes its sessions, canvases, share links, assets, brand kits, providers and keys, model overrides, usage records, templates and stored files, then the account itself. This cannot be undone.
+
+```json
+{
+  "id": "6711…4d",
+  "removed": { "workflows": 12, "shares": 2, "userassets": 7, "providers": 1, "modeloverrides": 4, "runs": 40 },
+  "files": 96,
+  "filesRemoved": true
+}
+```
+
+- `removed` maps a collection name to the number of documents deleted (`workflows`, `shares`, `userassets`, `brandkits`, `providers`, `modeloverrides`, `runs`, `templates`, `texttemplates`); a collection with nothing to delete is absent.
+- `files` is the number of stored files removed: everything under the account's key prefixes (`uploads/<account id>/`, `outputs/<account id>/`, `tools/<account id>/` and their thumbnails), on every configured backend.
+- `filesRemoved` is `false` when a storage backend failed part-way. The account is gone either way; the reason is in the server log, and the files that are left have to be removed from the storage by hand.
+- Files whose key has no account segment (stored before accounts existed) are never removed this way. They belong to the owner, who cannot be deleted.
+
+**POST /api/admin/users/:id/reset-password** takes no body, sets a random password and ends every session of the account. Response: `{ "temporaryPassword": string }`, 16 characters, returned this once and not stored in readable form. Hand it to the person; they sign in with it and change it under **Settings → Account & security** (`PUT /api/auth/password`). In the web app this is **Reset password** under **Settings → Users**. No mail is sent. The owner's own forgotten password is reset on the server, with `node server/src/cli/reset-password.js <username-or-email>`.
+
+Errors of the three endpoints that take `:id`:
+
+| HTTP | `code` | When |
+| --- | --- | --- |
+| 400 | `auth.cannot_modify_self` | `:id` is the caller. The owner changes their own password with `PUT /api/auth/password` and cannot disable or delete their own account. |
+| 400 | `auth.cannot_modify_owner` | `:id` is an owner account. |
+| 400 | `auth.confirm_mismatch` | `DELETE` only: `confirm` is missing or is not the account's username. |
+| 400 | `validation.boolean` | `PATCH` only: `disabled` is missing or not a boolean. |
+| 403 | `auth.forbidden` | The caller is not the owner. |
+| 404 | `auth.user_not_found` | No account with that id. |
 
 ### Storage
 
-Where files are kept: the local disk or an S3-compatible bucket. Storage is not part of `/api/admin/settings`; it has its own endpoints. What the fields mean, per-vendor values and what happens to existing files on a switch are in [Storage](storage.md).
+Owner only (`auth.forbidden`, 403, for any other account). Where files are kept, for every account: the local disk or an S3-compatible bucket. Storage is not part of `/api/admin/settings`; it has its own endpoints. What the fields mean, per-vendor values and what happens to existing files on a switch are in [Storage](storage.md).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
@@ -726,16 +984,21 @@ Errors (400): `storage.save_needs_test`, `storage.endpoint_has_path`, `storage.e
 
 ### Usage
 
-Common query parameters for both endpoints:
+Per account: the totals and the records are those of the caller's own runs. There is no endpoint that reports usage across accounts.
+
+In the web app this is the **History** page and the usage card of the **Workbench**.
+
+Common query parameters for both `GET` endpoints:
 
 | Parameter | Meaning |
 | --- | --- |
-| `from`, `to` | Date range on the run's creation time. ISO dates or millisecond timestamps. A bare `to` date (`2026-10-31`) includes that whole day. |
+| `from`, `to` | Date range on the run's creation time. A bare date (`2026-10-31`) is that calendar day in `tz`: `from` starts at the beginning of the day, `to` runs through the end of it. A full ISO instant or a millisecond timestamp is taken as it is. |
+| `tz` | An IANA time zone name such as `Asia/Shanghai`. Default `UTC`. Decides what day a bare date in `from` and `to` means and, with `groupBy=day`, where one day ends and the next begins. Without it everything is in UTC days, as in earlier versions. |
 | `kind` | `image`, `video` or `chat` |
 | `status` | A run status |
 | `model` | A model id |
 
-**GET /api/admin/usage** — additional parameters: `groupBy` = `day` (default) or `model`; `tz` = an IANA time zone for day boundaries (default `UTC`).
+**GET /api/admin/usage** — additional parameter: `groupBy` = `day` (default) or `model`. `timezone` in the answer is the zone that was used.
 
 ```json
 {
@@ -770,29 +1033,38 @@ Common query parameters for both endpoints:
 }
 ```
 
-`prompt` is cut to 200 characters. Errors (400): `validation.bad_date`, `validation.from_before_to`, `validation.invalid`, `validation.bad_timezone`.
+`prompt` is cut to 200 characters. Errors of both endpoints (400): `validation.bad_date`, `validation.from_before_to`, `validation.invalid` (for `kind`, `status`, `model`, and for a `tz` that is not a known zone name).
 
-**DELETE /api/admin/usage/records?before=&lt;date&gt;** — deletes the usage records created before that moment. A bare date (`2026-01-31`) means before the start of that day, UTC. Only finished records (succeeded, failed, canceled) are deleted; queued and running ones are kept, and so are the generated files. This cannot be undone, and the totals for that period go with the records.
+**DELETE /api/admin/usage/records?before=&lt;date&gt;[&amp;tz=&lt;zone&gt;]** — deletes the caller's usage records created before that moment. A bare date (`2026-01-31`) means before the start of that day in `tz` (UTC without `tz`); a full instant is taken as it is. Only finished records (succeeded, failed, canceled) are deleted; queued and running ones are kept, and so are the generated files. This cannot be undone, and the totals for that period go with the records.
 
-Response: `{ "deleted": number }`. Errors (400): `validation.required`, `validation.bad_date`.
+Response: `{ "deleted": number }`. Errors (400): `validation.required`, `validation.bad_date`, `validation.invalid` (`tz`).
+
+The web app always sends the browser's time zone as `tz`: on the History page, in its clean-up dialog and for the month totals and the 14-day bars of the workbench. "Today" there is the user's local day.
 
 ---
 
 ## A minimal client
 
-Generate one image from the command line, on an instance without a password:
+Generate one image from the command line. The account needs a provider with a key of its own first, added on the **Models** page or with `POST /api/admin/providers`.
 
 ```bash
 BASE=http://localhost:3000
 
+# 0. Sign in and keep the token (data.token in the answer)
+curl -s -X POST "$BASE/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"account":"ada","password":"correct horse battery"}'
+TOKEN=<token from the answer>
+
 # 1. Pick an image model
-curl -s "$BASE/api/models?kind=image"
+curl -s "$BASE/api/models?kind=image" -H "Authorization: Bearer $TOKEN"
 
 # 2. Start a run (replace the model id with one from step 1)
 curl -s -X POST "$BASE/api/runs" \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"model":"gaorui:nano-banana-2","prompt":"an orange cat on a windowsill","params":{"aspectRatio":"1:1"}}'
 
 # 3. Poll with the runId from step 2 until status is succeeded or failed
-curl -s "$BASE/api/runs/<runId>"
+curl -s "$BASE/api/runs/<runId>" -H "Authorization: Bearer $TOKEN"
 ```

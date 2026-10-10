@@ -17,7 +17,6 @@
  * four characters.
  */
 const Setting = require('../models/Setting')
-const { LOCAL_USER } = require('../constants')
 const { getConfig } = require('../config')
 const { encrypt, decrypt, keyTail } = require('../utils/crypto')
 const { badRequest } = require('../utils/http')
@@ -152,7 +151,7 @@ async function save(body) {
     const earlier = [before.s3, ...(before.previous || [])].filter((p) => p && backendId(p) !== id)
     next = { driver: 's3', s3: seal(cfg), previous: earlier.slice(0, MAX_PREVIOUS) }
   }
-  await Setting.updateOne({ key: SETTING_KEY }, { $set: { value: next, userId: LOCAL_USER } }, { upsert: true })
+  await Setting.updateOne({ key: SETTING_KEY }, { $set: { value: next } }, { upsert: true })
   saved = next
   apply()
   return { saved: true, status: status() }

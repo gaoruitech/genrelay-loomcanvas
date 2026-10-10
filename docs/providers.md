@@ -14,7 +14,7 @@ A vendor is a vendor and a model is a model. Which models a vendor has is writte
 | --- | --- |
 | Vendor | The company whose API is called: Gaorui (高瑞), OpenAI or Google Gemini. In the code, one module in `server/src/providers/` plus one catalog file. The interface calls it a provider. |
 | Catalog | The models a vendor supports, stated by hand in `server/src/providers/catalog/<vendor>.json`, in three sections: image, video, chat. The section a model sits in is its kind. |
-| Provider | A vendor plus your API key, added under **Settings → Providers**. You can add the same vendor more than once (for example with two keys), up to 50 providers in total. The vendor of a provider cannot be changed after it is added. |
+| Provider | A vendor plus your API key, added on the **Models** page. Providers belong to the account that added them: every account has its own providers, keys, models and prices. You can add the same vendor more than once (for example with two keys), up to 50 providers per account. The vendor of a provider cannot be changed after it is added. |
 | Custom model | A model that is not in the vendor's catalog, added by hand to one provider. You state its kind yourself. See [Custom models](#custom-models). |
 | Slug | A short id given to the provider when it is created, taken from the vendor id: `gaorui`, then `gaorui-2`, and so on. It never changes. |
 | Model id | `<slug>:<upstream model name>`, for example `gaorui:nano-banana-2`. Canvases, prices and usage refer to models by this id. |
@@ -25,11 +25,11 @@ Things to know:
 - The API key is required. It is encrypted before it is stored and is never returned by any endpoint. The interface shows only whether a key is set and its last four characters. When editing a provider, leave the key blank to keep the current one.
 - **Test connection** calls the upstream's model-list endpoint. It only proves that the address and the key work; the list that comes back is not used.
 - A disabled provider hides all its models from the canvas. Deleting a provider also deletes its custom models and the price and display overrides of its models. Runs already recorded are kept.
-- Every model is listed under **Settings → Models**. The list can be grouped by provider (with Image, Video and Chat sub-groups) or by type (with a sub-group per provider), groups can be collapsed, and the bar above it filters by provider, type, status (enabled or disabled), source (built-in or custom), price (set or not) and a search over the display name and the model ID. Custom models carry a **Custom** badge. A model you do not use can be disabled there. Grouping, collapsed groups and the filters are remembered in the browser.
+- The **Models** page (in the sidebar) shows your providers as cards on the left, each with its status, whether a key is set, how many models it has, and **Test connection** and **Edit**. Clicking a card shows the models of that provider on the right, grouped into Image, Video and Chat. The bar above the table filters by type, status (enabled or disabled), source (built-in or custom), price (set or not) and a search over the display name and the model ID. Custom models carry a **Custom** badge. The switch at the start of a row enables or disables the model; **More actions** in the row changes its display name and order. The filters are remembered in the browser.
 
 ## Vendors
 
-Vendors are offered in this order on the setup page and under **Settings → Providers → Add provider**. Each card opens a form with the API key, an optional name, the list **Models supported by this provider**, and **Advanced**.
+Vendors are offered in this order on the **Add a provider** page a new account sees after registering, and under **Add provider** on the **Models** page. Choosing one opens a form with the API key, an optional name, the list **Models supported by this provider**, and **Advanced**.
 
 | Vendor | Id | Default base URL | API used |
 | --- | --- | --- | --- |
@@ -143,7 +143,7 @@ Supported models (`server/src/providers/catalog/gemini.json`):
 
 A custom model is a model the vendor's catalog does not list. It belongs to one provider.
 
-To add one: **Settings → Models**, find the provider, click **Add custom model**.
+To add one: on the **Models** page, select the provider and click **Add custom model** above its model table.
 
 | Field | Rules |
 | --- | --- |
@@ -198,9 +198,9 @@ What the upgrade does:
 
 After the upgrade:
 
-- Each provider also lists every catalog model of its vendor. Disable the ones you do not want under **Settings → Models**.
+- Each provider also lists every catalog model of its vendor. Disable the ones you do not want on the **Models** page.
 - An address you had entered is kept. For a provider that was `openai-compatible` and points at a relay, that relay must speak the official OpenAI API: a video in a chat request is now refused, and reference images now go to `/images/edits`.
-- Check the kinds of the carried-over Gemini models under **Settings → Models**; the name rule could be wrong. The type of a custom model can be edited.
+- Check the kinds of the carried-over Gemini models on the **Models** page; the name rule could be wrong. The type of a custom model can be edited.
 
 ## Which node uses which model
 
@@ -260,13 +260,13 @@ Results always come back the same way: LoomCanvas downloads the upstream's resul
 
 LoomCanvas does not know what your upstream charges. You enter the rates you pay, and it uses them to show an estimate next to each Run button and to total up usage. Prices never change what the upstream bills you.
 
-![Models tab](images/08-settings-models.png)
+![The Models page](images/08-settings-models.png)
 
-*No prices are shipped: every model starts as "Not set (cost unknown)" until you enter the rate you pay.*
+*The Models page. No prices are shipped: every model starts as "Not set" (cost unknown) until you enter the rate you pay. The prices in the picture are examples.*
 
 ### Entering a price
 
-Go to **Settings → Models**, find the model and click **Set price**.
+On the **Models** page, select the provider, find the model and click **Set price** in its row (**Edit price** once it has one).
 
 | Field | Values | Meaning |
 | --- | --- | --- |
@@ -317,7 +317,7 @@ A cost is **unknown** when it cannot be calculated:
 - a per-second price is used with a model that has no duration, or
 - the model is priced per token and the upstream did not report usage.
 
-Unknown is never treated as zero or free. You can still run the model. In usage totals, runs with unknown cost are counted separately ("Plus N run(s) with unknown cost").
+Unknown is never treated as zero or free. You can still run the model. In usage totals, runs with unknown cost are counted separately ("Plus N succeeded runs with unknown cost").
 
 Tool nodes (slice, collage, watermark, resize, multi-platform export) run on your server, call no model and have no cost.
 
@@ -331,14 +331,16 @@ Tool nodes (slice, collage, watermark, resize, multi-platform export) run on you
 
 Every run is recorded: model, status, prompt (first 200 characters in the list), parameters, cost, failure reason and timestamps.
 
-**Settings → Usage** shows:
+The **History** page shows, for your own account:
 
-- totals for a date range, by day or by model: runs, succeeded, failed, canceled, estimated spend per currency, and how many runs had unknown cost;
-- the individual records, newest first.
+- totals for the period you pick: runs (by type), succeeded, failed, canceled, estimated spend, and how many succeeded runs had unknown cost;
+- the individual records, newest first, with filters by type, status and model, a details dialog and CSV export.
+
+The **Workbench** shows this month's runs, success rate and estimated cost, and a bar per day for the last 14 days. See the [user guide](user-guide.md#history).
 
 Only **succeeded** runs with a **known** cost count towards spend. Records are kept even when `retentionDays` removes the result files.
 
-The same data is available from `GET /api/admin/usage` and `GET /api/admin/usage/records`; see [API](api.md#usage).
+The same data is available from `GET /api/admin/usage` (totals by day or by model) and `GET /api/admin/usage/records`; see [API](api.md#usage). A plain date in `from` and `to` is a calendar day in the time zone given as `tz` (UTC without it). The web app always sends the browser's zone, so "today" is your local day.
 
 ## Adding another vendor
 

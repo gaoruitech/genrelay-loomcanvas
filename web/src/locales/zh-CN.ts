@@ -7,6 +7,14 @@ import dialogs from './modules/dialogs'
 import views from './modules/views'
 import settings from './modules/settings'
 import setup from './modules/setup'
+import shell from './modules/shell'
+import authMod from './modules/auth'
+import workbench from './modules/workbench'
+import modelsPage from './modules/modelsPage'
+import history from './modules/history'
+import assetsPage from './modules/assetsPage'
+import account from './modules/account'
+import queue from './modules/queue'
 
 export default {
   common: {
@@ -59,27 +67,13 @@ export default {
 
   app: {
     name: 'LoomCanvas',
-    navCanvases: '我的画布',
-    navSettings: '设置',
-    themeToLight: '切换到浅色',
-    themeToDark: '切换到深色',
-    language: '语言',
-    logout: '退出登录',
     bootstrapFailed: '连接不上服务端',
     bootstrapHint: '请确认后端服务已经启动，然后重试。',
     notFound: '页面不存在',
-    backHome: '回到我的画布',
+    backHome: '回到首页',
+    backWorkbench: '回到工作台',
   },
 
-  auth: {
-    title: '请输入访问口令',
-    subtitle: '这个实例设置了访问口令。',
-    password: '访问口令',
-    submit: '进入',
-    submitting: '验证中…',
-    wrong: '口令不正确',
-    required: '请输入口令',
-  },
 
   cost: {
     unknown: '成本未知',
@@ -245,4 +239,13 @@ export default {
   views: views['zh-CN'],
   settings: settings['zh-CN'],
   setup: setup['zh-CN'],
+  shell: shell['zh-CN'],
+  auth: authMod['zh-CN'].auth,
+  landing: authMod['zh-CN'].landing,
+  workbench: workbench['zh-CN'],
+  modelsPage: modelsPage['zh-CN'],
+  history: history['zh-CN'],
+  assetsPage: assetsPage['zh-CN'],
+  account: account['zh-CN'],
+  queue: queue['zh-CN'],
 }

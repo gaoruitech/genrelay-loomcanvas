@@ -6,16 +6,45 @@ export interface ApiResponse<T = any> {
   code?: string
 }
 
-export type ThemeMode = 'dark' | 'light' | 'system'
 export type LocaleCode = 'zh-CN' | 'en'
 
+export interface User {
+  id: string
+  username: string
+  email: string
+  /** owner：这台实例的所有者（第一个注册的账号），能管存储、运行限制、站点和其他用户 */
+  role: 'owner' | 'user'
+  createdAt: string
+}
+
+/** 所有者在「用户管理」里看到的一行 */
+export interface AdminUser extends User {
+  disabled: boolean
+  lastLoginAt?: string | null
+  counts?: { workflows?: number; runs?: number }
+}
+
+export interface AuthSession {
+  id: string
+  current: boolean
+  createdAt: string
+  lastSeenAt?: string | null
+  userAgent?: string
+  ip?: string
+}
+
+export interface SiteSettings {
+  registrationOpen: boolean
+}
+
 export interface BootstrapInfo {
-  authRequired: boolean
-  authed: boolean
+  /** 注册是否开放、实例上有没有账号（没有时第一个注册的人成为所有者） */
+  auth?: { registrationOpen: boolean; hasUsers: boolean }
+  /** 当前登录的账号；没登录是 null */
+  user?: User | null
   site: {
     name?: string
     logoUrl?: string
-    defaultTheme?: ThemeMode
     defaultLocale?: string
   }
   hasProvider: boolean
@@ -188,9 +217,12 @@ export interface AdminModel extends ModelSpec {
 export interface AdminSettings {
   siteName: string
   logoUrl: string
-  defaultTheme: ThemeMode
   defaultLocale: string
   concurrency: number
+  /** 一个账号最多同时占用多少个并发位 */
+  userConcurrency: number
+  /** 一个账号最多能有多少个未结束的运行（排队 + 运行中） */
+  userQueueLimit: number
   imageTimeoutMinutes: number
   videoTimeoutMinutes: number
   maxRetries: number
@@ -253,6 +285,9 @@ export interface UsageSummaryRow {
   amount: number
   currency: string
   unknownCount?: number
+  canceled?: number
+  /** 按币种分开的花费合计；amount / currency 只是其中最大的一笔 */
+  costs?: Record<string, number>
 }
 
 export interface UsageRecord {
@@ -263,4 +298,15 @@ export interface UsageRecord {
   status: RunStatus
   cost?: Cost
   workflowId?: string
+  modelLabel?: string
+  providerType?: string
+  /** 后端只给前 200 个字符 */
+  prompt?: string
+  params?: Record<string, any>
+  count?: number
+  /** 失败原因，已是当前界面语言 */
+  error?: string
+  nodeId?: string
+  startedAt?: string | null
+  finishedAt?: string | null
 }

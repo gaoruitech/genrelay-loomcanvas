@@ -121,46 +121,39 @@ function commitRename(r: ImageRef) {
 </script>
 
 <style scoped>
-.cv-refs { margin-top: 8px; }
-.cv-refs-head {
-  display: flex; align-items: baseline; gap: 8px;
-  font-size: 11px; color: var(--t-dim); margin-bottom: 5px;
-}
-.cv-refs-hint { font-size: 10.5px; opacity: .75; }
-
-.cv-refs-strip { display: flex; flex-wrap: wrap; gap: 5px; }
-
+.cv-refs-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+.cv-refs-hint { font-size: 11px; color: var(--text-3); }
+.cv-refs-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 .cv-ref {
-  position: relative; width: 46px; height: 46px; border-radius: 7px;
-  overflow: hidden; border: 1px solid var(--n-5); cursor: pointer;
-  background: var(--n-2); flex: 0 0 auto;
+  position: relative; width: 46px; height: 46px; border-radius: 8px;
+  overflow: hidden; border: 1px solid var(--line); cursor: pointer;
+  background: var(--media-bg); flex: 0 0 auto;
 }
 .cv-ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cv-ref:hover { border-color: var(--accent-edge); }
+.cv-ref:hover { border-color: var(--cyan); }
 .cv-ref.dragging { opacity: .4; }
 /* 放置位提示画在左边缘：拖拽时人盯的是「插到哪两张中间」 */
-.cv-ref.drop { box-shadow: inset 3px 0 0 var(--accent-edge); }
+.cv-ref.drop { box-shadow: inset 3px 0 0 var(--cyan); }
 /* 超出模型上限的压暗并划掉，但仍列出来 —— 让人 @ 一张根本不会送出去的图更糟 */
 .cv-ref.over { opacity: .38; }
 .cv-ref.over::after {
   content: ''; position: absolute; inset: 0;
-  background: repeating-linear-gradient(45deg, transparent 0 5px, rgba(0,0,0,.28) 5px 10px);
+  background: repeating-linear-gradient(45deg, transparent 0 5px, rgba(4, 9, 28, .5) 5px 10px);
 }
-
+/* 角标和别名压在图片上：底是恒暗遮罩，字固定用浅色 */
 .cv-ref-idx {
   position: absolute; top: 2px; left: 2px; min-width: 14px; height: 14px;
-  padding: 0 3px; border-radius: 4px; background: rgba(0,0,0,.66); color: #fff;
-  font-size: 10px; line-height: 14px; text-align: center;
-  font-variant-numeric: tabular-nums;
+  padding: 0 3px; border-radius: 4px; background: rgba(4, 9, 28, .72); color: var(--on-scrim);
+  font: 500 10px/14px var(--f-mono); text-align: center;
 }
 .cv-ref-name {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 3px;
-  background: rgba(0,0,0,.62); color: #fff; font-size: 10px; line-height: 1.35;
+  background: rgba(4, 9, 28, .72); color: var(--on-scrim); font-size: 10px; line-height: 1.35;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cv-ref-input {
   position: absolute; left: 0; right: 0; bottom: 0; width: 100%;
   border: none; outline: none; padding: 1px 3px;
-  background: var(--n-1); color: var(--t-max); font: inherit; font-size: 10px;
+  background: var(--well-solid); color: var(--text); font: inherit; font-size: 10px;
 }
 </style>

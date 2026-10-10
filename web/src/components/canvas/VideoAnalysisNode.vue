@@ -1,100 +1,106 @@
 <template>
-  <div class="cv-node video-analysis" :class="{
+  <div class="cv-node cv-chat video-analysis" :class="{
     selected,
     shaking,
+    'is-running': isRunning,
     'has-validation-error': !!data.validationError,
     'has-runtime-error': status === 'error',
   }">
-    <div class="cv-node-header">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="23 7 16 12 23 17 23 7" />
-        <rect x="1" y="5" width="15" height="14" rx="2" />
-        <path d="M6 9.5h5M6 12.5h4" />
-      </svg>
-      <span>{{ t('nodes.title.videoAnalysis') }}</span>
-      <div class="cv-header-actions">
-        <span v-if="status === 'stale'" class="cv-tag stale">{{ t('nodes.status.stale') }}</span>
-        <span v-else-if="status === 'queued'" class="cv-tag running">{{ t('nodes.status.queued') }}</span>
-        <span v-else-if="status === 'running'" class="cv-tag running">{{ t('nodeui.analysis.statusRunning') }}</span>
-        <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
-        <span v-else-if="status === 'canceled'" class="cv-tag stale">{{ t('nodes.status.canceled') }}</span>
-        <span v-else-if="status === 'done' || !!data.text" class="cv-tag done">{{ t('nodes.status.done') }}</span>
-      </div>
+    <div class="cv-head">
+      <LcIcon name="video" />
+      <span class="cv-title">{{ t('nodes.title.videoAnalysis') }}</span>
+      <span v-if="status === 'stale'" class="cv-tag stale">{{ t('nodes.status.stale') }}</span>
+      <span v-else-if="status === 'queued'" class="cv-tag running">{{ t('nodes.status.queued') }}</span>
+      <span v-else-if="status === 'running'" class="cv-tag running">{{ t('nodeui.analysis.statusRunning') }}</span>
+      <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
+      <span v-else-if="status === 'canceled'" class="cv-tag stale">{{ t('nodes.status.canceled') }}</span>
+      <span v-else-if="status === 'done' || !!data.text" class="cv-tag done">{{ t('nodes.status.done') }}</span>
     </div>
 
-    <div class="va-body nodrag nowheel" @mousedown.stop @wheel.stop>
-      <!-- 模型选择：设置里已启用的对话类模型 -->
-      <div class="va-section">
-        <ChipSelect v-if="modelOpts.length" :label="t('nodes.field.model')" :model-value="model" :options="modelOpts" @update:model-value="v => selectModel(String(v))" />
-        <div v-else class="va-hint">{{ t('executor.noVideoChatModel') }}</div>
+    <div class="cv-body">
+      <div class="cv-in">
+        <Handle id="video-in" type="target" :position="Position.Left" class="h-video" :title="t('nodeui.analysis.videoIn')" />
+        {{ t('nodes.title.video') }}<em :class="{ on: videoCount > 0 }">{{ videoCount ? t('gen.node.connectedOne') : t('gen.node.notConnected') }}</em>
       </div>
-      <!-- 分析结果（可编辑，作为 text-out 喂给下游） -->
-      <div class="va-section">
-        <div class="cv-textarea-wrap">
-          <textarea
-            v-model="promptText"
-            class="cv-prompt-textarea va-textarea"
-            :placeholder="isRunning ? t('nodeui.analysis.runningPlaceholder', { progress }) : t('nodeui.analysis.placeholder')"
-            :disabled="isRunning"
-            maxlength="5000"
-          />
-          <div class="cv-textarea-footer">
-            <button class="cv-clear-btn nodrag" :disabled="!promptText || isRunning" @click.stop="promptText = ''" @mousedown.stop>{{ t('common.clear') }}</button>
-            <span class="cv-footer-right">
-              <button class="cv-zoom-btn nodrag" :title="t('nodes.action.expand')" @click.stop="expanded = true" @mousedown.stop>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                  <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
-              </button>
-              <span class="cv-char-count">{{ charCount }} / 5000</span>
-            </span>
-          </div>
+      <div class="cv-in">
+        <Handle id="text-in" type="target" :position="Position.Left" class="h-text" :title="t('nodeui.llm.textIn')" />
+        {{ t('nodes.field.prompt') }}<em :class="{ on: textCount > 0 }">{{ textCount ? t('gen.node.connected', { n: textCount }) : t('gen.node.notConnected') }}</em>
+      </div>
+      <div class="cv-in">
+        <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :title="t('nodeui.llm.imageIn')" />
+        {{ t('gen.node.refImages') }}<em :class="{ on: imageCount > 0 }">{{ imageCount ? t('gen.node.connected', { n: imageCount }) : t('common.optional') }}</em>
+      </div>
+
+      <!-- 模型选择：已启用的对话类模型 -->
+      <div class="nodrag" @mousedown.stop @click.stop>
+        <ChipSelect v-if="modelOpts.length" field :badge="t('gen.node.kindChat')" badge-kind="chat" :model-value="model" :options="modelOpts" @update:model-value="v => selectModel(String(v))" />
+        <div v-else class="cv-hint">{{ t('executor.noVideoChatModel') }}</div>
+      </div>
+
+      <!-- 结果（可编辑，作为 text-out 喂给下游） -->
+      <div class="cv-textarea-wrap nodrag nowheel" @mousedown.stop @wheel.stop>
+        <textarea
+          v-model="promptText"
+          class="cv-textarea"
+          :placeholder="isRunning ? t('nodeui.analysis.statusRunning') : t('nodeui.analysis.placeholder')"
+          :disabled="isRunning"
+          maxlength="5000"
+        />
+        <div class="cv-textarea-footer">
+          <button class="cv-clear-btn" :disabled="!promptText || isRunning" @click.stop="promptText = ''" @mousedown.stop>{{ t('common.clear') }}</button>
+          <span class="cv-footer-right">
+            <button class="cv-zoom-btn" :title="t('nodes.action.expand')" @click.stop="expanded = true" @mousedown.stop>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+            <span class="cv-char-count">{{ charCount }} / 5000</span>
+          </span>
         </div>
       </div>
-      <div v-if="status === 'error' && data.errorMsg" class="va-error">{{ data.errorMsg }}</div>
-    </div>
 
-    <div class="va-footer">
-      <span v-if="actualText" class="va-cost" :title="t('cost.actual')">{{ actualText }}</span>
-      <div class="va-run-wrap">
-        <span v-if="!actualText && estimateText" class="va-est" :title="t('cost.estimateTip')">{{ estimateText }}</span>
-        <button v-if="canCancel" class="va-cancel-btn nodrag" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
-        <button
-          class="va-run-btn nodrag"
-          :disabled="isRunning"
-          :title="isRunning ? t('nodeui.analysis.runningTitle', { progress }) : t('nodeui.analysis.runTitle')"
-          @click.stop="onClickRun"
-          @mousedown.stop
-        >
-          <span v-if="isRunning">{{ progress }}%</span>
-          <span v-else>{{ t('nodeui.analysis.run') }}</span>
-        </button>
+      <div v-if="displayError" class="cv-error nodrag" @click.stop @mousedown.stop>
+        <div class="cv-error-msg nowheel">{{ displayError }}</div>
+        <button v-if="status === 'error'" class="cv-retry" @click.stop="onClickRun">{{ t('common.retry') }}</button>
       </div>
+
+      <!-- 成本固定在运行按钮正上方：跑过显示实际成本，没跑过显示预估 -->
+      <div v-if="actualText" class="cv-kv" :title="t('cost.actual')">
+        <span>{{ t('cost.actual') }}</span>
+        <span v-if="data.cost?.unknown" class="cv-unk">{{ actualText }}</span>
+        <b v-else>{{ actualText }}</b>
+      </div>
+      <div v-else-if="estimateText" class="cv-kv" :title="t('cost.estimateTip')">
+        <span>{{ t('cost.estimate') }}</span>
+        <span v-if="data.estimatedCost?.unknown" class="cv-unk">{{ estimateText }}</span>
+        <b v-else>{{ estimateText }}</b>
+      </div>
+
+      <div v-if="isRunning" class="cv-progress nodrag" :class="{ indet: status === 'running' && !progress }">
+        <i :style="progress ? { width: progress + '%' } : undefined" />
+        <span>
+          <b>{{ runningLabel }}</b>
+          <button v-if="canCancel" class="cv-progress-cancel" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
+        </span>
+      </div>
+      <button v-else class="cv-run nodrag" :title="t('nodeui.analysis.runTitle')" @click.stop="onClickRun" @mousedown.stop>
+        <LcIcon name="play" size="s" />{{ t('nodeui.analysis.run') }}
+      </button>
     </div>
 
-    <Handle id="video-in" type="target" :position="Position.Left" class="h-video" :style="{ top: '30%' }" :title="t('nodeui.analysis.videoIn')" />
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :style="{ top: '52%' }" :title="t('nodeui.llm.imageIn')" />
-    <Handle id="text-in" type="target" :position="Position.Left" class="h-text" :style="{ top: '74%' }" :title="t('nodeui.llm.textIn')" />
-    <Handle id="text-out" type="source" :position="Position.Right" class="h-text" />
+    <Handle id="text-out" type="source" :position="Position.Right" class="h-text h-top" />
 
     <!-- 放大查看 -->
     <Teleport to="body">
-      <div v-if="expanded" class="va-modal-mask" @click.self="expanded = false" @wheel.stop @mousedown.stop>
-        <div class="va-modal">
-          <div class="va-modal-head">
+      <div v-if="expanded" class="lc-mask lc-sheet" @click.self="expanded = false" @wheel.stop @mousedown.stop>
+        <div class="lc-dialog va-modal">
+          <div class="lc-dialog-head">
             <span>{{ t('nodeui.analysis.modalTitle') }}</span>
-            <button class="va-modal-close" :title="t('common.close')" @click="expanded = false">✕</button>
+            <button class="lc-x" :title="t('common.close')" @click="expanded = false">×</button>
           </div>
-          <div class="va-modal-body">
-            <div class="va-modal-section">
-              <textarea
-                v-model="promptText"
-                class="va-modal-textarea"
-                :disabled="isRunning"
-                maxlength="5000"
-              />
-            </div>
+          <div class="lc-dialog-body va-modal-body">
+            <textarea v-model="promptText" class="lc-textarea va-modal-textarea" :disabled="isRunning" maxlength="5000" />
           </div>
         </div>
       </div>
@@ -107,6 +113,7 @@ import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import ChipSelect from './ChipSelect.vue'
+import LcIcon from '@/components/LcIcon.vue'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
 import { listVideoChatModels, modelTag } from '@/utils/canvasModels'
@@ -133,7 +140,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const { updateNodeData } = useVueFlow()
+const { updateNodeData, edges } = useVueFlow()
 const executor = inject(CANVAS_EXECUTOR_KEY)
 
 const status = computed(() => props.data.status || 'idle')
@@ -200,145 +207,33 @@ async function doRun() {
 function handleCancel() {
   void executor?.cancelNode(props.id)
 }
+
+/* 表头下方各输入口的已连接数（真实连线） */
+const inCount = (handle: string) => edges.value.filter((e: any) => e.target === props.id && e.targetHandle === handle).length
+const textCount = computed(() => inCount('text-in'))
+const displayError = computed(() => props.data.validationError || (status.value === 'error' ? props.data.errorMsg : '') || '')
+const runningLabel = computed(() => {
+  if (status.value === 'queued') return t('nodes.status.queued')
+  // 上游报了进度才显示百分比；没报就只说状态，不编数字
+  return progress.value ? t('nodes.action.running', { progress: progress.value }) : t('nodeui.analysis.statusRunning')
+})
+const videoCount = computed(() => inCount('video-in'))
+const imageCount = computed(() => inCount('image-in'))
 </script>
 
 <style scoped>
 @import './node-shared.css';
+.cv-chat { width: 280px; min-height: 340px; }
+.cv-textarea-wrap { flex: 1 1 auto; min-height: 96px; display: flex; flex-direction: column; }
+.cv-textarea-wrap .cv-textarea { flex: 1 1 auto; min-height: 96px; }
 
-.video-analysis { min-width: 280px; max-width: 280px; height: 300px; }
-
-.va-body { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
-.va-section { display: flex; flex-direction: column; gap: 6px; }
-
-.va-textarea {
-  width: 100%;
-  min-height: 140px;
-  max-height: 300px;
-  resize: vertical;
-  box-sizing: border-box;
-}
-.va-error {
-  font-size: 12px;
-  color: var(--danger);
-  line-height: 1.4;
-}
-
-.va-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-.va-hint { font-size: 11px; color: var(--t-dim); line-height: 1.5; }
-.va-cost { font-size: 11px; color: var(--accent-text); white-space: nowrap; }
-.va-footer .va-run-wrap { margin-left: auto; }
-
-.va-run-btn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  border: 1px solid var(--accent);
-  background: var(--btn-bg);
-  color: var(--btn-fg);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.va-run-btn:hover:not(:disabled) { background: var(--btn-bg-hover); }
-.va-run-btn:disabled { opacity: 0.6; cursor: default; }
-.va-cancel-btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--line-2);
-  background: transparent;
-  color: var(--t-body);
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.va-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
-
-.va-run-wrap { position: relative; display: inline-flex; align-items: center; gap: 8px; }
-.va-est {
-  font-size: 12px;
-  color: var(--warning);
-  white-space: nowrap;
-}
-
-.va-expand {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: var(--film-2);
-  color: var(--t-body);
-  cursor: pointer;
-}
-.va-expand:hover { background: rgba(255, 255, 255, 0.16); color: var(--t-max); }
-.va-expand svg { width: 13px; height: 13px; }
-
-/* 放大查看弹窗 */
-.va-modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  background: var(--scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.va-modal {
-  width: min(1040px, 94vw);
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--n-3);
-  border: 1px solid var(--line-2);
-  border-radius: 14px;
-  overflow: hidden;
-}
-.va-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--t-max);
-  border-bottom: 1px solid var(--line-1);
-}
-.va-modal-close {
-  border: none;
-  background: transparent;
-  color: var(--t-dim);
-  font-size: 16px;
-  cursor: pointer;
-}
-.va-modal-close:hover { color: var(--t-max); }
-.va-modal-body { padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-.va-modal-section { display: flex; flex-direction: column; gap: 10px; }
-.va-modal-label { font-size: 13px; font-weight: 600; color: var(--t-body); }
-.va-modal-seg { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line-1); }
-.va-modal-seg-time { flex: 0 0 74px; color: var(--info); font-size: 13px; font-variant-numeric: tabular-nums; }
-.va-modal-seg-desc { flex: 1; }
-.va-modal-seg-desc p { margin: 0 0 4px; font-size: 13px; line-height: 1.6; color: var(--t-body); }
-.va-modal-seg-desc .va-modal-sub { color: var(--t-dim); font-size: 12px; }
-.va-modal-textarea {
-  width: 100%;
-  min-height: 60vh;
-  resize: vertical;
-  box-sizing: border-box;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--line-2);
-  background: var(--film-1);
-  color: var(--t-strong);
-  font-size: 13px;
-  line-height: 1.6;
+/* 放大查看：通用弹窗外壳，文本域撑满 */
+.va-modal { width: min(1040px, 100%); }
+.va-modal-body { display: flex; flex-direction: column; gap: 16px; }
+.va-modal-body .lc-field { margin-bottom: 0; }
+.va-modal-system { min-height: 88px; }
+.va-modal-textarea { min-height: min(52vh, 480px); }
+@media (max-width: 600px) {
+  .va-modal-textarea { min-height: 40vh; }
 }
 </style>

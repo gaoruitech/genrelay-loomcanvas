@@ -7,7 +7,6 @@ export default {
       moveDown: '下移',
       emptyText: '(空文本)',
       placeholder: '左侧连接「提示词文本」（可选接「参考图」）后点生成，按你的提示词输出模型回答（也可手动编辑）',
-      runningPlaceholder: '生成中 {progress}%…',
       run: '生成',
       runTitle: '运行生成',
       modalTitle: '大语言模型',
@@ -22,8 +21,6 @@ export default {
     analysis: {
       statusRunning: '分析中',
       placeholder: '左侧连接「视频」和「提示词文本」（可选接「参考图」）后点分析，按你的提示词输出分析结果（也可手动编辑）',
-      runningPlaceholder: '分析中 {progress}%…',
-      runningTitle: '分析中 {progress}%',
       run: '分析',
       runTitle: '运行分析',
       modalTitle: '视频分析结果',
@@ -59,8 +56,8 @@ export default {
     share: {
       emptyText: '（空文本）',
       noImage: '无图片',
-      model: '模型：{model}',
       noResult: '暂无产物',
+      modelUnlisted: '未注明模型',
     },
     frame: {
       dragTip: '拖这里（或组内任意空白处）移动整个组',
@@ -79,7 +76,6 @@ export default {
       moveDown: 'Move down',
       emptyText: '(empty)',
       placeholder: 'Connect a prompt on the left (reference images are optional), then click Generate. The model’s answer appears here and can be edited.',
-      runningPlaceholder: 'Generating {progress}%…',
       run: 'Generate',
       runTitle: 'Run this node',
       modalTitle: 'Language model',
@@ -94,8 +90,6 @@ export default {
     analysis: {
       statusRunning: 'Analyzing',
       placeholder: 'Connect a video and a prompt on the left (reference images are optional), then click Analyze. The result appears here and can be edited.',
-      runningPlaceholder: 'Analyzing {progress}%…',
-      runningTitle: 'Analyzing {progress}%',
       run: 'Analyze',
       runTitle: 'Run analysis',
       modalTitle: 'Video analysis result',
@@ -131,8 +125,8 @@ export default {
     share: {
       emptyText: '(empty)',
       noImage: 'No image',
-      model: 'Model: {model}',
       noResult: 'No result yet',
+      modelUnlisted: 'Model not listed',
     },
     frame: {
       dragTip: 'Drag here (or any empty area inside) to move the whole group',

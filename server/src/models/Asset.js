@@ -1,21 +1,21 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
 
 /**
  * Two asset collections share this file:
  *
- *  - UserAsset:   the user's own library ("我的资产") - product shots, brand
+ *  - UserAsset:   one account's own library ("我的资产") - product shots, brand
  *                 material, references and saved outputs. Fully editable.
  *  - CanvasAsset: a read-only, categorised library of stock material that an
- *                 operator may import. Empty on a fresh install.
+ *                 operator may import. Site-wide: every account sees it.
+ *                 Empty on a fresh install.
  */
 
 const USER_ASSET_KINDS = ['product', 'brand', 'reference', 'output']
 
 const userAssetSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  userId: { type: String, required: true, index: true },
   kind: { type: String, enum: USER_ASSET_KINDS, default: 'product' },
   nodeType: { type: String, enum: ['IMAGE', 'VIDEO'], default: 'IMAGE' },
 
@@ -39,8 +39,7 @@ const userAssetSchema = new mongoose.Schema({
 userAssetSchema.index({ userId: 1, kind: 1, isDeleted: 1, createdAt: -1 })
 
 const canvasAssetSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
-  code: { type: String, default: '', index: true },
+    code: { type: String, default: '', index: true },
   categoryName: { type: String, default: '' },
   name: { type: String, default: '', maxlength: 300 },
   nodeType: { type: String, enum: ['IMAGE', 'VIDEO'], default: 'IMAGE' },

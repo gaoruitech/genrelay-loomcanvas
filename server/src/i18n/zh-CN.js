@@ -17,12 +17,25 @@ module.exports = {
   'common.name_required': '名称不能为空',
   'common.nothing_to_update': '没有要修改的内容',
 
-  /* ---- 登录 ---- */
-  'auth.login_required': '请先登录',
+  /* ---- 账号与登录 ---- */
+  'auth.required': '请先登录',
+  'auth.forbidden': '只有站点所有者可以进行这项操作',
   'auth.too_many_attempts': '尝试次数过多，请稍后再试',
-  'auth.not_enabled': '当前实例未开启登录',
-  'auth.password_required': '请输入访问口令',
-  'auth.wrong_password': '口令不正确',
+  'auth.credentials_required': '请输入用户名或邮箱，以及密码',
+  'auth.invalid_credentials': '用户名、邮箱或密码不正确',
+  'auth.account_disabled': '这个账号已被停用，请联系站点所有者',
+  'auth.registration_closed': '本站已关闭注册',
+  'auth.username_taken': '这个用户名已被使用',
+  'auth.email_taken': '这个邮箱已注册',
+  'auth.invalid_username': '用户名为 3 到 32 个字符，只能用字母、数字、_ 和 -',
+  'auth.invalid_email': '请输入有效的邮箱地址',
+  'auth.weak_password': '密码长度为 {min} 到 {max} 个字符',
+  'auth.wrong_current_password': '当前密码不正确',
+  'auth.session_not_found': '登录会话不存在',
+  'auth.user_not_found': '账号不存在',
+  'auth.cannot_modify_self': '不能在这里停用、删除或重置自己的账号',
+  'auth.cannot_modify_owner': '所有者账号不能被停用、删除或重置',
+  'auth.confirm_mismatch': '请输入该账号的用户名以确认删除',
 
   /* ---- 参数校验 ---- */
   'validation.failed': '数据校验失败',
@@ -35,7 +48,6 @@ module.exports = {
   'validation.bad_date': '{field} 不是有效的时间',
   'validation.bad_url': '{field} 不是有效的地址',
   'validation.bad_url_in': '{field} 中有无效的地址',
-  'validation.bad_timezone': 'tz 不是有效的时区',
   'validation.string': '{field} 必须是字符串',
   'validation.number': '{field} 必须是数字',
   'validation.boolean': '{field} 必须是布尔值',

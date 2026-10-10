@@ -5,8 +5,9 @@ const crypto = require('crypto')
 
 /**
  * CSP source expressions ('sha256-...') for the inline scripts of a page. The
- * built index.html sets the theme in an inline script before anything paints;
- * allowing exactly that script by hash keeps 'unsafe-inline' out of the policy.
+ * index.html of the web app has none today, so the policy is plain
+ * `script-src 'self'`; should a build ever carry one, allowing exactly that
+ * script by hash keeps 'unsafe-inline' out of the policy.
  */
 function inlineScriptHashes(html) {
   const out = []
@@ -89,7 +90,7 @@ function cors(allowedOrigins) {
       res.setHeader('Access-Control-Allow-Origin', origin)
       res.setHeader('Vary', 'Origin')
       res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Locale')
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition')
       res.setHeader('Access-Control-Max-Age', '600')
     }

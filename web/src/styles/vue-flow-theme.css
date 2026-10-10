@@ -1,30 +1,84 @@
 /* vue-flow 自带皮肤（theme-default / controls / minimap）的统一覆盖。
-   编辑页和分享页都渲染同一套画布，这几条必须两边同时生效：原来只写在
-   Canvas.vue 的 scoped 样式里，分享页就漏了 —— 深色下缩放按钮、小地图和
-   「成品」节点外壳都是 vue-flow 默认的白底。
+   编辑页和分享页都渲染同一套画布，这几条必须两边同时生效，所以写在全局而不是
+   Canvas.vue 的 scoped 样式里。
    选择器带一层 .vue-flow，优先级压过库里的单类选择器，不依赖引入顺序。 */
+
+/* ---------- 缩放控件（分享页还在用库自带的那一组；编辑页用自己的底部工具条） ---------- */
 .vue-flow .vue-flow__controls {
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
+  background: rgba(12, 21, 52, .88);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: var(--sh-1);
   overflow: hidden;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
 .vue-flow .vue-flow__controls-button {
-  background: var(--n-3);
-  border-bottom: 1px solid var(--n-5);
-  color: var(--t-body);
-  fill: var(--t-body);
+  width: 30px; height: 30px; padding: 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  fill: var(--text-2);
 }
+.vue-flow .vue-flow__controls-button:last-child { border-bottom: 0; }
 .vue-flow .vue-flow__controls-button:hover {
-  background: var(--n-4);
-  color: var(--accent-text);
-  fill: var(--accent-text);
+  background: rgba(124, 160, 255, .12);
+  color: var(--text);
+  fill: var(--text);
 }
+
+/* ---------- 小地图：一块悬浮玻璃 ---------- */
 .vue-flow .vue-flow__minimap {
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
+  margin: 0;
+  background: rgba(12, 21, 52, .88);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
+.vue-flow .vue-flow__minimap svg { display: block; border-radius: inherit; }
+/* 视口框的描边按屏幕像素算：小地图的 viewBox 跟着内容缩放，不固定的话线会细到看不见 */
+.vue-flow .vue-flow__minimap-mask { vector-effect: non-scaling-stroke; }
+
+/* ---------- 端口（节点上的圆点） ----------
+   深色实心 + 类型色描边：图片青、视频紫、文本蓝。尾帧口是实心的，和首帧区分。 */
+.vue-flow .vue-flow__handle {
+  width: 12px; height: 12px;
+  background: #0b1436;
+  border: 2px solid var(--cyan);
+  border-radius: 50%;
+  cursor: crosshair;
+  transition: box-shadow .15s ease;
+}
+/* 透明扩展点击区，让小目标更易命中 */
+.vue-flow .vue-flow__handle::before {
+  content: ''; position: absolute; inset: -9px; border-radius: 50%;
+}
+.vue-flow .vue-flow__handle.h-text { background: #0b1436; border-color: #6f9dff; }
+.vue-flow .vue-flow__handle.h-image { background: #0b1436; border-color: var(--cyan); }
+.vue-flow .vue-flow__handle.h-image-last { background: var(--cyan); border-color: var(--cyan); }
+.vue-flow .vue-flow__handle.h-video { background: #0b1436; border-color: #a98bff; }
+.vue-flow .vue-flow__handle:hover { box-shadow: 0 0 0 4px rgba(63, 216, 255, .22), 0 0 10px rgba(63, 216, 255, .5); }
+.vue-flow .vue-flow__handle.h-video:hover { box-shadow: 0 0 0 4px rgba(138, 92, 255, .26), 0 0 10px rgba(138, 92, 255, .55); }
+.vue-flow .vue-flow__handle.connecting,
+.vue-flow .vue-flow__handle.connectingto,
+.vue-flow .vue-flow__handle.valid { box-shadow: 0 0 0 5px rgba(63, 216, 255, .3), 0 0 14px rgba(63, 216, 255, .7); }
+
+/* ---------- 拖线时的预览线 / 框选矩形 ---------- */
+.vue-flow .vue-flow__connection-path {
+  stroke: var(--cyan);
+  stroke-width: 2;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(63, 216, 255, .65));
+}
+.vue-flow .vue-flow__selection,
+.vue-flow .vue-flow__nodesselection-rect {
+  background: rgba(63, 216, 255, .08);
+  border: 1px solid rgba(63, 216, 255, .6);
+  border-radius: 6px;
+}
+
 /* 关键：vue-flow theme-default 给 .vue-flow__node-output / -input / -default 这三个
    保留类名套了白底 + 10px padding + 150px 固定宽 + 选中白halo。我们用了 type='output'
    就把这层"原生节点皮"继承下来了，表现成卡片外漏一圈白边。这里全部 reset，回归纯净

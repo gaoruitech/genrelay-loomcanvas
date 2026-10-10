@@ -1,6 +1,10 @@
 'use strict'
 
-/** Run store backed by the `runs` collection. Contract: see memoryStore.js. */
+/**
+ * Run store backed by the `runs` collection. Contract: see memoryStore.js.
+ * The runner addresses runs by id only and works for every account; whose run
+ * it is travels with the run (`userId`), and the API routes are what check it.
+ */
 const Run = require('../models/Run')
 const { STATUS } = require('./core')
 
@@ -41,8 +45,8 @@ function createMongoStore() {
       )
       // What is still mid-flight now has no upstream task; the runner fails those.
       const lost = await Run.find(interrupted).lean()
-      const queued = await Run.find({ status: STATUS.QUEUED }).sort({ createdAt: 1 }).select('_id').lean()
-      return { queued: queued.map((r) => String(r._id)), interrupted: lost }
+      const queued = await Run.find({ status: STATUS.QUEUED }).sort({ createdAt: 1 }).select('_id userId').lean()
+      return { queued: queued.map((r) => ({ id: String(r._id), userId: r.userId || '' })), interrupted: lost }
     },
   }
 }

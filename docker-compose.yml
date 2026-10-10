@@ -24,7 +24,6 @@ services:
       # Empty is fine: files are addressed relative to whatever address the app is opened at.
       # Set it to the public address when an upstream has to download reference files from here.
       PUBLIC_URL: ${PUBLIC_URL:-}
-      ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
       # Storage is normally set in the app, under Settings > Storage; what is saved there overrides
       # these. They are the default of an instance on which nothing was saved yet. See docs/storage.md.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}

@@ -1,44 +1,43 @@
 <template>
-  <div class="cv-node cv-surface" :class="{ selected }">
-    <div v-if="videoUrl" class="cv-video-wrap">
-      <video :src="videoUrl" class="cv-video" controls preload="metadata" />
-      <button class="cv-image-clear nodrag" @click.stop="clearVideo" :title="t('common.remove')">×</button>
+  <div class="cv-node cv-media" :class="{ selected, 'has-video': !!videoUrl }">
+    <div class="cv-head">
+      <LcIcon name="video" />
+      <span class="cv-title">{{ t('nodes.title.video') }}</span>
+    </div>
+    <div class="cv-body">
+      <div v-if="videoUrl" class="cv-image-wrap">
+        <video :src="videoUrl" class="cv-video" controls preload="metadata" />
+        <button class="cv-image-clear nodrag" :title="t('common.remove')" @click.stop="clearVideo"><LcIcon name="x" size="s" /></button>
+      </div>
+
+      <div v-else-if="uploading" class="cv-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+        </svg>
+        <span>{{ uploadPct > 0 ? t('nodeui.video.uploadingPct', { pct: uploadPct }) : t('common.uploading') }}</span>
+      </div>
+
+      <template v-else>
+        <label class="cv-upload-zone nodrag" @mousedown.stop>
+          <input
+            type="file"
+            accept="video/*"
+            style="display:none"
+            @change="handleSelect"
+          />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+        </svg>
+          <span>{{ t('nodeui.video.clickUpload') }}</span>
+        </label>
+        <button class="cv-pick-btn nodrag" @click.stop="pickFromLibrary" @mousedown.stop>
+          <LcIcon name="folder" size="s" />
+          <span>{{ t('nodes.action.pickFromLibrary') }}</span>
+        </button>
+      </template>
     </div>
 
-    <div v-else-if="uploading" class="cv-placeholder">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="17 8 12 3 7 8" />
-        <line x1="12" y1="3" x2="12" y2="15" />
-      </svg>
-      <span>{{ uploadPct > 0 ? t('nodeui.video.uploadingPct', { pct: uploadPct }) : t('common.uploading') }}</span>
-    </div>
-
-    <template v-else>
-      <label class="cv-upload-zone nodrag" @mousedown.stop>
-        <input
-          type="file"
-          accept="video/*"
-          style="display:none"
-          @change="handleSelect"
-        />
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="17 8 12 3 7 8" />
-          <line x1="12" y1="3" x2="12" y2="15" />
-        </svg>
-        <span>{{ t('nodeui.video.clickUpload') }}</span>
-      </label>
-      <button class="cv-pick-btn nodrag" @click.stop="pickFromLibrary" @mousedown.stop>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="23 7 16 12 23 17 23 7" />
-          <rect x="1" y="5" width="15" height="14" rx="2" />
-        </svg>
-        <span>{{ t('nodes.action.pickFromLibrary') }}</span>
-      </button>
-    </template>
-
-    <Handle id="video-out" type="source" :position="Position.Right" class="h-video" />
+    <Handle id="video-out" type="source" :position="Position.Right" class="h-video h-top" />
   </div>
 </template>
 
@@ -51,6 +50,7 @@ import { CANVAS_PICKER_KEY } from '@/composables/canvasPickerKey'
 import { uploadCanvasVideo } from '@/utils/canvasUpload'
 import { registerThumb } from '@/utils/canvasMedia'
 import { apiErrorMessage } from '@/utils/api'
+import LcIcon from '@/components/LcIcon.vue'
 
 const props = defineProps<{
   id: string
@@ -99,9 +99,8 @@ async function pickFromLibrary() {
 
 <style scoped>
 @import './node-shared.css';
-.cv-node { min-width: 280px; max-width: 280px; height: 300px; }
-.cv-node:has(.cv-video-wrap) { height: auto; }
-.cv-video-wrap, .cv-upload-zone, .cv-placeholder { flex: 1 1 auto; min-height: 0; }
-.cv-video-wrap { position: relative; }
-.cv-video { width: 100%; border-radius: 8px; display: block; background: var(--player-bg); }
+.cv-media { width: 280px; height: 300px; }
+.cv-media.has-video { height: auto; }
+.cv-upload-zone, .cv-placeholder { flex: 1 1 auto; min-height: 0; }
+.cv-video { width: 100%; display: block; background: var(--player-bg); }
 </style>

@@ -1,11 +1,11 @@
 'use strict'
 
 /**
- * Site settings: a fixed set of keys with validation, stored as key/value
- * documents and cached in memory. Reads are synchronous after load().
+ * Site settings: one set for the whole instance, changed by the owner. A fixed
+ * set of keys with validation, stored as key/value documents and cached in
+ * memory. Reads are synchronous after load().
  */
 const Setting = require('../models/Setting')
-const { LOCAL_USER } = require('../constants')
 const { badRequest } = require('../utils/http')
 const { isMediaUrl } = require('../utils/validate')
 
@@ -16,6 +16,10 @@ const int = (min, max) => (v, key) => {
 }
 const oneOf = (...values) => (v, key) => {
   if (!values.includes(v)) throw badRequest('validation.one_of', { field: key, values: values.join(' / ') })
+  return v
+}
+const bool = () => (v, key) => {
+  if (typeof v !== 'boolean') throw badRequest('validation.boolean', { field: key })
   return v
 }
 const string = (max) => (v, key) => {
@@ -34,10 +38,14 @@ const DEFINITIONS = {
       return s
     },
   },
-  defaultTheme: { default: 'light', parse: oneOf('light', 'dark', 'system') },
   defaultLocale: { default: 'zh-CN', parse: oneOf('zh-CN', 'en') },
-  // Runner
+  // May people create accounts themselves? The first account can always be created.
+  registrationOpen: { default: true, parse: bool() },
+  // Runner. `concurrency` is for the whole instance; `userConcurrency` is how many of
+  // those one account may hold at a time, `userQueueLimit` how many unfinished runs it may have.
   concurrency: { default: 4, parse: int(1, 32) },
+  userConcurrency: { default: 4, parse: int(1, 32) },
+  userQueueLimit: { default: 200, parse: int(1, 500) },
   submitTimeoutSec: { default: 60, parse: int(5, 600) },
   imageTimeoutMinutes: { default: 10, parse: int(1, 120) },
   videoTimeoutMinutes: { default: 30, parse: int(1, 240) },
@@ -56,9 +64,11 @@ function defaults() {
 }
 
 async function load() {
-  const rows = await Setting.find({ userId: LOCAL_USER }).lean()
+  const rows = await Setting.find({}).lean()
   cache.clear()
   for (const row of rows) {
+    // Rows of keys that no longer exist (`defaultTheme`: there is one theme now) and the
+    // internal ones (`storage`, `_seedVersion`) are simply not settings.
     if (!Object.hasOwn(DEFINITIONS, row.key)) continue
     const def = DEFINITIONS[row.key]
     // A stored value that no longer validates falls back to the default.
@@ -84,7 +94,7 @@ async function update(patch) {
     parsed[key] = DEFINITIONS[key].parse(value, key)
   }
   for (const [key, value] of Object.entries(parsed)) {
-    await Setting.updateOne({ key }, { $set: { value, userId: LOCAL_USER } }, { upsert: true })
+    await Setting.updateOne({ key }, { $set: { value } }, { upsert: true })
     cache.set(key, value)
   }
   for (const fn of listeners) {
@@ -100,6 +110,7 @@ function runnerSettings() {
   const s = getAll()
   return {
     concurrency: s.concurrency,
+    userConcurrency: s.userConcurrency,
     submitTimeoutMs: s.submitTimeoutSec * 1000,
     pollTimeoutMs: { image: s.imageTimeoutMinutes * 60000, video: s.videoTimeoutMinutes * 60000 },
     chatTimeoutMs: s.chatTimeoutSec * 1000,

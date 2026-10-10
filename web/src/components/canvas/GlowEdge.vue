@@ -1,26 +1,38 @@
 <template>
+  <!-- 渐变沿连线方向走（起点色 → 终点色），所以每条线一份 userSpaceOnUse 的渐变 -->
+  <defs>
+    <linearGradient :id="gradId" gradientUnits="userSpaceOnUse" :x1="sourceX" :y1="sourceY" :x2="targetX" :y2="targetY">
+      <stop offset="0" :stop-color="palette.from" />
+      <stop offset="1" :stop-color="palette.to" />
+    </linearGradient>
+  </defs>
   <!-- 看不见的厚轨道，扩大点击命中区，便于点选 / hover -->
   <path :d="d" class="cv-edge-hit" fill="none" />
-  <path :d="d" class="cv-edge-base" fill="none" :marker-end="markerEnd" />
-  <path :d="d" class="cv-edge-flow" :class="{ selected }" :style="{ color: edgeColor }" fill="none" />
+  <path
+    :d="d"
+    class="cv-edge-line"
+    :class="{ selected }"
+    :style="{ '--edge-glow': palette.glow }"
+    :stroke="`url(#${gradId})`"
+    fill="none"
+    :marker-end="markerEnd"
+  />
+  <!-- 流光：只有下游节点正在运行（数据正往那边送）或这条线被选中时才画，平时不占合成 -->
+  <path v-if="flowing || selected" :d="d" class="cv-edge-flow" fill="none" />
 
   <EdgeLabelRenderer>
-    <div
+    <button
       v-if="selected"
+      type="button"
       class="cv-edge-cut nodrag nopan"
       :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
+      :title="t('nodeui.edge.remove')"
+      :aria-label="t('nodeui.edge.remove')"
       @mousedown.stop
       @click.stop="onCut"
-      :title="t('nodeui.edge.remove')"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="6"  cy="6"  r="3" />
-        <circle cx="6"  cy="18" r="3" />
-        <line x1="20" y1="4"  x2="8.12" y2="15.88" />
-        <line x1="14.47" y1="14.48" x2="20" y2="20" />
-        <line x1="8.12" y1="8.12" x2="12" y2="12" />
-      </svg>
-    </div>
+      <LcIcon name="x" size="s" />
+    </button>
   </EdgeLabelRenderer>
 </template>
 
@@ -28,9 +40,14 @@
 import { computed } from 'vue'
 import { getBezierPath, useVueFlow, EdgeLabelRenderer, Position } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
+
+// 根是多个 <path>（片段），vue-flow 传下来的其余连线属性不往下挂
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   id: string
+  target: string
   sourceX: number
   sourceY: number
   targetX: number
@@ -44,17 +61,27 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const { removeEdges } = useVueFlow()
+const { removeEdges, findNode } = useVueFlow()
 
-// 连线颜色跟随数据类型，与两端连接点(handle)配色一致：
-// 文本=蓝、图片=绿、视频=橙。取 handle id 前缀（如 image-out → image）判定。
-const edgeColor = computed(() => {
+// 连线颜色跟随数据类型，与两端端口（handle）配色一致：
+// 图片=青→紫、视频=紫、文本=蓝→青。取 handle id 前缀（如 image-out → image）判定。
+const PALETTES = {
+  image: { from: '#3fd8ff', to: '#8a5cff', glow: 'rgba(63, 216, 255, .65)' },
+  video: { from: '#c7b3ff', to: '#8a5cff', glow: 'rgba(138, 92, 255, .75)' },
+  text: { from: '#7db2ff', to: '#3fd8ff', glow: 'rgba(90, 155, 255, .65)' },
+} as const
+const palette = computed(() => {
   const raw = props.sourceHandleId || props.targetHandleId || ''
   const kind = raw.split('-')[0]
-  if (kind === 'image') return 'var(--accent-text)'
-  if (kind === 'video') return 'var(--lane-shop)'
-  return 'var(--info)' // text 及兜底
+  if (kind === 'image' || kind === 'video') return PALETTES[kind]
+  return PALETTES.text // text 及兜底
 })
+
+// 渐变的 id 要能放进 url(#…)：连线 id 里可能带冒号等字符
+const gradId = computed(() => 'cv-eg-' + props.id.replace(/[^\w-]/g, '_'))
+
+// 下游节点在跑：这条线正在「送数据」
+const flowing = computed(() => findNode(props.target)?.data?.status === 'running')
 
 const bezier = computed(() => {
   const r = getBezierPath({
@@ -87,70 +114,57 @@ function onCut() {
   pointer-events: stroke;
 }
 
-/* 静态底线：细、暗、不闪 */
-.cv-edge-base {
-  stroke: rgba(170, 170, 180, 0.35);
-  stroke-width: 1.2;
-  pointer-events: none;
-}
-
-/* 连接线高亮层：
-   默认（非选中）为静态柔光实线 —— 不跑动画。
-   之前每条边都常驻流光动画，边一多就持续占用 GPU 合成，是大画布卡顿的元凶之一。
-   仅在选中时才启用流光动画，兼顾观感与性能。 */
-/* stroke / glow 都用 currentColor —— 颜色由行内 :style="{ color: edgeColor }" 按数据类型注入 */
-.cv-edge-flow {
-  stroke: currentColor;
-  stroke-width: 2.2;
+/* 主线：2px 渐变 + 一圈柔光。静态，不跑动画 —— 边一多，常驻动画是大画布卡顿的元凶之一 */
+.cv-edge-line {
+  stroke-width: 2;
   stroke-linecap: round;
-  /* 静态虚线（不跑动画）：6px 线 + 6px 空 */
-  stroke-dasharray: 6 6;
-  filter: drop-shadow(0 0 3px currentColor);
-  opacity: 0.85;
+  filter: drop-shadow(0 0 4px var(--edge-glow));
+  pointer-events: none;
+  transition: stroke-width .12s ease;
+}
+.cv-edge-hit:hover + .cv-edge-line { stroke-width: 2.6; }
+.cv-edge-line.selected {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 5px var(--edge-glow)) drop-shadow(0 0 12px var(--edge-glow));
+}
+
+/* 流光：亮色短划沿线流向下游 */
+.cv-edge-flow {
+  stroke: #dff8ff;
+  stroke-width: 2;
+  stroke-dasharray: 4 20;
+  stroke-linecap: round;
+  opacity: .7;
   pointer-events: none;
 }
-
-.cv-edge-flow.selected {
-  /* 选中：同色系加亮 + 流光动画，靠动画/更强发光区分，不改色相 */
-  stroke-width: 2.6;
-  opacity: 1;
-  /* 18px 亮 + 56px 暗 = 74px 周期，配合负向 dashoffset 形成流向 target 的流光 */
-  stroke-dasharray: 18 56;
-  stroke-dashoffset: 0;
-  filter:
-    drop-shadow(0 0 5px currentColor)
-    drop-shadow(0 0 12px currentColor);
-  animation: cv-edge-flow 0.9s linear infinite;
+@media (prefers-reduced-motion: no-preference) {
+  .cv-edge-flow { animation: cv-edge-flow 2.8s linear infinite; }
 }
-
 @keyframes cv-edge-flow {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: -74; }
+  to { stroke-dashoffset: -48; }
 }
 
-/* 选中后中点的剪刀按钮 */
+/* 选中后中点的断开按钮 */
 .cv-edge-cut {
   position: absolute;
   pointer-events: all;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: 50%;
-  background: var(--n-3);
-  border: 1px solid var(--accent);
-  color: var(--accent-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #131f4a;
+  border: 1px solid var(--line-3);
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  box-shadow: 0 4px 10px var(--shadow-2);
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  box-shadow: var(--sh-1);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
   z-index: 10;
 }
-/* chip 底配 chip 字：亮色下 --chip-bg 是浅绿半透，配 --n-0 (#f9fafa) 等于
-   浅字压浅底，鼠标一放上去这颗按钮就消失了 */
 .cv-edge-cut:hover {
-  background: var(--chip-bg);
-  color: var(--chip-fg);
+  background: rgba(255, 107, 139, .18);
+  border-color: rgba(255, 107, 139, .6);
+  color: var(--err-soft);
 }
-.cv-edge-cut svg { width: 12px; height: 12px; }
 </style>

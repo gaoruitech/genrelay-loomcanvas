@@ -1,604 +1,496 @@
 <template>
-  <div class="canvas-page">
-    <!-- 顶部工具栏 -->
-    <div class="canvas-topbar">
-      <div class="tb-left">
-        <span class="tb-doc-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 9h18" /><path d="M8 4v5" /></svg>
-        </span>
-        <input
-          v-model="workflowName"
-          class="tb-name"
-          maxlength="80"
-          :placeholder="t('canvas.untitled')"
-        />
-        <span v-if="autoSaving || saving" class="tb-save saving"><span class="tb-save-dot"></span>{{ t('common.saving') }}</span>
-        <span v-else-if="dirty" class="tb-save unsaved"><span class="tb-save-dot"></span>{{ t('canvas.save.unsaved') }}</span>
-        <span v-else-if="lastSavedAt" class="tb-save saved"><span class="tb-save-dot"></span>{{ t('canvas.save.savedAt', { time: formatTime(lastSavedAt) }) }}</span>
-        <span v-else class="tb-save unsaved"><span class="tb-save-dot"></span>{{ t('canvas.save.unsaved') }}</span>
-      </div>
-      <div class="tb-right">
-        <button class="tb-btn tb-icon" :title="t('canvas.topbar.backToList')" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-        </button>
-        <button
-          class="tb-btn tb-icon"
-          :title="t('canvas.topbar.guide')"
-          :aria-label="t('canvas.topbar.guide')"
-          @click="guideOpen = true"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4" />
-            <line x1="12" y1="17" x2="12" y2="17.01" />
-          </svg>
-        </button>
-        <!-- 画布操作（整理 / 外观 / 下载 / 沉浸式 / 我的画布）都挪进了画布右键菜单。
-             顶栏这里留一个「更多」开同一份菜单：沉浸式下顶栏是屏幕上唯一的常驻控件，
-             不给可见入口的话，不知道右键的人就出不去了。 -->
-        <button
-          class="tb-btn tb-more"
-          :class="{ active: moreMenu.open }"
-          :title="t('canvas.topbar.more')"
-          @click.stop="toggleMoreMenu"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
-          </svg>
-        </button>
-        <!-- 撤销 / 重做：快捷键之外还是要给可见入口，不然只有知道 Ctrl+Z 的人能用 -->
-        <button
-          class="tb-btn tb-icon"
-          :disabled="!hist.canUndo.value"
-          :title="t('canvas.topbar.undoTip')"
-          :aria-label="t('canvas.topbar.undo')"
-          @click="doUndo"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 14 4 9 9 4" />
-            <path d="M20 20v-5a6 6 0 0 0-6-6H4" />
-          </svg>
-        </button>
-        <button
-          class="tb-btn tb-icon"
-          :disabled="!hist.canRedo.value"
-          :title="t('canvas.topbar.redoTip')"
-          :aria-label="t('canvas.topbar.redo')"
-          @click="doRedo"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 14 20 9 15 4" />
-            <path d="M4 20v-5a6 6 0 0 1 6-6h10" />
-          </svg>
-        </button>
-        <button
-          class="tb-btn tb-icon"
-          :class="{ 'tb-running': executor.running.value }"
-          :disabled="executor.running.value"
-          @click="executor.runAll()"
-          :title="executor.running.value ? t('canvas.topbar.running') : t('canvas.topbar.runAll')"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
-        </button>
-        <button class="tb-btn tb-icon" :disabled="saving || publishing" @click="openShareDialog" :title="t('canvas.topbar.share')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-          </svg>
-        </button>
-        <button class="tb-btn primary" :disabled="saving" @click="handleSave">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-            <polyline points="17 21 17 13 7 13 7 21" />
-            <polyline points="7 3 7 8 15 8" />
-          </svg>
-          <span>{{ saving ? t('common.saving') : t('common.save') }}</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- 一个可用的图片 / 视频模型都没有：提示去设置里连接 -->
-    <div v-if="noModels" class="models-hint">
-      <span class="models-hint-title">{{ t('models.none') }}</span>
-      <span class="models-hint-text">{{ t('models.noneHint') }}</span>
-      <router-link class="models-hint-link" to="/settings">{{ t('models.goSettings') }}</router-link>
-    </div>
-
-    <!-- 素材库 / 我的分享 弹窗 -->
+  <div class="ed" :class="{ 'q-open': queueOpen, 'sheet-open': !!fly || queueOpen }">
+    <!-- 素材库 / 我的分享 / 模板 / 教程 -->
     <LibraryDialog v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
     <CanvasTemplateDialog v-model="templateDialogOpen" @apply="applyTemplate" />
-    <CanvasGuide v-model="guideOpen" :empty="!loading && nodes.length === 0" @open-templates="openTemplates" />
+    <CanvasGuide v-model="guideOpen" :section="guideSection" :empty="!loading && nodes.length === 0" @open-templates="openTemplates" />
 
     <!-- 创建分享链接弹窗：先填表，创建成功后同一个弹窗里换成链接 + 复制 -->
-    <div v-if="shareOpen" class="modal-mask" @click.self="closeShareDialog">
-      <div class="share-modal">
-        <div class="share-modal-header">
+    <div v-if="shareOpen" class="lc-mask" @click.self="closeShareDialog">
+      <div class="lc-dialog share-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.share.title')">
+        <div class="lc-dialog-head">
           <span>{{ t('canvas.share.title') }}</span>
-          <button class="share-modal-close" :aria-label="t('common.close')" @click="closeShareDialog">×</button>
+          <button class="lc-x" :aria-label="t('common.close')" @click="closeShareDialog">×</button>
         </div>
         <template v-if="!shareResult">
-          <div class="share-modal-body">
-            <p class="share-tip">{{ t('canvas.share.tip') }}</p>
-            <label class="share-label">{{ t('canvas.share.titleLabel') }}</label>
-            <input v-model="shareForm.title" class="share-input" maxlength="80" :placeholder="t('canvas.share.titlePlaceholder')" />
-            <label class="share-label">{{ t('canvas.share.descLabel') }}</label>
-            <textarea v-model="shareForm.description" class="share-textarea" maxlength="500" rows="3" :placeholder="t('canvas.share.descPlaceholder')"></textarea>
-            <label class="share-label">{{ t('canvas.share.expiryLabel') }}</label>
-            <div class="share-expiry">
-              <button
-                v-for="opt in shareExpiryOptions"
-                :key="opt.value"
-                type="button"
-                class="share-expiry-btn"
-                :class="{ active: shareForm.expiresInDays === opt.value }"
-                @click="shareForm.expiresInDays = opt.value"
-              >{{ opt.label }}</button>
+          <div class="lc-dialog-body">
+            <p class="lc-help share-tip">{{ t('canvas.share.tip') }}</p>
+            <div class="lc-field">
+              <label for="share-title">{{ t('canvas.share.titleLabel') }}</label>
+              <input id="share-title" v-model="shareForm.title" class="lc-input" maxlength="80" :placeholder="t('canvas.share.titlePlaceholder')" />
+            </div>
+            <div class="lc-field">
+              <label for="share-desc">{{ t('canvas.share.descLabel') }}</label>
+              <textarea id="share-desc" v-model="shareForm.description" class="lc-textarea" maxlength="500" rows="3" :placeholder="t('canvas.share.descPlaceholder')"></textarea>
+            </div>
+            <div class="lc-field share-last">
+              <span class="lc-label">{{ t('canvas.share.expiryLabel') }}</span>
+              <div class="lc-seg share-expiry">
+                <button
+                  v-for="opt in shareExpiryOptions"
+                  :key="opt.value"
+                  type="button"
+                  :class="{ on: shareForm.expiresInDays === opt.value }"
+                  @click="shareForm.expiresInDays = opt.value"
+                >{{ opt.label }}</button>
+              </div>
             </div>
           </div>
-          <div class="share-modal-footer">
-            <button class="modal-btn" :disabled="publishing" @click="closeShareDialog">{{ t('common.cancel') }}</button>
-            <button class="modal-btn primary" :disabled="publishing" @click="handlePublish">
+          <div class="lc-dialog-foot">
+            <button class="lc-btn" :disabled="publishing" @click="closeShareDialog">{{ t('common.cancel') }}</button>
+            <button class="lc-btn primary quiet" :disabled="publishing" @click="handlePublish">
               {{ publishing ? t('canvas.share.creating') : t('canvas.share.create') }}
             </button>
           </div>
         </template>
         <template v-else>
-          <div class="share-modal-body">
-            <label class="share-label share-label-first">{{ t('canvas.share.linkLabel') }}</label>
-            <div class="share-link-row">
-              <input class="share-input" readonly :value="shareResult.link" @focus="selectAllText" />
-              <button class="modal-btn primary" @click="copyShareLink">{{ t('common.copy') }}</button>
+          <div class="lc-dialog-body">
+            <div class="lc-field share-last">
+              <label for="share-link">{{ t('canvas.share.linkLabel') }}</label>
+              <div class="share-link-row">
+                <input id="share-link" class="lc-input lc-mono" readonly :value="shareResult.link" @focus="selectAllText" />
+                <button class="lc-btn primary quiet" @click="copyShareLink"><LcIcon name="copy" size="s" />{{ t('common.copy') }}</button>
+              </div>
+              <p class="lc-help">
+                {{ shareResult.expiresAt ? t('canvas.share.expiresAt', { time: formatTime(shareResult.expiresAt) }) : t('canvas.share.neverExpires') }}
+                · {{ t('canvas.share.manageHint') }}
+              </p>
             </div>
-            <p class="share-tip share-tip-after">
-              {{ shareResult.expiresAt ? t('canvas.share.expiresAt', { time: formatTime(shareResult.expiresAt) }) : t('canvas.share.neverExpires') }}
-              · {{ t('canvas.share.manageHint') }}
-            </p>
           </div>
-          <div class="share-modal-footer">
-            <button class="modal-btn" @click="closeShareDialog">{{ t('canvas.share.done') }}</button>
+          <div class="lc-dialog-foot">
+            <button class="lc-btn" @click="closeShareDialog">{{ t('canvas.share.done') }}</button>
           </div>
         </template>
       </div>
     </div>
 
-    <div class="canvas-body">
-      <!-- 左侧工具栏（窄条图标） -->
-      <div ref="railEl" class="tool-rail" :class="{ 'rail-horizontal': railHorizontal }" :style="railStyle">
-        <button class="rail-handle" :title="t('canvas.rail.drag')" @mousedown="startRailDrag">
-          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
-        </button>
-        <button
-          class="rail-btn rail-primary"
-          :class="{ active: addPanelOpen }"
-          :title="addPanelOpen ? t('canvas.rail.closeAddNode') : t('canvas.rail.addNode')"
-          @click="toggleAddPanel"
-          @mouseenter="openAddPanel"
-          @mouseleave="scheduleCloseAddPanel"
-        >
-          <svg v-if="!addPanelOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="6" y1="6" x2="18" y2="18" />
-            <line x1="18" y1="6" x2="6" y2="18" />
-          </svg>
-        </button>
-
-        <!-- 画布模板 -->
-        <button
-          class="rail-btn"
-          :title="t('canvas.rail.templates')"
-          @click="openTemplates"
-          @mouseenter="openTplPreview"
-          @mouseleave="scheduleCloseTplPreview"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="3" y1="9" x2="21" y2="9" />
-            <line x1="9" y1="9" x2="9" y2="21" />
-          </svg>
-        </button>
-
-        <div class="rail-divider" />
-
-        <button class="rail-btn" :title="t('canvas.rail.library')" @click="openLibrary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="7" width="15" height="14" rx="2" />
-            <path d="M7 3h13a2 2 0 0 1 2 2v12" />
-            <polyline points="17 17 12.5 12.5 5 20" />
-          </svg>
-        </button>
-        <button class="rail-btn" :title="t('canvas.rail.myShares')" @click="goToMyShares">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-          </svg>
-        </button>
-        <div class="rail-divider" />
-        <button class="rail-btn" :title="t('canvas.rail.switchProject')" @click.stop="toggleProjMenu" @mousedown.stop>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
-        </button>
-        <button class="rail-btn" :title="t('canvas.topbar.backToList')" @click="goToList">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-        </button>
-        <button class="rail-btn rail-orient" :title="t('canvas.rail.orient')" @click="toggleRailOrient">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="2" />
-            <line v-if="railHorizontal" x1="12" y1="4" x2="12" y2="20" />
-            <line v-else x1="4" y1="12" x2="20" y2="12" />
-          </svg>
-        </button>
-      </div>
-
-      <!-- 切换项目下拉：跟着工具条位置 -->
-      <div v-if="projMenuOpen" class="proj-menu" :style="flyoutStyle" @mousedown.stop>
-        <div class="proj-menu-head"><span>{{ t('canvas.rail.switchProject') }}</span><span class="proj-menu-count">{{ projList.length }}</span></div>
-        <div v-if="projLoading" class="proj-menu-empty">{{ t('common.loading') }}</div>
-        <div v-else class="proj-menu-scroll">
-          <button v-for="w in projList" :key="w.id" class="proj-item" :class="{ cur: w.id === currentId }" @click="switchToCanvas(w.id)">
-            <span class="proj-thumb">
-              <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            </span>
-            <span class="proj-info">
-              <span class="proj-item-name">{{ w.name }}</span>
-              <span class="proj-item-time">{{ formatTime(w.updatedAt || w.createdAt) }}</span>
-            </span>
-            <span v-if="w.id === currentId" class="proj-item-cur">{{ t('canvas.project.current') }}</span>
-          </button>
-          <div v-if="!projList.length" class="proj-menu-empty">{{ t('canvas.project.empty') }}</div>
-        </div>
-        <div class="proj-menu-foot">
-          <button class="proj-foot-btn" @click="openImportPicker">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="15" /><polyline points="7 10 12 15 17 10" /><path d="M4 20h16" /></svg>
-            {{ t('canvas.project.importTitle') }}
-          </button>
-        </div>
-      </div>
-      <Teleport to="body">
-        <div v-if="importPickerOpen" class="proj-modal-mask" @click.self="importPickerOpen = false">
-          <div class="proj-modal">
-            <div class="proj-modal-head">
-              <span>{{ t('canvas.project.importTitle') }}</span>
-              <button class="proj-modal-close" :aria-label="t('common.close')" @click="importPickerOpen = false">×</button>
-            </div>
-            <p class="proj-modal-note">{{ t('canvas.project.importNote') }}</p>
-            <div class="proj-modal-list">
-              <div v-if="projLoading" class="proj-menu-empty">{{ t('common.loading') }}</div>
-              <template v-else>
-                <button v-for="w in otherCanvases" :key="w.id" class="proj-item" @click="importCanvas(w)">
-                  <span class="proj-thumb">
-                    <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
-                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  </span>
-                  <span class="proj-info">
-                    <span class="proj-item-name">{{ w.name }}</span>
-                    <span class="proj-item-time">{{ formatTime(w.updatedAt || w.createdAt) }}</span>
-                  </span>
-                </button>
-                <div v-if="!otherCanvases.length" class="proj-menu-empty">{{ t('canvas.project.importEmpty') }}</div>
-              </template>
-            </div>
+    <!-- 加载其他画布到当前 -->
+    <Teleport to="body">
+      <div v-if="importPickerOpen" class="lc-mask" @click.self="importPickerOpen = false">
+        <div class="lc-dialog proj-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.project.importTitle')">
+          <div class="lc-dialog-head">
+            <span>{{ t('canvas.project.importTitle') }}</span>
+            <button class="lc-x" :aria-label="t('common.close')" @click="importPickerOpen = false">×</button>
+          </div>
+          <div class="lc-dialog-body">
+            <p class="lc-help proj-note">{{ t('canvas.project.importNote') }}</p>
+            <div v-if="projLoading" class="lc-empty">{{ t('common.loading') }}</div>
+            <template v-else>
+              <button v-for="w in otherCanvases" :key="w.id" class="proj-item" @click="importCanvas(w)">
+                <span class="proj-thumb lc-thumb">
+                  <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
+                  <LcIcon v-else name="canvas" />
+                </span>
+                <span class="proj-info">
+                  <span class="proj-item-name">{{ w.name }}</span>
+                  <span class="proj-item-time">{{ formatTime(w.updatedAt || w.createdAt) }}</span>
+                </span>
+              </button>
+              <div v-if="!otherCanvases.length" class="lc-empty">{{ t('canvas.project.importEmpty') }}</div>
+            </template>
           </div>
         </div>
-      </Teleport>
+      </div>
+    </Teleport>
 
-      <!-- 添加节点浮层（hover + 号自动展开，移开自动收起） -->
-      <div
-        v-if="addPanelOpen"
-        class="add-panel"
-        :style="flyoutStyle"
-        @mouseenter="keepAddPanel"
-        @mouseleave="scheduleCloseAddPanel"
+    <!-- Vue Flow 画布：铺满整个编辑区，其余控件都是浮在上面的玻璃块 -->
+    <div
+      class="vf-wrap"
+      :class="{ auto: bgIsAuto, 'drag-over': dragActive, 'box-selecting': boxSelecting }"
+      :style="flowStyle"
+      @dragenter="onDragEnter"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onCanvasDrop"
+    >
+      <VueFlow
+        v-model:nodes="nodes"
+        v-model:edges="edges"
+        :node-types="nodeTypes"
+        :edge-types="edgeTypes"
+        :default-edge-options="{ type: 'glow' }"
+        :is-valid-connection="isValidConnection"
+        :only-render-visible-elements="true"
+        :min-zoom="MIN_ZOOM"
+        :max-zoom="MAX_ZOOM"
+        :delete-key-code="null"
+        :selection-mode="SelectionMode.Partial"
+        :default-viewport="{ x: 0, y: 0, zoom: 1 }"
+        @connect="onConnect"
+        @viewport-change="onViewportChange"
+        @node-drag-start="onNodeDragStart"
+        @node-drag="onNodeDragMove"
+        @node-drag-stop="onNodeDragStop"
+        @node-context-menu="onNodeContextMenu"
+        @pane-context-menu="onPaneContextMenu"
+        @pane-click="closeMenus"
+        @move-start="closeMenus"
       >
-        <div class="add-panel-title">{{ t('canvas.addPanel.title') }}</div>
-        <template v-for="(g, gi) in nodeMenuGroups" :key="'ap-' + gi">
-          <div v-if="gi > 0" class="add-panel-divider" />
-          <div class="add-panel-sub">{{ g.title }}</div>
-          <div class="add-grid">
+        <!-- 图案：dots / lines 用 vue-flow 自带的；cross 借它的 pattern 插槽自己画，
+             这样平移缩放跟着视口走 —— 拿 CSS 背景铺在外层是不跟随的，一拖就穿帮 -->
+        <Background
+          v-if="bgSettings.pattern !== 'none'"
+          :variant="bgVariant"
+          :pattern-color="flowPatternColor"
+          :gap="bgSettings.gap"
+          :size="bgSettings.pattern === 'dots' ? 1.6 : undefined"
+        >
+          <template v-if="bgSettings.pattern === 'cross'" #pattern>
+            <path :d="crossPath" :stroke="flowPatternColor" stroke-width="1" fill="none" />
+          </template>
+        </Background>
+        <MiniMap
+          position="bottom-left"
+          pannable
+          zoomable
+          :width="168"
+          :height="104"
+          :node-color="miniNodeColor"
+          :node-border-radius="3"
+          :mask-color="miniMaskColor"
+          :mask-stroke-color="miniStrokeColor"
+          :mask-stroke-width="1.5"
+          :mask-border-radius="6"
+          :aria-label="t('canvas.tools.minimap')"
+        />
+      </VueFlow>
+
+      <!-- 拖动节点时的智能对齐参考线。
+           DOM 常驻、靠 .on 控制淡入淡出：v-if 直接切会 0ms 现 0ms 灭，快拖时像闪频。
+           线不是纯色，而是走 userSpaceOnUse 的渐变，两端各 GUIDE_PAD 渐隐到透明，
+           所以看到的是「浮现的一段」而不是戳出画面的一根硬线。 -->
+      <svg class="vf-align-guides" :class="{ on: guidesOn }" aria-hidden="true">
+        <defs>
+          <linearGradient
+            v-for="(g, i) in alignGuides"
+            :key="'vf-guide-grad-' + i"
+            :id="'vf-guide-' + i"
+            gradientUnits="userSpaceOnUse"
+            :x1="g.type === 'v' ? g.pos : g.a"
+            :y1="g.type === 'v' ? g.a : g.pos"
+            :x2="g.type === 'v' ? g.pos : g.b"
+            :y2="g.type === 'v' ? g.b : g.pos"
+          >
+            <stop offset="0" stop-opacity="0" />
+            <stop offset="0.14" stop-opacity="1" />
+            <stop offset="0.86" stop-opacity="1" />
+            <stop offset="1" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <template v-for="(g, i) in alignGuides" :key="i">
+          <line
+            :x1="g.type === 'v' ? g.pos : g.a"
+            :y1="g.type === 'v' ? g.a : g.pos"
+            :x2="g.type === 'v' ? g.pos : g.b"
+            :y2="g.type === 'v' ? g.b : g.pos"
+            :stroke="`url(#vf-guide-${i})`"
+            :stroke-dasharray="g.center ? '5 5' : undefined"
+            :opacity="g.opacity"
+          />
+          <!-- 命中（真吸上了）时才在两端点一下，标出对齐到的是哪条边 -->
+          <template v-if="g.opacity > 0.9">
+            <circle
+              :cx="g.type === 'v' ? g.pos : g.ca"
+              :cy="g.type === 'v' ? g.ca : g.pos"
+              r="2.2"
+            />
+            <circle
+              :cx="g.type === 'v' ? g.pos : g.cb"
+              :cy="g.type === 'v' ? g.cb : g.pos"
+              r="2.2"
+            />
+          </template>
+        </template>
+      </svg>
+
+      <div v-if="loading" class="vf-loading"><span class="lc-ring spin sm" aria-hidden="true" />{{ t('common.loading') }}</div>
+
+      <!-- 拖入文件时的高亮提示 -->
+      <div v-if="dragActive" class="vf-drop-hint">
+        <LcIcon name="upload" size="xl" />
+        <span>{{ t('canvas.dropHint') }}</span>
+      </div>
+    </div>
+
+    <!-- ============ 悬浮玻璃块 ============ -->
+
+    <!-- 左上：返回 + 画布名（就地改名）+ 保存状态 -->
+    <div class="fl ed-title">
+      <button class="lc-tb" :title="t('canvas.topbar.backToList')" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
+        <LcIcon name="chev" class="flip" />
+      </button>
+      <label class="ed-name" :title="t('canvas.topbar.rename')">
+        <span class="ed-name-mirror" aria-hidden="true">{{ workflowName || t('canvas.untitled') }}</span>
+        <input
+          v-model="workflowName"
+          maxlength="80"
+          :placeholder="t('canvas.untitled')"
+          :aria-label="t('canvas.topbar.rename')"
+          @keydown.enter="($event.target as HTMLInputElement).blur()"
+        />
+      </label>
+      <button class="ed-save lc-st" :class="saveState.cls" :disabled="saving" :title="t('canvas.save.saveNow')" @click="handleSave">
+        <span>{{ saveState.text }}</span>
+      </button>
+    </div>
+
+    <!-- 左侧：节点面板。+ 是全部节点，下面按类别分，最底下是素材库 -->
+    <div class="fl ed-pal" role="toolbar" :aria-label="t('canvas.rail.addNode')">
+      <button
+        class="lc-tb"
+        :class="{ on: fly === 'all' }"
+        :title="t('canvas.rail.addNode')"
+        :aria-label="t('canvas.rail.addNode')"
+        :aria-expanded="fly === 'all'"
+        data-pal="all"
+        @click="toggleFly('all', $event)"
+      ><LcIcon name="plus" /></button>
+      <hr />
+      <button
+        v-for="c in palCats"
+        :key="c.key"
+        class="lc-tb pal-cat"
+        :class="{ on: fly === c.key }"
+        :title="c.title"
+        :aria-label="c.title"
+        :data-pal="c.key"
+        @click="onPalClick(c, $event)"
+      ><LcIcon :name="c.icon" /></button>
+      <hr class="pal-cat" />
+      <button
+        class="lc-tb pal-cat"
+        :class="{ on: fly === 'lib' }"
+        :title="t('canvas.pal.library')"
+        :aria-label="t('canvas.pal.library')"
+        data-pal="lib"
+        @click="toggleFly('lib', $event)"
+      ><LcIcon name="folder" /></button>
+    </div>
+
+    <!-- 节点面板的展开层：桌面贴在面板右边，手机是底部抽屉 -->
+    <div v-if="fly" class="fl ed-fly" :class="{ wide: fly === 'all' }" :style="{ top: flyTop + 'px' }">
+      <div class="ed-fly-h">
+        <span>{{ flyTitle }}</span>
+        <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="fly = ''"><LcIcon name="x" size="s" /></button>
+      </div>
+      <div class="ed-fly-b">
+        <template v-for="(g, gi) in flyGroups" :key="'fg-' + gi">
+          <div v-if="g.title" class="ed-sub">{{ g.title }}</div>
+          <div class="ed-grid" :class="{ one: fly !== 'all' }">
             <button
               v-for="item in g.items"
-              :key="item.kind"
-              class="add-btn"
+              :key="item.key"
+              class="ed-item"
+              :disabled="item.disabled"
               :title="item.label"
-              @click="addNodeAndClose(item.kind)"
+              :data-key="item.key"
+              @click="runFlyItem(item)"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+              <LcIcon v-if="item.lc" :name="item.lc" />
+              <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
               <span>{{ item.label }}</span>
             </button>
           </div>
         </template>
-
-        <div class="add-panel-divider" />
-        <div class="legend">
-          <div class="legend-item"><span class="dot d-text" /> {{ t('nodes.title.text') }}</div>
-          <div class="legend-item"><span class="dot d-image" /> {{ t('nodes.title.image') }}</div>
-          <div class="legend-item"><span class="dot d-video" /> {{ t('nodes.title.video') }}</div>
-          <div class="legend-item"><span class="dot d-alt" /> {{ t('canvas.addPanel.legendLastFrame') }}</div>
-        </div>
-      </div>
-
-      <!-- 画布模板 hover 预览（前 10 条，移开自动关闭） -->
-      <div
-        v-if="tplPreview.open"
-        class="tpl-preview"
-        :style="{ left: tplPreview.x + 'px', top: tplPreview.y + 'px' }"
-        @mouseenter="keepTplPreview"
-        @mouseleave="scheduleCloseTplPreview"
-      >
-        <div class="tpl-preview-title">{{ t('canvas.tpl.title') }}</div>
-        <div v-if="tplPreviewLoading && tplPreviewList.length === 0" class="tpl-preview-empty">{{ t('common.loading') }}</div>
-        <div v-else-if="tplPreviewList.length === 0" class="tpl-preview-empty">{{ t('canvas.tpl.empty') }}</div>
-        <div v-else class="tpl-preview-list">
-          <button
-            v-for="tpl in tplPreviewList.slice(0, 10)"
-            :key="tpl.key"
-            class="tpl-preview-item"
-            @click="applyTemplateFromPreview(tpl)"
-          >
-            <span class="tpl-preview-thumb">
-              <img v-if="tpl.cover" :src="tpl.cover" :alt="tpl.title" loading="lazy" />
-              <span v-else class="tpl-preview-thumb-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="9" x2="9" y2="21" />
-                </svg>
-              </span>
-            </span>
-            <span class="tpl-preview-name">{{ tpl.title }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Vue Flow 画布 -->
-      <div
-        class="vf-wrap"
-        :class="{ 'drag-over': dragActive, 'box-selecting': boxSelecting }"
-        :style="flowStyle"
-        @dragenter="onDragEnter"
-        @dragover="onDragOver"
-        @dragleave="onDragLeave"
-        @drop="onCanvasDrop"
-      >
-        <VueFlow
-          v-model:nodes="nodes"
-          v-model:edges="edges"
-          :node-types="nodeTypes"
-          :edge-types="edgeTypes"
-          :default-edge-options="{ type: 'glow' }"
-          :connection-line-style="{ stroke: 'var(--accent-text)', strokeWidth: 2 }"
-          :is-valid-connection="isValidConnection"
-          :only-render-visible-elements="true"
-          :min-zoom="0.2"
-          :max-zoom="4"
-          :delete-key-code="null"
-          :selection-mode="SelectionMode.Partial"
-          :default-viewport="{ x: 0, y: 0, zoom: 1 }"
-          @connect="onConnect"
-          @viewport-change="onViewportChange"
-          @node-drag-start="onNodeDragStart"
-          @node-drag="onNodeDragMove"
-          @node-drag-stop="onNodeDragStop"
-          @node-context-menu="onNodeContextMenu"
-          @pane-context-menu="onPaneContextMenu"
-          @pane-click="closeMenus"
-          @move-start="closeMenus"
-        >
-          <!-- 图案：dots / lines 用 vue-flow 自带的；cross 借它的 pattern 插槽自己画，
-               这样平移缩放跟着视口走 —— 拿 CSS 背景铺在外层是不跟随的，一拖就穿帮 -->
-          <Background
-            v-if="bgSettings.pattern !== 'none'"
-            :variant="bgVariant"
-            :pattern-color="flowPatternColor"
-            :gap="bgSettings.gap"
-          >
-            <template v-if="bgSettings.pattern === 'cross'" #pattern>
-              <path :d="crossPath" :stroke="flowPatternColor" stroke-width="1" fill="none" />
-            </template>
-          </Background>
-          <Controls position="bottom-right" />
-          <MiniMap
-            position="bottom-left"
-            pannable
-            zoomable
-            :node-color="miniNodeColor"
-            :mask-color="miniMaskColor"
-          />
-        </VueFlow>
-
-        <!-- 拖动节点时的智能对齐参考线。
-             DOM 常驻、靠 .on 控制淡入淡出：v-if 直接切会 0ms 现 0ms 灭，快拖时像闪频。
-             线不是纯色，而是走 userSpaceOnUse 的渐变，两端各 GUIDE_PAD 渐隐到透明，
-             所以看到的是「浮现的一段」而不是戳出画面的一根硬线。 -->
-        <svg class="vf-align-guides" :class="{ on: guidesOn }" aria-hidden="true">
-          <defs>
-            <linearGradient
-              v-for="(g, i) in alignGuides"
-              :key="'vf-guide-grad-' + i"
-              :id="'vf-guide-' + i"
-              gradientUnits="userSpaceOnUse"
-              :x1="g.type === 'v' ? g.pos : g.a"
-              :y1="g.type === 'v' ? g.a : g.pos"
-              :x2="g.type === 'v' ? g.pos : g.b"
-              :y2="g.type === 'v' ? g.b : g.pos"
-            >
-              <stop offset="0" stop-opacity="0" />
-              <stop offset="0.14" stop-opacity="1" />
-              <stop offset="0.86" stop-opacity="1" />
-              <stop offset="1" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <template v-for="(g, i) in alignGuides" :key="i">
-            <line
-              :x1="g.type === 'v' ? g.pos : g.a"
-              :y1="g.type === 'v' ? g.a : g.pos"
-              :x2="g.type === 'v' ? g.pos : g.b"
-              :y2="g.type === 'v' ? g.b : g.pos"
-              :stroke="`url(#vf-guide-${i})`"
-              :stroke-dasharray="g.center ? '5 5' : undefined"
-              :opacity="g.opacity"
-            />
-            <!-- 命中（真吸上了）时才在两端点一下，标出对齐到的是哪条边 -->
-            <template v-if="g.opacity > 0.9">
-              <circle
-                :cx="g.type === 'v' ? g.pos : g.ca"
-                :cy="g.type === 'v' ? g.ca : g.pos"
-                r="2.2"
-              />
-              <circle
-                :cx="g.type === 'v' ? g.pos : g.cb"
-                :cy="g.type === 'v' ? g.cb : g.pos"
-                r="2.2"
-              />
-            </template>
-          </template>
-        </svg>
-
-        <!-- 整理后的反悔入口：整理是一次性重排全部位置，没有撤销就不敢点 -->
-        <div v-if="layoutUndo.visible" class="vf-undo-pill">
-          <span>{{ layoutUndo.text }}</span>
-          <button class="vf-undo-btn" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
-        </div>
-
-        <div v-if="loading" class="vf-loading">{{ t('common.loading') }}</div>
-
-        <!-- 拖入文件时的高亮提示 -->
-        <div v-if="dragActive" class="vf-drop-hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <span>{{ t('canvas.dropHint') }}</span>
+        <div v-if="fly === 'all'" class="ed-legend">
+          <span><i class="dot d-text" />{{ t('nodes.title.text') }}</span>
+          <span><i class="dot d-image" />{{ t('nodes.title.image') }}</span>
+          <span><i class="dot d-video" />{{ t('nodes.title.video') }}</span>
+          <span><i class="dot d-last" />{{ t('canvas.addPanel.legendLastFrame') }}</span>
         </div>
       </div>
     </div>
 
+    <!-- 切换项目：贴在标题块下面 -->
+    <div v-if="projMenuOpen" class="fl ed-proj">
+      <div class="ed-fly-h"><span>{{ t('canvas.rail.switchProject') }}</span><span class="lc-chip">{{ projList.length }}</span></div>
+      <div v-if="projLoading" class="lc-empty">{{ t('common.loading') }}</div>
+      <div v-else class="ed-proj-list">
+        <button v-for="w in projList" :key="w.id" class="proj-item" :class="{ cur: w.id === currentId }" @click="switchToCanvas(w.id)">
+          <span class="proj-thumb lc-thumb">
+            <img v-if="w.thumbnailType === 'image' && w.thumbnail" :src="canvasImageThumb(ensureHttps(w.thumbnail))" alt="" loading="lazy" />
+            <LcIcon v-else name="canvas" />
+          </span>
+          <span class="proj-info">
+            <span class="proj-item-name">{{ w.name }}</span>
+            <span class="proj-item-time">{{ formatTime(w.updatedAt || w.createdAt) }}</span>
+          </span>
+          <span v-if="w.id === currentId" class="lc-chip">{{ t('canvas.project.current') }}</span>
+        </button>
+        <div v-if="!projList.length" class="lc-empty">{{ t('canvas.project.empty') }}</div>
+      </div>
+      <div class="ed-proj-foot">
+        <button class="lc-btn sm block" @click="openImportPicker"><LcIcon name="download" size="s" />{{ t('canvas.project.importTitle') }}</button>
+      </div>
+    </div>
+
+    <!-- 一个可用的图片 / 视频模型都没有：提示去模型页连接 -->
+    <div v-if="noModels" class="ed-hint lc-alert warn">
+      <LcIcon name="warn" size="s" />
+      <span><b>{{ t('models.none') }}</b> {{ t('canvas.hint.noModels') }}</span>
+      <router-link to="/models">{{ t('canvas.hint.goModels') }}</router-link>
+    </div>
+
+    <!-- 右上：分享 + 更多（原来顶栏和右键菜单里的画布操作都在这里） -->
+    <div class="ed-act">
+      <button
+        v-if="appStore.immersive"
+        class="lc-btn icon ed-btn"
+        :title="t('canvas.menu.exitImmersive')"
+        :aria-label="t('canvas.menu.exitImmersive')"
+        @click="appStore.setImmersive(false)"
+      ><svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.exitFull" /></button>
+      <button
+        v-if="!queueOpen"
+        class="lc-btn icon ed-btn ed-qbtn"
+        :title="t('queue.toggle')"
+        :aria-label="t('queue.toggle')"
+        @click="setQueueOpen(true)"
+      >
+        <LcIcon name="queue" />
+        <i v-if="activeRunCount" class="ed-badge">{{ activeRunCount }}</i>
+      </button>
+      <button class="lc-btn ed-btn ed-share" :disabled="saving || publishing" :title="t('canvas.topbar.share')" @click="openShareDialog">
+        <LcIcon name="share" /><span>{{ t('canvas.act.share') }}</span>
+      </button>
+      <button
+        class="lc-btn icon ed-btn ed-more-btn"
+        :class="{ on: moreMenu.open }"
+        :title="t('canvas.topbar.more')"
+        :aria-label="t('canvas.topbar.more')"
+        :aria-expanded="moreMenu.open"
+        @click.stop="toggleMoreMenu"
+      ><LcIcon name="more" /></button>
+    </div>
+
+    <!-- 底部中间：缩放 / 撤销重做 / 自动整理 / 运行全部 -->
+    <div class="fl ed-tools" role="toolbar" :aria-label="t('canvas.tools.label')">
+      <button class="lc-tb" :disabled="zoomPct <= MIN_ZOOM * 100" :title="t('canvas.tools.zoomOut')" :aria-label="t('canvas.tools.zoomOut')" @click="zoomOut()"><LcIcon name="zout" /></button>
+      <button class="ed-zoom" :title="t('canvas.tools.zoomReset')" @click="zoomTo(1, { duration: 200 })">{{ zoomPct }}%</button>
+      <button class="lc-tb" :disabled="zoomPct >= MAX_ZOOM * 100" :title="t('canvas.tools.zoomIn')" :aria-label="t('canvas.tools.zoomIn')" @click="zoomIn()"><LcIcon name="zin" /></button>
+      <button class="lc-tb" :title="t('canvas.tools.fit')" :aria-label="t('canvas.tools.fit')" @click="fitFree({ duration: 200 })"><LcIcon name="fit" /></button>
+      <hr />
+      <!-- 撤销 / 重做：快捷键之外还是要给可见入口，不然只有知道 Ctrl+Z 的人能用 -->
+      <button class="lc-tb" :disabled="!hist.canUndo.value" :title="t('canvas.topbar.undoTip')" :aria-label="t('canvas.topbar.undo')" @click="doUndo"><LcIcon name="undo" /></button>
+      <button class="lc-tb" :disabled="!hist.canRedo.value" :title="t('canvas.topbar.redoTip')" :aria-label="t('canvas.topbar.redo')" @click="doRedo"><LcIcon name="redo" /></button>
+      <hr />
+      <button class="lc-btn sm ed-arrange" :disabled="layout.running.value || nodes.length < 2" :title="t('canvas.menu.arrange')" @click="runArrange">
+        <LcIcon name="layout" size="s" /><span>{{ t('canvas.tools.arrange') }}</span>
+      </button>
+      <hr />
+      <button
+        class="lc-btn primary sm ed-run"
+        :disabled="executor.running.value"
+        :title="executor.running.value ? t('canvas.topbar.running') : t('canvas.tools.runAllTip')"
+        @click="executor.runAll()"
+      >
+        <LcIcon name="play" size="s" /><span>{{ executor.running.value ? t('canvas.topbar.running') : t('canvas.topbar.runAll') }}</span>
+      </button>
+    </div>
+
+    <!-- 整理后的反悔入口：整理是一次性重排全部位置，没有撤销就不敢点 -->
+    <div v-if="layoutUndo.visible" class="fl ed-undo">
+      <span>{{ layoutUndo.text }}</span>
+      <button class="lc-btn text sm" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
+    </div>
+
+    <!-- 右侧：生成队列 -->
+    <QueuePanel
+      v-show="queueOpen"
+      :nodes="nodes"
+      :workflow-id="currentId"
+      :title-of="nodeTypeLabel"
+      :cancel-node="executor.cancelNode"
+      @focus="gotoNode"
+      @close="setQueueOpen(false)"
+    />
+    <!-- 手机上抽屉（节点面板 / 队列）后面的遮罩 -->
+    <div class="ed-scrim" @click="closeSheets" />
+
     <!-- 节点右键菜单 -->
     <div
       v-if="contextMenu.open"
-      class="ctx-menu"
+      class="ctx-menu lc-menu"
+      role="menu"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
       <template v-if="contextNodeInfo">
-        <button class="ctx-item" @click="viewOriginalFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
+        <button class="lc-menu-item" role="menuitem" @click="viewOriginalFromContext">
+          <LcIcon name="eye" size="s" />
           {{ contextNodeInfo.mediaType === 'video' ? t('canvas.ctx.viewVideo') : t('canvas.ctx.viewImage') }}
         </button>
-        <button class="ctx-item" @click="downloadFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
+        <button class="lc-menu-item" role="menuitem" @click="downloadFromContext">
+          <LcIcon name="download" size="s" />
           {{ contextNodeInfo.mediaType === 'video' ? t('canvas.ctx.downloadVideo') : t('canvas.ctx.downloadImage') }}
         </button>
-        <button class="ctx-item" @click="saveToAssetsFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"></path></svg>
+        <button class="lc-menu-item" role="menuitem" @click="saveToAssetsFromContext">
+          <LcIcon name="folder" size="s" />
           {{ t('canvas.ctx.saveToAssets') }}
         </button>
-        <button v-if="contextImageUrl" class="ctx-item" @click="editImageFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-            <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-          </svg>
+        <button v-if="contextImageUrl" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
+          <LcIcon name="edit" size="s" />
           {{ t('canvas.ctx.editImage') }}
         </button>
-        <button class="ctx-item" @click="detailFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9" />
-            <line x1="12" y1="11" x2="12" y2="17" />
-            <circle cx="12" cy="8" r="0.6" fill="currentColor" />
-          </svg>
+        <button class="lc-menu-item" role="menuitem" @click="detailFromContext">
+          <LcIcon name="info" size="s" />
           {{ t('canvas.ctx.taskDetail') }}
         </button>
-        <button v-if="contextCanFork" class="ctx-item" @click="continueFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 12a8 8 0 1 0 2.5-5.8" /><polyline points="4 4 4 9 9 9" />
-          </svg>
+        <button v-if="contextCanFork" class="lc-menu-item" role="menuitem" @click="continueFromContext">
+          <LcIcon name="refresh" size="s" />
           {{ t('canvas.ctx.continue') }}
         </button>
-        <button v-if="contextCanFork" class="ctx-item" @click="forkFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="6" cy="4" r="2" />
-            <circle cx="18" cy="8" r="2" />
-            <circle cx="6" cy="20" r="2" />
-            <path d="M6 6v12" />
-            <path d="M6 12h6a4 4 0 0 0 4-4V9.9" />
-          </svg>
+        <button v-if="contextCanFork" class="lc-menu-item" role="menuitem" @click="forkFromContext">
+          <LcIcon name="branch" size="s" />
           {{ t('canvas.ctx.fork') }}
         </button>
-        <div class="ctx-divider" />
+        <hr />
       </template>
       <!-- 多选普通节点后右键：把它们圈成一组 -->
       <template v-if="!contextIsFrame && selectedLoose >= 2">
-        <button class="ctx-item" @click="groupFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.frame" />
+        <button class="lc-menu-item" role="menuitem" @click="groupFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.frame" />
           {{ t('canvas.ctx.group', { n: selectedLoose }) }}
         </button>
-        <button v-if="canMergeSelected" class="ctx-item" @click="mergeFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.merge" />
+        <button v-if="canMergeSelected" class="lc-menu-item" role="menuitem" @click="mergeFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.merge" />
           {{ t('canvas.ctx.merge') }}
         </button>
-        <button v-if="selectedInGroup >= 1" class="ctx-item" @click="releaseFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.release" />
+        <button v-if="selectedInGroup >= 1" class="lc-menu-item" role="menuitem" @click="releaseFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.release" />
           {{ t('canvas.ctx.release', { n: selectedInGroup }) }}
         </button>
-        <div class="ctx-divider" />
+        <hr />
       </template>
       <!-- 右键一个组：只出跟「组」有关的动作，复制 / 删除节点对组没意义 -->
       <template v-if="contextIsFrame">
-        <button v-if="canMergeSelected" class="ctx-item" @click="mergeFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.merge" />
+        <button v-if="canMergeSelected" class="lc-menu-item" role="menuitem" @click="mergeFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.merge" />
           {{ t('canvas.ctx.merge') }}
         </button>
-        <button class="ctx-item" @click="ungroupFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.ungroup" />
+        <button class="lc-menu-item" role="menuitem" @click="ungroupFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.ungroup" />
           {{ t('canvas.ctx.ungroup') }}
         </button>
-        <button v-if="selectedInGroup >= 1" class="ctx-item" @click="releaseFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="MENU_ICONS.release" />
+        <button v-if="selectedInGroup >= 1" class="lc-menu-item" role="menuitem" @click="releaseFromContext">
+          <svg class="lc-ic s" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.release" />
           {{ t('canvas.ctx.release', { n: selectedInGroup }) }}
         </button>
-        <button class="ctx-item danger" @click="deleteGroupFromContext">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" />
-          </svg>
+        <button class="lc-menu-item danger" role="menuitem" @click="deleteGroupFromContext">
+          <LcIcon name="trash" size="s" />
           {{ t('canvas.ctx.deleteGroup') }}
         </button>
       </template>
-      <button v-if="!contextNodeInfo && contextImageUrl" class="ctx-item" @click="editImageFromContext">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-          <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-        </svg>
+      <button v-if="!contextNodeInfo && contextImageUrl" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
+        <LcIcon name="edit" size="s" />
         {{ t('canvas.ctx.editImage') }}
       </button>
-      <button v-if="!contextIsFrame" class="ctx-item" @click="duplicateFromContext">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" />
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
+      <button v-if="!contextIsFrame" class="lc-menu-item" role="menuitem" @click="duplicateFromContext">
+        <LcIcon name="copy" size="s" />
         {{ t('canvas.ctx.duplicate') }}
       </button>
-      <button v-if="!contextIsFrame" class="ctx-item danger" @click="deleteFromContext">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-          <path d="M10 11v6M14 11v6" />
-        </svg>
+      <button v-if="!contextIsFrame" class="lc-menu-item danger" role="menuitem" @click="deleteFromContext">
+        <LcIcon name="trash" size="s" />
         {{ t('canvas.ctx.deleteNode') }}
       </button>
     </div>
@@ -606,79 +498,56 @@
     <!-- 画布空白处右键：添加节点菜单（在光标位置弹出） -->
     <div
       v-if="addMenu.open"
-      class="add-context-menu"
+      class="ed-menu lc-menu"
+      role="menu"
       :style="{ left: addMenu.x + 'px', top: addMenu.y + 'px', maxHeight: `calc(100vh - ${addMenu.y}px - 16px)` }"
       @click.stop
     >
-      <!-- 导航（退出沉浸式 / 我的画布 / 使用教程）永远置顶 -->
+      <!-- 导航（沉浸式 / 我的画布 / 使用教程）永远置顶 -->
       <template v-if="navMenuGroup">
-        <div class="add-grid">
-          <button
-            v-for="item in navMenuGroup.items"
-            :key="item.key"
-            class="add-btn"
-            :disabled="item.disabled"
-            :title="item.label"
-            @click="runCanvasMenuItem(item)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+        <div class="ed-grid">
+          <button v-for="item in navMenuGroup.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <LcIcon v-if="item.lc" :name="item.lc" />
+            <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
             <span>{{ item.label }}</span>
           </button>
         </div>
-        <div class="add-panel-divider" />
+        <hr />
       </template>
       <!-- 有选中节点：把「针对选中」的操作摆在添加节点上面 -->
       <template v-if="hasSelectionForMenu">
         <template v-for="(grp, gi) in otherMenuGroups" :key="'sel-' + gi">
-          <div v-if="gi > 0" class="add-panel-divider" />
-          <div v-if="grp.title" class="add-panel-sub">{{ grp.title }}</div>
-          <div class="add-grid">
-            <button
-              v-for="item in grp.items"
-              :key="item.key"
-              class="add-btn"
-              :disabled="item.disabled"
-              :title="item.label"
-              @click="runCanvasMenuItem(item)"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+          <hr v-if="gi > 0" />
+          <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
+          <div class="ed-grid">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+              <LcIcon v-if="item.lc" :name="item.lc" />
+              <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
               <span>{{ item.label }}</span>
             </button>
           </div>
         </template>
-        <div class="add-panel-divider" />
+        <hr />
       </template>
-      <div class="add-panel-title">{{ t('canvas.addPanel.title') }}</div>
+      <div class="ed-menu-title">{{ t('canvas.addPanel.title') }}</div>
       <template v-for="(group, gi) in nodeMenuGroups" :key="gi">
-        <div v-if="gi > 0" class="add-panel-divider" />
-        <div class="add-panel-sub">{{ group.title }}</div>
-        <div class="add-grid">
-          <button
-            v-for="item in group.items"
-            :key="item.kind"
-            class="add-btn"
-            :title="item.label"
-            @click="addNodeFromMenu(item.kind)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+        <hr v-if="gi > 0" />
+        <div class="ed-sub">{{ group.title }}</div>
+        <div class="ed-grid">
+          <button v-for="item in group.items" :key="item.kind" class="ed-item" role="menuitem" :title="item.label" :data-key="item.kind" @click="addNodeFromMenu(item.kind)">
+            <svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
             <span>{{ item.label }}</span>
           </button>
         </div>
       </template>
       <template v-if="!hasSelectionForMenu">
         <template v-for="(grp, gi) in otherMenuGroups" :key="'cg-' + gi">
-          <div class="add-panel-divider" />
-          <div v-if="grp.title" class="add-panel-sub">{{ grp.title }}</div>
-          <div class="add-grid">
-            <button
-              v-for="item in grp.items"
-              :key="item.key"
-              class="add-btn"
-              :disabled="item.disabled"
-              :title="item.label"
-              @click="runCanvasMenuItem(item)"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+          <hr />
+          <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
+          <div class="ed-grid">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+              <LcIcon v-if="item.lc" :name="item.lc" />
+              <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
               <span>{{ item.label }}</span>
             </button>
           </div>
@@ -686,33 +555,28 @@
       </template>
     </div>
 
-    <!-- 顶栏「更多」菜单：内容与右键菜单的「画布操作」部分完全同源 -->
+    <!-- 右上「更多」菜单：内容与右键菜单的「画布操作」部分完全同源 -->
     <div
       v-if="moreMenu.open"
-      class="add-context-menu"
-      :style="{ left: moreMenu.x + 'px', top: moreMenu.y + 'px' }"
+      class="ed-menu ed-more lc-menu"
+      role="menu"
+      :style="{ left: moreMenu.x + 'px', top: moreMenu.y + 'px', maxHeight: `calc(100vh - ${moreMenu.y}px - 16px)` }"
       @click.stop
     >
       <template v-for="(grp, gi) in canvasMenuGroups" :key="'mg-' + gi">
-        <div v-if="gi > 0" class="add-panel-divider" />
-        <div v-if="grp.title" class="add-panel-sub">{{ grp.title }}</div>
-        <div class="add-grid">
-          <button
-            v-for="item in grp.items"
-            :key="item.key"
-            class="add-btn"
-            :disabled="item.disabled"
-            :title="item.label"
-            @click="runCanvasMenuItem(item)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="item.icon" />
+        <hr v-if="gi > 0" />
+        <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
+        <div class="ed-grid">
+          <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <LcIcon v-if="item.lc" :name="item.lc" />
+            <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
             <span>{{ item.label }}</span>
           </button>
         </div>
       </template>
     </div>
 
-    <!-- 画布外观面板（顶栏「外观」下方弹出） -->
+    <!-- 画布外观面板（贴着菜单弹出） -->
     <CanvasStylePanel
       :open="stylePanelOpen"
       :bg="bgSettings"
@@ -741,21 +605,21 @@
     />
 
     <!-- 节点搜索：Ctrl+F -->
-    <div v-if="searchOpen" class="nsearch" @click.stop @mousedown.stop>
-      <div class="nsearch-bar">
+    <div v-if="searchOpen" class="fl nsearch" @click.stop @mousedown.stop>
+      <label class="lc-inp sm nsearch-bar">
+        <LcIcon name="search" size="s" />
         <input
           ref="searchInputRef"
           v-model="searchKw"
-          class="nsearch-in"
           :placeholder="t('canvas.search.placeholder')"
           @keydown.escape="searchOpen = false"
         />
-        <button class="nsearch-x" :title="t('common.close')" @click="searchOpen = false">×</button>
-      </div>
+        <button class="lc-inp-btn" :title="t('common.close')" :aria-label="t('common.close')" @click="searchOpen = false"><LcIcon name="x" size="s" /></button>
+      </label>
       <div v-if="searchKw && !searchResults.length" class="nsearch-empty">{{ t('canvas.search.empty') }}</div>
       <div v-else-if="searchResults.length" class="nsearch-list">
         <button v-for="r in searchResults" :key="r.id" class="nsearch-item" @click="gotoNode(r.id)">
-          <span class="nsearch-t">{{ r.type }}</span>
+          <span class="lc-chip">{{ r.type }}</span>
           <span class="nsearch-b">{{ r.brief || t('canvas.search.noContent') }}</span>
         </button>
       </div>
@@ -783,7 +647,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, provide, watch, type Ref, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, provide, watch, markRaw, type Ref, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureHttps } from '@/utils/mediaUrl'
@@ -792,7 +656,6 @@ import { canvasImageThumb } from '@/utils/canvasMedia'
 // 节点被完整框住，压到一半不算选中 —— 用户会以为框选坏了。同类画布工具普遍用 Partial。
 import { VueFlow, useVueFlow, SelectionMode, type Node, type Edge, type Connection, addEdge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 
@@ -808,6 +671,8 @@ import VideoAnalysisNode from '@/components/canvas/VideoAnalysisNode.vue'
 import LlmNode from '@/components/canvas/LlmNode.vue'
 import OutputNode from '@/components/canvas/OutputNode.vue'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
+import QueuePanel from '@/components/canvas/QueuePanel.vue'
+import LcIcon from '@/components/LcIcon.vue'
 import AssetPicker from '@/components/canvas/AssetPicker.vue'
 import ImageHoverPreview from '@/components/canvas/ImageHoverPreview.vue'
 import LibraryDialog from '@/components/canvas/LibraryDialog.vue'
@@ -819,7 +684,7 @@ import BatchDownloadDialog from '@/components/canvas/BatchDownloadDialog.vue'
 import BatchRunDialog from '@/components/canvas/BatchRunDialog.vue'
 import ImageEditorModal from '@/components/canvas/ImageEditorModal.vue'
 
-import { workflowApi, canvasShareApi, canvasTemplateApi, userAssetApi, apiErrorMessage } from '@/utils/api'
+import { workflowApi, canvasShareApi, userAssetApi, apiErrorMessage } from '@/utils/api'
 import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { useAppStore } from '@/stores/app'
@@ -855,16 +720,14 @@ import { CANVAS_IMAGE_EDITOR_KEY, type ImageEditorResult } from '@/composables/c
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
-import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import '@/styles/vue-flow-theme.css'
 
 /**
  * vue-flow 的 Background / MiniMap 把颜色当 SVG attribute 传，attribute 不解析
- * var()，所以这里读 token 的计算值，而不是直接写 var(--flow-dot)。主题一切换就重读。
+ * var()，所以这里读 token 的计算值，而不是直接写 var(--flow-dot)。
  */
-const vfPattern = useTokenColor('--flow-dot', '#313137')
-const vfMask = useTokenColor('--flow-bg', '#151517', 0.7)
+const vfPattern = useTokenColor('--flow-dot', 'rgba(124, 160, 255, .22)')
 
 type NodeKind = 'text' | 'image' | 'video' | 'image-collection' | 'image-gen' | 'image-edit' | 'video-gen' | 'video-edit' | 'video-analysis' | 'llm' | 'output' | 'platform-export' | 'slice' | 'collage' | 'watermark' | 'fit-size' | 'frame'
 type DataType = 'text' | 'image' | 'video'
@@ -881,27 +744,27 @@ const { t, locale } = useI18n()
 const noModels = computed(() => modelsLoaded() && listAdapters().length === 0)
 
 const nodeTypes = {
-  'text': TextNode,
-  'image': ImageNode,
-  'video': VideoNode,
-  'image-collection': ImageCollectionNode,
-  'image-gen': ImageGenNode,
-  'image-edit': ImageEditNode,
-  'video-gen': VideoGenNode,
-  'video-edit': VideoEditNode,
-  'video-analysis': VideoAnalysisNode,
-  'llm': LlmNode,
-  'output': OutputNode,
-  'platform-export': PlatformExportNode,
-  'slice': SliceNode,
-  'collage': CollageNode,
-  'watermark': WatermarkNode,
-  'fit-size': FitSizeNode,
-  'frame': FrameNode,
+  'text': markRaw(TextNode),
+  'image': markRaw(ImageNode),
+  'video': markRaw(VideoNode),
+  'image-collection': markRaw(ImageCollectionNode),
+  'image-gen': markRaw(ImageGenNode),
+  'image-edit': markRaw(ImageEditNode),
+  'video-gen': markRaw(VideoGenNode),
+  'video-edit': markRaw(VideoEditNode),
+  'video-analysis': markRaw(VideoAnalysisNode),
+  'llm': markRaw(LlmNode),
+  'output': markRaw(OutputNode),
+  'platform-export': markRaw(PlatformExportNode),
+  'slice': markRaw(SliceNode),
+  'collage': markRaw(CollageNode),
+  'watermark': markRaw(WatermarkNode),
+  'fit-size': markRaw(FitSizeNode),
+  'frame': markRaw(FrameNode),
 } as any
 
 const edgeTypes = {
-  'glow': GlowEdge,
+  'glow': markRaw(GlowEdge),
 } as any
 
 const MULTI_IMAGE_IN_NODE_TYPES = new Set([
@@ -923,10 +786,13 @@ const MULTI_IMAGE_IN_NODE_TYPES = new Set([
 const nodes = ref([]) as Ref<Node[]>
 const edges = ref([]) as Ref<Edge[]>
 const viewport = ref<Viewport>({ x: 0, y: 0, zoom: 1 })
+const MIN_ZOOM = 0.2
+const MAX_ZOOM = 4
+const zoomPct = computed(() => Math.round((viewport.value.zoom || 1) * 100))
 
 const {
   updateNodeData, updateNode, removeNodes, setViewport, screenToFlowCoordinate, getNodes, fitView,
-  onNodesInitialized,
+  onNodesInitialized, zoomIn, zoomOut, zoomTo, findNode,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
 } = useVueFlow()
@@ -991,20 +857,23 @@ provide(CANVAS_PICKER_KEY, {
 })
 
 /* ==================== 画布外观（底色 / 图案 / 密度） ==================== */
-// 存在画布里（Workflow.settings.bg），跟着分享一起走；'auto' = 跟随主题，等于改动前的行为
+// 存在画布里（Workflow.settings.bg），跟着分享一起走；'auto' = 编辑器默认的深蓝底 + 点阵
 const bgSettings = ref<CanvasBgSettings>({ ...DEFAULT_CANVAS_BG })
 const stylePanelOpen = ref(false)
 const stylePanelPos = ref({ x: 0, y: 0 })
 
 const bgIsAuto = computed(() => bgSettings.value.color === 'auto')
-// 空对象让 CSS 里的 var(--flow-bg) 继续生效，不要写成 'transparent'
+// 空对象让 CSS 里 .vf-wrap.auto 的默认底继续生效，不要写成 'transparent'
 const flowStyle = computed(() => (bgIsAuto.value ? {} : { background: bgSettings.value.color }))
 const bgVariant = computed(() => (bgSettings.value.pattern === 'dots' ? 'dots' : 'lines'))
 // 自定义底色时图案色跟着底色走（亮底加黑、暗底加白），而不是跟着主题走
 const flowPatternColor = computed(() => (bgIsAuto.value ? vfPattern.value : patternColorFor(bgSettings.value.color)))
-const miniMaskColor = computed(() => (bgIsAuto.value ? vfMask.value : hexToRgba(bgSettings.value.color, 0.7)))
+// 小地图：默认底下是设计稿那一套（淡蓝节点块 + 青色视口框）；自选底色时跟着底色的明暗走
+const miniMaskColor = computed(() => (bgIsAuto.value ? 'rgba(4, 9, 28, .55)' : hexToRgba(bgSettings.value.color, 0.7)))
+const miniStrokeColor = computed(() => (
+  !bgIsAuto.value && relLuminance(bgSettings.value.color) > 0.45 ? 'rgba(20, 80, 160, .9)' : '#3fd8ff'))
 const miniNodeColor = computed(() => {
-  if (bgIsAuto.value) return vfPattern.value
+  if (bgIsAuto.value) return 'rgba(124, 170, 255, .45)'
   // 小地图上的节点块要压得住遮罩，不能用图案那档极淡的颜色
   return relLuminance(bgSettings.value.color) > 0.45 ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.32)'
 })
@@ -1018,7 +887,7 @@ const crossPath = computed(() => {
 
 /** 外观面板从菜单里开：贴着菜单弹出，并夹在视口内，别开到屏幕外面去 */
 function openStylePanel() {
-  const PANEL_W = 264
+  const PANEL_W = 272
   const PANEL_H = 430
   stylePanelPos.value = {
     x: Math.max(12, Math.min(lastMenuPos.value.x, window.innerWidth - PANEL_W - 12)),
@@ -1031,7 +900,10 @@ function onBgChange(v: CanvasBgSettings) {
 }
 
 /* ==================== 自动整理 ==================== */
-const layout = useAutoLayout({ nodes, edges, getNodes, updateNode, fitView })
+const layout = useAutoLayout({
+  nodes, edges, getNodes, updateNode, fitView: fitFree,
+  measure: (id) => findNode(id)?.dimensions,
+})
 const layoutUndo = ref({ visible: false, text: '' })
 let layoutUndoTimer: number | null = null
 
@@ -1126,12 +998,35 @@ const MENU_ICONS = {
 interface CanvasMenuItem {
   key: string
   label: string
-  icon: string
+  /** <svg> 内部的那段（v-html 渲染）；和 lc 二选一 */
+  icon?: string
+  /** LcIcon 的图标名 */
+  lc?: string
   disabled?: boolean
   run: () => void
 }
 
-// 顶栏「更多」和空白处右键弹的是同一份数据，改一处两处都变
+// 右上「更多」和空白处右键弹的是同一份数据，改一处两处都变
+/** 「圈成一组」：右键菜单、「更多」和左侧面板的工具类里是同一项 */
+const frameMenuItem = computed<CanvasMenuItem>(() => {
+  const sel = layout.selectedCount.value
+  return {
+    key: 'frame',
+    label: sel >= 1 ? t('canvas.menu.frame') : t('canvas.menu.frameHint'),
+    icon: MENU_ICONS.frame,
+    disabled: layout.running.value || sel < 1,
+    run: groupIntoFrame,
+  }
+})
+
+/** 素材库那一组入口：左侧面板最下面那颗按钮、「更多」菜单共用 */
+const libraryMenuItems = computed<CanvasMenuItem[]>(() => [
+  { key: 'library', label: t('canvas.rail.library'), lc: 'folder', run: openLibrary },
+  { key: 'templates', label: t('canvas.rail.templates'), lc: 'layout', run: openTemplates },
+  { key: 'brand-kit', label: t('canvas.menu.brandKit'), lc: 'star', run: () => { brandKitOpen.value = true } },
+  { key: 'my-shares', label: t('canvas.rail.myShares'), lc: 'share', run: goToMyShares },
+])
+
 const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
   const sel = layout.selectedCount.value
   const busy = layout.running.value
@@ -1150,7 +1045,8 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
       { key: 'list', label: t('canvas.menu.myCanvases'), icon: MENU_ICONS.back, run: goToList },
       { key: 'switch-proj', label: t('canvas.rail.switchProject'), icon: MENU_ICONS.switchp, run: () => { closeContextMenu(); toggleProjMenu() } },
       { key: 'load-proj', label: t('canvas.menu.loadOther'), icon: MENU_ICONS.loadp, run: () => { closeContextMenu(); openImportPicker() } },
-      { key: 'guide', label: t('canvas.topbar.guide'), icon: MENU_ICONS.guide, run: () => { guideOpen.value = true } },
+      { key: 'guide', label: t('canvas.topbar.guide'), lc: 'book', run: () => openGuide('') },
+      { key: 'shortcuts', label: t('canvas.menu.shortcuts'), lc: 'key', run: () => openGuide('keys') },
     ],
   })
 
@@ -1169,15 +1065,7 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
    * 更不会知道要按 Shift 才能框选。右键看一眼就学会，比藏起来强。
    */
   {
-    const items: CanvasMenuItem[] = [
-      {
-        key: 'frame',
-        label: sel >= 1 ? t('canvas.menu.frame') : t('canvas.menu.frameHint'),
-        icon: MENU_ICONS.frame,
-        disabled: busy || sel < 1,
-        run: groupIntoFrame,
-      },
-    ]
+    const items: CanvasMenuItem[] = [frameMenuItem.value]
     // 「合并」只在选中的东西里已经有组时才有意义；全是散节点用「圈成一组」就够了
     if (sel >= 2 && selectedGrouped.value >= 1) {
       items.push({
@@ -1221,8 +1109,12 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
       { key: 'batch-run', label: t('canvas.menu.batchRun'), icon: MENU_ICONS.batch, disabled: batch.running.value, run: openBatchRun },
       { key: 'style', label: t('canvas.menu.style'), icon: MENU_ICONS.style, run: openStylePanel },
       { key: 'download', label: t('canvas.menu.batchDownload'), icon: MENU_ICONS.download, run: openBatchDownload },
+      { key: 'search', label: t('canvas.menu.search'), icon: MENU_ICONS.search, run: openSearch },
+      { key: 'save', label: t('canvas.menu.saveNow'), lc: 'disk', disabled: saving.value, run: () => { void handleSave() } },
     ],
   })
+
+  groups.push({ title: t('canvas.pal.library'), items: libraryMenuItems.value })
 
   return groups
 })
@@ -1231,7 +1123,7 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
 const navMenuGroup = computed(() => canvasMenuGroups.value.find(g => g.items.some(i => i.key === 'immersive')) || null)
 const otherMenuGroups = computed(() => canvasMenuGroups.value.filter(g => g.items.every(i => i.key !== 'immersive')))
 
-// 顶栏「更多」菜单
+// 右上「更多」菜单
 const moreMenu = ref({ open: false, x: 0, y: 0 })
 // 右键菜单 / 顶栏「更多」菜单的宽度，夹进视口时用。与样式里 .add-context-menu 的 width 是同一个数
 const ADD_MENU_W = 344
@@ -1240,10 +1132,13 @@ const ADD_MENU_W = 344
 const lastMenuPos = ref({ x: 0, y: 0 })
 
 function toggleMoreMenu(e: MouseEvent) {
+  const wasOpen = moreMenu.value.open
   closeMenus()
-  if (moreMenu.value.open) { moreMenu.value.open = false; return }
+  if (wasOpen) return
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.max(12, Math.min(rect.left, window.innerWidth - ADD_MENU_W - 12))
+  // 按钮在右上角：菜单右边缘对齐按钮右边缘往左展开
+  const w = Math.min(ADD_MENU_W, window.innerWidth - 16)
+  const x = Math.max(8, Math.min(rect.right - w, window.innerWidth - w - 8))
   const y = rect.bottom + 8
   moreMenu.value = { open: true, x, y }
   lastMenuPos.value = { x, y }
@@ -1324,69 +1219,66 @@ function onEditorDone(payload: ImageEditorResult) {
   MessagePlugin.success(payload.mode === 'replace' ? t('canvas.editor.replaced') : t('canvas.editor.newNode'))
 }
 
-// 左侧添加节点浮层显隐（hover 展开 + 移开延时收起，延时用于跨越按钮与浮层之间的空隙）
-const addPanelOpen = ref(false)
-let addPanelCloseTimer: number | null = null
-function toggleAddPanel() {
-  addPanelOpen.value = !addPanelOpen.value
-}
-function openAddPanel() {
-  if (addPanelCloseTimer) { clearTimeout(addPanelCloseTimer); addPanelCloseTimer = null }
-  addPanelOpen.value = true
-}
-function keepAddPanel() {
-  if (addPanelCloseTimer) { clearTimeout(addPanelCloseTimer); addPanelCloseTimer = null }
-}
-function scheduleCloseAddPanel() {
-  if (addPanelCloseTimer) clearTimeout(addPanelCloseTimer)
-  addPanelCloseTimer = window.setTimeout(() => {
-    addPanelOpen.value = false
-    addPanelCloseTimer = null
-  }, 180)
-}
+/* ==================== 左侧节点面板 ==================== */
+// 「+」是全部节点；下面按类别各一颗按钮，点开是这一类的节点；最下面是素材库那组入口。
+// 只有一种节点的类别（文本）点一下直接加。手机上只留「+」，展开层变成底部抽屉。
+type FlyKey = '' | 'all' | 'lib' | 'text' | 'image' | 'video' | 'chat' | 'tools'
+const PAL_CATS: { key: Exclude<FlyKey, '' | 'all' | 'lib'>; icon: string; kinds: NodeKind[] }[] = [
+  { key: 'text', icon: 'text', kinds: ['text'] },
+  { key: 'image', icon: 'image', kinds: ['image', 'image-collection', 'image-gen', 'image-edit'] },
+  { key: 'video', icon: 'video', kinds: ['video', 'video-gen', 'video-edit'] },
+  { key: 'chat', icon: 'chat', kinds: ['llm', 'video-analysis'] },
+  { key: 'tools', icon: 'tool', kinds: ['output', 'platform-export', 'slice', 'collage', 'watermark', 'fit-size'] },
+]
+const PAL_TITLE_KEYS = {
+  text: 'canvas.pal.text', image: 'canvas.pal.image', video: 'canvas.pal.video', chat: 'canvas.pal.chat', tools: 'canvas.pal.tools',
+} as const
+const palCats = computed(() => PAL_CATS.map((c) => ({ ...c, title: t(PAL_TITLE_KEYS[c.key]) })))
 
-// 画布模板 hover 预览（前 10 条）
-const tplPreview = ref({ open: false, x: 0, y: 0 })
-const tplPreviewList = ref<any[]>([])
-const tplPreviewLoading = ref(false)
-let tplPreviewLoaded = false
-let tplPreviewCloseTimer: number | null = null
-
-async function loadTplPreview() {
-  if (tplPreviewLoaded) return
-  tplPreviewLoading.value = true
-  try {
-    const res = await canvasTemplateApi.list()
-    if (res.data.result === 0 && Array.isArray(res.data.data)) {
-      tplPreviewList.value = res.data.data
-    }
-    tplPreviewLoaded = true
-  } catch {
-    /* 预览失败静默，不打扰用户 */
-  } finally {
-    tplPreviewLoading.value = false
+const fly = ref<FlyKey>('')
+const flyTop = ref(76)
+function toggleFly(key: FlyKey, e?: MouseEvent) {
+  const next = fly.value === key ? '' : key
+  closeMenus()
+  fly.value = next
+  if (!next) return
+  // 展开层顶边对齐被点的那颗按钮；「全部」那一层最高，直接对齐面板顶
+  const btn = e?.currentTarget as HTMLElement | undefined
+  const pal = btn?.parentElement
+  flyTop.value = key === 'all' || !btn || !pal ? 76 : Math.max(76, pal.offsetTop + btn.offsetTop - 6)
+}
+function onPalClick(c: { key: FlyKey; kinds: NodeKind[] }, e: MouseEvent) {
+  if (c.kinds.length === 1) { closeMenus(); addNode(c.kinds[0]); return }
+  toggleFly(c.key, e)
+}
+const nodeMenuItem = (kind: NodeKind): CanvasMenuItem => ({
+  key: kind, label: nodeTypeLabel(kind), icon: NODE_MENU_ICONS[kind] || '', run: () => { addNode(kind) },
+})
+const flyTitle = computed(() => {
+  if (fly.value === 'all') return t('canvas.addPanel.title')
+  if (fly.value === 'lib') return t('canvas.pal.library')
+  return fly.value ? t(PAL_TITLE_KEYS[fly.value]) : ''
+})
+const flyGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
+  if (fly.value === 'all') {
+    return [
+      ...NODE_MENU_LAYOUT.map((g) => ({ title: t(g.titleKey), items: g.kinds.map(nodeMenuItem) })),
+      { title: t('canvas.menu.groupTitle'), items: [frameMenuItem.value] },
+      { title: t('canvas.pal.library'), items: libraryMenuItems.value },
+    ]
   }
-}
-
-function openTplPreview(e: MouseEvent) {
-  if (tplPreviewCloseTimer) { clearTimeout(tplPreviewCloseTimer); tplPreviewCloseTimer = null }
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  tplPreview.value = { open: true, x: rect.right + 10, y: rect.top }
-  loadTplPreview()
-}
-function keepTplPreview() {
-  if (tplPreviewCloseTimer) { clearTimeout(tplPreviewCloseTimer); tplPreviewCloseTimer = null }
-}
-function scheduleCloseTplPreview() {
-  if (tplPreviewCloseTimer) clearTimeout(tplPreviewCloseTimer)
-  tplPreviewCloseTimer = window.setTimeout(() => {
-    tplPreview.value.open = false
-    tplPreviewCloseTimer = null
-  }, 180)
-}
-function applyTemplateFromPreview(tpl: any) {
-  applyTemplate(tpl)
-  tplPreview.value.open = false
+  if (fly.value === 'lib') return [{ title: '', items: libraryMenuItems.value }]
+  const cat = PAL_CATS.find((c) => c.key === fly.value)
+  if (!cat) return []
+  const items = cat.kinds.map(nodeMenuItem)
+  // 「组」不是往画布上加一个节点，而是把选中的节点圈起来 —— 归在工具里
+  if (cat.key === 'tools') items.push(frameMenuItem.value)
+  return [{ title: '', items }]
+})
+function runFlyItem(item: CanvasMenuItem) {
+  if (item.disabled) return
+  fly.value = ''
+  item.run()
 }
 
 // 右键菜单
@@ -1467,8 +1359,9 @@ function onNodeContextMenu({ event, node }: { event: any; node: Node }) {
     // removeSelectedNodes 要显式传要取消的那批，没有无参重载
     if (g && !g.selected) { removeSelectedNodes(getSelectedNodes.value); addSelectedNodes([g]) }
   }
-  const x = event.clientX ?? event.touches?.[0]?.clientX ?? 0
-  const y = event.clientY ?? event.touches?.[0]?.clientY ?? 0
+  // 夹进视口：在屏幕右边 / 底边右键时菜单别开到外面去
+  const x = Math.max(8, Math.min(event.clientX ?? event.touches?.[0]?.clientX ?? 0, window.innerWidth - 288))
+  const y = Math.max(8, Math.min(event.clientY ?? event.touches?.[0]?.clientY ?? 0, window.innerHeight - 380))
   contextMenu.value = {
     open: true,
     x,
@@ -1578,6 +1471,7 @@ function closeMenus() {
   closeAddMenu()
   closeMoreMenu()
   projMenuOpen.value = false
+  fly.value = ''
 }
 
 // 从右键菜单添加节点：落在光标对应的画布坐标处
@@ -1973,7 +1867,7 @@ function onDocClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   // 外观面板自己 stop 了 mousedown，这里只负责"点到别处就收起"
   if (!target.closest('.cs-panel')) stylePanelOpen.value = false
-  if (target.closest('.ctx-menu') || target.closest('.add-context-menu') || target.closest('.tb-more') || target.closest('.tb-proj')) return
+  if (target.closest('.ctx-menu, .ed-menu, .ed-more-btn, .ed-pal, .ed-fly, .ed-proj')) return
   closeMenus()
 }
 
@@ -1984,6 +1878,16 @@ const lastSavedAt = ref<string | null>(null)
 const saving = ref(false)
 const autoSaving = ref(false)
 const dirty = ref(false)
+// 最近一次保存没成功（手动或自动）。下一次存上了就清掉
+const saveFailed = ref(false)
+
+/** 标题块里那一小段保存状态：保存中 / 保存失败 / 未保存 / 已保存 · 时间 */
+const saveState = computed<{ cls: string; text: string }>(() => {
+  if (autoSaving.value || saving.value) return { cls: 'run', text: t('common.saving') }
+  if (saveFailed.value) return { cls: 'err', text: t('canvas.save.failed') }
+  if (dirty.value || !lastSavedAt.value) return { cls: 'warn', text: t('canvas.save.unsaved') }
+  return { cls: 'ok', text: t('canvas.save.savedAt', { time: formatSavedTime(lastSavedAt.value) }) }
+})
 const loading = ref(false)
 
 // 自动保存：去抖 + 指纹去重
@@ -2030,20 +1934,27 @@ function edgeForSave(e: any) {
   return { id: e.id, type: e.type, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }
 }
 
-function buildSavePayload() {
+/** 画布的内容：名字、节点、连线、外观。「改没改过」只看这些 */
+function buildContent() {
   return {
     name: workflowName.value?.trim() || t('canvas.untitled'),
     nodes: nodes.value.map(nodeForSave),
     edges: edges.value.map(edgeForSave),
-    viewport: viewport.value,
     // 画布外观。后端 PUT 是显式白名单透传，那边不加对应的一行这里存了也白存
     settings: { bg: bgSettings.value },
   }
 }
 
+/**
+ * 视口（平移 / 缩放）跟着每次保存一起落库，但不进指纹：看画布不算改画布，
+ * 挪一下视野不该让标题旁边跳成「未保存」。
+ */
 function buildFingerprint() {
-  return JSON.stringify(buildSavePayload())
+  return JSON.stringify(buildContent())
 }
+
+const viewportKey = (v: Viewport) => `${Math.round(v.x)}|${Math.round(v.y)}|${(v.zoom || 1).toFixed(3)}`
+let savedViewportKey = ''
 
 let nodeCounter = 0
 const genId = () => `n_${Date.now().toString(36)}_${(nodeCounter++).toString(36)}`
@@ -2113,16 +2024,17 @@ function freeSpot(): { x: number; y: number } {
   const zoom = viewport.value.zoom || 1
   const toFlow = (sx: number, sy: number) => ({ x: (sx - viewport.value.x) / zoom, y: (sy - viewport.value.y) / zoom })
   const pane = document.querySelector('.vf-wrap') as HTMLElement | null
-  const paneW = pane?.clientWidth || 1200
-  const paneH = pane?.clientHeight || 800
+  // 右边让给生成队列，底下让给工具条
+  const paneW = (pane?.clientWidth || 1200) - (queueOpen.value && window.innerWidth > 1100 ? 280 : 0)
+  const paneH = (pane?.clientHeight || 800) - 72
   // 新节点还没量过尺寸，按常见节点大小留地方；组是一大片底板，不算占位
   const BOX_W = 300, BOX_H = 320, GAP = 24
   const boxes = getNodes.value.filter((n: any) => n.type !== 'frame').map(nodeBox)
   const hits = (p: { x: number; y: number }) => boxes.some((b) =>
     p.x < b.right + GAP && p.x + BOX_W + GAP > b.left && p.y < b.bottom + GAP && p.y + BOX_H + GAP > b.top)
-  // 左边 90px 让给浮动工具条
-  for (let sy = 40; sy + BOX_H * zoom <= paneH; sy += (BOX_H + GAP) * zoom) {
-    for (let sx = 90; sx + BOX_W * zoom <= paneW; sx += (BOX_W + GAP) * zoom) {
+  // 左边 88px 让给节点面板，顶上 76px 让给标题块
+  for (let sy = 76; sy + BOX_H * zoom <= paneH; sy += (BOX_H + GAP) * zoom) {
+    for (let sx = 88; sx + BOX_W * zoom <= paneW; sx += (BOX_W + GAP) * zoom) {
       const p = toFlow(sx, sy)
       if (!hits(p)) return p
     }
@@ -2164,11 +2076,6 @@ function onAddText(content: string) {
   addNode('text', { text: content || '' })
   libraryOpen.value = false
   MessagePlugin.success(t('canvas.add.added'))
-}
-
-function addNodeAndClose(kind: NodeKind) {
-  addNode(kind)
-  addPanelOpen.value = false
 }
 
 // ============ 拖放文件 / 粘贴图片 → 建节点并上传 ============
@@ -2543,26 +2450,35 @@ function onNodeDragStop() {
 async function doSave(silent: boolean): Promise<boolean> {
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
   autoSaveDueBy = 0
-  const payload = buildSavePayload()
-  const fp = JSON.stringify(payload)
+  const content = buildContent()
+  const fp = JSON.stringify(content)
+  const vp = { ...viewport.value }
+  // 改版前排的画布查过一遍之后，随这次保存把标记清掉（见 checkLegacyLayout）
+  const clearLegacy = legacyLayoutChecked
   try {
     if (!currentId.value) {
       if (!silent) MessagePlugin.error(t('canvas.save.notLoaded'))
       return false
     }
-    const res = await workflowApi.update(currentId.value, payload)
+    if (viewportTimer) { clearTimeout(viewportTimer); viewportTimer = null }
+    const res = await workflowApi.update(currentId.value, { ...content, viewport: vp, ...(clearLegacy ? { legacyLayout: false as const } : {}) })
 
     if (res.data.result === 0 && res.data.data) {
       lastSavedAt.value = res.data.data.updatedAt
       lastFingerprint = fp
+      savedViewportKey = viewportKey(vp)
+      if (clearLegacy) legacyLayoutChecked = false
       dirty.value = false
+      saveFailed.value = false
       if (!silent) MessagePlugin.success(t('common.saved'))
       return true
     }
+    saveFailed.value = true
     // 后端拒绝（如 payload 超限）即使是自动保存也要 toast，避免用户不知情地一直丢失改动
     MessagePlugin.error(res.data.message || t('canvas.save.failed'))
     return false
   } catch (err: any) {
+    saveFailed.value = true
     const msg = apiErrorMessage(err, t('canvas.save.failed'))
     const status = err?.response?.status
     // 4xx 业务/校验错误，自动保存也要提示；网络/5xx 类只记日志，避免反复打扰
@@ -2612,11 +2528,34 @@ function scheduleAutoSave() {
   autoSaveTimer = window.setTimeout(autoSave, Math.max(0, Math.min(AUTO_SAVE_DELAY, autoSaveDueBy - now)))
 }
 
-// 拆分自动保存监听：只有 nodes/edges 需要深度遍历；
-// viewport（平移/缩放高频变化）是扁平对象、workflowName 是字符串 —— 用浅监听即可，
-// 避免每次平移都把整张 nodes/edges 深度遍历一遍（大画布下这是明显的卡顿源）。
+/**
+ * 视口单独存：平移 / 缩放不是「改动」，不置 dirty，也不让保存状态闪成「未保存 / 保存中」。
+ * 停手一会儿后悄悄只把视口发给后端（后端对只带视口的保存不更新 updatedAt），
+ * 下次打开还在原来看的位置。失败了无所谓：下一次内容保存会把视口一起带上。
+ */
+const VIEWPORT_SAVE_DELAY = 1200
+let viewportTimer: number | null = null
+function scheduleViewportSave() {
+  if (suppressAutoSave || !currentId.value) return
+  if (viewportTimer) clearTimeout(viewportTimer)
+  viewportTimer = window.setTimeout(() => { void saveViewport() }, VIEWPORT_SAVE_DELAY)
+}
+async function saveViewport() {
+  if (viewportTimer) { clearTimeout(viewportTimer); viewportTimer = null }
+  const id = currentId.value
+  const vp = { ...viewport.value }
+  const key = viewportKey(vp)
+  if (!id || key === savedViewportKey) return
+  try {
+    await workflowApi.update(id, { viewport: vp })
+    if (currentId.value === id) savedViewportKey = key
+  } catch { /* 见上：丢一次视口不值得打扰用户 */ }
+}
+
+// 拆分自动保存监听：只有 nodes/edges 需要深度遍历；workflowName 是字符串，浅监听即可。
+// viewport（平移/缩放高频变化）不走这条路，见上面的 scheduleViewportSave。
 watch([nodes, edges], scheduleAutoSave, { deep: true })
-watch(viewport, scheduleAutoSave)
+watch(viewport, scheduleViewportSave)
 watch(workflowName, scheduleAutoSave)
 watch(bgSettings, scheduleAutoSave, { deep: true })
 
@@ -2705,63 +2644,8 @@ async function loadOtherCanvasInto(id: string) {
   }
 }
 
-// ============ 浮动工具条：可拖动 + 竖/横 + 本地记住 ============
-const RAIL_KEY = 'canvas_rail_pos_v1'
-const railPos = ref<{ x: number; y: number }>({ x: 16, y: 16 })
-const railHorizontal = ref(false)
-try {
-  const raw = localStorage.getItem(RAIL_KEY)
-  if (raw) { const o = JSON.parse(raw); if (o && typeof o.x === 'number') { railPos.value = { x: o.x, y: o.y }; railHorizontal.value = !!o.h } }
-} catch { /* localStorage 不可用就用默认 */ }
-function saveRail() {
-  try { localStorage.setItem(RAIL_KEY, JSON.stringify({ x: railPos.value.x, y: railPos.value.y, h: railHorizontal.value })) } catch { /* ignore */ }
-}
-const railStyle = computed(() => ({ left: railPos.value.x + 'px', top: railPos.value.y + 'px' }))
-// 浮层（添加节点 / 切换项目）跟着工具条，空间不够就翻向另一侧：
-// 竖排默认右侧、不够翻左；横排默认下方、不够翻上（拖到底部时向上展开）。
-const railEl = ref<HTMLElement | null>(null)
-const flyoutStyle = computed<Record<string, string>>(() => {
-  const parent = railEl.value?.offsetParent as HTMLElement | null
-  const ch = parent?.clientHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 900)
-  const cw = parent?.clientWidth ?? (typeof window !== 'undefined' ? window.innerWidth : 1400)
-  const railH = railEl.value?.offsetHeight ?? 44
-  const railW = railEl.value?.offsetWidth ?? 44
-  const FLY = 360, GAP = 8
-  const x = railPos.value.x, y = railPos.value.y
-  if (railHorizontal.value) {
-    return (y + railH + GAP + FLY <= ch)
-      ? { left: x + 'px', top: (y + railH + GAP) + 'px', right: 'auto', bottom: 'auto' }
-      : { left: x + 'px', bottom: (ch - y + GAP) + 'px', top: 'auto', right: 'auto' }
-  }
-  return (x + railW + GAP + 300 <= cw)
-    ? { left: (x + railW + GAP) + 'px', top: y + 'px', right: 'auto', bottom: 'auto' }
-    : { right: (cw - x + GAP) + 'px', top: y + 'px', left: 'auto', bottom: 'auto' }
-})
-let railDrag: { sx: number; sy: number; ox: number; oy: number } | null = null
-function startRailDrag(e: MouseEvent) {
-  e.preventDefault(); e.stopPropagation()
-  addPanelOpen.value = false; projMenuOpen.value = false
-  railDrag = { sx: e.clientX, sy: e.clientY, ox: railPos.value.x, oy: railPos.value.y }
-  window.addEventListener('mousemove', onRailDrag)
-  window.addEventListener('mouseup', endRailDrag)
-}
-function onRailDrag(e: MouseEvent) {
-  if (!railDrag) return
-  railPos.value = {
-    x: Math.max(4, railDrag.ox + (e.clientX - railDrag.sx)),
-    y: Math.max(4, railDrag.oy + (e.clientY - railDrag.sy)),
-  }
-}
-function endRailDrag() {
-  railDrag = null
-  window.removeEventListener('mousemove', onRailDrag)
-  window.removeEventListener('mouseup', endRailDrag)
-  saveRail()
-}
-function toggleRailOrient() { railHorizontal.value = !railHorizontal.value; saveRail() }
-
 function goToList() {
-  router.push('/')
+  router.push('/canvases')
 }
 
 // ============ 素材库 / 我的分享 弹窗 ============
@@ -2781,6 +2665,12 @@ function goToMyShares() {
 // 画布模板弹窗
 const templateDialogOpen = ref(false)
 const guideOpen = ref(false)
+// 教程打开时先跳到哪一节（'' = 从头看）；「快捷键」入口用它直达那一节
+const guideSection = ref('')
+function openGuide(section: string) {
+  guideSection.value = section
+  guideOpen.value = true
+}
 function openTemplates() {
   templateDialogOpen.value = true
 }
@@ -2971,16 +2861,122 @@ let fitOnInit = false
 // 套模板 / 加载其他画布插进来的那批节点：量完尺寸后把视野移过去
 let fitToNodes: string[] | null = null
 onNodesInitialized(() => {
-  if (fitOnInit) {
+  if (legacyLayoutPending) {
+    legacyLayoutPending = false
     fitOnInit = false
     fitToNodes = null
-    fitView({ padding: 0.15, maxZoom: 1 })
+    void checkLegacyLayout()
+  } else if (fitOnInit) {
+    fitOnInit = false
+    fitToNodes = null
+    fitFree({ maxZoom: 1 })
   } else if (fitToNodes) {
     const ids = fitToNodes
     fitToNodes = null
-    fitView({ nodes: ids, padding: 0.25, maxZoom: 1, duration: 300 })
+    fitFree({ nodes: ids, maxZoom: 1, duration: 300 })
   }
 })
+
+/**
+ * 改版前排的画布，只查一次。
+ *
+ * 改版后生成类节点高了一倍左右，老画布里上下相邻的节点现在会互相压着。后端在读到老画布时
+ * 打了个标记（legacyLayout），这里第一次打开时：
+ *   1. 先把全部内容框进视野 —— 开着 only-render-visible-elements，视野外的节点没渲染、量不到尺寸；
+ *   2. 按实测尺寸看散节点有没有真的叠在一起；
+ *   3. 叠了才整理（就是工具条上那个「自动整理」），记一笔历史，Ctrl+Z 或提示条上的「撤销」都能退回去；
+ *      没叠就一个位置都不动，视野也还原。
+ * 不管整没整理，标记都随即清掉，这张画布以后再也不会走这里；改版后新建、保存过的画布没有这个标记。
+ */
+let legacyLayoutPending = false
+let legacyLayoutChecked = false
+
+/** 等节点量完尺寸：都有宽高了就走，最多等 timeout 毫秒（缩放到下限还框不全的大画布会剩几个量不到，按类型估） */
+function waitForMeasured(timeout = 1500): Promise<void> {
+  const started = Date.now()
+  return new Promise((resolve) => {
+    const tick = () => {
+      const pending = (nodes.value as any[]).some((n) => !(findNode(n.id)?.dimensions?.height))
+      if (!pending || Date.now() - started > timeout) resolve()
+      else window.setTimeout(tick, 60)
+    }
+    window.setTimeout(tick, 60)
+  })
+}
+
+async function checkLegacyLayout() {
+  const id = currentId.value
+  if (!id) return
+  const before = { ...viewport.value }
+  const hadViewport = !!(before.x || before.y || (before.zoom || 1) !== 1)
+  fitFree({ maxZoom: 1 })
+  await waitForMeasured()
+  if (currentId.value !== id) return
+  legacyLayoutChecked = true
+  if (layout.hasOverlap()) {
+    hist.record()
+    if (await layout.arrange()) {
+      if (currentId.value !== id) return
+      showLayoutUndo(t('canvas.layout.legacyArranged'))
+      // 新位置和「已查过」一起落库；之后撤销也只是一次普通的改动
+      await doSave(true)
+      return
+    }
+    hist.drop()
+  } else if (hadViewport) {
+    setViewport(before)
+  }
+  if (currentId.value !== id) return
+  // 没动任何位置：只把标记清掉（后端对这种保存不更新 updatedAt）
+  try {
+    await workflowApi.update(id, { legacyLayout: false })
+    legacyLayoutChecked = false
+  } catch { /* 清不掉就留着，下次保存内容时会再带一次 */ }
+}
+
+/**
+ * 把内容框进「没被控件盖住」的那块区域。
+ *
+ * vue-flow 自带的 fitView 按整块画布居中，而画布四周浮着标题块、节点面板、工具条和
+ * 生成队列 —— 照它的算法，最右边的节点正好压在队列面板底下。这里按四边各自让出的
+ * 宽度算视口，其余（只框某几个节点、缩放上限、动画时长）与 fitView 的用法一致。
+ */
+function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number } = {}) {
+  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  const only = opts.nodes ? new Set(opts.nodes) : null
+  // 不能用 getNodes / nodeBox：开了 only-render-visible-elements 之后，getNodes 只给视野里
+  // 的那几个节点 —— 照它算，「适应屏幕」永远只框得住眼下已经看得见的。这里从完整的 nodes
+  // 取 position（子节点叠上父节点的），尺寸问 vue-flow 要，量不到的按常见节点大小估。
+  const all = nodes.value as any[]
+  const byId = new Map(all.map((n) => [n.id, n]))
+  const absPos = (n: any): { x: number; y: number } => {
+    const p = n.parentNode ? byId.get(n.parentNode) : null
+    const base = p ? absPos(p) : { x: 0, y: 0 }
+    return { x: base.x + (n.position?.x || 0), y: base.y + (n.position?.y || 0) }
+  }
+  const boxes = all.filter((n) => !only || only.has(n.id)).map((n) => {
+    const { x, y } = absPos(n)
+    const dim = findNode(n.id)?.dimensions
+    const w = dim?.width || 300, h = dim?.height || 320
+    return { left: x, top: y, right: x + w, bottom: y + h }
+  })
+  if (!pane || !boxes.length) return
+  const W = pane.clientWidth, H = pane.clientHeight
+  const inset = W <= 640
+    ? { l: 12, t: 60, r: 12, b: 66 }
+    // 底边多让一截：左下角的小地图比工具条高
+    : { l: 88, t: 76, r: (queueOpen.value && window.innerWidth > QUEUE_WIDE ? 280 : 0) + 24, b: 140 }
+  const freeW = Math.max(120, W - inset.l - inset.r)
+  const freeH = Math.max(120, H - inset.t - inset.b)
+  const minX = Math.min(...boxes.map((b) => b.left)), maxX = Math.max(...boxes.map((b) => b.right))
+  const minY = Math.min(...boxes.map((b) => b.top)), maxY = Math.max(...boxes.map((b) => b.bottom))
+  const zoom = Math.max(MIN_ZOOM, Math.min(opts.maxZoom ?? 2, freeW / (maxX - minX), freeH / (maxY - minY)))
+  setViewport({
+    x: inset.l + (freeW - (maxX - minX) * zoom) / 2 - minX * zoom,
+    y: inset.t + (freeH - (maxY - minY) * zoom) / 2 - minY * zoom,
+    zoom,
+  }, { duration: opts.duration || 0 })
+}
 
 /**
  * 一整批节点（模板、另一张画布）插到哪：画布是空的就放在视野左上；
@@ -3030,10 +3026,13 @@ async function loadWorkflow(id: string) {
       })
       // 老画布存的 edge 可能是 smoothstep / default，统一拉到 glow 应用新样式
       edges.value = (w.edges || []).map((e: any) => ({ ...e, type: 'glow' }))
-      // 老画布没有 settings，normalizeCanvasBg 会兜底到「跟随主题」= 改动前的行为
+      // 老画布没有 settings，normalizeCanvasBg 会兜底到默认底色 = 改动前的行为
       bgSettings.value = normalizeCanvasBg((w as any).settings?.bg)
       const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
       fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
+      legacyLayoutPending = !!w.legacyLayout && nodes.value.length > 1
+      legacyLayoutChecked = false
+      savedViewportKey = viewportKey(vp)
       viewport.value = vp
       // 把 zoom 钳制在 [0.2, 2]，防止历史脏数据把节点撑爆
       setViewport({ x: vp.x, y: vp.y, zoom: Math.min(2, Math.max(0.2, vp.zoom || 1)) })
@@ -3042,6 +3041,7 @@ async function loadWorkflow(id: string) {
       lastSavedAt.value = w.updatedAt
       lastFingerprint = buildFingerprint()
       dirty.value = false
+      saveFailed.value = false
       // 换画布要清历史，否则能「撤销」到上一张画布的内容
       hist.reset()
       // 对刷新前还在跑的 task，自动恢复轮询拉结果
@@ -3052,11 +3052,11 @@ async function loadWorkflow(id: string) {
       }, 100)
     } else {
       MessagePlugin.error(res.data.message || t('common.loadFailed'))
-      router.replace('/')
+      router.replace('/canvases')
     }
   } catch (err: any) {
     MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
-    router.replace('/')
+    router.replace('/canvases')
   } finally {
     loading.value = false
     setTimeout(() => { suppressAutoSave = false }, 0)
@@ -3069,6 +3069,16 @@ function formatTime(iso: string | null) {
   if (Number.isNaN(d.getTime())) return ''
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** 保存状态里的时间：今天的只写时分，更早的带上日期 */
+function formatSavedTime(iso: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return d.toDateString() === new Date().toDateString() ? time : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`
 }
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -3140,7 +3150,35 @@ function gotoNode(id: string) {
   const n = getNodes.value.find((x: any) => x.id === id)
   if (!n) return
   fitView({ nodes: [id], padding: 0.6, duration: 300 })
+  // 只留这一个选中：从队列或搜索点过来，要的是「就是它」
+  removeSelectedNodes(getSelectedNodes.value)
   addSelectedNodes([n as any])
+  // 手机上队列是盖住画布的抽屉，定位之后收起来才看得见节点
+  if (window.innerWidth <= 640) setQueueOpen(false)
+}
+
+/* ==================== 生成队列面板 ==================== */
+// 桌面默认展开并记住上次的开合；窄于 1100 每次进来都是收起的（那时它盖在画布上）
+const QUEUE_KEY = 'lc-queue-open'
+const QUEUE_WIDE = 1100
+function readQueueOpen(): boolean {
+  if (window.innerWidth <= QUEUE_WIDE) return false
+  try { return localStorage.getItem(QUEUE_KEY) !== '0' } catch { return true }
+}
+const queueOpen = ref(readQueueOpen())
+function setQueueOpen(v: boolean) {
+  queueOpen.value = v
+  if (v) fly.value = ''
+  if (window.innerWidth <= QUEUE_WIDE) return
+  try { localStorage.setItem(QUEUE_KEY, v ? '1' : '0') } catch { /* 记不住就算了 */ }
+}
+/** 收起时按钮角标上的数：正在跑 + 在排队的节点 */
+const activeRunCount = computed(() =>
+  nodes.value.filter((n) => n.data?.status === 'running' || n.data?.status === 'queued').length)
+/** 手机上点遮罩：收起节点面板抽屉和队列抽屉 */
+function closeSheets() {
+  fly.value = ''
+  if (window.innerWidth <= 640) setQueueOpen(false)
 }
 
 /* ==================== 键盘快捷键 ==================== */
@@ -3242,7 +3280,7 @@ function onCanvasKeydown(e: KeyboardEvent) {
   }
   // 顶掉浏览器的「保存网页」
   if (mod && key === 's') { e.preventDefault(); void handleSave(); return }
-  if (mod && key === '0') { e.preventDefault(); fitView({ padding: 0.2 }); return }
+  if (mod && key === '0') { e.preventDefault(); fitFree(); return }
   if (mod && key === 'f') { e.preventDefault(); openSearch(); return }
   // Ctrl+G 成组：选中的里面已经有组就走合并，全是散节点就直接圈一个新组
   if (mod && key === 'g') {
@@ -3262,8 +3300,8 @@ watch(() => route.params.id, (id) => {
 })
 
 onMounted(async () => {
-  // 进入画布编辑页默认沉浸式：隐藏应用顶栏，画布占满全屏
-  appStore.setImmersive(true)
+  // 默认带着外壳（顶栏 + 图标侧栏）；沉浸式从「更多」里手动进
+  appStore.setImmersive(false)
   document.addEventListener('mousedown', onDocClick)
   document.addEventListener('paste', onCanvasPaste)
   window.addEventListener('beforeunload', onBeforeUnload)
@@ -3278,9 +3316,9 @@ onMounted(async () => {
     await loadWorkflow(paramId)
   } else {
     // 没有 id 不应该进入编辑器 —— 回列表
-    router.replace('/')
+    router.replace('/canvases')
   }
-  // 首次进画布自动弹一次使用教程（之后只能手动从顶栏「?」或「更多」打开）
+  // 首次进画布自动弹一次使用教程（之后只能手动从「更多」打开）
   try {
     if (localStorage.getItem('canvas_guide_autoshown') !== '1') {
       guideOpen.value = true
@@ -3290,7 +3328,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  // 离开画布页复位，恢复其他页面的应用顶栏
+  // 离开画布页复位，恢复其他页面的外壳
   appStore.setImmersive(false)
   document.removeEventListener('mousedown', onDocClick)
   document.removeEventListener('paste', onCanvasPaste)
@@ -3309,402 +3347,35 @@ onBeforeUnmount(() => {
       autoSave().catch(() => {})
     }
   }
+  // 刚挪过视野还没来得及存：走之前补一次
+  if (viewportTimer) void saveViewport()
 })
 </script>
 
 <style scoped>
-.canvas-page {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--n-0);
-  overflow: hidden;
-}
-
-.canvas-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 20px;
-  background: var(--n-2);
-  border-bottom: 1px solid var(--n-5);
-  flex-shrink: 0;
-  z-index: 3;
-}
-
-.tb-left { display: flex; align-items: center; gap: 12px; }
-.tb-name {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--t-max);
-  outline: none;
-  min-width: 180px;
-  transition: border-color 0.15s ease;
-}
-.tb-name:hover { border-color: var(--n-5); background: var(--n-3); }
-.tb-name:focus { border-color: var(--accent-text); background: var(--n-3); }
-.tb-proj { position: relative; }
-.tb-switch { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 6px; border: 1px solid var(--n-5); border-radius: 7px; background: var(--n-3); color: var(--t-body); cursor: pointer; }
-.tb-switch:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.tb-switch svg { width: 16px; height: 16px; }
-.tb-switch-caret { width: 12px !important; height: 12px !important; opacity: .7; }
-.proj-menu { position: absolute; z-index: 3000; width: 290px; background: var(--n-2); border: 1px solid var(--n-5); border-radius: 12px; box-shadow: 0 16px 44px var(--shadow-3); padding: 6px; }
-.proj-menu-count { font-size: 10.5px; color: var(--t-dim); background: var(--n-4); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
-.proj-menu-scroll { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.proj-thumb { flex: none; width: 46px; height: 34px; border-radius: 6px; overflow: hidden; background: var(--n-4); display: grid; place-items: center; color: var(--t-dim); }
-.proj-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.proj-thumb svg { width: 18px; height: 18px; }
-.proj-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.proj-menu-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; letter-spacing: .04em; color: var(--t-dim); padding: 6px 8px 8px; }
-.proj-menu-empty { font-size: 12px; color: var(--t-dim); padding: 10px 8px; text-align: center; }
-.proj-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px; border: 1px solid transparent; background: transparent; border-radius: 9px; color: var(--t-body); font-size: 12.5px; cursor: pointer; text-align: left; font-family: inherit; transition: background .12s ease, border-color .12s ease; }
-.proj-item:hover { background: var(--n-3); border-color: var(--n-5); }
-.proj-item.cur { background: var(--n-3); border-color: var(--accent-edge); }
-.proj-item.cur .proj-item-name { color: var(--accent-text); }
-.proj-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.proj-item-cur { align-self: flex-start; font-size: 10px; color: var(--accent-text); border: 1px solid var(--accent-edge); border-radius: 4px; padding: 0 5px; flex: none; }
-.proj-item-time { font-size: 10.5px; color: var(--t-dim); }
-.proj-menu-foot { border-top: 1px solid var(--n-5); margin-top: 6px; padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
-.proj-foot-btn { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px; border: 0; background: transparent; border-radius: 7px; color: var(--t-body); font-size: 12.5px; cursor: pointer; font-family: inherit; }
-.proj-foot-btn:hover { background: var(--n-4); color: var(--accent-text); }
-.proj-foot-btn svg { width: 15px; height: 15px; }
-.proj-modal-mask { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-.proj-modal { width: 420px; max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column; background: var(--n-2); border: 1px solid var(--n-5); border-radius: 12px; box-shadow: 0 20px 48px var(--shadow-3); overflow: hidden; }
-.proj-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--n-5); color: var(--t-max); }
-.proj-modal-close { border: 0; background: transparent; color: var(--t-dim); font-size: 20px; line-height: 1; cursor: pointer; }
-.proj-modal-note { font-size: 12px; color: var(--t-dim); padding: 10px 16px 4px; margin: 0; }
-.proj-modal-note b { color: var(--accent-text); }
-.proj-modal-list { padding: 8px; overflow-y: auto; }
-.tb-doc-ic { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: var(--n-3); border: 1px solid var(--n-5); color: var(--accent-text); flex: none; }
-.tb-doc-ic svg { width: 17px; height: 17px; }
-.tb-save { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--t-dim); padding: 3px 10px 3px 9px; border-radius: 999px; background: var(--n-3); border: 1px solid var(--n-5); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tb-save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--t-dim); flex: none; }
-.tb-save.saved .tb-save-dot { background: var(--success); }
-.tb-save.unsaved .tb-save-dot { background: var(--warning); }
-.tb-save.saving .tb-save-dot { background: var(--accent-text); animation: tbSavePulse 1s ease-in-out infinite; }
-@keyframes tbSavePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-
-.tb-right { display: flex; align-items: center; gap: 8px; }
-/* 编辑器按桌面设计；窄屏（手机）上至少让顶栏的按钮够得着：
-   名称和保存状态让出位置，按钮区放不下就自己横向滚动，不把按钮挤出屏幕 */
-@media (max-width: 760px) {
-  .canvas-topbar { padding: 8px 10px; gap: 8px; }
-  .tb-left { min-width: 0; flex: 1 1 0; gap: 6px; }
-  .tb-doc-ic, .tb-save { display: none; }
-  .tb-name { min-width: 0; width: 100%; padding: 6px; }
-  .tb-right { flex: 0 1 auto; min-width: 0; overflow-x: auto; gap: 6px; }
-  .tb-right .tb-btn { flex: none; }
-}
-/* 手机宽度下名称框已经被挤到 0 宽，却还占着一个 gap，正好把「保存」右边挤出去 4px。
-   干脆整块收掉，按钮区就能完整摆下。 */
-@media (max-width: 420px) {
-  .tb-left { display: none; }
-  .tb-right { margin-left: auto; }
-}
-.tb-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
-  color: var(--t-body);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.tb-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.tb-btn.primary {
-  background: var(--btn-bg);
-  color: var(--btn-fg);
-  border-color: var(--accent-text);
-}
-.tb-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); }
-.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tb-btn svg { width: 14px; height: 14px; }
-
-/* 顶栏「更多」：画布操作都收进菜单后，顶栏只剩主操作 + 这一个入口 */
-.tb-more { padding: 6px 9px; }
-.tb-more svg { width: 16px; height: 16px; }
-
-/* 纯图标按钮（撤销 / 重做）：不带文字，收窄内边距免得顶栏被撑长 */
-.tb-icon { padding: 6px 9px; }
-.tb-icon svg { width: 16px; height: 16px; }
-.tb-more.active { border-color: var(--accent-text); color: var(--accent-text); }
-
-/* 节点搜索面板：浮在画布右上角，不占画布空间 */
-.nsearch {
-  position: absolute; top: 14px; right: 14px; z-index: 8; width: 288px;
-  background: var(--n-3); border: 1px solid var(--n-5); border-radius: 10px;
-  overflow: hidden; box-shadow: 0 8px 24px -12px rgba(0,0,0,.6);
-}
-.nsearch-bar { display: flex; align-items: center; gap: 4px; padding: 7px 8px; border-bottom: 1px solid var(--n-5); }
-.nsearch-in {
-  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
-  color: var(--t-strong); font-size: 12.5px;
-}
-.nsearch-x { background: none; border: none; color: var(--t-dim); font-size: 17px; line-height: 1; cursor: pointer; }
-.nsearch-empty { padding: 10px 12px; font-size: 11.5px; color: var(--t-dim); }
-.nsearch-list { max-height: 264px; overflow-y: auto; }
-.nsearch-item {
-  display: flex; align-items: baseline; gap: 7px; width: 100%; text-align: left;
-  background: none; border: none; border-bottom: 1px solid var(--n-5);
-  padding: 7px 10px; cursor: pointer;
-}
-.nsearch-item:last-child { border-bottom: none; }
-.nsearch-item:hover { background: var(--n-2); }
-.nsearch-t { font-size: 10px; color: var(--accent-text); white-space: nowrap; }
-.nsearch-b { font-size: 11.5px; color: var(--t-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 整理后的撤销条：整理是一次性重排全部位置，必须给反悔入口 */
-.vf-undo-pill {
+/* 编辑器：画布铺满外壳给的整块区域，所有控件都是浮在上面的玻璃块。
+   --q 是右侧生成队列占掉的宽度，右上按钮组和底部工具条靠它让位。 */
+.ed {
+  --q: 0px;
   position: absolute;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px 8px 16px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 999px;
-  box-shadow: 0 8px 24px var(--shadow-2);
-  color: var(--t-body);
-  font-size: 13px;
-}
-.vf-undo-btn {
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-line);
-  background: var(--accent-ghost);
-  color: var(--accent-text);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-.vf-undo-btn:hover { background: var(--accent-dim); }
-
-.canvas-body {
-  flex: 1;
-  display: flex;
-  position: relative;
+  inset: 0;
   overflow: hidden;
+  color: var(--text);
 }
+.ed.q-open { --q: 280px; }
 
-.tool-rail {
-  position: absolute;
-  left: 16px;
-  top: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 6px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 12px;
-  z-index: 3;
-  box-shadow: 0 6px 20px var(--shadow-2);
-}
-/* 浮动工具条：横排 + 拖动手柄 */
-.tool-rail.rail-horizontal { flex-direction: row; }
-.rail-handle {
-  display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 15px; border: 0; background: transparent; color: var(--t-dim);
-  cursor: grab; padding: 0; border-radius: 6px; flex: none;
-}
-.rail-handle:hover { background: var(--n-4); color: var(--t-body); }
-.rail-handle:active { cursor: grabbing; }
-.rail-handle svg { width: 16px; height: 16px; }
-.tool-rail.rail-horizontal .rail-handle { width: 15px; height: auto; align-self: stretch; }
-.tool-rail.rail-horizontal .rail-handle svg { transform: rotate(90deg); }
-.tool-rail.rail-horizontal .rail-divider { width: 1px; height: 24px; margin: 0 2px; }
-.rail-btn {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--t-body);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.rail-btn:hover {
-  background: var(--n-3);
-  color: var(--accent-text);
-}
-.rail-btn svg { width: 18px; height: 18px; }
-.rail-primary {
-  background: var(--n-3);
-  border-color: var(--n-5);
-}
-.rail-primary.active {
-  background: var(--btn-bg);
-  border-color: var(--accent-text);
-  color: var(--btn-fg);
-}
-.rail-primary.active:hover {
-  background: var(--btn-bg-hover);
-  color: var(--btn-fg);
-}
-.rail-divider {
-  width: 24px;
-  height: 1px;
-  background: var(--n-5);
-  margin: 2px 0;
-}
-
-.add-panel {
-  position: absolute;
-  left: 76px;
-  top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 10px;
-  z-index: 2;
-  box-shadow: 0 6px 20px var(--shadow-2);
-}
-.add-panel-title {
-  font-size: 11px;
-  color: var(--t-dim);
-  padding: 4px 8px;
-  letter-spacing: 0.5px;
-}
-.add-panel-divider {
-  height: 1px;
-  background: var(--n-5);
-  margin: 4px 0;
-}
-.add-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--t-body);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease, color 0.15s ease;
-  min-width: 130px;
-}
-.add-btn:hover:not(:disabled) { background: var(--n-3); color: var(--accent-text); }
-.add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.add-btn svg { width: 16px; height: 16px; }
-
-.legend {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 8px;
-}
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--t-dim);
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.d-text { background: var(--info); }
-.d-image { background: var(--accent); }
-.d-video { background: #ff8a5e; }
-/* 上面三个是空心口的代表色；这一条是实心口，见 node-shared.css 的 h-image-last */
-.d-alt { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
-
-/* 画布模板 hover 预览浮层 */
-.tpl-preview {
-  position: fixed;
-  z-index: 200;
-  width: 260px;
-  max-height: calc(100vh - 32px);
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px var(--shadow-2);
-  overflow: hidden;
-}
-.tpl-preview-title {
-  font-size: 11px;
-  color: var(--t-dim);
-  padding: 4px 8px 8px;
-  letter-spacing: 0.5px;
-}
-.tpl-preview-empty {
-  padding: 24px 8px;
-  text-align: center;
-  color: var(--t-dim);
-  font-size: 12px;
-}
-.tpl-preview-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-}
-.tpl-preview-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--t-body);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.tpl-preview-item:hover { background: var(--n-3); color: var(--accent-text); }
-.tpl-preview-thumb {
-  flex-shrink: 0;
-  width: 48px;
-  height: 36px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--n-0);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.tpl-preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.tpl-preview-thumb-empty { color: var(--n-7); }
-.tpl-preview-thumb-empty svg { width: 20px; height: 20px; }
-.tpl-preview-name {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* ---------- 画布 ---------- */
 .vf-wrap {
-  flex: 1;
-  position: relative;
-  /* 工作台底色单独走 --flow-bg，比页面底压暗一档，让节点浮起来 */
+  position: absolute;
+  inset: 0;
+  /* 自选底色时由行内 style 给；默认档走下面的深蓝 */
   background: var(--flow-bg);
+}
+.vf-wrap.auto {
+  background:
+    radial-gradient(900px 520px at 78% -8%, rgba(59, 123, 255, .16), transparent 62%),
+    radial-gradient(760px 520px at 4% 108%, rgba(138, 92, 255, .12), transparent 60%),
+    linear-gradient(180deg, var(--bg-0), var(--bg-1));
 }
 /* 按住 Shift 框选时，组不吃鼠标事件 —— 否则框选没法从组上面拉起来。
    组自己和标题栏都要关掉，标题栏是另开的 pointer-events:auto。
@@ -3719,20 +3390,15 @@ onBeforeUnmount(() => {
   content: '';
   position: absolute;
   inset: 8px;
-  border: 2px dashed var(--accent);
-  border-radius: 12px;
-  background: var(--accent-ghost);
+  border: 2px dashed rgba(63, 216, 255, .7);
+  border-radius: 16px;
+  background: rgba(63, 216, 255, .06);
   pointer-events: none;
   z-index: 4;
 }
-/* 框选矩形（按住 Shift 拖）：默认主题给的是蓝框，跟这套皮肤不搭。
-   注：以前这里写的是「ctrl / cmd + 拖」，是错的 —— ctrl/cmd 是「点击加选」
-   （multiSelectionKeyCode），拖框走的是 selectionKeyCode，默认就是 Shift。
-   :deep 是必须的 —— 这个元素由 VueFlow 内部渲染，scoped 选择器打不进去。 */
-.vf-wrap :deep(.vue-flow__selection) {
-  background: var(--accent-ghost);
-  border: 1px solid var(--accent-edge);
-}
+/* 小地图：左下角的玻璃块（皮肤在 vue-flow-theme.css，这里只管摆位） */
+.vf-wrap :deep(.vue-flow__minimap) { left: 16px; bottom: 20px; }
+
 /* 拖动节点时的智能对齐参考线 */
 .vf-align-guides {
   position: absolute;
@@ -3741,7 +3407,7 @@ onBeforeUnmount(() => {
   height: 100%;
   pointer-events: none;
   overflow: visible;
-  z-index: 6;
+  z-index: 3;
   /* 出现 120ms 淡入、消失 90ms 淡出。参考线是辅助信息，不该比内容还抢眼 */
   opacity: 0;
   transition: opacity 90ms ease-in;
@@ -3755,14 +3421,11 @@ onBeforeUnmount(() => {
 .vf-align-guides line {
   stroke-width: 1.5;
   stroke-linecap: round;
-  /* 不再用 crispEdges：像素对齐会把线钉成一根硬边，这里要的正是柔边 */
+  /* 不用 crispEdges：像素对齐会把线钉成一根硬边，这里要的正是柔边 */
   shape-rendering: geometricPrecision;
 }
 .vf-align-guides circle { fill: var(--guide); }
-@media (prefers-reduced-motion: reduce) {
-  .vf-align-guides,
-  .vf-align-guides.on { transition: none; }
-}
+
 .vf-drop-hint {
   position: absolute;
   top: 50%;
@@ -3773,182 +3436,264 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 20px 28px;
-  background: var(--glass-panel);
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  color: var(--accent-text);
+  background: rgba(12, 21, 52, .92);
+  border: 1px solid rgba(63, 216, 255, .6);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-1);
+  color: var(--cyan-soft);
   font-size: 14px;
   pointer-events: none;
   z-index: 5;
 }
-.vf-drop-hint svg { width: 34px; height: 34px; }
 .vf-loading {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--glass-panel);
-  color: var(--t-dim);
+  gap: 12px;
+  background: rgba(5, 10, 30, .72);
+  color: var(--text-2);
   font-size: 14px;
   z-index: 4;
 }
 
-.vf-wrap :deep(.vue-flow__handle) {
-  width: 16px;
-  height: 16px;
-  cursor: crosshair;
-  transition: box-shadow 0.15s ease;
-}
-/* 透明扩展点击区，让小目标更易命中 */
-.vf-wrap :deep(.vue-flow__handle)::before {
-  content: '';
+/* ---------- 悬浮玻璃块 ---------- */
+.fl {
   position: absolute;
-  inset: -8px;
-  border-radius: 50%;
+  z-index: 6;
+  border-radius: 14px;
+  border: 1px solid var(--line-2);
+  background: rgba(12, 21, 52, .88);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: var(--sh-1);
 }
-.vf-wrap :deep(.vue-flow__handle:hover) {
-  box-shadow: 0 0 0 4px var(--accent-line);
+.fl hr, .lc-menu hr { border: 0; background: var(--line-2); flex: none; }
+.flip { transform: rotate(180deg); }
+
+/* 左上：标题块 */
+.ed-title {
+  left: 16px; top: 16px; height: 44px;
+  display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px;
+  max-width: calc(100% - var(--q) - 32px - 200px);
+  min-width: 0;
 }
-.vf-wrap :deep(.vue-flow__handle.connecting),
-.vf-wrap :deep(.vue-flow__handle.connectingto) {
-  box-shadow: 0 0 0 6px var(--accent-mid);
+/* 画布名：镜像文字撑开宽度，输入框叠在上面 —— 名字多长块就多宽，超了就截断 */
+.ed-name { position: relative; display: block; min-width: 40px; max-width: 320px; flex: 0 1 auto; overflow: hidden; height: 30px; border-radius: 8px; }
+.ed-name-mirror {
+  display: block; visibility: hidden; white-space: pre; padding: 0 8px;
+  font: 600 14px/30px var(--f-disp); overflow: hidden; text-overflow: ellipsis;
 }
-/* edge 样式由 GlowEdge 组件内部处理，这里只兜底连接预览线 */
-.vf-wrap :deep(.vue-flow__connection-path) {
-  stroke: var(--accent-text);
-  stroke-width: 2;
+.ed-name input {
+  position: absolute; inset: 0; width: 100%; height: 100%; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent; outline: none;
+  font: 600 14px/28px var(--f-disp); color: var(--text); text-overflow: ellipsis;
+}
+.ed-name input::placeholder { color: var(--text-3); font-weight: 400; }
+.ed-name input:hover { background: rgba(124, 160, 255, .08); }
+.ed-name input:focus { background: var(--well); border-color: var(--cyan); }
+.ed-save {
+  border: 0; background: none; padding: 4px 2px; border-radius: 6px; font-size: 12px; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.ed-save:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.ed-save:disabled { cursor: default; }
+.ed-save:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* 左侧：节点面板 */
+.ed-pal { left: 16px; top: 76px; width: 48px; padding: 6px; display: grid; gap: 4px; }
+.ed-pal hr { height: 1px; margin: 2px 4px; }
+
+/* 节点面板的展开层 */
+.ed-fly {
+  left: 72px; width: 220px; z-index: 8;
+  display: flex; flex-direction: column; min-height: 0;
+  max-height: calc(100% - 92px);
+}
+.ed-fly.wide { width: 340px; }
+.ed-fly-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 8px 6px 14px; font: 600 13px/1.4 var(--f-disp); color: var(--text); flex: none;
+}
+.ed-fly-b { padding: 0 6px 6px; overflow-y: auto; min-height: 0; }
+
+/* 菜单里的分组小标题 / 两列网格 / 一项（面板展开层、右键菜单、「更多」共用） */
+.ed-sub { font-size: 11px; color: var(--text-3); padding: 8px 8px 4px; }
+.ed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.ed-grid.one { grid-template-columns: 1fr; }
+/* 落单的那项占满一行，别缩在半边留一块白 */
+.ed-grid .ed-item:only-child { grid-column: 1 / -1; }
+.ed-item {
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: 34px; padding: 0 8px;
+  border: 0; border-radius: 8px; background: none; color: var(--text-2); font-size: 13px; text-align: left;
+  transition: background .12s, color .12s;
+}
+.ed-item .lc-ic { width: 16px; height: 16px; color: var(--text-3); transition: color .12s; }
+.ed-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ed-item:hover:not(:disabled) { background: rgba(124, 160, 255, .12); color: var(--text); }
+.ed-item:hover:not(:disabled) .lc-ic { color: var(--cyan); }
+.ed-item:focus-visible { outline: none; box-shadow: var(--ring); }
+.ed-item:disabled { opacity: .42; cursor: not-allowed; }
+
+.ed-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; padding: 8px;
+  border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3);
+}
+.ed-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #0b1436; border: 2px solid var(--cyan); flex: none; }
+.d-text { border-color: #6f9dff; }
+.d-video { border-color: #a98bff; }
+.d-last { background: var(--cyan); }
+
+/* 切换项目 */
+.ed-proj { left: 16px; top: 68px; width: 300px; max-width: calc(100% - 32px); z-index: 9; display: flex; flex-direction: column; max-height: calc(100% - 100px); }
+.ed-proj-list { overflow-y: auto; min-height: 0; padding: 0 6px; display: grid; gap: 2px; }
+.ed-proj-foot { padding: 8px; border-top: 1px solid var(--line); margin-top: 6px; }
+.proj-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; min-width: 0;
+  border: 1px solid transparent; border-radius: 10px; background: none; color: var(--text-2); text-align: left;
+}
+.proj-item:hover { background: rgba(124, 160, 255, .1); }
+.proj-item.cur { border-color: rgba(63, 216, 255, .4); background: rgba(63, 216, 255, .06); }
+.proj-thumb { flex: none; width: 48px; height: 34px; border-radius: 6px; border: 1px solid var(--line); display: grid; place-items: center; color: var(--text-3); }
+.proj-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.proj-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--text); }
+.proj-item-time { font: 11px/1.3 var(--f-mono); color: var(--text-3); }
+.proj-dialog { width: 440px; }
+.proj-dialog .lc-dialog-body { display: grid; gap: 2px; padding: 16px 14px; }
+.proj-note { margin: 0 6px 8px; }
+
+/* 没有模型的提示 */
+.ed-hint {
+  position: absolute; z-index: 6; top: 16px; left: 50%; transform: translateX(-50%);
+  max-width: min(520px, calc(100% - var(--q) - 520px)); align-items: center;
+  background: rgba(40, 30, 20, .92); box-shadow: var(--sh-1);
+}
+.ed-hint a { white-space: nowrap; font-weight: 500; }
+
+/* 右上：按钮组（没有底板，每颗按钮自己是一块玻璃） */
+.ed-act {
+  position: absolute; z-index: 6; right: calc(16px + var(--q)); top: 16px; height: 44px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ed-btn {
+  position: relative; height: 36px; background: rgba(12, 21, 52, .88);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.ed-btn:hover:not(:disabled) { background: rgba(27, 43, 94, .95); }
+.ed-btn.on { border-color: var(--line-3); color: var(--cyan); }
+.ed-badge {
+  position: absolute; right: -5px; top: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--cyan); color: var(--text-inv); font: 600 10px/16px var(--f-mono); font-style: normal; text-align: center;
+  box-shadow: 0 0 8px rgba(63, 216, 255, .6);
 }
 
-/* 画布空白处右键弹出的添加节点菜单：定位到光标，内部复用 .add-btn 等样式 */
-/* 两列排布：节点加到 16 个之后一列已经一屏放不下了。
+/* 底部中间：工具条 */
+.ed-tools {
+  left: calc((100% - var(--q)) / 2); bottom: 20px; transform: translateX(-50%);
+  height: 48px; display: flex; align-items: center; gap: 4px; padding: 0 6px;
+  max-width: calc(100% - var(--q) - 32px);
+}
+.ed-tools hr { width: 1px; height: 20px; margin: 0 4px; }
+.ed-zoom {
+  width: 48px; height: 34px; border: 0; border-radius: 9px; background: none; flex: none;
+  font: 500 12px var(--f-mono); color: var(--text-2); text-align: center;
+}
+.ed-zoom:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
+.ed-arrange { height: 34px; border-color: transparent; background: none; color: var(--text); flex: none; }
+.ed-run { height: 34px; padding: 0 14px; font-size: 13px; flex: none; }
+.ed-run .lc-ic { fill: currentColor; }
+
+/* 整理后的「撤销」小条：浮在工具条上方 */
+.ed-undo {
+  left: calc((100% - var(--q)) / 2); bottom: 80px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 14px;
+  font-size: 13px; color: var(--text-2); white-space: nowrap;
+}
+
+/* ---------- 菜单 ---------- */
+.lc-menu hr { height: 1px; margin: 4px 6px; }
+.ctx-menu { position: fixed; z-index: 2000; min-width: 200px; max-width: 280px; max-height: calc(100vh - 16px); }
+.ctx-menu .lc-menu-item { width: 100%; gap: 10px; border: 0; background: none; text-align: left; }
+.ctx-menu .lc-menu-item .lc-ic { color: var(--text-3); }
+.ctx-menu .lc-menu-item:hover .lc-ic { color: var(--cyan); }
+.ctx-menu .lc-menu-item.danger { color: var(--err-soft); }
+.ctx-menu .lc-menu-item.danger .lc-ic { color: var(--err-soft); }
+.ctx-menu .lc-menu-item.danger:hover { background: rgba(255, 107, 139, .12); }
+/* 两列排布：节点类型有十几种，一列一屏放不下。
    固定宽度是必要的 —— 不定宽的话「改尺寸 / 压缩」这种长标签会把整个菜单撑开。 */
-.add-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px;
-}
-.add-grid .add-btn { min-width: 0; padding: 7px 9px; font-size: 12.5px; gap: 8px; }
-/* 一组里只有一项时占满整行：「圈成一组（先按住 Shift 框选）」这种带说明的标签半行放不下 */
-.add-grid .add-btn:only-child { grid-column: 1 / -1; }
-.add-grid .add-btn span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* 分组小标题：两列之后光靠分隔线分不清哪块是哪块 */
-.add-panel-sub {
-  font-size: 10.5px;
-  color: var(--t-dim);
-  padding: 3px 8px 1px;
-  letter-spacing: 0.4px;
-}
-/* 宽度按英文界面里最长的那几项（Load another canvas / Multi-platform export）定，
-   窄了它们会被截成省略号；手机上再让一步，不许超出视口。改这个数要同步 ADD_MENU_W。 */
-.add-context-menu {
-  width: min(344px, calc(100vw - 16px));
-  position: fixed;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px var(--shadow-2);
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
-}
+.ed-menu { position: fixed; z-index: 2000; width: 344px; max-width: calc(100vw - 16px); }
+.ed-menu-title { font: 600 13px/1.4 var(--f-disp); color: var(--text); padding: 6px 8px 0; }
 
-.ctx-menu {
-  position: fixed;
-  z-index: 200;
-  min-width: 140px;
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: 0 8px 24px var(--shadow-2);
+/* ---------- 节点搜索 ---------- */
+.nsearch { top: 16px; left: calc((100% - var(--q)) / 2); transform: translateX(-50%); width: 360px; max-width: calc(100% - 32px); z-index: 10; padding: 6px; }
+.nsearch-bar { border-color: var(--line); }
+.nsearch-empty { padding: 10px 8px 6px; font-size: 12px; color: var(--text-3); }
+.nsearch-list { max-height: 264px; overflow-y: auto; margin-top: 6px; display: grid; gap: 2px; }
+.nsearch-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 8px;
+  border: 0; border-radius: 8px; background: none; text-align: left; color: var(--text-2);
 }
-.ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--t-body);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-}
-.ctx-item:hover { background: var(--n-5); }
-.ctx-item.danger:hover { background: rgba(255, 80, 80, 0.15); color: var(--danger); }
-.ctx-item svg { width: 14px; height: 14px; }
-.ctx-divider { height: 1px; background: var(--n-5); margin: 4px 6px; }
+.nsearch-item:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
+.nsearch-b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-/* 没有可用模型时的提示条：贴在顶栏下面，不挡画布操作 */
-.models-hint {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 7px 16px; font-size: 12px; line-height: 1.5;
-  background: var(--n-3); border-bottom: 1px solid var(--n-5); color: var(--t-dim);
-}
-.models-hint-title { color: var(--t-strong); font-weight: 600; }
-.models-hint-link { color: var(--accent-text); text-decoration: none; font-weight: 600; }
-.models-hint-link:hover { text-decoration: underline; }
+/* ---------- 分享弹窗 ---------- */
+.share-dialog { width: 480px; }
+.share-tip { margin: 0 0 16px; }
+.share-last { margin-bottom: 0; }
+.share-expiry { align-self: flex-start; }
+.share-link-row { display: flex; gap: 8px; }
+.share-link-row .lc-input { flex: 1; min-width: 0; font-size: 12px; }
+.share-link-row .lc-btn { height: 40px; flex: none; }
 
-/* 分享链接弹窗 */
-.modal-mask {
-  position: fixed; inset: 0; z-index: 9000;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
+/* 手机上抽屉后面的遮罩：桌面不出现 */
+.ed-scrim { display: none; }
+
+/* ---------- 窄屏 ---------- */
+@media (max-width: 1100px) {
+  /* 队列盖在画布上，不再挤占工具条的位置 */
+  .ed.q-open { --q: 0px; }
+  .ed.q-open .ed-act { right: 296px; }
+  .ed-title { max-width: calc(100% - 32px - 150px); }
+  .ed.q-open .ed-title { max-width: calc(100% - 32px - 430px); }
+  .ed-hint { top: 68px; max-width: calc(100% - 96px); }
 }
-.share-modal {
-  width: 440px; max-width: calc(100vw - 32px);
-  background: var(--n-3); border: 1px solid var(--n-5); border-radius: 12px;
-  color: var(--t-strong); overflow: hidden;
+@media (max-width: 640px) {
+  .ed-title { left: 8px; top: 8px; height: 40px; padding: 0 8px 0 3px; gap: 4px; max-width: calc(100% - 16px - 138px); }
+  .ed.q-open .ed-title { max-width: calc(100% - 16px - 138px); }
+  .ed-name { min-width: 24px; }
+  .ed-name-mirror, .ed-name input { padding: 0 4px; font-size: 13px; }
+  /* 保存状态只留圆点，文字靠 title / 读屏 */
+  .ed-save { padding: 6px; }
+  .ed-save > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .ed-act, .ed.q-open .ed-act { right: 8px; top: 8px; height: 40px; gap: 6px; }
+  .ed-share { width: 36px; padding: 0; }
+  .ed-share > span { display: none; }
+  /* 节点面板收成一颗「+」，点开是底部抽屉（里面有全部节点和素材入口） */
+  .ed-pal { left: 8px; top: 56px; width: 46px; padding: 5px; }
+  .ed-pal .pal-cat, .ed-pal hr { display: none; }
+  .ed-fly, .ed-fly.wide {
+    left: 8px; right: 8px; top: auto !important; bottom: 8px; width: auto; max-height: min(72%, 560px); z-index: 41;
+    background: rgba(12, 21, 52, .97); box-shadow: var(--sh-2);
+  }
+  .ed-proj { left: 8px; top: 56px; max-width: calc(100% - 16px); }
+  /* 工具条贴底，放不下就在自己里面横向滚动 */
+  .ed-tools {
+    left: 8px; right: 8px; bottom: 8px; transform: none; max-width: none; height: 46px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: flex-start; gap: 2px;
+  }
+  .ed-tools::-webkit-scrollbar { display: none; }
+  /* 缩放百分比和分隔线先让出来，「运行全部」才不会被挤到屏幕外 */
+  .ed-tools .ed-zoom, .ed-tools hr { display: none; }
+  .ed-tools .ed-run { margin-left: auto; }
+  .ed-arrange { width: 34px; padding: 0; }
+  .ed-arrange > span { display: none; }
+  .ed-arrange .lc-ic { width: 18px; height: 18px; color: var(--text-2); }
+  .ed-undo { left: 8px; right: 8px; bottom: 62px; transform: none; justify-content: space-between; }
+  .vf-wrap :deep(.vue-flow__minimap) { display: none; }
+  .nsearch { top: 56px; left: 8px; right: 8px; transform: none; width: auto; max-width: none; }
+  .ed-hint { top: 56px; left: 62px; right: 8px; transform: none; max-width: none; }
+  .ed.sheet-open .ed-scrim { display: block; position: absolute; inset: 0; z-index: 40; background: var(--scrim); }
+  .ed-menu { max-height: calc(100vh - 80px) !important; }
 }
-.share-modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--n-5); font-weight: 600;
-}
-.share-modal-close {
-  background: none; border: none; color: var(--t-dim); font-size: 22px; cursor: pointer; line-height: 1;
-}
-.share-modal-body { padding: 18px 20px; }
-.share-tip { margin: 0 0 16px; font-size: 12px; line-height: 1.6; color: var(--t-dim); }
-.share-label { display: block; font-size: 13px; color: var(--t-body); margin: 12px 0 6px; }
-.share-input, .share-textarea {
-  width: 100%; box-sizing: border-box;
-  background: var(--n-2); border: 1px solid var(--n-6); border-radius: 8px;
-  color: var(--t-strong); padding: 10px 12px; font-size: 14px; outline: none; resize: vertical;
-}
-.share-input:focus, .share-textarea:focus { border-color: var(--accent-text); }
-.share-label-first { margin-top: 0; }
-.share-tip-after { margin: 12px 0 0; }
-.share-expiry { display: flex; gap: 8px; flex-wrap: wrap; }
-.share-expiry-btn {
-  flex: 1; min-width: 72px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
-  background: var(--n-2); border: 1px solid var(--n-6); color: var(--t-body);
-}
-.share-expiry-btn:hover { border-color: var(--n-7); color: var(--t-strong); }
-.share-expiry-btn.active { border-color: var(--accent-text); color: var(--accent-text); font-weight: 600; }
-.share-link-row { display: flex; gap: 8px; align-items: stretch; }
-.share-link-row .share-input { flex: 1; min-width: 0; }
-.share-link-row .modal-btn { flex-shrink: 0; }
-.share-modal-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 14px 20px; border-top: 1px solid var(--n-5);
-}
-.modal-btn {
-  padding: 8px 16px; border-radius: 8px; border: 1px solid var(--n-7);
-  background: var(--n-4); color: var(--t-strong); cursor: pointer; font-size: 14px;
-}
-.modal-btn:hover { background: var(--n-5); }
-.modal-btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--accent-text); font-weight: 600; }
-.modal-btn.primary:hover { background: var(--btn-bg-hover); }
-.modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

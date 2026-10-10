@@ -1,27 +1,28 @@
 <template>
-  <div class="cv-node cv-surface" :class="{ selected }">
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :title="t('tools.input.one')" />
+  <div class="cv-node cv-tool" :class="{ selected, 'is-running': status === 'running', 'has-runtime-error': status === 'error' }">
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" :title="t('tools.input.one')" />
 
     <div class="cv-head">
+      <LcIcon name="fit" />
       <span class="cv-title">{{ t('nodes.title.fitSize') }}</span>
       <span class="cv-help" :title="t('tools.fitSize.help')">?</span>
       <span v-if="status === 'running'" class="cv-tag running">{{ t('tools.processing') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
       <span v-else-if="resultUrl" class="cv-tag done">{{ outW }}×{{ outH }}</span>
-      <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
+      <span class="cv-head-x" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
     <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
       <div class="cv-row">
         <span class="cv-label">{{ t('tools.fitSize.ratio') }}</span>
-        <ChipSelect class="cv-chip" :model-value="ratio" :options="RATIO_OPTIONS" @update:model-value="(v) => patch({ ratio: String(v) })" />
+        <ChipSelect field class="cv-chip" :model-value="ratio" :options="RATIO_OPTIONS" @update:model-value="(v) => patch({ ratio: String(v) })" />
         <input class="cv-color" type="color" :value="bg" :title="t('tools.fitSize.padColor', { color: bg })"
                @input="patch({ bg: ($event.target as HTMLInputElement).value })" />
       </div>
 
       <div class="cv-row">
         <span class="cv-label">{{ t('tools.fitSize.format') }}</span>
-        <ChipSelect class="cv-chip" :model-value="format" :options="FORMAT_OPTIONS" @update:model-value="(v) => patch({ format: String(v) })" />
+        <ChipSelect field class="cv-chip" :model-value="format" :options="FORMAT_OPTIONS" @update:model-value="(v) => patch({ format: String(v) })" />
       </div>
 
       <div v-if="format !== 'png'" class="cv-row">
@@ -38,7 +39,7 @@
         <span class="cv-val" style="width:auto">{{ t('tools.fitSize.maxSizeUnit') }}</span>
       </div>
 
-      <div v-if="displayError" class="cv-err">{{ displayError }}</div>
+      <div v-if="displayError" class="cv-error"><div class="cv-error-msg">{{ displayError }}</div></div>
 
       <button v-if="resultUrl" class="cv-preview" @click="download">
         <img :src="canvasImageThumb(resultUrl, 320)" :alt="t('tools.fitSize.resultAlt')" />
@@ -57,7 +58,7 @@
       </div>
     </div>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image" :title="t('tools.fitSize.output')" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" :title="t('tools.fitSize.output')" />
   </div>
 </template>
 
@@ -74,6 +75,7 @@
 import { computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import LcIcon from '@/components/LcIcon.vue'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
@@ -125,16 +127,5 @@ function download() {
 <style scoped>
 @import './tool-node.css';
 /* 英文标签（Max size / Quality）比两三个汉字宽，这个节点的标签列放宽一点 */
-.cv-row .cv-label { width: 52px; }
-/* 原生 <select> 替换为自定义下拉 ChipSelect，填满行、外观对齐原 cv-select */
-.cv-chip { flex: 1; min-width: 0; }
-.cv-chip :deep(.chip) {
-  width: 100%;
-  justify-content: space-between;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 5px;
-  padding: 3px 6px;
-  font-size: 11px;
-}
+.cv-row .cv-label { width: 56px; }
 </style>

@@ -51,23 +51,24 @@ const emit = defineEmits<{
 </script>
 
 <style scoped>
+/* @ 候选框：和下拉菜单同一种玻璃面板 */
 .cv-mention {
   position: fixed; z-index: 10050;
   max-height: 232px; overflow-y: auto;
-  background: var(--n-1); border: 1px solid var(--n-5); border-radius: 10px;
-  padding: 4px; box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  background: #131f4a; border: 1px solid var(--line-2); border-radius: 12px;
+  padding: 6px; box-shadow: var(--sh-1);
 }
 .cv-mention-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 4px 6px; border: none; border-radius: 7px; background: none;
-  color: var(--t-max); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+  padding: 5px 8px; border: none; border-radius: 8px; background: none;
+  color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
-.cv-mention-item.on { background: var(--n-3); }
+.cv-mention-item.on { background: rgba(63, 216, 255, .12); color: var(--text); }
 .cv-mention-item img {
-  width: 28px; height: 28px; object-fit: cover; border-radius: 5px;
-  border: 1px solid var(--n-5); flex: 0 0 auto;
+  width: 28px; height: 28px; object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--line); flex: 0 0 auto;
 }
 .cv-mention-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-mention-idx { font-size: 11px; color: var(--t-dim); font-variant-numeric: tabular-nums; }
-.cv-mention-warn { font-size: 10.5px; color: var(--warning); }
+.cv-mention-idx { font: 11px var(--f-mono); color: var(--text-3); }
+.cv-mention-warn { font-size: 11px; color: var(--warn); }
 </style>

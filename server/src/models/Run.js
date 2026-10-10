@@ -1,7 +1,7 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER, RUN_STATUS, RUN_KINDS } = require('../constants')
+const { RUN_STATUS, RUN_KINDS } = require('../constants')
 
 const { Mixed } = mongoose.Schema.Types
 
@@ -21,7 +21,7 @@ const outputSchema = new mongoose.Schema({
  * This is both the job record the runner works from and the usage ledger.
  */
 const runSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  userId: { type: String, required: true, index: true },
   kind: { type: String, enum: RUN_KINDS, required: true },
   status: { type: String, enum: Object.values(RUN_STATUS), default: RUN_STATUS.QUEUED, index: true },
   progress: { type: Number, default: 0, min: 0, max: 100 },

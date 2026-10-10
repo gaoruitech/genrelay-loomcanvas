@@ -19,8 +19,13 @@ export type DistributeAxis = 'h' | 'v'
 interface Options {
   nodes: Ref<Node[]>
   edges: Ref<Edge[]>
-  /** vue-flow 的 getNodes：带实测 dimensions，布局要按真实宽高排，不能用固定值 */
+  /** vue-flow 的 getNodes：带实测 dimensions 和选中态。注意开了 only-render-visible-elements 之后它只给视野里的节点 */
   getNodes: Ref<any[]>
+  /**
+   * 某个节点的实测宽高（问 vue-flow 要）。视野外的节点没渲染过、量不到，返回 null，
+   * 这时按节点类型估一个（见 estimateNodeSize）。整理全图必须覆盖全部节点，不能只排看得见的那几个。
+   */
+  measure?: (id: string) => { width: number; height: number } | null | undefined
   updateNode: (id: string, update: any) => void
   fitView?: (opts?: any) => void
 }
@@ -39,11 +44,47 @@ const MAX_ANIMATE = 120
 /** 超过这个数量先弹确认，交给调用方决定 */
 export const LAYOUT_CONFIRM_THRESHOLD = 200
 
-const FALLBACK_W = 260
-const FALLBACK_H = 160
+/**
+ * 量不到尺寸时按类型估的宽高（未选模型、未出结果时的常见大小，实测自当前这套节点）。
+ * 只在节点从没进过视野时用到；宁可估大一点 —— 估小了整理完还会叠。
+ */
+const ESTIMATED_SIZE: Record<string, { w: number; h: number }> = {
+  'image-gen': { w: 260, h: 560 },
+  'image-edit': { w: 260, h: 560 },
+  'video-gen': { w: 260, h: 560 },
+  'video-edit': { w: 260, h: 560 },
+  'llm': { w: 280, h: 360 },
+  'video-analysis': { w: 280, h: 360 },
+}
+/** 素材、成品和工具节点都是 280 x 300 上下 */
+const FALLBACK_SIZE = { w: 280, h: 320 }
+
+export function estimateNodeSize(type: string | undefined): { w: number; h: number } {
+  return (type && ESTIMATED_SIZE[type]) || FALLBACK_SIZE
+}
+
+export interface LayoutBox { id: string; x: number; y: number; w: number; h: number }
+
+/**
+ * 有没有两个节点叠在一起。只看同一层级里的散节点（组和组内子节点不参与整理，也不在这里查）。
+ * `tolerance`：两边各让出这么多像素才算叠 —— 贴边、压一条描边不算，
+ * 否则用户特意排得很紧的画布也会被判成「重叠」。
+ */
+export function boxesOverlap(list: LayoutBox[], tolerance = 12): boolean {
+  const sorted = [...list].sort((a, b) => a.x - b.x)
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i]
+    for (let j = i + 1; j < sorted.length; j++) {
+      const b = sorted[j]
+      if (b.x >= a.x + a.w - tolerance) break // 按 x 排过序：后面的都在 a 右边了
+      if (b.y < a.y + a.h - tolerance && a.y < b.y + b.h - tolerance) return true
+    }
+  }
+  return false
+}
 
 export function useAutoLayout(opts: Options) {
-  const { nodes, edges, getNodes, updateNode, fitView } = opts
+  const { nodes, edges, getNodes, updateNode, fitView, measure } = opts
 
   const running = ref(false)
   /** 上一次整理前的位置快照；撤销后清空 */
@@ -58,20 +99,27 @@ export function useAutoLayout(opts: Options) {
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
+  /** 画布上的全部节点（v-model 的那份），不受「只渲染视野内」的影响 */
+  const allNodes = (): any[] => nodes.value as any[]
+
   function boxes(list?: any[]): Box[] {
-    const src = list || getNodes.value
-    return src.map((n: any) => ({
-      id: n.id,
-      x: n.position?.x ?? 0,
-      y: n.position?.y ?? 0,
-      w: n.dimensions?.width || n.width || FALLBACK_W,
-      h: n.dimensions?.height || n.height || FALLBACK_H,
-    }))
+    const src = list || allNodes()
+    return src.map((n: any) => {
+      const m = measure?.(n.id)
+      const est = estimateNodeSize(n.type)
+      return {
+        id: n.id,
+        x: n.position?.x ?? 0,
+        y: n.position?.y ?? 0,
+        w: m?.width || n.dimensions?.width || (typeof n.width === 'number' ? n.width : 0) || est.w,
+        h: m?.height || n.dimensions?.height || (typeof n.height === 'number' ? n.height : 0) || est.h,
+      }
+    })
   }
 
   function takeSnapshot() {
     const snap: Record<string, Pos> = {}
-    for (const n of getNodes.value) snap[n.id] = { x: n.position?.x ?? 0, y: n.position?.y ?? 0 }
+    for (const n of allNodes()) snap[n.id] = { x: n.position?.x ?? 0, y: n.position?.y ?? 0 }
     snapshot.value = snap
   }
 
@@ -100,7 +148,7 @@ export function useAutoLayout(opts: Options) {
     }
 
     const from: Record<string, Pos> = {}
-    for (const n of getNodes.value) {
+    for (const n of allNodes()) {
       if (targets[n.id]) from[n.id] = { x: n.position?.x ?? 0, y: n.position?.y ?? 0 }
     }
 
@@ -171,7 +219,7 @@ export function useAutoLayout(opts: Options) {
 
   function computeFlowLayout(): Record<string, Pos> {
     // 只整理散节点：组容器和组内子节点整体保持原样
-    const all = boxes(getNodes.value.filter(isArrangeable))
+    const all = boxes(allNodes().filter(isArrangeable))
     if (!all.length) return {}
     const boxById = new Map(all.map((b) => [b.id, b]))
 
@@ -327,6 +375,14 @@ export function useAutoLayout(opts: Options) {
 
   // ==================== 对外动作 ====================
 
+  /**
+   * 散节点里有没有互相压着的（按实测尺寸，量不到的按类型估）。
+   * 改版前排的画布第一次打开时用它决定要不要整理：没叠就一个位置都不动。
+   */
+  function hasOverlap(): boolean {
+    return boxesOverlap(boxes(allNodes().filter(isArrangeable)))
+  }
+
   /** 按数据流整理全图。返回是否真的动了。 */
   async function arrange(): Promise<boolean> {
     if (running.value) return false
@@ -343,7 +399,7 @@ export function useAutoLayout(opts: Options) {
     if (running.value) return false
     const targets: Record<string, Pos> = {}
     let moved = false
-    for (const b of boxes(getNodes.value.filter(isArrangeable))) {
+    for (const b of boxes(allNodes().filter(isArrangeable))) {
       const x = Math.round(b.x / GRID) * GRID
       const y = Math.round(b.y / GRID) * GRID
       if (x !== b.x || y !== b.y) moved = true
@@ -422,6 +478,7 @@ export function useAutoLayout(opts: Options) {
   }
 
   return {
+    hasOverlap,
     running,
     canUndo,
     selectedCount,

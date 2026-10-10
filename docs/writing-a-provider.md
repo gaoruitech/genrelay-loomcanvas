@@ -433,7 +433,7 @@ Then update the tests that pin the set of vendors on purpose:
 - `server/test/vendors.test.js`: the `VENDORS` list, and the model names each catalog holds.
 - `server/test/i18n.test.js`: the list of vendors whose label and description keys are required.
 
-Restart the server. The vendor appears in **Settings → Providers → Add provider** and on the setup page, with its supported models. No frontend change is needed: the page is drawn from `GET /api/admin/vendors`. Optionally add `settings.vendors.acme` (`label`, `desc`) to `web/src/locales/modules/settings.ts` for the one-line description on the vendor card, and so that the name follows a language switch without a reload.
+Restart the server. The vendor appears under **Add provider** on the **Models** page and on the **Add a provider** page a new account sees, with its supported models. No frontend change is needed: the page is drawn from `GET /api/admin/vendors`. Optionally add `settings.vendors.acme` (`label`, `desc`) to `web/src/locales/modules/settings.ts` for the one-line description on the vendor card, and so that the name follows a language switch without a reload.
 
 There is no way to load a vendor from outside the source tree yet; a vendor is part of your build.
 

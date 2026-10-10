@@ -66,6 +66,23 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     await fs.promises.rm(pathFor(key), { force: true })
   }
 
+  /** Remove every file under a key prefix ("uploads/<account id>/"). Resolves how many files went. */
+  async function removePrefix(prefix) {
+    if (!/^[a-z0-9]+(\/[a-z0-9]+)+\/$/.test(prefix)) throw new Error('invalid storage prefix')
+    const dir = path.resolve(root, prefix)
+    if (!dir.startsWith(root + path.sep)) throw new Error('invalid storage prefix')
+    let count = 0
+    const walk = async (d) => {
+      for (const entry of await fs.promises.readdir(d, { withFileTypes: true }).catch(() => [])) {
+        if (entry.isDirectory()) await walk(path.join(d, entry.name))
+        else count++
+      }
+    }
+    await walk(dir)
+    await fs.promises.rm(dir, { recursive: true, force: true })
+    return count
+  }
+
   /**
    * Always site-relative. The address people open the app at is not baked
    * into what canvases store, so they keep working when the host, the port or
@@ -100,7 +117,7 @@ function createLocalStorage({ dir, publicUrl = '' }) {
     return isValidKey(key) ? key : null
   }
 
-  return { id: 'local', driver: 'local', root, put, getStream, getBuffer, head, delete: remove, urlFor, keyFromUrl, pathFor }
+  return { id: 'local', driver: 'local', root, put, getStream, getBuffer, head, delete: remove, deletePrefix: removePrefix, urlFor, keyFromUrl, pathFor }
 }
 
 module.exports = { createLocalStorage }

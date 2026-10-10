@@ -1,20 +1,20 @@
 <template>
-  <div v-if="open" class="bd-mask" @click.self="close">
-    <div class="bd-modal">
-      <div class="bd-head">
-        <span class="bd-title">{{ t('dialogs.download.title') }}</span>
-        <span class="bd-count">{{ t('dialogs.download.selected', { n: selected.size, total: items.length }) }}</span>
-        <button class="bd-close" :title="t('common.close')" @click="close">×</button>
+  <div v-if="open" class="lc-mask lc-sheet bd-mask" @click.self="close">
+    <div class="lc-dialog bd-modal">
+      <div class="lc-dialog-head">
+        <span class="bd-title">{{ t('dialogs.download.title') }}<span class="bd-count">{{ t('dialogs.download.selected', { n: selected.size, total: items.length }) }}</span></span>
+        <button class="lc-x" :title="t('common.close')" @click="close">×</button>
       </div>
 
       <div v-if="items.length" class="bd-filters">
-        <button
-          v-for="f in filters"
-          :key="f.value"
-          class="bd-chip"
-          :class="{ on: filter === f.value }"
-          @click="filter = f.value"
-        >{{ f.label }} {{ countOf(f.value) }}</button>
+        <div class="lc-seg">
+          <button
+            v-for="f in filters"
+            :key="f.value"
+            :class="{ on: filter === f.value }"
+            @click="filter = f.value"
+          >{{ f.label }} <span class="lc-mono">{{ countOf(f.value) }}</span></button>
+        </div>
       </div>
 
       <div class="bd-body">
@@ -32,18 +32,14 @@
             <img v-if="thumbOf(it)" :src="thumbOf(it)" alt="" loading="lazy" />
             <!-- 视频没有登记过封面：让浏览器只取元数据，自己显示首帧 -->
             <video v-else :src="it.url" muted playsinline preload="metadata" />
-            <span class="bd-ck">
-              <svg v-if="selected.has(it.url)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </span>
-            <span class="bd-kind">{{ it.kind === 'video' ? t('nodes.title.video') : t('nodes.title.image') }}</span>
+            <span class="lc-cb bd-ck" :class="{ on: selected.has(it.url) }" />
+            <span class="lc-bd bd-kind" :class="it.kind === 'video' ? 'vid' : 'img'">{{ it.kind === 'video' ? t('nodes.title.video') : t('nodes.title.image') }}</span>
             <span class="bd-cap">{{ it.label }}</span>
           </button>
         </div>
       </div>
 
-      <div class="bd-foot">
+      <div class="lc-dialog-foot bd-foot">
         <span class="bd-info">
           <template v-if="overLimit">{{ t('dialogs.download.overLimit', { max: MAX_ZIP_ITEMS }) }}</template>
           <template v-else-if="selected.size">
@@ -52,10 +48,10 @@
           <template v-else>{{ t('download.selectFirst') }}</template>
         </span>
         <span class="bd-spacer" />
-        <button class="bd-btn" :disabled="!visible.length" @click="selectAllVisible">{{ t('dialogs.download.selectAll') }}</button>
-        <button class="bd-btn" :disabled="!selected.size" @click="clearAll">{{ t('common.clear') }}</button>
+        <button class="lc-btn" :disabled="!visible.length" @click="selectAllVisible">{{ t('dialogs.download.selectAll') }}</button>
+        <button class="lc-btn" :disabled="!selected.size" @click="clearAll">{{ t('common.clear') }}</button>
         <button
-          class="bd-btn primary"
+          class="lc-btn primary quiet"
           :disabled="!selected.size || overLimit || downloading"
           @click="download"
         >{{ downloading ? t('dialogs.download.zipping') : t('dialogs.download.downloadZip', { n: selected.size }) }}</button>
@@ -159,181 +155,70 @@ async function download() {
 </script>
 
 <style scoped>
-.bd-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 2100;
-  background: var(--scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.bd-modal {
-  width: min(860px, 100%);
-  max-height: min(78vh, 720px);
-  display: flex;
-  flex-direction: column;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 14px;
-  box-shadow: 0 18px 44px var(--shadow-3);
-  overflow: hidden;
-}
-.bd-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--n-5);
-}
-.bd-title { font-size: 15px; font-weight: 600; color: var(--t-body); }
-.bd-count { font-size: 12px; color: var(--t-dim); font-variant-numeric: tabular-nums; }
-.bd-close {
-  margin-left: auto;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--t-dim);
-  font-size: 19px;
-  line-height: 1;
-  cursor: pointer;
-}
-.bd-close:hover { background: var(--n-4); color: var(--t-body); }
-
-.bd-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--n-5);
-}
-.bd-chip {
-  font-size: 12px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  border: 1px solid var(--n-5);
-  background: var(--n-3);
-  color: var(--t-dim);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.bd-chip:hover { color: var(--t-body); }
-.bd-chip.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
+.bd-mask { z-index: 3100; }
+.bd-modal { width: min(860px, 100%); max-height: min(80vh, 720px); }
+.bd-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.bd-count { font: 400 12px var(--f-mono); color: var(--text-3); white-space: nowrap; }
+.bd-filters { flex: none; padding: 12px 20px 0; }
 
 .bd-body { flex: 1; overflow-y: auto; min-height: 160px; }
-.bd-empty {
-  padding: 48px 24px;
-  text-align: center;
-  color: var(--t-dim);
-  font-size: 13px;
-}
+.bd-empty { padding: 48px 24px; text-align: center; color: var(--text-3); font-size: 13px; }
 .bd-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
   gap: 10px;
-  padding: 16px;
+  padding: 16px 20px;
 }
 .bd-thumb {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 9px;
+  border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--n-5);
+  border: 1px solid var(--line);
   background: var(--media-bg);
   padding: 0;
   cursor: pointer;
-  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  transition: border-color .14s ease, box-shadow .14s ease;
 }
-.bd-thumb:hover { border-color: var(--n-7); }
-.bd-thumb.sel {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1.5px var(--accent);
-}
-.bd-thumb:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.bd-thumb:hover { border-color: var(--line-3); }
+.bd-thumb.sel { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
+.bd-thumb:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .bd-thumb img,
 .bd-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* 视频只当封面用，点击要落到外层按钮上 */
 .bd-thumb video { pointer-events: none; }
-.bd-ck {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border: 1.5px solid var(--on-scrim-dim);
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.bd-thumb.sel .bd-ck {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-.bd-ck svg { width: 11px; height: 11px; }
-.bd-kind {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: var(--on-scrim);
-}
+.bd-ck { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; background: rgba(4, 9, 28, .6); }
+.bd-kind { position: absolute; top: 7px; right: 7px; height: 20px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.bd-kind.img { background: rgba(4, 30, 52, .78); }
+.bd-kind.vid { background: rgba(28, 16, 62, .78); }
+/* 图注压在画面上：底是恒暗渐变，字固定用浅色 */
 .bd-cap {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 14px 8px 6px;
+  padding: 16px 8px 6px;
   font-size: 11px;
   text-align: left;
   color: var(--on-scrim);
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+  background: linear-gradient(transparent, rgba(4, 9, 28, .85));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.bd-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
-  border-top: 1px solid var(--n-5);
-  background: var(--n-1);
-}
-.bd-info { font-size: 12.5px; color: var(--t-dim); }
-.bd-info b { color: var(--t-body); font-weight: 500; }
+.bd-foot { align-items: center; flex-wrap: wrap; }
+.bd-info { font-size: 13px; color: var(--text-3); min-width: 0; }
+.bd-info b { color: var(--text-2); font-weight: 500; font-family: var(--f-mono); font-size: 12px; word-break: break-all; }
 .bd-spacer { flex: 1; min-width: 8px; }
-.bd-btn {
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--n-5);
-  background: var(--n-3);
-  color: var(--t-body);
-  cursor: pointer;
+@media (max-width: 600px) {
+  .bd-modal { max-height: 92vh; max-height: 92dvh; }
+  .bd-filters { padding: 12px 16px 0; }
+  .bd-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px 16px; }
+  .bd-foot { padding: 12px 16px; }
+  .bd-info { flex-basis: 100%; }
+  .bd-spacer { display: none; }
+  .bd-foot .lc-btn { flex: 1; padding: 0 10px; }
+  .bd-foot .lc-btn.primary { flex-basis: 100%; }
 }
-.bd-btn:hover:not(:disabled) { border-color: var(--n-7); }
-.bd-btn:disabled { opacity: 0.45; cursor: default; }
-.bd-btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-.bd-btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
 </style>

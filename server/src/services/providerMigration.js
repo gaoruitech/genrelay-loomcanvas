@@ -115,7 +115,8 @@ async function usedModels(doc) {
   for (const r of runs) {
     if (typeof r._id.model === 'string' && r._id.model) out.push({ id: r._id.model, kind: r._id.kind })
   }
-  const flows = await Workflow.find({ isDeleted: { $ne: true }, 'nodes.data.model': { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` } })
+  // Slugs are per account: only this account's canvases refer to this provider.
+  const flows = await Workflow.find({ userId: doc.userId, isDeleted: { $ne: true }, 'nodes.data.model': { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` } })
     .select('nodes.type nodes.data.model').sort({ createdAt: 1 }).lean()
   for (const flow of flows) {
     for (const node of Array.isArray(flow.nodes) ? flow.nodes : []) {

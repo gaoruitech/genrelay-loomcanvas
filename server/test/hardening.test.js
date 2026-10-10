@@ -8,10 +8,9 @@ const os = require('os')
 const path = require('path')
 
 process.env.SECRET_KEY = 'hardening-test-secret-key-0123456789'
-process.env.ACCESS_PASSWORD = 'pw'
 
 const { resetConfig, getConfig, ConfigError } = require('../src/config')
-const { loginRateLimit, clientKey, LOGIN_LIMITS } = require('../src/middleware/auth')
+const { loginRateLimit, countAccountAttempt, resetRateLimits, clientKey, LOGIN_LIMITS } = require('../src/middleware/auth')
 const { messageFromBody, errorCodeFromBody, redactSecrets } = require('../src/providers/http')
 const { buildContentSecurityPolicy, inlineScriptHashes } = require('../src/middleware/security')
 const { createLocalStorage } = require('../src/storage/local')
@@ -38,7 +37,7 @@ test('TRUST_PROXY: hop counts and proxy addresses only; "true" would let anyone 
   }
 })
 
-test('login rate limit: counted per client, where an IPv6 client is its /64', () => {
+test('login rate limit: counted per client, where an IPv6 client is its /64', async () => {
   assert.equal(clientKey('203.0.113.7'), '203.0.113.7')
   assert.equal(clientKey('::ffff:203.0.113.7'), '203.0.113.7')
   assert.equal(clientKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), '2001:db8:1:2::/64')
@@ -48,23 +47,37 @@ test('login rate limit: counted per client, where an IPv6 client is its /64', ()
   assert.equal(clientKey('::1'), '0:0:0:0::/64')
   assert.equal(clientKey(undefined), 'unknown')
 
+  resetRateLimits()
   for (let i = 0; i < LOGIN_LIMITS.perClient; i++) assert.equal(attempt(`2001:db8:9:9::${i + 1}`).status, 200)
   assert.equal(attempt('2001:db8:9:9:ffff:ffff:ffff:ffff').status, 429, 'another address of the same /64 is the same client')
   assert.equal(attempt('2001:db8:9:a::1').status, 200, 'a different /64 is not')
 
-  // A successful login clears the client's count.
-  for (let i = 0; i < LOGIN_LIMITS.perClient - 1; i++) attempt('198.51.100.1')
-  attempt('198.51.100.1').req.loginSucceeded()
-  assert.equal(attempt('198.51.100.1').status, 200)
+  // A correct password forgives the caller's own wrong tries at that account - and only those:
+  // signing in to one's own account does not wipe the address's guesses at other names.
+  resetRateLimits()
+  const ip = '198.51.100.1'
+  const own = 5
+  for (let i = 0; i < own; i++) { attempt(ip); await countAccountAttempt({ ip }, {}, 'me') }
+  for (let i = 0; i < LOGIN_LIMITS.perClient - own - 1; i++) attempt(ip)
+  assert.equal(attempt(ip).status, 200, 'the last one the address has')
+  const succeeded = await countAccountAttempt({ ip }, {}, 'me')
+  assert.equal(attempt(ip).status, 429)
+  succeeded()
+  for (let i = 0; i < own + 1; i++) assert.equal(attempt(ip).status, 200, `forgiven try ${i + 1}`)
+  assert.equal(attempt(ip).status, 429, 'the guesses at other names are still counted')
+  resetRateLimits()
 })
 
-test('login rate limit: a ceiling across all clients, so many addresses cannot guess without bound', () => {
-  let allowed = 0
-  for (let i = 0; i < LOGIN_LIMITS.global + 50; i++) {
-    if (attempt(`10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`).status === 200) allowed++
-  }
-  assert.ok(allowed <= LOGIN_LIMITS.global, `${allowed} attempts got through`)
-  assert.equal(attempt('192.0.2.200').status, 429)
+test('login rate limit: wrong guesses at a name from one address stop that address, nobody else', async () => {
+  resetRateLimits()
+  const guess = (ip, account) => countAccountAttempt({ ip }, {}, account).then(() => 200, (err) => err.status)
+  assert.ok(LOGIN_LIMITS.perAccount >= LOGIN_LIMITS.perPair * 10, 'the ceiling across addresses is far above what one address gets')
+  for (let i = 0; i < LOGIN_LIMITS.perPair; i++) assert.equal(await guess('203.0.113.1', 'Victim'), 200)
+  assert.equal(await guess('203.0.113.1', 'victim'), 429, 'the name is counted without regard to case')
+  assert.equal(await guess('203.0.113.1', ' VICTIM '), 429)
+  assert.equal(await guess('203.0.113.2', 'victim'), 200, 'the holder, anywhere else, is not locked out')
+  assert.equal(await guess('203.0.113.1', 'somebody-else'), 200, 'and the address may still sign in to another account')
+  resetRateLimits()
 })
 
 test('upstream error text: credentials are blanked, and a hostile body cannot stall the process', () => {

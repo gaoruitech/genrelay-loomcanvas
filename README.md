@@ -17,18 +17,22 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 - **Run orchestration.** Run a single node, a branch or the whole canvas; batch runs over a set of source images. Runs are queued with a concurrency limit and hard timeouts. After a server restart, queued runs and runs that already have an upstream task carry on.
 - **Bring your own models.** Pick a provider and enter your own API key. Built in: Gaorui (one key for image, video and chat models), OpenAI (chat, image generation and editing) and Google Gemini (image and chat), the last two through their official APIs. Which models each provider supports is listed explicitly; a model that is not listed can be added as a custom model.
 - **Cost, not credits.** An estimate per run from a price table you maintain, shown as "Cost unknown" until you enter prices, plus usage records by day and by model.
-- **Your files stay with you.** Results are copied into your own storage: the local disk by default, or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO), configured under Settings → Storage. The bucket can stay private. See [Storage](docs/storage.md) for what has been tested.
+- **Your files stay with you.** Results are copied into your own storage: the local disk by default, or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO), configured under **Settings → Storage**. The bucket can stay private. See [Storage](docs/storage.md) for what has been tested.
 - **Templates, brand kits, asset library, share links.** Read-only share links with expiry and revocation.
-- **Chinese and English** interface and server messages; light and dark themes.
-- **Single-user by design.** One optional shared access password. No accounts, no multi-tenant isolation.
+- **Workbench, history, model management.** A start page with your recent canvases, templates, the queue and this month's usage; a History page with every run, filters and CSV export; a Models page for providers, models and prices.
+- **Chinese and English** interface and server messages. One dark theme.
+- **Accounts.** People register and sign in; each account has its own canvases, files, providers and API keys. The first account registered is the owner, who manages the site and the list of accounts and can close registration.
+- **No teams.** Accounts do not share canvases or workspaces, and the separation between them is not a hardened multi-tenant boundary. See [Security](docs/security.md).
 
 ## Screenshots
 
 | | |
 | --- | --- |
-| ![Editor](docs/images/04-editor.png) Editor | ![A finished run](docs/images/06-editor-result.png) Results on the canvas |
-| ![Dark theme](docs/images/09-editor-dark.png) Dark theme | ![Setup](docs/images/01-setup.png) First-run setup |
-| ![Models and prices](docs/images/08-settings-models.png) Models and prices (none are shipped; you enter your own) | ![English interface](docs/images/11-editor-en.png) English interface |
+| ![Landing page](docs/images/12-landing.png) Landing page | ![Sign-in page](docs/images/13-login.png) Sign in |
+| ![Add a provider](docs/images/01-setup.png) Adding the first provider after registering | ![Workbench](docs/images/14-workbench.png) Workbench |
+| ![Editor](docs/images/04-editor.png) Editor (Chinese interface) | ![English interface](docs/images/11-editor-en.png) Editor (English interface) |
+| ![Image to video template](docs/images/09-editor-dark.png) The built-in "Image to video" template | ![A finished run](docs/images/06-editor-result.png) Results on the canvas |
+| ![Models and prices](docs/images/08-settings-models.png) Models: providers, models and prices (none are shipped; you enter your own) | ![History](docs/images/15-history.png) History: every run, with totals |
 
 ## Quick start
 
@@ -42,11 +46,11 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open http://localhost:3000 (or the host's address, with the `PORT` you set) and follow the setup page to add a provider. The recommended one is Gaorui; get a key at https://gaorui.cc.
+Open http://localhost:3000 (or the host's address, with the `PORT` you set), click **Sign up** to register, and add a provider on the page that follows. The recommended one is Gaorui; get a key at https://gaorui.cc.
 
 - `SECRET_KEY` encrypts your provider API keys in the database. Keep it safe and do not change it afterwards, or the saved keys can no longer be decrypted.
 - `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs, and for reference images with the Gaorui image models, when files are kept on the local disk).
-- Set `ACCESS_PASSWORD` if anyone else can reach the machine.
+- The first account you register is the owner of the instance, so register before anyone else can reach it. Registration stays open afterwards; the owner can close it under **Settings → Site**. See [Accounts](docs/getting-started.md#accounts).
 
 Step by step: [Getting started](docs/getting-started.md).
 

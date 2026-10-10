@@ -1,8 +1,7 @@
-import { ref, watch, onBeforeUnmount, type Ref } from 'vue'
-import { useAppStore } from '@/stores/app'
+import { ref, type Ref } from 'vue'
 
 /**
- * 把 design token 的计算值读成响应式字符串。
+ * 把 design token 的计算值读成字符串（包成 ref 只是为了模板里好用）。
  *
  * 专给那些「不认 CSS 变量」的地方用。典型是 vue-flow 的 Background / MiniMap：
  * 它把颜色当 SVG presentation attribute 传，而 attribute 不解析 var()，
@@ -13,7 +12,6 @@ import { useAppStore } from '@/stores/app'
  * @param alpha    传了就把 #rrggbb 转成 rgba()；token 本身是 rgba 时忽略
  */
 export function useTokenColor(token: string, fallback: string, alpha?: number): Ref<string> {
-  const app = useAppStore()
   const out = ref(fallback)
 
   function read() {
@@ -25,11 +23,8 @@ export function useTokenColor(token: string, fallback: string, alpha?: number): 
     out.value = alpha == null ? v : withAlpha(v, alpha)
   }
 
-  // 属性写到 <html> 之后浏览器才重算样式，等一帧再读
-  const reread = () => requestAnimationFrame(read)
+  // 只有一套主题，取值不会变，读一次就够
   read()
-  const stop = watch(() => app.resolvedTheme, reread)
-  onBeforeUnmount(stop)
 
   return out
 }

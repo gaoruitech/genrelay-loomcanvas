@@ -49,8 +49,6 @@ defineOptions({ inheritAttrs: false })
 <style scoped>
 /* ── 骨架块 ── */
 .skel {
-  /* 默认是文字条的浅一档；图片区那种大面积的会用 --skel-bg 压到近黑，
-     否则在深色页面里就是一块戳眼的亮斑 */
   background: var(--skel-bg);
   border-radius: 6px;
   position: relative;
@@ -62,50 +60,35 @@ defineOptions({ inheritAttrs: false })
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg,
-    transparent,
-    var(--film-2) 45%,
-    var(--film-2) 55%,
-    transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 160, 255, .1) 45%, rgba(124, 160, 255, .1) 55%, transparent);
   animation: skel-shimmer 1.45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 @keyframes skel-shimmer {
   to { transform: translateX(100%); }
 }
 /* 骨架淡出：先让位 220ms，真内容再进，不硬切 */
-.skel-leave {
-  animation: skel-out 0.22s ease forwards;
-}
+.skel-leave { animation: skel-out 0.22s ease forwards; }
 @keyframes skel-out {
   to { opacity: 0; transform: translateY(-4px); }
 }
-@keyframes skel-breathe {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.62; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .skel::after { animation: none; }
-  .skel { animation: skel-breathe 2s ease-in-out infinite; }
-}
 
-/* ── 画布卡：对齐 CanvasList.vue 的 .card ── */
+/* ── 画布卡：和真卡片（.lc-card）同一个外形，换成真内容时不跳 ── */
 .skel-canvas-card {
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 12px;
+  background: var(--grad-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   overflow: hidden;
 }
 .skel-canvas-thumb {
   width: 100%;
-  /* 与 .thumb 同为 16:10，换成真卡片时不跳 */
   aspect-ratio: 16 / 10;
   border-radius: 0;
-  --skel-bg: var(--n-2);
+  --skel-bg: rgba(4, 9, 28, .5);
 }
 .skel-canvas-meta {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 </style>

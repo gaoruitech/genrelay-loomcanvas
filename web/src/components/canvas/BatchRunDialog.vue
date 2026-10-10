@@ -1,14 +1,13 @@
 <template>
-  <div v-if="batch.open.value" class="br-mask" @click.self="requestClose">
-    <div class="br-modal">
-      <div class="br-head">
-        <span class="br-title">{{ t('dialogs.batch.title') }}</span>
-        <span class="br-sub">{{ t('dialogs.batch.subtitle') }}</span>
-        <button class="br-close" :title="t('common.close')" @click="requestClose">×</button>
+  <div v-if="batch.open.value" class="lc-mask lc-sheet br-mask" @click.self="requestClose">
+    <div class="lc-dialog br-modal">
+      <div class="lc-dialog-head">
+        <span class="br-title">{{ t('dialogs.batch.title') }}<span class="br-sub">{{ t('dialogs.batch.subtitle') }}</span></span>
+        <button class="lc-x" :title="t('common.close')" @click="requestClose">×</button>
       </div>
 
       <!-- ========== 配置阶段 ========== -->
-      <div v-if="!batch.items.value.length" class="br-body">
+      <div v-if="!batch.items.value.length" class="lc-dialog-body br-body">
         <p class="br-tip">{{ t('dialogs.batch.intro') }}</p>
 
         <div class="br-step">
@@ -37,13 +36,13 @@
             <span>{{ t('dialogs.batch.sourcesCount', { n: batch.sources.value.length, max: MAX_BATCH_SOURCES }) }}</span>
           </div>
           <div class="br-actions">
-            <button class="br-btn" :disabled="picking" @click="pickFromLibrary">{{ t('nodes.action.pickFromLibrary') }}</button>
-            <button class="br-btn" :disabled="uploading" @click="fileInput?.click()">
+            <button class="lc-btn sm" :disabled="picking" @click="pickFromLibrary">{{ t('nodes.action.pickFromLibrary') }}</button>
+            <button class="lc-btn sm" :disabled="uploading" @click="fileInput?.click()">
               {{ uploading ? t('common.uploading') : t('dialogs.batch.uploadLocal') }}
             </button>
             <button
               v-if="batch.sources.value.length"
-              class="br-btn ghost"
+              class="lc-btn sm ghost"
               @click="batch.clearSources()"
             >{{ t('common.clear') }}</button>
             <input
@@ -65,18 +64,18 @@
 
         <div class="br-cost">
           <div class="br-cost-main">
-            <span class="br-cost-n">{{ totalText }}</span>
             <span class="br-cost-u">{{ t('cost.estimate') }}</span>
+            <span class="br-cost-n">{{ totalText }}</span>
           </div>
           <div v-if="batch.costIsPartial.value" class="br-cost-hint">{{ t('dialogs.batch.costUnknownHint') }}</div>
           <div class="br-cost-sub">{{ breakdownText }}</div>
         </div>
 
-        <div v-if="problem" class="br-warn">{{ problem }}</div>
+        <div v-if="problem" class="lc-alert warn br-warn">{{ problem }}</div>
       </div>
 
       <!-- ========== 运行 / 结果阶段 ========== -->
-      <div v-else class="br-body">
+      <div v-else class="lc-dialog-body br-body">
         <div class="br-progress">
           <div class="br-progress-bar">
             <div class="br-progress-fill" :style="{ width: progressPct + '%' }" />
@@ -125,29 +124,29 @@
         </div>
       </div>
 
-      <div class="br-foot">
+      <div class="lc-dialog-foot br-foot">
         <template v-if="!batch.items.value.length">
-          <button class="br-btn" @click="requestClose">{{ t('common.cancel') }}</button>
-          <button class="br-btn primary" :disabled="!!problem" @click="batch.start()">
+          <button class="lc-btn" @click="requestClose">{{ t('common.cancel') }}</button>
+          <button class="lc-btn primary quiet" :disabled="!!problem" @click="batch.start()">
             {{ t('dialogs.batch.start') }}
           </button>
         </template>
         <template v-else>
           <button
             v-if="batch.running.value"
-            class="br-btn"
+            class="lc-btn"
             :disabled="batch.stopping.value"
             @click="batch.stop()"
           >{{ batch.stopping.value ? t('dialogs.batch.stopping') : t('dialogs.batch.stop') }}</button>
           <template v-else>
-            <button class="br-btn" @click="batch.reset()">{{ t('dialogs.batch.reconfigure') }}</button>
+            <button class="lc-btn" @click="batch.reset()">{{ t('dialogs.batch.reconfigure') }}</button>
             <button
               v-if="batch.originalUrl.value"
-              class="br-btn"
+              class="lc-btn"
               @click="batch.restoreVarNode()"
             >{{ t('dialogs.batch.restoreVar') }}</button>
             <button
-              class="br-btn primary"
+              class="lc-btn primary quiet"
               :disabled="!batch.allOutputs.value.length || downloading"
               @click="downloadAll"
             >
@@ -298,62 +297,40 @@ async function downloadAll() {
 </script>
 
 <style scoped>
-.br-mask {
-  position: fixed; inset: 0; z-index: 9000;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-}
-.br-modal {
-  width: 620px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px);
-  display: flex; flex-direction: column;
-  background: var(--n-3); border: 1px solid var(--n-5); border-radius: 12px;
-  color: var(--t-strong); overflow: hidden;
-}
-
-.br-head {
-  display: flex; align-items: baseline; gap: 10px;
-  padding: 16px 20px; border-bottom: 1px solid var(--n-5);
-}
-.br-title { font-weight: 600; color: var(--t-max); }
-.br-sub { font-size: 12px; color: var(--t-dim); }
-.br-close {
-  margin-left: auto; background: none; border: none;
-  color: var(--t-dim); font-size: 22px; line-height: 1; cursor: pointer;
-}
-
-.br-body { padding: 18px 20px; overflow-y: auto; }
-.br-tip { margin: 0 0 16px; font-size: 12px; line-height: 1.7; color: var(--t-dim); }
+.br-mask { z-index: 9000; }
+.br-modal { width: 640px; }
+.br-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.br-sub { font: 400 12px var(--f-body); color: var(--text-3); }
+.br-tip { margin: 0 0 16px; font-size: 13px; line-height: 1.7; color: var(--text-2); }
 
 .br-step { margin-bottom: 20px; }
-.br-step-h {
-  display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px;
-  font-size: 13px; color: var(--t-body);
-}
-.br-step-h b { color: var(--t-max); }
-.br-step-h span { font-size: 11.5px; color: var(--t-dim); }
+.br-step-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.br-step-h b { color: var(--text); font-weight: 600; }
+.br-step-h span { font-size: 12px; color: var(--text-3); }
 
 .br-empty {
-  font-size: 12px; color: var(--t-dim); line-height: 1.7;
-  padding: 12px 14px; border: 1px dashed var(--n-5); border-radius: 8px;
+  font-size: 13px; color: var(--text-3); line-height: 1.7;
+  padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 10px;
 }
 
 .br-varlist { display: flex; flex-wrap: wrap; gap: 8px; }
 .br-var {
-  position: relative; width: 62px; height: 62px; padding: 0;
-  border: 2px solid var(--n-5); border-radius: 8px; background: var(--n-2);
-  overflow: hidden; cursor: pointer; transition: border-color .15s ease;
+  position: relative; width: 64px; height: 64px; padding: 0;
+  border: 1px solid var(--line-2); border-radius: 10px; background: var(--media-bg);
+  overflow: hidden; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease;
 }
-.br-var:hover { border-color: var(--accent-text); }
-.br-var.on { border-color: var(--accent-text); }
+.br-var:hover { border-color: var(--line-3); }
+.br-var.on { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
 .br-var img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .br-var-blank {
   display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 100%; font-size: 12px; color: var(--t-dim);
+  width: 100%; height: 100%; font-size: 12px; color: var(--text-3);
 }
+/* 图注压在画面上：底是恒暗渐变，字固定用浅色 */
 .br-var-cap {
   position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 1px 0 2px; font-size: 9px; text-align: center; color: #fff;
-  background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0));
+  padding: 6px 0 2px; font-size: 10px; text-align: center; color: var(--on-scrim);
+  background: linear-gradient(to top, rgba(4, 9, 28, .85), rgba(4, 9, 28, 0));
 }
 
 .br-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -362,74 +339,57 @@ async function downloadAll() {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
   gap: 6px; max-height: 190px; overflow-y: auto;
 }
-.br-src { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--n-2); }
+.br-src { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--media-bg); border: 1px solid var(--line); }
 .br-src img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .br-src-x {
-  position: absolute; top: 2px; right: 2px; width: 16px; height: 16px;
-  border: none; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff;
-  font-size: 12px; line-height: 16px; padding: 0; cursor: pointer;
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+  border: none; border-radius: 5px; background: rgba(4, 9, 28, .7); color: var(--on-scrim);
+  font-size: 13px; line-height: 18px; padding: 0; cursor: pointer;
 }
 
-.br-cost {
-  padding: 12px 14px; border: 1px solid var(--n-5); border-radius: 8px; background: var(--n-2);
-}
-.br-cost-main { display: flex; align-items: baseline; gap: 6px; }
-.br-cost-n { font-size: 24px; font-weight: 700; color: var(--t-max); }
-.br-cost-u { font-size: 12px; color: var(--t-body); }
-.br-cost-hint { margin-top: 2px; font-size: 11px; color: var(--t-dim); }
-.br-cost-sub { margin-top: 4px; font-size: 11.5px; color: var(--t-dim); line-height: 1.6; }
-
-.br-warn {
-  margin-top: 12px; padding: 9px 12px; border-radius: 7px;
-  background: var(--n-2); border: 1px solid var(--n-5);
-  font-size: 12px; color: var(--t-body);
-}
+.br-cost { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--well); }
+.br-cost-main { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.br-cost-n { font: 600 20px var(--f-disp); color: var(--text); }
+.br-cost-u { font-size: 13px; color: var(--text-2); }
+.br-cost-hint { margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.br-cost-sub { margin-top: 4px; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.br-warn { margin-top: 12px; }
 
 /* ── 运行 / 结果 ── */
 .br-progress { margin-bottom: 14px; }
-.br-progress-bar { height: 4px; border-radius: 2px; background: var(--n-5); overflow: hidden; }
-.br-progress-fill { height: 100%; background: var(--accent-text); transition: width .3s ease; }
-.br-progress-txt { margin-top: 7px; font-size: 12px; color: var(--t-body); }
+.br-progress-bar { height: 6px; border-radius: 3px; background: rgba(124, 160, 255, .14); overflow: hidden; }
+.br-progress-fill { height: 100%; border-radius: 3px; background: var(--grad); transition: width .3s ease; }
+.br-progress-txt { margin-top: 8px; font-size: 13px; color: var(--text-2); }
 
 .br-rows { display: flex; flex-direction: column; gap: 8px; }
 .br-row {
-  display: flex; gap: 10px; padding: 9px 10px;
-  border: 1px solid var(--n-5); border-radius: 8px; background: var(--n-2);
+  display: flex; gap: 10px; padding: 10px;
+  border: 1px solid var(--line); border-radius: 12px; background: rgba(4, 9, 28, .45);
 }
-.br-row.running { border-color: var(--accent-text); }
-.br-row-src { width: 42px; height: 42px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; }
+.br-row.running { border-color: rgba(63, 216, 255, .5); }
+.br-row.failed, .br-row.error { border-color: rgba(255, 107, 139, .4); }
+.br-row-src { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
 .br-row-mid { min-width: 0; flex: 1; }
-.br-row-top { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
-.br-row-n { color: var(--t-dim); }
-.br-row-st { color: var(--t-body); }
-.br-row-pt { margin-left: auto; color: var(--t-dim); font-size: 11px; }
-.br-row-err { margin-top: 4px; font-size: 11.5px; line-height: 1.6; color: var(--t-dim); }
+.br-row-top { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.br-row-n { color: var(--text-3); font: 12px var(--f-mono); }
+.br-row-st { color: var(--text); }
+.br-row.running .br-row-st { color: var(--cyan); }
+.br-row-pt { margin-left: auto; color: var(--text-2); font-size: 12px; }
+.br-row-err { margin-top: 4px; font-size: 12px; line-height: 1.6; color: var(--err-soft); word-break: break-word; }
 
-.br-outs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.br-outs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .br-out {
-  width: 38px; height: 38px; padding: 0; border: 1px solid var(--n-5);
-  border-radius: 5px; overflow: hidden; background: var(--n-3); cursor: pointer;
+  width: 40px; height: 40px; padding: 0; border: 1px solid var(--line);
+  border-radius: 7px; overflow: hidden; background: var(--media-bg); cursor: pointer;
 }
-.br-out:hover { border-color: var(--accent-text); }
+.br-out:hover { border-color: var(--cyan); }
 .br-out img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .br-out-film {
   display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 100%; font-size: 10px; color: var(--t-dim);
+  width: 100%; height: 100%; font-size: 10px; color: var(--kind-video-fg);
 }
-
-/* ── 底栏 ── */
-.br-foot {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 13px 20px; border-top: 1px solid var(--n-5);
+.br-foot { flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .br-foot .lc-btn { flex: 1; padding: 0 10px; }
 }
-.br-btn {
-  padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
-  background: var(--n-3); border: 1px solid var(--n-5); color: var(--t-body);
-  transition: all .15s ease;
-}
-.br-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.br-btn:disabled { opacity: .5; cursor: not-allowed; }
-.br-btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--accent-text); }
-.br-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); color: var(--btn-fg); }
-.br-btn.ghost { background: transparent; }
 </style>

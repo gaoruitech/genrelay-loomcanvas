@@ -1,7 +1,6 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
 
 const MAX_REF_IMAGES = 5
 
@@ -11,7 +10,7 @@ const MAX_REF_IMAGES = 5
  * ratio/model - so every image starts from the same place.
  */
 const brandKitSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  userId: { type: String, required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 40 },
   // Media URLs only, never inline base64 (kits are referenced from many nodes).
   refImages: {

@@ -1,10 +1,9 @@
 <template>
-  <div v-if="open" class="bk-mask" @click.self="close">
-    <div class="bk-modal">
-      <div class="bk-head">
-        <span class="bk-title">{{ t('library.brandKit.title') }}</span>
-        <span class="bk-sub">{{ t('library.brandKit.subtitle') }}</span>
-        <button class="bk-close" :title="t('common.close')" @click="close">×</button>
+  <div v-if="open" class="lc-mask lc-sheet bk-mask" @click.self="close">
+    <div class="lc-dialog bk-modal">
+      <div class="lc-dialog-head">
+        <span class="bk-title">{{ t('library.brandKit.title') }}<span class="bk-sub">{{ t('library.brandKit.subtitle') }}</span></span>
+        <button class="lc-x" :title="t('common.close')" @click="close">×</button>
       </div>
 
       <div class="bk-body">
@@ -21,7 +20,7 @@
           >
             <span class="bk-item-n">{{ k.name }}</span>
             <span class="bk-item-m">
-              <span v-if="k.isDefault" class="bk-tag">{{ t('library.brandKit.isDefault') }}</span>
+              <span v-if="k.isDefault" class="lc-chip bk-tag">{{ t('library.brandKit.isDefault') }}</span>
               <span class="bk-item-c">{{ t('library.brandKit.refCount', { n: (k.refImages || []).length }) }}</span>
             </span>
           </button>
@@ -33,7 +32,7 @@
           <template v-else>
             <div class="bk-f">
               <label>{{ t('library.brandKit.name') }}</label>
-              <input v-model="editing.name" class="bk-in" maxlength="40" :placeholder="t('library.brandKit.namePlaceholder')" />
+              <input v-model="editing.name" class="lc-input" maxlength="40" :placeholder="t('library.brandKit.namePlaceholder')" />
             </div>
 
             <div class="bk-f">
@@ -52,14 +51,14 @@
                   :disabled="uploading"
                   :title="t('common.upload')"
                   @click="fileInput?.click()"
-                >{{ uploading ? '…' : '+' }}</button>
+                ><template v-if="uploading">…</template><LcIcon v-else name="plus" /></button>
                 <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles" />
               </div>
             </div>
 
             <div class="bk-f">
               <label>{{ t('library.brandKit.promptPrefix') }} <span class="bk-hint">{{ t('library.brandKit.promptPrefixHint') }}</span></label>
-              <textarea v-model="editing.promptPrefix" class="bk-in ta" rows="3" maxlength="1000"
+              <textarea v-model="editing.promptPrefix" class="lc-textarea" rows="3" maxlength="1000"
                 :placeholder="t('library.brandKit.promptPrefixPlaceholder')"></textarea>
             </div>
 
@@ -68,13 +67,14 @@
                 {{ t('library.brandKit.negative') }}
                 <span class="bk-hint">{{ t('library.brandKit.negativeHint') }}</span>
               </label>
-              <textarea v-model="editing.negativePrompt" class="bk-in ta" rows="2" maxlength="500"
+              <textarea v-model="editing.negativePrompt" class="lc-textarea bk-ta-sm" rows="2" maxlength="500"
                 :placeholder="t('library.brandKit.negativePlaceholder')"></textarea>
             </div>
 
             <div class="bk-row">
-              <label class="bk-ck">
+              <label class="lc-check">
                 <input type="checkbox" v-model="editing.isDefault" />
+                <span class="box" />
                 <span>{{ t('library.brandKit.autoApply') }}</span>
               </label>
             </div>
@@ -82,11 +82,11 @@
         </div>
       </div>
 
-      <div class="bk-foot">
-        <button v-if="editing && editing.id" class="bk-btn danger" @click="remove">{{ t('common.delete') }}</button>
+      <div class="lc-dialog-foot bk-foot">
+        <button v-if="editing && editing.id" class="lc-btn danger" @click="remove">{{ t('common.delete') }}</button>
         <span class="bk-spacer"></span>
-        <button class="bk-btn" @click="close">{{ t('common.close') }}</button>
-        <button v-if="editing" class="bk-btn primary" :disabled="saving" @click="save">
+        <button class="lc-btn" @click="close">{{ t('common.close') }}</button>
+        <button v-if="editing" class="lc-btn primary quiet" :disabled="saving" @click="save">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>
@@ -100,6 +100,7 @@
  */
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import { brandKitApi, apiErrorMessage } from '@/utils/api'
 import { canvasImageThumb } from '@/utils/canvasMedia'
@@ -212,77 +213,58 @@ async function remove() {
 </script>
 
 <style scoped>
-.bk-mask { position: fixed; inset: 0; z-index: 9000; background: var(--scrim); display: flex; align-items: center; justify-content: center; }
-.bk-modal {
-  width: 780px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px);
-  display: flex; flex-direction: column;
-  background: var(--n-3); border: 1px solid var(--n-5); border-radius: 12px;
-  color: var(--t-strong); overflow: hidden;
-}
-.bk-head { display: flex; align-items: baseline; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--n-5); }
-.bk-title { font-weight: 600; color: var(--t-max); }
-.bk-sub { font-size: 12px; color: var(--t-dim); }
-.bk-close { margin-left: auto; background: none; border: none; color: var(--t-dim); font-size: 22px; line-height: 1; cursor: pointer; }
+.bk-mask { z-index: 9000; }
+.bk-modal { width: 800px; }
+.bk-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.bk-sub { font: 400 12px var(--f-body); color: var(--text-3); }
 
-.bk-body { display: grid; grid-template-columns: 240px 1fr; min-height: 340px; overflow: hidden; }
-.bk-list { border-right: 1px solid var(--n-5); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.bk-body { flex: 1; display: grid; grid-template-columns: 240px 1fr; min-height: 340px; overflow: hidden; }
+.bk-list { border-right: 1px solid var(--line); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .bk-new {
-  border: 1px dashed var(--n-5); background: transparent; color: var(--t-body);
-  border-radius: 7px; padding: 8px; font-size: 12.5px; cursor: pointer;
+  flex: none; height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px dashed var(--line-3); background: transparent; color: var(--text-2);
+  border-radius: 10px; font-size: 13px; cursor: pointer;
 }
-.bk-new:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.bk-new:hover { border-color: var(--cyan); color: var(--cyan-soft); }
 .bk-item {
-  text-align: left; border: 1px solid var(--n-5); background: var(--n-2);
-  border-radius: 7px; padding: 9px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  flex: none; text-align: left; border: 1px solid var(--line); background: var(--grad-card);
+  border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-.bk-item:hover, .bk-item.on { border-color: var(--accent-text); }
-.bk-item-n { font-size: 13px; font-weight: 600; color: var(--t-max); }
-.bk-item-m { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-.bk-item-c { font-size: 11px; color: var(--t-dim); }
-.bk-tag { font-size: 10px; padding: 1px 6px; border-radius: 100px; border: 1px solid var(--n-5); color: var(--t-body); }
+.bk-item:hover { border-color: var(--line-3); }
+.bk-item.on { border-color: rgba(63, 216, 255, .55); box-shadow: var(--glow-s); }
+.bk-item-n { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk-item-m { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bk-item-c { font-size: 12px; color: var(--text-3); }
+.bk-tag { height: 18px; font-size: 11px; }
 
-.bk-edit { padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-.bk-empty { font-size: 12.5px; color: var(--t-dim); line-height: 1.75; padding: 10px 0; }
+.bk-edit { padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.bk-empty { font-size: 13px; color: var(--text-3); line-height: 1.7; padding: 10px 0; }
 .bk-f { display: flex; flex-direction: column; gap: 6px; }
-.bk-f label { font-size: 12px; color: var(--t-body); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.bk-hint { font-size: 10.5px; color: var(--t-dim); font-weight: 400; }
-.bk-in {
-  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 6px;
-  padding: 7px 10px; font-size: 13px; color: var(--t-strong); outline: none; font-family: inherit;
-}
-.bk-in:focus { border-color: var(--accent-text); }
-.bk-in.ta { resize: vertical; line-height: 1.6; }
+.bk-f label { font-size: 13px; color: var(--text-2); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.bk-hint { font-size: 12px; color: var(--text-3); font-weight: 400; }
+.bk-ta-sm { min-height: 60px; }
 
-.bk-thumbs { display: flex; flex-wrap: wrap; gap: 7px; }
-.bk-thumb { position: relative; width: 54px; height: 54px; border-radius: 6px; overflow: hidden; border: 1px solid var(--n-5); background: var(--n-2); }
+.bk-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.bk-thumb { position: relative; width: 56px; height: 56px; padding: 0; border-radius: 9px; overflow: hidden; border: 1px solid var(--line); background: var(--media-bg); }
 .bk-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bk-thumb.add {
-  display: flex; align-items: center; justify-content: center;
-  border-style: dashed; color: var(--t-dim); font-size: 18px; cursor: pointer;
+  display: grid; place-items: center; background: rgba(4, 9, 28, .3);
+  border: 1px dashed var(--line-3); color: var(--text-3); font-size: 16px; cursor: pointer;
 }
-.bk-thumb.add:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.bk-thumb.add:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan-soft); }
 .bk-thumb-x {
-  position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; padding: 0;
-  border: none; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; line-height: 16px; cursor: pointer;
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
+  border: none; border-radius: 5px; background: rgba(4, 9, 28, .7); color: var(--on-scrim); font-size: 13px; line-height: 18px; cursor: pointer;
 }
 
-.bk-row { display: flex; gap: 20px; flex-wrap: wrap; }
-.bk-ck { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--t-body); cursor: pointer; }
-
-.bk-foot { display: flex; align-items: center; gap: 8px; padding: 13px 20px; border-top: 1px solid var(--n-5); }
+.bk-row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; }
+.bk-foot { align-items: center; }
 .bk-spacer { flex: 1; }
-.bk-btn {
-  padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
-  background: var(--n-3); border: 1px solid var(--n-5); color: var(--t-body); transition: all .15s ease;
-}
-.bk-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.bk-btn:disabled { opacity: .5; cursor: not-allowed; }
-.bk-btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--accent-text); }
-.bk-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); color: var(--btn-fg); }
-.bk-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 
 @media (max-width: 700px) {
-  .bk-body { grid-template-columns: 1fr; }
-  .bk-list { border-right: none; border-bottom: 1px solid var(--n-5); max-height: 180px; }
+  .bk-body { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; }
+  .bk-list { flex: none; border-right: none; border-bottom: 1px solid var(--line); max-height: 190px; }
+  .bk-edit { overflow: visible; }
 }
 </style>

@@ -1,14 +1,15 @@
 <template>
-  <div class="cv-node cv-surface" :class="{ selected }">
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :title="t('tools.input.one')" />
+  <div class="cv-node cv-tool" :class="{ selected, 'is-running': status === 'running', 'has-runtime-error': status === 'error' }">
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" :title="t('tools.input.one')" />
 
     <div class="cv-head">
+      <LcIcon name="layout" />
       <span class="cv-title">{{ t('nodes.title.slice') }}</span>
       <span class="cv-help" :title="t('tools.slice.help')">?</span>
       <span v-if="status === 'running'" class="cv-tag running">{{ t('tools.slice.running') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
       <span v-else-if="items.length" class="cv-tag done">{{ t('tools.slice.count', { n: items.length }) }}</span>
-      <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
+      <span class="cv-head-x" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
     <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
@@ -28,7 +29,7 @@
         <span class="cv-val cv-val-auto">{{ t('tools.slice.count', { n: count }) }}</span>
       </div>
 
-      <div v-if="displayError" class="cv-err">{{ displayError }}</div>
+      <div v-if="displayError" class="cv-error"><div class="cv-error-msg">{{ displayError }}</div></div>
 
       <div v-if="items.length" class="cv-grid">
         <button
@@ -50,7 +51,7 @@
       </div>
     </div>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image" :title="t('tools.slice.output')" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" :title="t('tools.slice.output')" />
   </div>
 </template>
 
@@ -67,6 +68,7 @@
 import { computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import LcIcon from '@/components/LcIcon.vue'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'

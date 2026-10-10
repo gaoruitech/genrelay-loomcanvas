@@ -3,25 +3,38 @@ import { useAppStore } from '@/stores/app'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    /** 不需要口令也能看（分享只读页） */
+    /** 不登录也能看（落地页、登录、注册、分享只读页） */
     public?: boolean
-    /** 页面自己占满整屏，不要应用外壳的顶栏 */
-    bare?: boolean
+    /** 只给没登录的人看；已登录的直接送去工作台 */
+    guestOnly?: boolean
+    /** 外壳形态：full 带文字侧栏（默认）、mini 图标侧栏（画布编辑器）、none 不要外壳 */
+    shell?: 'full' | 'mini' | 'none'
+    /** 侧栏里哪一项算「当前」 */
+    nav?: 'home' | 'canvases' | 'assets' | 'models' | 'history' | 'settings'
   }
 }
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'canvas-list', component: () => import('@/views/CanvasList.vue') },
-  { path: '/canvas/:id', name: 'canvas', component: () => import('@/views/Canvas.vue') },
+  { path: '/', name: 'landing', component: () => import('@/views/Landing.vue'), meta: { public: true, guestOnly: true } },
+  { path: '/login', name: 'login', component: () => import('@/views/Login.vue'), meta: { public: true, guestOnly: true } },
+  { path: '/register', name: 'register', component: () => import('@/views/Register.vue'), meta: { public: true, guestOnly: true } },
+
+  { path: '/app', name: 'home', component: () => import('@/views/Workbench.vue'), meta: { nav: 'home' } },
+  { path: '/canvases', name: 'canvas-list', component: () => import('@/views/CanvasList.vue'), meta: { nav: 'canvases' } },
+  { path: '/canvas/:id', name: 'canvas', component: () => import('@/views/Canvas.vue'), meta: { nav: 'canvases', shell: 'mini' } },
+  { path: '/assets', name: 'assets', component: () => import('@/views/Assets.vue'), meta: { nav: 'assets' } },
+  { path: '/models', name: 'models', component: () => import('@/views/Models.vue'), meta: { nav: 'models' } },
+  { path: '/history', name: 'history', component: () => import('@/views/History.vue'), meta: { nav: 'history' } },
+  { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue'), meta: { nav: 'settings' } },
+  { path: '/setup', name: 'setup', component: () => import('@/views/Setup.vue'), meta: { shell: 'none' } },
+
   {
     path: '/share/:token',
     name: 'share',
     component: () => import('@/views/CanvasShareView.vue'),
-    meta: { public: true, bare: true },
+    meta: { public: true, shell: 'none' },
   },
-  { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },
-  { path: '/setup', name: 'setup', component: () => import('@/views/Setup.vue'), meta: { bare: true } },
-  { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFound.vue') },
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFound.vue'), meta: { public: true } },
 ]
 
 const router = createRouter({
@@ -40,27 +53,36 @@ function setupSkipped(): boolean {
   try { return sessionStorage.getItem(SKIP_KEY) === '1' } catch { return false }
 }
 
+/** 没有服务商也照样能进的页面：引导页本身，以及能手动配置的那两页 */
+const NO_SETUP_NEEDED = new Set(['setup', 'settings', 'models'])
+
+/** 登录后要回去的地址：只认站内路径，防止 ?redirect=//evil.example 这种跳到站外 */
+export function safeRedirect(v: unknown): string {
+  const s = typeof v === 'string' ? v : ''
+  return /^\/(?![/\\])/.test(s) ? s : ''
+}
+
+/** 设置页以前有「服务商 / 模型 / 用量」三个页签，现在各自是独立页面；老链接接过去 */
+const OLD_SETTINGS_TABS: Record<string, string> = { providers: 'models', models: 'models', usage: 'history' }
+
 router.beforeEach((to) => {
   const app = useAppStore()
-  // 没通过口令时由 App.vue 整页换成口令页，这里不做跳转；分享页任何人都能看
-  if (to.meta.public || !app.authed || !app.bootstrap) return true
-  // 还没有添加任何服务商：先带去引导页。设置页本身不拦，否则没法手动配置
-  if (!app.hasProvider && !setupSkipped() && to.name !== 'setup' && to.name !== 'settings') {
+  // 连不上服务端时 App.vue 整页换成提示，这里不跳
+  if (!app.bootstrap) return true
+  if (to.name === 'settings') {
+    const moved = OLD_SETTINGS_TABS[String(to.query.tab || '')]
+    if (moved) return { name: moved }
+  }
+  if (to.meta.public) {
+    if (app.authed && to.meta.guestOnly) return safeRedirect(to.query.redirect) || { name: 'home' }
+    return true
+  }
+  if (!app.authed) return { name: 'login', query: { redirect: to.fullPath } }
+  // 还没有添加任何服务商：先带去引导页
+  if (!app.hasProvider && !setupSkipped() && !NO_SETUP_NEEDED.has(String(to.name))) {
     return { name: 'setup' }
   }
   return true
 })
-
-/**
- * 守卫只在导航时跑。口令通过 / 重新连上服务端之后当前路由不会变，
- * 得手动补一次「没有接入就去引导页」的判断。
- */
-export function ensureSetup() {
-  const app = useAppStore()
-  const cur = router.currentRoute.value
-  if (!app.authed || app.hasProvider || setupSkipped()) return
-  if (cur.meta.public || cur.name === 'setup' || cur.name === 'settings') return
-  router.replace({ name: 'setup' })
-}
 
 export default router

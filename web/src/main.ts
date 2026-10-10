@@ -9,7 +9,7 @@ import { loadModels } from '@/utils/canvasModels'
 // tdesign 组件按需引入(由 unplugin-vue-components 自动处理模板中的 <t-xxx>)；
 // 仅程序化调用的插件需手动引样式（resolver 只扫描模板）。
 // 第一行是 TDesign 的基础令牌（尺寸、间距、颜色）：各组件自己的样式里不带，必须单独引一次，
-// 而且要排在本项目的样式之前，base.css 里对品牌色的覆盖才压得住。
+// 而且要排在本项目的样式之前，base.css 里把它接到霓虹令牌上的那一段才压得住。
 import 'tdesign-vue-next/es/style/index.css'
 import 'tdesign-vue-next/es/message/style/css'
 import 'tdesign-vue-next/es/dialog/style/css'
@@ -24,12 +24,9 @@ app.use(pinia)
 app.use(i18n)
 
 const appStore = useAppStore(pinia)
-// index.html 的内联脚本已经把主题属性写到 <html> 上了（在样式之前，避免闪烁），
-// 这里只是接管后续切换，并在选了「跟随系统」时监听系统变化。
-appStore.initTheme()
 
-// 启动信息拿到之后再装路由：守卫要靠它判断「是否需要口令」「有没有接入」。
-// 模型清单也在这里加载一次；没通过口令时接口会 401，等登录后再加载。
+// 启动信息拿到之后再装路由：守卫要靠它判断「登录了没有」「有没有接入服务商」。
+// 模型清单是按账号的，登录了才取；之后登录状态变化时由 App.vue 重取。
 appStore.loadBootstrap()
   .then(() => (appStore.authed ? loadModels().catch(() => undefined) : undefined))
   .finally(() => {

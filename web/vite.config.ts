@@ -3,12 +3,43 @@ import vue from '@vitejs/plugin-vue'
 import Components from 'unplugin-vue-components/vite'
 import { TDesignResolver } from 'unplugin-vue-components/resolvers'
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
+import type { Plugin } from 'vite'
 
-const BACKEND = 'http://127.0.0.1:3000'
+// 开发时后端不在 3000 上的话：LC_DEV_BACKEND=http://127.0.0.1:3100 npm run dev
+const BACKEND = process.env.LC_DEV_BACKEND || 'http://127.0.0.1:3000'
+
+/**
+ * 自托管的三款字体都是 SIL Open Font License 1.1：再分发时要带上版权声明和协议全文。
+ * 构建时把三个包自带的 LICENSE 原文拼成 dist/licenses/fonts-OFL-1.1.txt，跟着产物一起部署；
+ * 内容直接读 node_modules，升级字体包后不会和实际发出去的文件对不上。
+ */
+const FONT_PACKAGES = ['inter', 'sora', 'jetbrains-mono']
+function fontLicenses(): Plugin {
+  return {
+    name: 'loomcanvas-font-licenses',
+    apply: 'build',
+    generateBundle() {
+      const rule = '='.repeat(78)
+      const parts = FONT_PACKAGES.map((name) => {
+        const dir = resolve(__dirname, 'node_modules/@fontsource-variable', name)
+        const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8'))
+        const text = readFileSync(resolve(dir, 'LICENSE'), 'utf8').split(/\r?\n/).join('\n').trim()
+        return [rule, `${pkg.name}@${pkg.version}`, `File shipped unmodified: ${name}-latin-wght-normal.woff2`, rule, '', text, ''].join('\n')
+      })
+      this.emitFile({
+        type: 'asset',
+        fileName: 'licenses/fonts-OFL-1.1.txt',
+        source: ['Fonts bundled with the LoomCanvas web app', '', ...parts].join('\n'),
+      })
+    },
+  }
+}
 
 export default defineConfig({
   plugins: [
     vue(),
+    fontLicenses(),
     // tdesign 按需引入：模板里的 <t-xxx> 自动导入对应组件与样式
     Components({
       resolvers: [TDesignResolver({ library: 'vue-next' })],

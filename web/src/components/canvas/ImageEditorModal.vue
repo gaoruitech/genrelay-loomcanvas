@@ -1,10 +1,9 @@
 <template>
-  <div v-if="open" class="ie-mask" @click.self="requestClose">
-    <div class="ie-modal">
-      <div class="ie-head">
-        <span class="ie-title">{{ t('dialogs.editor.title') }}</span>
-        <span v-if="sizeText" class="ie-size">{{ sizeText }}</span>
-        <button class="ie-close" :title="t('common.close')" @click="requestClose">×</button>
+  <div v-if="open" class="lc-mask lc-sheet ie-mask" @click.self="requestClose">
+    <div class="lc-dialog ie-modal">
+      <div class="lc-dialog-head">
+        <span class="ie-title">{{ t('dialogs.editor.title') }}<span v-if="sizeText" class="ie-size">{{ sizeText }}</span></span>
+        <button class="lc-x" :title="t('common.close')" @click="requestClose">×</button>
       </div>
 
       <div class="ie-main">
@@ -13,7 +12,7 @@
           <button
             v-for="tl in TOOLS"
             :key="tl.value"
-            class="ie-tool"
+            class="lc-tb ie-tool"
             :class="{ on: tool === tl.value }"
             :title="t(tl.labelKey)"
             :aria-label="t(tl.labelKey)"
@@ -27,7 +26,7 @@
         <!-- 中：画面 -->
         <div ref="stageRef" class="ie-stage">
           <div v-if="loading" class="ie-state">{{ t('dialogs.editor.loading') }}</div>
-          <div v-else-if="error" class="ie-state error">{{ error }}</div>
+          <div v-else-if="error" class="lc-alert ie-state-err">{{ error }}</div>
           <div
             v-else
             ref="frameRef"
@@ -133,11 +132,11 @@
         </div>
       </div>
 
-      <div class="ie-foot">
-        <button class="ie-btn" :disabled="!canUndo" @click="undo">{{ t('dialogs.editor.undo') }}</button>
-        <button class="ie-btn" :disabled="!canRedo" @click="redo">{{ t('dialogs.editor.redo') }}</button>
+      <div class="lc-dialog-foot ie-foot">
+        <button class="lc-btn" :disabled="!canUndo" @click="undo">{{ t('dialogs.editor.undo') }}</button>
+        <button class="lc-btn" :disabled="!canRedo" @click="redo">{{ t('dialogs.editor.redo') }}</button>
         <button
-          class="ie-btn"
+          class="lc-btn"
           :disabled="loading || !!error"
           @pointerdown="comparing = true"
           @pointerup="comparing = false"
@@ -145,8 +144,8 @@
         >{{ t('dialogs.editor.holdToCompare') }}</button>
         <span class="ie-spacer" />
         <span class="ie-cost">{{ t('dialogs.editor.freeHint') }}</span>
-        <button class="ie-btn" :disabled="applying" @click="requestClose">{{ t('common.cancel') }}</button>
-        <button class="ie-btn primary" :disabled="loading || !!error || applying || !changed" @click="apply">
+        <button class="lc-btn" :disabled="applying" @click="requestClose">{{ t('common.cancel') }}</button>
+        <button class="lc-btn primary quiet" :disabled="loading || !!error || applying || !changed" @click="apply">
           {{ applying ? t('dialogs.editor.applying') : t('common.apply') }}
         </button>
       </div>
@@ -527,71 +526,34 @@ function requestClose() {
 </script>
 
 <style scoped>
-.ie-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 2200;
-  background: var(--scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.ie-modal {
-  width: min(1080px, 100%);
-  height: min(84vh, 780px);
-  display: flex;
-  flex-direction: column;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 14px;
-  box-shadow: 0 18px 44px var(--shadow-3);
-  overflow: hidden;
-}
-.ie-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--n-5);
-}
-.ie-title { font-size: 15px; font-weight: 600; color: var(--t-body); }
-.ie-size { font-size: 12px; color: var(--t-dim); font-variant-numeric: tabular-nums; }
-.ie-close {
-  margin-left: auto; width: 26px; height: 26px; border: none; border-radius: 7px;
-  background: transparent; color: var(--t-dim); font-size: 19px; line-height: 1; cursor: pointer;
-}
-.ie-close:hover { background: var(--n-4); color: var(--t-body); }
+.ie-mask { z-index: 3200; }
+.ie-modal { width: min(1080px, 100%); height: min(84vh, 780px); overflow: hidden; }
+.ie-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.ie-size { font: 400 12px var(--f-mono); color: var(--text-3); white-space: nowrap; }
 
-.ie-main { flex: 1; display: grid; grid-template-columns: 56px 1fr 248px; min-height: 0; }
+.ie-main { flex: 1; display: grid; grid-template-columns: 56px 1fr 256px; min-height: 0; }
 .ie-rail {
-  border-right: 1px solid var(--n-5);
+  border-right: 1px solid var(--line);
   padding: 10px 0;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.ie-tool {
-  width: 38px; height: 38px; border-radius: 9px;
-  border: 1px solid transparent; background: transparent; color: var(--t-dim);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background 0.14s ease, color 0.14s ease;
-}
-.ie-tool:hover:not(:disabled) { background: var(--n-4); color: var(--t-body); }
-.ie-tool.on { background: var(--accent-ghost); border-color: var(--accent-line); color: var(--accent-text); }
-.ie-tool:disabled { opacity: 0.4; cursor: default; }
+.ie-tool { width: 38px; height: 38px; }
 .ie-tool svg { width: 18px; height: 18px; }
 
+/* 舞台：棋盘格底，透明 PNG 才看得出哪儿是透明的 */
 .ie-stage {
   position: relative;
   display: flex; align-items: center; justify-content: center;
   padding: 28px; min-width: 0; min-height: 0; overflow: hidden;
-  background:
-    linear-gradient(45deg, var(--film-2) 25%, transparent 25% 75%, var(--film-2) 75%),
-    linear-gradient(45deg, var(--film-2) 25%, transparent 25% 75%, var(--film-2) 75%);
+  background-color: var(--well-solid);
+  background-image:
+    linear-gradient(45deg, rgba(124, 160, 255, .07) 25%, transparent 25% 75%, rgba(124, 160, 255, .07) 75%),
+    linear-gradient(45deg, rgba(124, 160, 255, .07) 25%, transparent 25% 75%, rgba(124, 160, 255, .07) 75%);
   background-size: 18px 18px;
   background-position: 0 0, 9px 9px;
 }
-.ie-state { color: var(--t-dim); font-size: 13px; }
-.ie-state.error { color: var(--danger); }
+.ie-state { color: var(--text-3); font-size: 13px; }
+.ie-state-err { max-width: 420px; }
 /* 尺寸由 fitFrame() 写成 px，这里不再参与推导。
    overflow:hidden 是必须的：裁剪框那圈压暗用的是 9999px 的 box-shadow，
    不裁掉会把整个弹窗一起压黑。手柄因此也全部放在框内侧。 */
@@ -599,7 +561,7 @@ function requestClose() {
   position: relative;
   touch-action: none;
   overflow: hidden;
-  /* 不铺底色：透明 PNG 要能看见舞台那层棋盘格，才知道哪儿是透明的 */
+  /* 不铺底色：透明 PNG 要能看见舞台那层棋盘格 */
 }
 .ie-canvas { display: block; width: 100%; height: 100%; }
 .ie-compare {
@@ -609,21 +571,22 @@ function requestClose() {
 
 .ie-crop {
   position: absolute;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--cyan);
   /* 框外压暗：一个 box-shadow 顶掉四块遮罩 div */
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 0 0 9999px rgba(2, 5, 18, .6);
   cursor: move;
   touch-action: none;
 }
+/* 三分线压在图片上，固定用半透明浅色 */
 .ie-crop-grid {
   position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(to right, transparent 33.2%, rgba(255,255,255,.3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255,255,255,.3) 66.4% 66.7%, transparent 66.7%),
-    linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,.3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255,255,255,.3) 66.4% 66.7%, transparent 66.7%);
+    linear-gradient(to right, transparent 33.2%, rgba(255, 255, 255, .3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255, 255, 255, .3) 66.4% 66.7%, transparent 66.7%),
+    linear-gradient(to bottom, transparent 33.2%, rgba(255, 255, 255, .3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255, 255, 255, .3) 66.4% 66.7%, transparent 66.7%);
 }
 .ie-handle {
   position: absolute; width: 12px; height: 12px;
-  background: var(--accent); border-radius: 2px;
+  background: var(--cyan); border-radius: 3px;
 }
 .h-nw { left: 0; top: 0; cursor: nwse-resize; }
 .h-ne { right: 0; top: 0; cursor: nesw-resize; }
@@ -634,48 +597,44 @@ function requestClose() {
 .h-w { top: 50%; left: 0; margin-top: -6px; cursor: ew-resize; }
 .h-e { top: 50%; right: 0; margin-top: -6px; cursor: ew-resize; }
 
-.ie-params { border-left: 1px solid var(--n-5); padding: 16px; overflow-y: auto; }
+.ie-params { border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; }
 .ie-field { margin-bottom: 16px; }
-.ie-field.disabled { opacity: 0.45; pointer-events: none; }
-.ie-label { font-size: 11px; letter-spacing: 0.5px; color: var(--t-dim); margin-bottom: 8px; }
+.ie-field.disabled { opacity: .45; pointer-events: none; }
+.ie-label { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
 .ie-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .ie-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .ie-opt {
-  font-size: 11.5px; padding: 7px 4px; text-align: center;
-  border-radius: 7px; border: 1px solid var(--n-5);
-  background: var(--n-3); color: var(--t-dim); cursor: pointer;
-  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+  min-height: 30px; padding: 4px; text-align: center; font: inherit; font-size: 12px; line-height: 1.3;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: var(--well); color: var(--text-2); cursor: pointer;
+  transition: border-color .14s ease, color .14s ease, background .14s ease;
 }
-.ie-opt:hover { color: var(--t-body); }
-.ie-opt.on { border-color: var(--accent-mid); color: var(--accent-text); background: var(--accent-ghost); }
+.ie-opt:hover { color: var(--text); border-color: var(--line-3); }
+.ie-opt.on { border-color: var(--line-3); color: var(--text); background: rgba(59, 123, 255, .28); }
 .ie-opt.wide { width: 100%; }
-.ie-range { width: 100%; accent-color: var(--accent); }
+.ie-range { width: 100%; accent-color: var(--cyan); }
 .ie-readout {
-  font-size: 11.5px; color: var(--t-body); font-variant-numeric: tabular-nums;
-  padding: 6px 8px; border-radius: 7px; background: var(--n-3); border: 1px solid var(--n-5);
+  font: 12px var(--f-mono); color: var(--text);
+  padding: 7px 10px; border-radius: 8px; background: var(--well); border: 1px solid var(--line);
 }
-.ie-result { border-top: 1px solid var(--n-5); padding-top: 14px; }
-.ie-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--t-dim); }
+.ie-result { border-top: 1px solid var(--line); padding-top: 16px; margin-bottom: 0; }
+.ie-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-3); }
 
-.ie-foot {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 11px 16px; border-top: 1px solid var(--n-5); background: var(--n-1);
-}
+.ie-foot { align-items: center; flex-wrap: wrap; }
 .ie-spacer { flex: 1; min-width: 8px; }
-.ie-cost { font-size: 12px; color: var(--t-dim); }
-.ie-btn {
-  font-size: 13px; padding: 6px 14px; border-radius: 8px;
-  border: 1px solid var(--n-5); background: var(--n-3); color: var(--t-body); cursor: pointer;
-}
-.ie-btn:hover:not(:disabled) { border-color: var(--n-7); }
-.ie-btn:disabled { opacity: 0.45; cursor: default; }
-.ie-btn.primary {
-  background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600;
-}
-.ie-btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.ie-cost { font-size: 12px; color: var(--text-3); }
 
+/* 窄屏：工具横排在上，画面居中，参数在画面下方滚动 */
 @media (max-width: 880px) {
-  .ie-main { grid-template-columns: 52px 1fr; }
-  .ie-params { display: none; }
+  .ie-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(200px, 1fr) minmax(0, 36%); }
+  .ie-rail { flex-direction: row; justify-content: center; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .ie-stage { padding: 16px; }
+  .ie-params { border-left: 0; border-top: 1px solid var(--line); padding: 12px 16px; }
+}
+@media (max-width: 600px) {
+  .ie-modal { height: 94vh; height: 94dvh; }
+  .ie-foot { padding: 10px 16px; gap: 8px; }
+  .ie-cost, .ie-spacer { display: none; }
+  .ie-foot .lc-btn { flex: 1; padding: 0 8px; font-size: 13px; }
 }
 </style>

@@ -63,7 +63,7 @@ function createMemoryStore(initial = []) {
      * go back to the queue (they will resume polling). Interrupted runs without
      * one are returned as `interrupted` and left as they are: nobody knows
      * whether the upstream accepted them, so the runner fails them.
-     * Resolves { queued: ids to enqueue, oldest first; interrupted: runs }.
+     * Resolves { queued: [{ id, userId }] to enqueue, oldest first; interrupted: runs }.
      */
     async recover() {
       const interrupted = []
@@ -75,7 +75,7 @@ function createMemoryStore(initial = []) {
       const queued = [...runs.values()]
         .filter((r) => r.status === STATUS.QUEUED)
         .sort((a, b) => a.createdAt - b.createdAt)
-        .map((r) => r.id)
+        .map((r) => ({ id: r.id, userId: r.userId }))
       return { queued, interrupted }
     },
   }

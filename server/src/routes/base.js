@@ -1,50 +1,49 @@
 'use strict'
 
-/** Public entry points: bootstrap info and login. */
+/** Public entry point: what the frontend needs before anything else. */
 const express = require('express')
 const Provider = require('../models/Provider')
 const settings = require('../services/settings')
+const accounts = require('../services/accounts')
 const { getConfig } = require('../config')
 const { newFilesReachable } = require('../services/media')
-const { ok, wrap, ApiError, badRequest } = require('../utils/http')
-const { authRequired, isAuthed, checkPassword, issueToken, loginRateLimit } = require('../middleware/auth')
-const { LOCAL_USER } = require('../constants')
+const { ok, wrap } = require('../utils/http')
+const { identify } = require('../middleware/auth')
 const { version } = require('../../package.json')
 
 const router = express.Router()
 
-/** GET /api/app/bootstrap - what the frontend needs before anything else. */
-router.get('/app/bootstrap', wrap(async (req, res) => {
+/**
+ * GET /api/bootstrap (also answered at /api/app/bootstrap, its earlier path).
+ * Public. Anonymous callers learn the site's name and look, whether they can
+ * register, and nothing about anybody's data.
+ */
+router.get(['/bootstrap', '/app/bootstrap'], wrap(async (req, res) => {
   const s = settings.getAll()
-  const authed = isAuthed(req)
+  const who = await identify(req)
+  const user = who ? who.user : null
+  const hasUsers = user ? true : await accounts.hasUsers()
   ok(res, {
-    authRequired: authRequired(),
-    authed,
+    auth: {
+      // The very first account can always be created: it becomes the owner.
+      registrationOpen: !hasUsers || s.registrationOpen,
+      hasUsers,
+    },
+    user: user ? accounts.serializeUser(user) : null,
     site: {
       name: s.siteName,
       logoUrl: s.logoUrl,
-      defaultTheme: s.defaultTheme,
       defaultLocale: s.defaultLocale,
     },
-    // Only meaningful to someone who is allowed in; anonymous callers get false.
-    hasProvider: authed ? !!(await Provider.exists({ userId: LOCAL_USER, enabled: true })) : false,
+    // The caller's own providers; anonymous callers get false.
+    hasProvider: user ? !!(await Provider.exists({ userId: String(user._id), enabled: true })) : false,
     // So the browser can refuse a file that is too large before uploading it.
     limits: { maxUploadMb: Math.floor(getConfig().maxUploadBytes / (1024 * 1024)) },
     // Can an upstream load a stored file by URL (public PUBLIC_URL, or a bucket reachable from outside)?
     // When it cannot, the canvas warns before a run that needs to hand over a reference by URL.
-    media: { upstreamByUrl: authed ? await newFilesReachable() : false },
+    media: { upstreamByUrl: user ? await newFilesReachable() : false },
     version,
   })
-}))
-
-/** POST /api/auth/login { password } -> { token } */
-router.post('/auth/login', loginRateLimit, wrap(async (req, res) => {
-  if (!authRequired()) return ok(res, { token: '' }, 'auth.not_enabled')
-  const password = req.body && req.body.password
-  if (typeof password !== 'string' || !password) throw badRequest('auth.password_required')
-  if (password.length > 200 || !checkPassword(password)) throw new ApiError(401, 'auth.wrong_password', {}, 401)
-  req.loginSucceeded()
-  ok(res, { token: issueToken() })
 }))
 
 module.exports = router

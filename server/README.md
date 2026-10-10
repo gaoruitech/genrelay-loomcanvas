@@ -1,6 +1,6 @@
 # LoomCanvas server
 
-Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Single user, bring your own model API keys.
+Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Accounts (the first one registered is the owner), each with its own canvases, files and model API keys.
 
 The HTTP API is documented in [`../docs/api.md`](../docs/api.md) (reference, English) and
 [`../docs/architecture.md`](../docs/architecture.md) (design contract, Chinese).
@@ -22,11 +22,10 @@ It never invents one: provider API keys are encrypted with it, so it has to stay
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SECRET_KEY` | (required) | Master secret, 16+ characters. Encrypts provider keys, signs login tokens. |
+| `SECRET_KEY` | (required) | Master secret, 16+ characters. Encrypts provider API keys and the saved S3 secret. Sign-in does not depend on it. |
 | `PORT` | `3000` | HTTP port. |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/loomcanvas` | Database. |
 | `PUBLIC_URL` | empty | Optional. Public address of the instance, e.g. `https://canvas.example.com`. Only used to give upstream models an absolute URL for a stored file they cannot load straight from a bucket (files on the local disk); file URLs themselves are always site-relative (`/files/<key>`). |
-| `ACCESS_PASSWORD` | empty | Shared login password. Empty means no login at all. |
 | `MAX_UPLOAD_MB` | `50` | Upload size limit (1 to 2048). Uploads are buffered in memory. |
 | `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under Settings → Storage takes precedence. |
 | `STORAGE_LOCAL_DIR` | `./data/files` | Where the local disk backend keeps files. |
@@ -115,7 +114,7 @@ module.exports = {
   entry sits in is its kind. Nothing about a model is inferred from its name, and no model list is fetched from
   the upstream. The format and the validator are in `providers/catalog/index.js`.
 - Every catalog model needs a `model.<type>.<model>.desc` message in both `i18n/en.js` and `i18n/zh-CN.js`.
-  Catalogs carry no prices: a missing price shows as "cost unknown" and is set per model in the settings page.
+  Catalogs carry no prices: a missing price shows as "cost unknown" and is set per model on the Models page of the web app.
 - A vendor other than Gaorui goes through its official API only. Another base URL is allowed as long as what
   answers there speaks exactly that API.
 - `cfg` is `{ baseUrl, apiKey }`, with the key already decrypted. Never log it.
@@ -139,6 +138,20 @@ Providers saved by the previous version (provider types, free-text model fields)
 and `onFailed(ctx, error)`. `beforeRun` returning `{ allow: false, reason }` fails the run with that reason.
 When each function is called, and what is not guaranteed after a crash, is in
 [`../docs/billing-hook.md`](../docs/billing-hook.md).
+
+## Accounts
+
+Signing in is always required. `POST /api/auth/register` creates an account; the first one is the owner (site settings, storage, registration, user list; in the web app these are the owner-only sections of the Settings page), every later one a plain user. Each account sees only its own data, and another account's resource answers 404. Sessions are stored in the database (hashed token, 12 hours, or 30 days with `remember`) and travel as `Authorization: Bearer <token>`. Changing the password ends every session of the account and returns a fresh token to the caller. `ACCESS_PASSWORD` of earlier versions is ignored.
+
+Sign-in attempts are rate limited in memory, per 10 minutes: 10 per account name and client address, 30 per client address, 100 per account name and 3000 in total; the last two are not applied to an address the account is known at, so guessing at a name does not lock its holder out. Registration: 20 per address per hour. Profile changes: 20 per account per hour. Details: [`../docs/security.md`](../docs/security.md#rate-limits).
+
+Forgotten password (no email is sent):
+
+```bash
+node src/cli/reset-password.js <username-or-email>   # prints a temporary password, signs the account out everywhere
+```
+
+Code that adds a per-account collection must add it to `OWNED` in `src/services/accounts.js`, and every query on such a collection must carry `userId`. `test/accounts.e2e.test.js` is the isolation suite.
 
 ## Tests
 

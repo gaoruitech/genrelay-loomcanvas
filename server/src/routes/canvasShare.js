@@ -5,23 +5,24 @@
  *
  * Publishing snapshots a canvas and returns a link addressed by a long random
  * token. Links can expire and be revoked. Reading a link is the only public
- * operation; everything else belongs to the owner.
+ * operation; everything else belongs to the account that published the link,
+ * and every such query carries that account's id.
  *
  * Paths follow the original canvas frontend (plaza / mine / publish / :id /
- * :id/copy / DELETE :id). There is no public gallery in a single-user
- * install, so `plaza` lists the owner's own active links.
+ * :id/copy / DELETE :id). There is no public gallery, so `plaza` lists the
+ * caller's own active links.
  */
 const express = require('express')
 const Workflow = require('../models/Workflow')
 const Share = require('../models/Share')
 const { pickThumbnail, cleanNodes } = require('../services/canvasGraph')
 const { CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
+const { listModels } = require('../providers')
 const { randomToken } = require('../utils/crypto')
 const { requireAuth } = require('../middleware/auth')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, pageParams, text } = require('../utils/validate')
 const { t } = require('../i18n')
-const { LOCAL_USER } = require('../constants')
 
 const router = express.Router()
 
@@ -29,6 +30,37 @@ const MAX_NODES = 500
 const MAX_SHARES = 500
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,64}$/
 const GONE = 'share.gone'
+
+/**
+ * A viewer of a share link has none of the publisher's providers, so a node's
+ * model id ("gaorui:nano-banana-2.1") means nothing to them and cannot be
+ * looked up. Write the display name the publisher sees next to it
+ * (`data.modelLabel`). `onlyMissing` leaves labels that are already there:
+ * used when an older snapshot, published without them, is read.
+ * A model the publisher no longer has gets no label; the page then shows a
+ * neutral one instead of the id.
+ */
+async function labelModels(nodes, userId, { onlyMissing = false } = {}) {
+  const wanted = nodes.filter((n) => n && n.data && typeof n.data === 'object' && typeof n.data.model === 'string' && n.data.model
+    && !(onlyMissing && typeof n.data.modelLabel === 'string' && n.data.modelLabel))
+  if (!wanted.length) return nodes
+  let labels = new Map()
+  try {
+    labels = new Map((await listModels({ userId, includeDisabled: true })).map((m) => [m.id, m.label]))
+  } catch { /* an account without usable providers: no labels */ }
+  for (const node of wanted) {
+    const label = labels.get(node.data.model)
+    if (typeof label === 'string' && label) node.data.modelLabel = label.slice(0, 120)
+    else delete node.data.modelLabel
+  }
+  return nodes
+}
+
+/** The copy is resolved against the copier's own providers; the publisher's name for the model does not belong in it. */
+function dropModelLabels(nodes) {
+  for (const node of nodes) if (node && node.data && typeof node.data === 'object') delete node.data.modelLabel
+  return nodes
+}
 
 function isActive(doc, now = Date.now()) {
   return !doc.isDeleted && !doc.revoked && (!doc.expiresAt || new Date(doc.expiresAt).getTime() > now)
@@ -83,7 +115,7 @@ function parseExpiry(body) {
 router.get('/plaza', requireAuth, wrap(async (req, res) => {
   const { page, pageSize, skip } = pageParams(req.query, { defaultSize: 24, maxSize: 60 })
   const filter = {
-    userId: LOCAL_USER,
+    userId: req.userId,
     isDeleted: false,
     revoked: false,
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
@@ -97,8 +129,8 @@ router.get('/plaza', requireAuth, wrap(async (req, res) => {
 }))
 
 /** GET /api/canvas-share/mine - every link incl. expired and revoked */
-router.get('/mine', requireAuth, wrap(async (_req, res) => {
-  const list = await Share.find({ userId: LOCAL_USER, isDeleted: false })
+router.get('/mine', requireAuth, wrap(async (req, res) => {
+  const list = await Share.find({ userId: req.userId, isDeleted: false })
     .select('-snapshot').sort({ createdAt: -1 }).limit(MAX_SHARES).lean()
   ok(res, { list: list.map((d) => summary(d, { owner: true })) })
 }))
@@ -111,18 +143,22 @@ router.get('/mine', requireAuth, wrap(async (_req, res) => {
 router.post('/publish', requireAuth, wrap(async (req, res) => {
   const body = req.body || {}
   requireObjectId(body.workflowId, 'workflowId')
-  const wf = await Workflow.findOne({ _id: body.workflowId, userId: LOCAL_USER, isDeleted: false }).lean()
+  const wf = await Workflow.findOne({ _id: body.workflowId, userId: req.userId, isDeleted: false }).lean()
   if (!wf) throw notFound('canvas.not_found')
   const rawNodes = Array.isArray(wf.nodes) ? wf.nodes : []
   if (!rawNodes.length) throw badRequest('share.empty_canvas')
   if (rawNodes.length > MAX_NODES) throw badRequest('canvas.max_nodes', { max: MAX_NODES })
 
-  const nodes = cleanNodes(rawNodes)
+  const nodes = await labelModels(cleanNodes(rawNodes), req.userId)
   const snapshot = {
     nodes,
     edges: structuredClone(Array.isArray(wf.edges) ? wf.edges : []),
     viewport: wf.viewport || { x: 0, y: 0, zoom: 1 },
     settings: wf.settings && typeof wf.settings === 'object' ? structuredClone(wf.settings) : {},
+    // Which node sizes the positions were made for: 2 = the current editor. A snapshot without
+    // it (published by an earlier version), or of a canvas still waiting for its layout check,
+    // counts as an old layout when somebody copies it.
+    layoutVersion: (wf.schemaVersion || 0) >= 2 && !wf.legacyLayout ? 2 : 1,
   }
   const fields = {
     title: text(body.title, 80) || wf.name || t(req.locale, 'canvas.untitled'),
@@ -133,7 +169,7 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
   }
   const expiry = parseExpiry(body)
 
-  let doc = await Share.findOne({ userId: LOCAL_USER, sourceWorkflowId: wf._id, isDeleted: false })
+  let doc = await Share.findOne({ userId: req.userId, sourceWorkflowId: wf._id, isDeleted: false })
   const updated = !!doc
   if (doc) {
     Object.assign(doc, fields)
@@ -145,11 +181,11 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
     }
     await doc.save()
   } else {
-    if ((await Share.countDocuments({ userId: LOCAL_USER, isDeleted: false })) >= MAX_SHARES) {
+    if ((await Share.countDocuments({ userId: req.userId, isDeleted: false })) >= MAX_SHARES) {
       throw badRequest('share.max', { max: MAX_SHARES })
     }
     doc = await Share.create({
-      userId: LOCAL_USER,
+      userId: req.userId,
       token: randomToken(),
       sourceWorkflowId: wf._id,
       expiresAt: expiry === undefined ? null : expiry,
@@ -161,8 +197,8 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
 
 /**
  * Find an active share by its link token - and by nothing else. Database ids
- * are never a way in, signed in or not: on an instance without a password
- * "signed in" is everybody.
+ * are never a way in, signed in or not. Whose link it is does not matter here:
+ * the token is the permission.
  */
 async function findReadable(req) {
   const token = String(req.params.token || '')
@@ -180,8 +216,9 @@ router.get('/:token', wrap(async (req, res) => {
   ok(res, {
     ...summary(doc, { owner: false }),
     description: doc.description || '',
-    // Cleaned again on the way out: snapshots stored by earlier versions kept more.
-    nodes: cleanNodes(snap.nodes),
+    // Cleaned again on the way out: snapshots stored by earlier versions kept more,
+    // and had no display names for their models.
+    nodes: await labelModels(cleanNodes(snap.nodes), doc.userId, { onlyMissing: true }),
     edges: snap.edges || [],
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },
     settings: snap.settings || {},
@@ -192,30 +229,32 @@ router.get('/:token', wrap(async (req, res) => {
 router.post('/:token/copy', requireAuth, wrap(async (req, res) => {
   const doc = await findReadable(req)
   const snap = doc.snapshot || {}
-  const nodes = cleanNodes(snap.nodes)
+  const nodes = dropModelLabels(cleanNodes(snap.nodes))
   const wf = await Workflow.create({
-    userId: LOCAL_USER,
+    userId: req.userId,
     name: (text(req.body && req.body.name, 80) || t(req.locale, 'share.copy_name', { name: doc.title || t(req.locale, 'canvas.untitled') })).slice(0, 80),
     nodes,
     edges: structuredClone(Array.isArray(snap.edges) ? snap.edges : []),
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },
     settings: snap.settings && typeof snap.settings === 'object' ? structuredClone(snap.settings) : {},
     schemaVersion: CURRENT_SCHEMA_VERSION,
+    // Positions from before the redesign: the editor checks them once when the copy is opened.
+    legacyLayout: snap.layoutVersion !== 2 && nodes.length > 1,
     ...pickThumbnail(nodes),
   })
   ok(res, { workflowId: String(wf._id), isOwn: true })
 }))
 
-async function findOwned(id) {
-  requireObjectId(id)
-  const doc = await Share.findOne({ _id: id, userId: LOCAL_USER, isDeleted: false })
+async function findOwned(req) {
+  requireObjectId(req.params.id)
+  const doc = await Share.findOne({ _id: req.params.id, userId: req.userId, isDeleted: false })
   if (!doc) throw notFound('share.not_found')
   return doc
 }
 
 /** PUT /api/canvas-share/:id { title?, description?, expiresAt? | expiresInDays?, revoked? } */
 router.put('/:id', requireAuth, wrap(async (req, res) => {
-  const doc = await findOwned(req.params.id)
+  const doc = await findOwned(req)
   const body = req.body || {}
   if (body.title !== undefined) {
     const title = text(body.title, 80)
@@ -237,7 +276,7 @@ router.put('/:id', requireAuth, wrap(async (req, res) => {
 
 /** POST /api/canvas-share/:id/revoke - the link stops working immediately */
 router.post('/:id/revoke', requireAuth, wrap(async (req, res) => {
-  const doc = await findOwned(req.params.id)
+  const doc = await findOwned(req)
   doc.revoked = true
   await doc.save()
   ok(res, summary(doc.toObject(), { owner: true }))
@@ -249,7 +288,7 @@ router.post('/:id/revoke', requireAuth, wrap(async (req, res) => {
  * owner can see what was shared). Deleting an already revoked link removes it.
  */
 router.delete('/:id', requireAuth, wrap(async (req, res) => {
-  const doc = await findOwned(req.params.id)
+  const doc = await findOwned(req)
   if (doc.revoked) doc.isDeleted = true
   doc.revoked = true
   await doc.save()

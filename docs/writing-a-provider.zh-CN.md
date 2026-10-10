@@ -433,7 +433,7 @@ register(require('./acme'))
 - `server/test/vendors.test.js`：`VENDORS` 列表，以及每份清单里有哪些模型名。
 - `server/test/i18n.test.js`：要求有名字和说明文字的服务商列表。
 
-重启服务端。这家服务商连同它支持的模型，会出现在「设置 → 服务商 → 添加服务商」和引导页里。前端不用改：页面是按 `GET /api/admin/vendors` 画出来的。可以另外在 `web/src/locales/modules/settings.ts` 里加上 `settings.vendors.acme`（`label`、`desc`）：服务商卡片上的一句话介绍来自这里，名字也能在切换语言后不用重新加载就跟着变。
+重启服务端。这家服务商连同它支持的模型，会出现在「模型管理」页的「添加服务商」里，以及新账号看到的「添加一个服务商」页里。前端不用改：页面是按 `GET /api/admin/vendors` 画出来的。可以另外在 `web/src/locales/modules/settings.ts` 里加上 `settings.vendors.acme`（`label`、`desc`）：服务商卡片上的一句话介绍来自这里，名字也能在切换语言后不用重新加载就跟着变。
 
 目前没有办法从源码目录之外加载服务商模块，它是随你的构建一起发布的。
 

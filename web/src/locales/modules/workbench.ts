@@ -1,0 +1,193 @@
+export default {
+  'zh-CN': {
+    greeting: {
+      dawn: '夜深了',
+      morning: '早上好',
+      noon: '中午好',
+      afternoon: '下午好',
+      evening: '晚上好',
+      withName: '{greeting}，{name}',
+    },
+    sub: {
+      running: '有 {n} 个任务正在生成。',
+      runningQueued: '有 {n} 个任务正在生成，{q} 个在排队。',
+      queued: '有 {q} 个任务在排队。',
+      lastEdited: '上次编辑的是「{name}」。',
+      fresh: '从新建一块画布开始，或者挑一个模板。',
+    },
+    newCanvas: '新建画布',
+
+    canvases: {
+      title: '最近的画布',
+      total: '共 {n} 块',
+      viewAll: '查看全部',
+      empty: '还没有画布',
+      emptyHint: '新建一块空白画布，或者从下面的模板开始。',
+      loadFailed: '画布加载失败',
+      justNow: '刚刚更新',
+      minutesAgo: '{n} 分钟前更新',
+      today: '今天 {time} 更新',
+      yesterday: '昨天 {time} 更新',
+      onDate: '{date} 更新',
+    },
+    kind: {
+      image: '图片',
+      video: '视频',
+      chat: '文本',
+    },
+
+    templates: {
+      title: '从模板开始',
+      all: '全部模板',
+      empty: '暂时没有可用的模板',
+      loadFailed: '模板加载失败',
+      use: '用「{name}」新建画布',
+    },
+
+    recent: {
+      title: '最近生成',
+      today: '今天 {n} 次',
+      history: '生成记录',
+      empty: '还没有生成记录。在画布里运行一个节点，结果会出现在这里。',
+      loadFailed: '生成记录加载失败',
+      noPreview: '没有预览',
+      textResult: '文本结果',
+    },
+    status: {
+      queued: '排队中',
+      running: '生成中',
+      archiving: '保存中',
+      succeeded: '完成',
+      failed: '失败',
+      canceled: '已取消',
+    },
+
+    usage: {
+      title: '用量概览',
+      thisMonth: '本月',
+      runs: '运行次数',
+      runsUnit: '次',
+      bars: '近 14 天每日运行次数',
+      barTip: '{date}：{n} 次',
+      successRate: '成功率',
+      cost: '预估花费',
+      unpriced: '{n} 个已启用的模型还没设置价格，用它们生成的花费会记为成本未知。',
+      setPrices: '去设置价格',
+      loadFailed: '用量加载失败',
+    },
+
+    queue: {
+      title: '生成队列',
+      active: '{n} 个进行中',
+      empty: '现在没有正在生成或排队的任务。',
+      seconds: '{n} 秒',
+    },
+
+    providers: {
+      title: '服务商',
+      manage: '管理',
+      ready: '已启用',
+      noKey: '未填 Key',
+      disabled: '已停用',
+      empty: '还没有添加服务商，添加之后才能生成。',
+      add: '添加服务商',
+      loadFailed: '服务商加载失败',
+    },
+  },
+
+  en: {
+    greeting: {
+      dawn: 'Up late',
+      morning: 'Good morning',
+      noon: 'Good afternoon',
+      afternoon: 'Good afternoon',
+      evening: 'Good evening',
+      withName: '{greeting}, {name}',
+    },
+    sub: {
+      running: 'Generating now: {n}.',
+      runningQueued: 'Generating now: {n}, queued: {q}.',
+      queued: 'Queued: {q}.',
+      lastEdited: 'You last edited "{name}".',
+      fresh: 'Start with a new canvas, or pick a template.',
+    },
+    newCanvas: 'New canvas',
+
+    canvases: {
+      title: 'Recent canvases',
+      total: '{n} total',
+      viewAll: 'View all',
+      empty: 'No canvases yet',
+      emptyHint: 'Create a blank canvas, or start from a template below.',
+      loadFailed: "Couldn't load your canvases",
+      justNow: 'Updated just now',
+      minutesAgo: 'Updated {n} min ago',
+      today: 'Updated today {time}',
+      yesterday: 'Updated yesterday {time}',
+      onDate: 'Updated {date}',
+    },
+    kind: {
+      image: 'Image',
+      video: 'Video',
+      chat: 'Text',
+    },
+
+    templates: {
+      title: 'Start from a template',
+      all: 'All templates',
+      empty: 'No templates available',
+      loadFailed: "Couldn't load templates",
+      use: 'New canvas from "{name}"',
+    },
+
+    recent: {
+      title: 'Recent generations',
+      today: 'Today: {n}',
+      history: 'History',
+      empty: 'No generations yet. Run a node on a canvas and the result shows up here.',
+      loadFailed: "Couldn't load recent generations",
+      noPreview: 'No preview',
+      textResult: 'Text result',
+    },
+    status: {
+      queued: 'Queued',
+      running: 'Generating',
+      archiving: 'Saving',
+      succeeded: 'Done',
+      failed: 'Failed',
+      canceled: 'Canceled',
+    },
+
+    usage: {
+      title: 'Usage',
+      thisMonth: 'This month',
+      runs: 'Runs',
+      runsUnit: ' ',
+      bars: 'Runs per day, last 14 days',
+      barTip: '{date}: {n}',
+      successRate: 'Success rate',
+      cost: 'Estimated cost',
+      unpriced: 'Enabled models without a price: {n}. Runs on them are recorded as cost unknown.',
+      setPrices: 'Set prices',
+      loadFailed: "Couldn't load usage",
+    },
+
+    queue: {
+      title: 'Queue',
+      active: '{n} active',
+      empty: 'Nothing is generating or queued right now.',
+      seconds: '{n}s',
+    },
+
+    providers: {
+      title: 'Providers',
+      manage: 'Manage',
+      ready: 'Enabled',
+      noKey: 'No API key',
+      disabled: 'Disabled',
+      empty: 'No provider yet. Add one to start generating.',
+      add: 'Add a provider',
+      loadFailed: "Couldn't load providers",
+    },
+  },
+}

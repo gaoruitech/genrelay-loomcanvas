@@ -69,7 +69,7 @@ function ensureThumbnail(thumbKey, sourceKey) {
   return job
 }
 
-async function storeImage(buffer) {
+async function storeImage(buffer, userId) {
   const mime = sniffMime(buffer)
   if (kindOfMime(mime) !== 'image') throw new RunError('BAD_RESULT', 'upstream.not_image_file')
   const storage = getStorage()
@@ -82,7 +82,7 @@ async function storeImage(buffer) {
   } catch {
     // A format sharp cannot decode still gets stored; it just has no thumbnail.
   }
-  const main = await storage.put(newKey('outputs', mime), buffer, { contentType: mime })
+  const main = await storage.put(newKey('outputs', mime, userId), buffer, { contentType: mime })
   const out = { type: 'image', url: main.url, key: main.key, thumbnailUrl: '', thumbKey: '', width, height }
   const thumb = width ? await storeThumbnail(main.key, buffer).catch(() => null) : null
   if (thumb) {
@@ -115,7 +115,7 @@ function peek(stream) {
   })
 }
 
-async function storeStream(type, url, headers, signal, timeoutMs) {
+async function storeStream(type, url, headers, signal, timeoutMs, userId) {
   const { stream } = await safeFetchStream(url, { headers, signal, timeoutMs, maxBytes: MAX_VIDEO_BYTES })
   try {
     const head = await peek(stream)
@@ -123,7 +123,7 @@ async function storeStream(type, url, headers, signal, timeoutMs) {
     if (kindOfMime(mime) !== type) {
       throw new RunError('BAD_RESULT', type === 'video' ? 'upstream.not_video_file' : 'upstream.bad_file')
     }
-    const saved = await getStorage().put(newKey('outputs', mime), stream, { contentType: mime })
+    const saved = await getStorage().put(newKey('outputs', mime, userId), stream, { contentType: mime })
     return { type, url: saved.url, key: saved.key, thumbnailUrl: '', thumbKey: '', width: 0, height: 0 }
   } catch (err) {
     stream.destroy()
@@ -139,18 +139,18 @@ function fromDataUri(uri) {
 
 /**
  * @param {object} output  provider output (see above)
- * @param {{ signal: AbortSignal, timeoutMs?: number }} opts
+ * @param {{ signal: AbortSignal, timeoutMs?: number, userId?: string }} opts  `userId`: whose run it is; the files go under that account's key prefix
  */
-async function transferOutput(output, { signal, timeoutMs = 300000 } = {}) {
+async function transferOutput(output, { signal, timeoutMs = 300000, userId = '' } = {}) {
   const type = ['image', 'video', 'audio'].includes(output && output.type) ? output.type : 'image'
   try {
     if (output.b64) {
       if (type !== 'image') throw new RunError('BAD_RESULT', 'upstream.bad_inline_type')
-      return await storeImage(Buffer.from(String(output.b64), 'base64'))
+      return await storeImage(Buffer.from(String(output.b64), 'base64'), userId)
     }
     const url = String(output.url || '')
     if (!url) throw new RunError('BAD_RESULT', 'upstream.no_result_url')
-    if (url.startsWith('data:')) return await storeImage(fromDataUri(url))
+    if (url.startsWith('data:')) return await storeImage(fromDataUri(url), userId)
 
     // Already ours (a provider echoing an input back): reference it, do not copy.
     const own = getStorage().keyFromUrl(url)
@@ -158,9 +158,9 @@ async function transferOutput(output, { signal, timeoutMs = 300000 } = {}) {
 
     if (type === 'image') {
       const { buffer } = await safeFetch(url, { headers: output.headers, signal, timeoutMs, maxBytes: MAX_IMAGE_BYTES })
-      return await storeImage(buffer)
+      return await storeImage(buffer, userId)
     }
-    return await storeStream(type, url, output.headers, signal, timeoutMs)
+    return await storeStream(type, url, output.headers, signal, timeoutMs, userId)
   } catch (err) {
     if (signal && signal.aborted) throw signal.reason
     if (err && err.name === 'SafeFetchError') {

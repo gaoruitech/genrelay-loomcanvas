@@ -64,60 +64,63 @@ const childCount = computed(
 
 <style scoped>
 .fr {
-  border: 1.5px dashed color-mix(in srgb, var(--accent-text) 55%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--accent-text) 5%, transparent);
+  border: 1.5px dashed rgba(124, 190, 255, .45);
+  border-radius: 18px;
+  background: rgba(59, 123, 255, .05);
   box-sizing: border-box;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .fr.selected {
   border-style: solid;
-  border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-text) 16%, transparent);
+  border-color: rgba(63, 216, 255, .75);
+  background: rgba(63, 216, 255, .05);
+  box-shadow: 0 0 0 3px rgba(63, 216, 255, .14);
 }
 
-/* 标题栏：悬浮在组左上角的一张小卡片 */
+/* 标题栏：悬浮在组左上角的一张小玻璃卡片 */
 .fr-bar {
   position: absolute;
-  top: -36px; left: -1px;
-  display: inline-flex; align-items: center; gap: 7px;
+  top: -38px; left: -1px;
+  display: inline-flex; align-items: center; gap: 6px;
   max-width: calc(100% + 2px);
-  padding: 5px 9px 5px 7px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 11px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  height: 30px;
+  padding: 0 8px 0 8px;
+  background: rgba(12, 21, 52, .92);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: var(--sh-1);
   cursor: grab;
 }
 .fr-bar:active { cursor: grabbing; }
+.fr.selected .fr-bar { border-color: var(--line-3); }
 
 .fr-grip {
   width: 10px; height: 16px;
   flex: none;
-  fill: var(--t-dim);
-  opacity: 0.55;
+  fill: var(--text-3);
+  opacity: .7;
 }
-.fr-bar:hover .fr-grip { opacity: 1; }
+.fr-bar:hover .fr-grip { opacity: 1; fill: var(--text-2); }
 
 .fr-title {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: var(--t-max);
-  font-size: 12.5px; font-weight: 700;
+  color: var(--text);
+  font: 600 12px/1.4 var(--f-disp);
   padding: 2px 6px;
   outline: none;
   cursor: text;
   min-width: 90px; max-width: 220px;
 }
-.fr-title::placeholder { font-weight: 400; color: var(--t-dim); }
-.fr-title:hover { background: var(--n-3); }
-.fr-title:focus { background: var(--n-3); border-color: var(--accent-text); }
+.fr-title::placeholder { font-weight: 400; color: var(--text-3); }
+.fr-title:hover { background: rgba(124, 160, 255, .1); }
+.fr-title:focus { background: var(--well); border-color: var(--cyan); }
 
 .fr-count {
-  font-size: 10.5px; font-weight: 600; white-space: nowrap;
-  color: var(--accent-text);
-  background: color-mix(in srgb, var(--accent-text) 13%, transparent);
-  border-radius: 999px; padding: 2px 9px;
+  font-size: 11px; white-space: nowrap;
+  color: var(--text-2);
+  background: rgba(124, 160, 255, .12);
+  border-radius: 6px; padding: 2px 8px;
 }
 </style>

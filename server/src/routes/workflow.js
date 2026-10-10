@@ -1,6 +1,9 @@
 'use strict'
 
-/** /api/workflow - canvases: list, create, read, save, delete, duplicate, zip export. */
+/**
+ * /api/workflow - canvases: list, create, read, save, delete, duplicate, zip export.
+ * Every query carries the caller's id: another account's canvas is a 404.
+ */
 const { Transform } = require('stream')
 const express = require('express')
 const archiver = require('archiver')
@@ -12,7 +15,6 @@ const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, isPlainObject, isMediaUrl } = require('../utils/validate')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
 const { t, messageOf } = require('../i18n')
-const { LOCAL_USER } = require('../constants')
 
 const router = express.Router()
 
@@ -35,6 +37,7 @@ function serialize(doc) {
     thumbnail: doc.thumbnail || '',
     thumbnailType: doc.thumbnailType || '',
     schemaVersion: doc.schemaVersion || CURRENT_SCHEMA_VERSION,
+    legacyLayout: !!doc.legacyLayout,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }
@@ -72,6 +75,11 @@ function parseBody(body) {
     if (!isPlainObject(body.settings)) throw badRequest('validation.object', { field: 'settings' })
     out.settings = body.settings
   }
+  // The editor's "I have checked this old layout" - the flag can be cleared, never set, from outside.
+  if (body.legacyLayout !== undefined) {
+    if (body.legacyLayout !== false) throw badRequest('validation.invalid', { field: 'legacyLayout' })
+    out.legacyLayout = false
+  }
   return out
 }
 
@@ -79,23 +87,26 @@ function parseBody(body) {
  * Load one workflow as a plain object at the current schema version,
  * persisting the upgrade when an older document is read.
  */
-async function loadWorkflow(id) {
+async function loadWorkflow(userId, id) {
   requireObjectId(id)
-  const raw = await Workflow.findOne({ _id: id, userId: LOCAL_USER, isDeleted: false }).lean()
+  const raw = await Workflow.findOne({ _id: id, userId, isDeleted: false }).lean()
   if (!raw) throw notFound('canvas.not_found')
   const { doc, changed } = migrateWorkflow(raw)
   if (changed) {
-    await Workflow.updateOne({ _id: raw._id }, {
-      $set: { nodes: doc.nodes, edges: doc.edges, viewport: doc.viewport, settings: doc.settings, schemaVersion: doc.schemaVersion },
+    await Workflow.updateOne({ _id: raw._id, userId }, {
+      $set: {
+        nodes: doc.nodes, edges: doc.edges, viewport: doc.viewport, settings: doc.settings,
+        schemaVersion: doc.schemaVersion, legacyLayout: !!doc.legacyLayout,
+      },
     }, { timestamps: false })
   }
   return doc
 }
 
 /** GET /api/workflow/list */
-router.get('/list', wrap(async (_req, res) => {
+router.get('/list', wrap(async (req, res) => {
   const list = await Workflow.find(
-    { userId: LOCAL_USER, isDeleted: false },
+    { userId: req.userId, isDeleted: false },
     { name: 1, thumbnail: 1, thumbnailType: 1, createdAt: 1, updatedAt: 1 }
   ).sort({ createdAt: -1 }).limit(MAX_LIST).lean()
   ok(res, list.map((w) => ({
@@ -150,10 +161,10 @@ router.post('/download', wrap(async (req, res) => {
 
 /** POST /api/workflow */
 router.post('/', wrap(async (req, res) => {
-  const data = parseBody(req.body || {})
+  const { legacyLayout: _ignored, ...data } = parseBody(req.body || {})
   const nodes = data.nodes || []
   const doc = await Workflow.create({
-    userId: LOCAL_USER,
+    userId: req.userId,
     name: data.name || defaultName(req),
     nodes,
     edges: data.edges || [],
@@ -167,7 +178,7 @@ router.post('/', wrap(async (req, res) => {
 
 /** GET /api/workflow/:id */
 router.get('/:id', wrap(async (req, res) => {
-  ok(res, serialize(await loadWorkflow(req.params.id)))
+  ok(res, serialize(await loadWorkflow(req.userId, req.params.id)))
 }))
 
 /**
@@ -184,10 +195,13 @@ router.put('/:id', wrap(async (req, res) => {
     // The client always writes the current shape.
     set.schemaVersion = CURRENT_SCHEMA_VERSION
   }
+  // Panning and zooming are not edits: a save of nothing but the viewport leaves updatedAt alone,
+  // so looking at a canvas does not move it to the top of "recently edited".
+  const viewportOnly = Object.keys(set).length > 0 && Object.keys(set).every((k) => k === 'viewport' || k === 'legacyLayout')
   const doc = await Workflow.findOneAndUpdate(
-    { _id: req.params.id, userId: LOCAL_USER, isDeleted: false },
+    { _id: req.params.id, userId: req.userId, isDeleted: false },
     { $set: set },
-    { new: true }
+    { new: true, timestamps: !viewportOnly }
   ).lean()
   if (!doc) throw notFound('canvas.not_found')
   ok(res, serialize(doc))
@@ -198,16 +212,18 @@ router.put('/:id', wrap(async (req, res) => {
  * The client may name the copy (it knows the UI language); otherwise a default is used.
  */
 router.post('/:id/duplicate', wrap(async (req, res) => {
-  const src = await loadWorkflow(req.params.id)
+  const src = await loadWorkflow(req.userId, req.params.id)
   const wanted = req.body && typeof req.body.name === 'string' ? req.body.name.trim() : ''
   const doc = await Workflow.create({
-    userId: LOCAL_USER,
+    userId: req.userId,
     name: (wanted || t(req.locale, 'canvas.copy_name', { name: src.name || defaultName(req) })).slice(0, MAX_NAME_LEN),
     nodes: src.nodes || [],
     edges: src.edges || [],
     viewport: src.viewport || DEFAULT_VIEWPORT,
     settings: src.settings || {},
     schemaVersion: CURRENT_SCHEMA_VERSION,
+    // A copy of a canvas whose old layout has not been checked yet has the same old layout.
+    legacyLayout: !!src.legacyLayout,
     thumbnail: src.thumbnail || '',
     thumbnailType: src.thumbnailType || '',
   })
@@ -218,7 +234,7 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
 router.delete('/:id', wrap(async (req, res) => {
   requireObjectId(req.params.id)
   const doc = await Workflow.findOneAndUpdate(
-    { _id: req.params.id, userId: LOCAL_USER, isDeleted: false },
+    { _id: req.params.id, userId: req.userId, isDeleted: false },
     { $set: { isDeleted: true } },
     { new: true }
   ).lean()
@@ -257,7 +273,7 @@ function zipExt(url, kind) {
  * guard.
  */
 router.post('/:id/download-zip', wrap(async (req, res) => {
-  const doc = await loadWorkflow(req.params.id)
+  const doc = await loadWorkflow(req.userId, req.params.id)
   const urls = req.body && req.body.urls
   if (urls !== undefined && urls !== null && !Array.isArray(urls)) throw badRequest('validation.array', { field: 'urls' })
   const wanted = Array.isArray(urls) && urls.length ? new Set(urls.filter((u) => typeof u === 'string')) : null

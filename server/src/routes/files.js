@@ -21,8 +21,8 @@ const THUMB_MIN_EDGE = 512
 
 const MAX_IMAGE_PIXELS = 120 * 1000 * 1000
 
-/** Validate a buffer, store it, describe it. */
-async function ingest(buffer, { allow = ['image', 'video', 'audio'] } = {}) {
+/** Validate a buffer, store it under the account's own key prefix, describe it. */
+async function ingest(buffer, { allow = ['image', 'video', 'audio'], userId = '' } = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw badRequest('file.empty')
   const mime = sniffMime(buffer)
   const kind = kindOfMime(mime)
@@ -40,7 +40,7 @@ async function ingest(buffer, { allow = ['image', 'video', 'audio'] } = {}) {
       throw badRequest('file.image_corrupt')
     }
   }
-  const saved = await getStorage().put(newKey('uploads', mime), buffer, { contentType: mime })
+  const saved = await getStorage().put(newKey('uploads', mime, userId), buffer, { contentType: mime })
   if (kind === 'image') {
     out.thumbnailUrl = saved.url
     if (Math.max(out.width, out.height) > THUMB_MIN_EDGE) {
@@ -62,7 +62,7 @@ function apiRouter() {
   /** POST /api/files/upload  multipart, field "file" */
   router.post('/upload', upload.single('file'), wrap(async (req, res) => {
     if (!req.file) throw badRequest('file.missing')
-    ok(res, await ingest(req.file.buffer))
+    ok(res, await ingest(req.file.buffer, { userId: req.userId }))
   }))
 
   /** POST /api/files/fetch { url } - download a remote image into storage */
@@ -92,7 +92,7 @@ function apiRouter() {
     } catch (err) {
       throw badRequest(err.name === 'SafeFetchError' ? err.i18n : 'fetch.failed')
     }
-    ok(res, await ingest(fetched.buffer, { allow: ['image'] }))
+    ok(res, await ingest(fetched.buffer, { allow: ['image'], userId: req.userId }))
   }))
 
   return router

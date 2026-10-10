@@ -1,14 +1,15 @@
 <template>
-  <div class="cv-node cv-surface" :class="{ selected }">
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :title="t('tools.input.base')" />
+  <div class="cv-node cv-tool" :class="{ selected, 'is-running': status === 'running', 'has-runtime-error': status === 'error' }">
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" :title="t('tools.input.base')" />
 
     <div class="cv-head">
+      <LcIcon name="shield" />
       <span class="cv-title">{{ t('nodes.title.watermark') }}</span>
       <span class="cv-help" :title="t('tools.watermark.help')">?</span>
       <span v-if="status === 'running'" class="cv-tag running">{{ t('tools.processing') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
       <span v-else-if="resultUrl" class="cv-tag done">{{ t('tools.watermark.done') }}</span>
-      <span class="cv-free" :title="t('cost.free')">{{ t('cost.free') }}</span>
+      <span class="cv-head-x" :title="t('cost.free')">{{ t('cost.free') }}</span>
     </div>
 
     <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
@@ -32,7 +33,7 @@
 
       <div class="cv-row">
         <span class="cv-label">{{ t('tools.watermark.position') }}</span>
-        <ChipSelect class="cv-chip" :model-value="position" :options="WATERMARK_POSITIONS" @update:model-value="(v) => patch({ position: String(v) })" />
+        <ChipSelect field class="cv-chip" :model-value="position" :options="WATERMARK_POSITIONS" @update:model-value="(v) => patch({ position: String(v) })" />
       </div>
 
       <div class="cv-row">
@@ -54,7 +55,7 @@
         <span class="cv-val">{{ marginPct }}%</span>
       </div>
 
-      <div v-if="displayError" class="cv-err">{{ displayError }}</div>
+      <div v-if="displayError" class="cv-error"><div class="cv-error-msg">{{ displayError }}</div></div>
 
       <button v-if="resultUrl" class="cv-preview" @click="download">
         <img :src="canvasImageThumb(resultUrl, 320)" :alt="t('tools.watermark.resultAlt')" />
@@ -69,7 +70,7 @@
       </div>
     </div>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image" :title="t('tools.watermark.output')" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" :title="t('tools.watermark.output')" />
   </div>
 </template>
 
@@ -87,6 +88,7 @@
 import { computed, inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import LcIcon from '@/components/LcIcon.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
@@ -159,21 +161,21 @@ function download() {
 
 <style scoped>
 @import './tool-node.css';
-.cv-chip { flex: 1; min-width: 0; }
 /* 英文标签（Position / Opacity）比两个汉字宽，这个节点的标签列放宽一点 */
-.cv-row .cv-label { width: 52px; }
+.cv-row .cv-label { width: 56px; }
 
 .cv-mark-row { display: flex; align-items: center; gap: 6px; }
 .cv-mark-img {
-  width: 54px; height: 34px; object-fit: contain; flex: none;
-  border: 1px solid var(--n-5); border-radius: 5px; background: var(--n-2);
+  width: 54px; height: 28px; object-fit: contain; flex: none; margin-right: auto;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--media-bg);
 }
 .cv-mark-actions { display: flex; gap: 6px; }
 .cv-mark-btn {
-  flex: 1; text-align: center;
-  background: var(--n-2); border: 1px dashed var(--n-5); border-radius: 6px;
-  color: var(--t-dim); font-size: 11px; padding: 6px 0; cursor: pointer;
+  flex: 1; height: 28px; display: grid; place-items: center;
+  background: rgba(4, 9, 28, .3); border: 1px dashed var(--line-2); border-radius: 8px;
+  color: var(--text-2); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
 }
-.cv-mark-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.cv-mark-empty { font-size: 11px; color: var(--t-dim); padding: 6px 0; }
+.cv-mark-btn:hover { border-color: var(--cyan); color: var(--cyan-soft); }
+.cv-mark-empty { font-size: 12px; color: var(--text-3); line-height: 28px; }
 </style>

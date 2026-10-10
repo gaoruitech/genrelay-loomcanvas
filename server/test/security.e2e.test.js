@@ -24,7 +24,6 @@ fs.writeFileSync(path.join(webDist, 'index.html'), `<!DOCTYPE html><html><head><
 
 const API_KEY = 'sk-sec-key-ECHOED-0123456789'
 process.env.SECRET_KEY = 'security-test-secret-key-0123456789'
-process.env.ACCESS_PASSWORD = 'correct horse'
 process.env.STORAGE_DRIVER = 'local'
 process.env.STORAGE_LOCAL_DIR = path.join(tmpDir, 'files')
 process.env.PUBLIC_URL = ''
@@ -119,7 +118,8 @@ test('security review findings stay fixed', async (t) => {
   })
   const asJson = { 'Content-Type': 'application/json' }
 
-  token = (await data('POST', '/api/auth/login', { password: 'correct horse' })).token
+  // The first account is the owner; this file runs as that account.
+  token = (await data('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })).token
 
   await t.test('headers: a content security policy that only runs our own scripts', async () => {
     const page = await call('GET', '/', undefined, { raw: true, auth: false })
@@ -146,7 +146,7 @@ test('security review findings stay fixed', async (t) => {
     const junk = '{"nodes":[' + 'x'.repeat(200 * 1024)
     for (const p of ['/api/workflow', '/api/runs', '/api/admin/settings']) {
       const r = await call('POST', p, junk, { auth: false, headers: asJson })
-      assert.deepEqual([r.status, r.body.code], [401, 'auth.login_required'], p)
+      assert.deepEqual([r.status, r.body.code], [401, 'auth.required'], p)
     }
     // The public endpoints still read their (small) bodies.
     const login = await call('POST', '/api/auth/login', '{"password":', { auth: false, headers: asJson })

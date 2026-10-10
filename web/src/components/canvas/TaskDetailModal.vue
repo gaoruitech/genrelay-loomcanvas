@@ -2,26 +2,26 @@
   <Teleport to="body">
     <div
       v-if="open"
-      class="td-mask"
+      class="lc-mask lc-sheet td-mask"
       @click.self="close"
       @mousedown.self="close"
     >
-      <div class="td-modal" @click.stop @mousedown.stop>
-        <div class="td-header">
-          <span class="td-title">{{ t('gen.detail.title', { type: typeLabel }) }}</span>
-          <button class="td-close" :title="t('common.close')" @click="close">×</button>
+      <div class="lc-dialog td-modal" @click.stop @mousedown.stop>
+        <div class="lc-dialog-head">
+          <span>{{ t('gen.detail.title', { type: typeLabel }) }}</span>
+          <button class="lc-x" :title="t('common.close')" @click="close">×</button>
         </div>
 
-        <div class="td-body">
+        <div class="lc-dialog-body td-body">
           <div v-if="previewUrl" class="td-preview">
             <video v-if="isVideo" :src="previewUrl" controls playsinline class="td-media"></video>
             <img v-else :src="previewUrl" class="td-media" alt="" />
-            <button class="td-dl" @click="onDownload">{{ t('common.download') }}</button>
+            <button class="lc-btn sm td-dl" @click="onDownload"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
           </div>
           <div class="td-row">
             <span class="td-label">{{ t('gen.detail.status') }}</span>
             <span class="td-value">
-              <span class="td-tag" :class="statusTagClass">{{ statusText }}</span>
+              <span class="lc-st" :class="statusTagClass">{{ statusText }}</span>
             </span>
           </div>
 
@@ -73,18 +73,13 @@
             <span class="td-label">{{ t('gen.detail.taskId') }}</span>
             <span class="td-value td-mono">
               {{ taskId }}
-              <button class="td-copy" :title="t('common.copy')" @click="copy(taskId)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
+              <button class="lc-tb sm" :title="t('common.copy')" @click="copy(taskId)"><LcIcon name="copy" size="s" /></button>
             </span>
           </div>
 
           <div v-if="errorMsg" class="td-row td-row-block">
             <span class="td-label">{{ t('gen.detail.error') }}</span>
-            <div class="td-value td-error">{{ errorMsg }}</div>
+            <div class="lc-alert td-error">{{ errorMsg }}</div>
           </div>
         </div>
       </div>
@@ -96,6 +91,7 @@
 import { computed } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
 import { getAdapter } from '@/utils/canvasModels'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { formatCost, formatEstimate } from '@/utils/cost'
@@ -211,130 +207,35 @@ async function copy(s: string) {
 </script>
 
 <style scoped>
-.td-mask {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
-  backdrop-filter: blur(4px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.td-modal {
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 12px;
-  box-shadow: 0 20px 60px var(--shadow-2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.td-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--n-5);
-  flex-shrink: 0;
-}
-.td-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--t-max);
-}
-.td-close {
-  background: transparent;
-  border: none;
-  color: var(--t-dim);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 6px;
-  transition: color 0.15s ease;
-}
-.td-close:hover { color: var(--t-max); }
+.td-mask { z-index: 10000; }
+.td-modal { width: 560px; }
+.td-body { display: flex; flex-direction: column; gap: 12px; }
 
-.td-body {
-  padding: 14px 18px 18px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.td-preview {
+  position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  background: var(--media-bg); display: grid; place-items: center; margin-bottom: 4px;
 }
-
-.td-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: 13px;
-}
-.td-row-block { flex-direction: column; gap: 6px; }
-.td-label {
-  flex: 0 0 80px;
-  color: var(--t-dim);
-  padding-top: 2px;
-}
-.td-value {
-  flex: 1;
-  color: var(--t-body);
-  word-break: break-word;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.td-row-block .td-value { display: block; }
-
-.td-prompt {
-  word-break: break-word;
-  line-height: 1.5;
-  font-size: 12.5px;
-}
-.td-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.td-warn { color: var(--warning); font-size: 12px; }
-.td-muted { color: var(--t-dim); }
-.td-error {
-  background: rgba(255, 80, 80, 0.08);
-  border: 1px solid rgba(255, 80, 80, 0.25);
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: var(--danger);
-  font-size: 12px;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.td-tag {
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-}
-.td-tag.done { background: var(--success-dim); color: var(--success); }
-.td-tag.running { background: var(--info-dim); color: var(--info); }
-.td-tag.error { background: var(--danger-dim); color: var(--danger); }
-.td-tag.stale { background: var(--warning-dim); color: var(--warning); }
-
-.td-copy {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--t-dim);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.td-copy:hover { background: var(--n-5); color: var(--accent-text); }
-.td-copy svg { width: 13px; height: 13px; }
-
-.td-preview { position: relative; margin-bottom: 12px; border-radius: 10px; overflow: hidden; background: var(--n-2, #000); display: grid; place-items: center; }
 .td-media { max-width: 100%; max-height: 320px; object-fit: contain; display: block; }
-.td-dl { position: absolute; right: 8px; bottom: 8px; border: 0; border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--btn-bg, var(--accent-text)); color: var(--btn-fg, #111); }
+.td-dl { position: absolute; right: 8px; bottom: 8px; background: rgba(12, 21, 52, .88); }
+
+.td-row { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; line-height: 1.7; }
+.td-row-block { flex-direction: column; gap: 6px; }
+.td-label { flex: 0 0 88px; color: var(--text-3); }
+.td-value {
+  flex: 1; min-width: 0; color: var(--text); word-break: break-word;
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.td-prompt { color: var(--text-2); }
+.td-mono { font: 12px/1.9 var(--f-mono); color: var(--text-2); }
+.td-warn { color: var(--warn); font-size: 12px; }
+.td-muted { color: var(--text-3); }
+.td-error { align-self: stretch; word-break: break-word; }
+/* 状态点的四种取值沿用节点上的叫法 */
+.lc-st.done { color: var(--ok); }
+.lc-st.running { color: var(--cyan); }
+.lc-st.error { color: var(--err); }
+.lc-st.stale { color: var(--warn); }
+@media (max-width: 600px) {
+  .td-label { flex-basis: 72px; }
+}
 </style>

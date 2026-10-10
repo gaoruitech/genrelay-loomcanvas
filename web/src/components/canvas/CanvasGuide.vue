@@ -1,31 +1,27 @@
 <template>
   <!-- 空画布引导卡：加了节点或点过「知道了」后不再出现 -->
   <div v-if="showCard" class="cg-card">
-    <div class="cg-card-ico">
-      <svg viewBox="0 0 24 24" width="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
-    </div>
+    <div class="cg-card-ico"><LcIcon name="canvas" size="l" /></div>
     <div class="cg-card-title">{{ t('library.guide.cardTitle') }}</div>
     <div class="cg-card-sub">{{ t('library.guide.cardSub') }}</div>
     <div class="cg-card-actions">
-      <button class="cg-cbtn primary" @click="onFromTemplate">{{ t('library.guide.fromTemplate') }}</button>
-      <button class="cg-cbtn" @click="openDrawer">{{ t('library.guide.openGuide') }}</button>
+      <button class="lc-btn primary quiet" @click="onFromTemplate">{{ t('library.guide.fromTemplate') }}</button>
+      <button class="lc-btn" @click="openDrawer">{{ t('library.guide.openGuide') }}</button>
     </div>
-    <button class="cg-card-dismiss" @click="dismissCard">{{ t('library.guide.dismiss') }}</button>
+    <button class="lc-btn ghost sm cg-card-dismiss" @click="dismissCard">{{ t('library.guide.dismiss') }}</button>
   </div>
 
   <!-- 教程抽屉：不遮画布，可边看边操作 -->
   <transition name="cg-slide">
     <aside v-if="open" class="cg-drawer" @keydown.esc="close">
       <div class="cg-head">
-        <span class="cg-badge">
-          <svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        </span>
+        <span class="cg-badge"><LcIcon name="book" /></span>
         <span class="cg-title">{{ t('library.guide.title') }}</span>
-        <button class="cg-close" :title="t('common.close')" @click="close">×</button>
+        <button class="lc-tb sm cg-close" :title="t('common.close')" :aria-label="t('common.close')" @click="close"><LcIcon name="x" size="s" /></button>
       </div>
 
       <nav class="cg-toc">
-        <a v-for="s in sections" :key="s.id" :class="['cg-toc-a', { on: activeId === s.id }]" @click="scrollTo(s.id)">{{ s.title }}</a>
+        <button v-for="s in sections" :key="s.id" type="button" :class="['cg-toc-a', { on: activeId === s.id }]" @click="scrollTo(s.id)">{{ s.title }}</button>
       </nav>
 
       <div ref="bodyEl" class="cg-body" @scroll="onScroll">
@@ -35,10 +31,10 @@
           <ul class="cg-list">
             <li v-for="(it, j) in s.items" :key="j">{{ it }}</li>
           </ul>
-          <div v-if="s.tip" class="cg-tip"><span>💡</span><span>{{ s.tip }}</span></div>
+          <div v-if="s.tip" class="lc-alert info cg-tip"><LcIcon name="info" size="s" /><span>{{ s.tip }}</span></div>
         </section>
         <div class="cg-end">
-          <button class="cg-start" @click="close">{{ t('library.guide.start') }}</button>
+          <button class="lc-btn primary quiet block" @click="close">{{ t('library.guide.start') }}</button>
         </div>
       </div>
     </aside>
@@ -48,10 +44,11 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
 
 const { t, tm, rt } = useI18n()
 
-const props = defineProps<{ modelValue: boolean; empty?: boolean }>()
+const props = defineProps<{ modelValue: boolean; empty?: boolean; /** 打开时先跳到哪一节；不传从头看 */ section?: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'open-templates'): void }>()
 
 const open = computed({
@@ -113,67 +110,83 @@ function onScroll() {
     activeId.value = cur
   })
 }
-// 每次打开回到顶部
-watch(open, (v) => { if (v) nextTick(() => { if (bodyEl.value) bodyEl.value.scrollTop = 0; activeId.value = SECTION_IDS[0] }) })
+// 每次打开回到顶部；指定了章节（比如从「快捷键」入口进来）就直接到那一节
+function jump() {
+  nextTick(() => {
+    const id = props.section && SECTION_IDS.includes(props.section) ? props.section : ''
+    activeId.value = id || SECTION_IDS[0]
+    if (!bodyEl.value) return
+    bodyEl.value.scrollTop = id && secRefs[id] ? secRefs[id]!.offsetTop - 8 : 0
+  })
+}
+watch(open, (v) => { if (v) jump() })
+watch(() => props.section, () => { if (open.value) jump() })
 </script>
 
 <style scoped>
-/* 引导卡 */
+/* 引导卡：摆在编辑器正中（编辑器根是定位容器） */
 .cg-card {
-  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 30; width: 340px; max-width: calc(100vw - 32px);
-  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 16px;
-  box-shadow: 0 16px 48px rgba(0,0,0,.28); padding: 24px; text-align: center;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 8; width: 360px; max-width: calc(100% - 32px);
+  background: linear-gradient(180deg, rgba(22, 35, 79, .96), rgba(13, 22, 56, .96));
+  border: 1px solid var(--line-2); border-radius: var(--r-lg);
+  box-shadow: var(--sh-2); padding: 24px; text-align: center;
 }
-.cg-card-ico { width: 46px; height: 46px; border-radius: 13px; background: var(--accent-ghost, var(--film-2)); color: var(--accent-text); display: grid; place-items: center; margin: 0 auto 12px; }
-.cg-card-title { font-size: 16px; font-weight: 800; color: var(--t-max); }
-.cg-card-sub { font-size: 13px; color: var(--t-dim); margin: 6px 0 16px; }
-.cg-card-actions { display: flex; gap: 8px; justify-content: center; }
-.cg-cbtn { font-size: 13px; border-radius: 10px; padding: 9px 16px; cursor: pointer; border: 1px solid var(--line-2); background: var(--n-3); color: var(--t-body); }
-.cg-cbtn:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.cg-cbtn.primary { background: var(--btn-bg, var(--accent-text)); color: var(--btn-fg, #111); border-color: transparent; font-weight: 600; }
-.cg-card-dismiss { margin-top: 14px; border: 0; background: none; color: var(--t-dim); font-size: 12px; cursor: pointer; }
-.cg-card-dismiss:hover { color: var(--t-body); }
-/* 手机宽度下屏幕正中放不下：卡片会盖住左侧工具条的下半截。让开工具条那一列，按钮上下排 */
+.cg-card-ico {
+  width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 12px; display: grid; place-items: center;
+  background: rgba(63, 216, 255, .12); color: var(--cyan); border: 1px solid rgba(63, 216, 255, .3);
+}
+.cg-card-title { font: 600 16px/1.4 var(--f-disp); color: var(--text); }
+.cg-card-sub { font-size: 13px; color: var(--text-2); margin: 6px 0 16px; line-height: 1.6; }
+.cg-card-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cg-card-dismiss { margin-top: 12px; color: var(--text-3); }
 @media (max-width: 520px) {
-  .cg-card { left: 76px; right: 12px; width: auto; max-width: none; transform: translateY(-50%); padding: 20px 16px; }
+  .cg-card { padding: 20px 16px; }
   .cg-card-actions { flex-direction: column; }
 }
 
-/* 抽屉 */
+/* 抽屉：贴着编辑器右边的一块玻璃，盖在生成队列上面 */
 .cg-drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
-  width: 400px; max-width: 92vw; display: flex; flex-direction: column;
-  background: var(--n-2); border-left: 1px solid var(--n-5);
-  box-shadow: -12px 0 40px rgba(0,0,0,.22);
+  position: absolute; top: 16px; right: 16px; bottom: 16px; z-index: 30;
+  width: 400px; max-width: calc(100% - 32px); display: flex; flex-direction: column;
+  background: rgba(12, 21, 52, .95); border: 1px solid var(--line-2); border-radius: 16px;
+  box-shadow: var(--sh-2); overflow: hidden;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
-.cg-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line-1, var(--n-5)); }
-.cg-badge { width: 32px; height: 32px; border-radius: 9px; background: var(--accent-ghost, var(--film-2)); color: var(--accent-text); display: grid; place-items: center; flex: none; }
-.cg-title { font-size: 16px; font-weight: 800; color: var(--t-max); }
-.cg-close { margin-left: auto; border: 0; background: none; color: var(--t-dim); font-size: 24px; line-height: 1; cursor: pointer; }
-.cg-close:hover { color: var(--t-max); }
+.cg-head { display: flex; align-items: center; gap: 10px; padding: 14px 12px 12px 16px; border-bottom: 1px solid var(--line); }
+.cg-badge {
+  width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center;
+  background: rgba(63, 216, 255, .12); color: var(--cyan);
+}
+.cg-title { font: 600 15px/1.4 var(--f-disp); color: var(--text); }
+.cg-close { margin-left: auto; }
 
-.cg-toc { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 18px; border-bottom: 1px solid var(--line-1, var(--n-5)); }
-.cg-toc-a { font-size: 11.5px; color: var(--t-body); background: var(--n-3); border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
-.cg-toc-a:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.cg-toc-a.on { background: var(--accent-ghost, var(--film-2)); color: var(--accent-text); border-color: transparent; font-weight: 700; }
+.cg-toc { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--line); max-height: 30%; overflow-y: auto; flex: none; }
+.cg-toc-a {
+  font-size: 12px; line-height: 1; color: var(--text-2); background: rgba(124, 160, 255, .08);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer;
+}
+.cg-toc-a:hover { border-color: var(--line-3); color: var(--text); }
+.cg-toc-a.on { background: rgba(59, 123, 255, .28); color: var(--text); border-color: var(--line-3); }
 
-.cg-body { flex: 1; overflow-y: auto; padding: 6px 18px 0; }
-.cg-sec { padding: 16px 0; border-bottom: 1px dashed var(--line-1, var(--n-5)); scroll-margin-top: 8px; }
-.cg-sec h4 { margin: 0 0 8px; font-size: 14px; color: var(--t-max); display: flex; align-items: center; gap: 8px; }
-.cg-num { width: 20px; height: 20px; border-radius: 6px; background: var(--accent-text); color: var(--n-black, #111); display: grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; }
-.cg-intro { margin: 0 0 8px; font-size: 12.5px; color: var(--t-body); line-height: 1.7; }
-.cg-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
-.cg-list li { font-size: 13px; color: var(--t-body); line-height: 1.6; padding-left: 14px; position: relative; }
-.cg-list li::before { content: ""; position: absolute; left: 2px; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-text); }
-.cg-tip { margin-top: 10px; display: flex; gap: 8px; background: var(--accent-ghost, var(--film-2)); border-radius: 9px; padding: 9px 11px; font-size: 12px; color: var(--t-body); line-height: 1.6; }
-.cg-end { padding: 18px 0 24px; }
-.cg-start { width: 100%; border: 0; border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--btn-bg, var(--accent-text)); color: var(--btn-fg, #111); }
+.cg-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 0; position: relative; }
+.cg-sec { padding: 16px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 8px; }
+.cg-sec h4 { margin: 0 0 8px; font: 600 14px/1.4 var(--f-disp); color: var(--text); display: flex; align-items: center; gap: 8px; }
+.cg-num {
+  width: 20px; height: 20px; border-radius: 6px; flex: none; display: grid; place-items: center;
+  background: rgba(63, 216, 255, .14); color: var(--cyan-soft); font: 600 11px/1 var(--f-mono);
+}
+.cg-intro { margin: 0 0 8px; font-size: 13px; color: var(--text-2); line-height: 1.7; }
+.cg-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.cg-list li { font-size: 13px; color: var(--text-2); line-height: 1.65; padding-left: 14px; position: relative; }
+.cg-list li::before { content: ''; position: absolute; left: 2px; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); }
+.cg-tip { margin-top: 10px; font-size: 12px; }
+.cg-end { padding: 16px 0 20px; }
 
-.cg-slide-enter-active, .cg-slide-leave-active { transition: transform .22s ease; }
-.cg-slide-enter-from, .cg-slide-leave-to { transform: translateX(100%); }
+.cg-slide-enter-active, .cg-slide-leave-active { transition: transform .22s ease, opacity .22s ease; }
+.cg-slide-enter-from, .cg-slide-leave-to { transform: translateX(24px); opacity: 0; }
 
-@media (max-width: 480px) {
-  .cg-drawer { width: 100%; max-width: 100%; }
+@media (max-width: 640px) {
+  .cg-drawer { top: 8px; right: 8px; bottom: 8px; left: 8px; width: auto; max-width: none; }
 }
 </style>

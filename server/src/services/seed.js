@@ -2,16 +2,18 @@
 
 /**
  * First-boot content: a couple of starter canvas templates and prompt
- * snippets. Runs once per seed version (tracked in `settings`), so anything
- * the user later edits or deletes is never brought back.
+ * snippets. They belong to the site (SYSTEM_USER) and every account sees them.
+ * Runs once per seed version (tracked in `settings`), so anything that is
+ * later edited or deleted is never brought back.
  */
 const Setting = require('../models/Setting')
 const Template = require('../models/Template')
 const TextTemplate = require('../models/TextTemplate')
-const { LOCAL_USER } = require('../constants')
+const { SYSTEM_USER } = require('../constants')
 
 const SEED_KEY = '_seedVersion'
-const SEED_VERSION = 2
+// 3: the built-in templates are spaced for the redesigned nodes (see the note above TEMPLATES).
+const SEED_VERSION = 3
 
 const node = (id, type, x, y, data = {}) => ({ id, type, position: { x, y }, data })
 // 连线必须带连接点：画布靠它区分文字输入、图片输入和各自的输出
@@ -19,6 +21,13 @@ const edge = (source, sourceHandle, target, targetHandle) => ({
   id: `e-${source}-${target}`, source, sourceHandle, target, targetHandle,
 })
 
+/*
+ * Positions are for the node sizes of the current editor: source nodes are about
+ * 280 x 300, generation nodes about 260 wide and 450 to 560 tall (taller once they
+ * hold a result). Columns are 440 apart (a 160 gap, the same as Tidy up leaves),
+ * and nothing sits below a generation node, so a template never opens with
+ * overlapping nodes. Change the node sizes -> re-space here and bump SEED_VERSION.
+ */
 const TEMPLATES = [
   {
     key: 'text-to-image',
@@ -28,7 +37,7 @@ const TEMPLATES = [
     graph: {
       nodes: [
         node('prompt', 'text', 0, 0, { text: '一只坐在窗台上的橘猫，午后阳光，胶片质感' }),
-        node('gen', 'image-gen', 420, 0),
+        node('gen', 'image-gen', 440, 0),
       ],
       edges: [edge('prompt', 'text-out', 'gen', 'text-in')],
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -43,9 +52,9 @@ const TEMPLATES = [
     graph: {
       nodes: [
         node('prompt', 'text', 0, 0, { text: '雪山脚下的木屋，清晨薄雾，电影感构图' }),
-        node('image', 'image-gen', 420, 0),
-        node('motion', 'text', 420, 360, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
-        node('video', 'video-gen', 860, 120),
+        node('motion', 'text', 0, 380, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
+        node('image', 'image-gen', 440, 0),
+        node('video', 'video-gen', 860, 0),
       ],
       edges: [
         edge('prompt', 'text-out', 'image', 'text-in'),
@@ -78,19 +87,19 @@ async function seed() {
   for (const t of TEMPLATES) {
     // 内置模板以代码为准：提升 SEED_VERSION 后会用新内容覆盖旧的内置模板
     await Template.updateOne(
-      { key: t.key },
-      { $set: { ...t, userId: LOCAL_USER, builtin: true }, $setOnInsert: { isActive: true } },
+      { key: t.key, builtin: true },
+      { $set: { ...t, userId: SYSTEM_USER, builtin: true }, $setOnInsert: { isActive: true } },
       { upsert: true }
     )
   }
   for (const t of TEXT_TEMPLATES) {
     await TextTemplate.updateOne(
       { key: t.key, builtin: true },
-      { $setOnInsert: { ...t, userId: LOCAL_USER, builtin: true, isActive: true } },
+      { $setOnInsert: { ...t, userId: SYSTEM_USER, builtin: true, isActive: true } },
       { upsert: true }
     )
   }
-  await Setting.updateOne({ key: SEED_KEY }, { $set: { value: SEED_VERSION, userId: LOCAL_USER } }, { upsert: true })
+  await Setting.updateOne({ key: SEED_KEY }, { $set: { value: SEED_VERSION } }, { upsert: true })
   return true
 }
 

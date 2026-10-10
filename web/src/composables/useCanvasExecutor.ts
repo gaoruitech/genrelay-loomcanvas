@@ -143,7 +143,7 @@ export interface RunOptions {
 }
 
 // 同时真正在执行(submit/poll)的节点上限。多条生成并发时用它兜底，避免一次打出过多请求触发上游限流。
-const MAX_CONCURRENT = 10
+export const MAX_CONCURRENT = 10
 
 export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
   // ============ 并发调度状态 ============

@@ -1,318 +1,212 @@
 /* ============================================================
-   色板真源 —— 全站唯一的颜色定义处
+   LoomCanvas 霓虹主题 —— 全站唯一的颜色 / 圆角 / 光晕定义处
    ------------------------------------------------------------
+   只有这一套深色主题，没有浅色皮肤，也没有主题切换。
    规则：
-   1) 组件里不要再写裸十六进制色值，一律引用本文件的令牌。
-   2) 文字档 t-* 全部过 WCAG AA：t-dim 压在最亮的表面 n-4 上仍有 4.85:1。
-   3) 青柠只有两个职责：主操作、当前位置。装饰性高亮走
-      accent-dim / accent-line 或中性阶，不要再用实色。
+   1) 组件里不写裸色值，一律引用这里的令牌。
+   2) 正文只用三档文字色（--text / --text-2 / --text-3），压在 --panel-solid 上
+      分别约 15.9 / 8.5 / 5.4 : 1。青、蓝、紫只做强调、图标、描边和状态。
+   3) 光晕有配额：首屏产品图、登录卡、当前导航项、主按钮、连线、运行中的节点、选中项
+      可以发光；表格、表单分区、列表行、普通卡片只用 1px 描边。
    ============================================================ */
-:root{
-  /* 让浏览器原生件（滚动条、表单控件、输入法候选框）跟着主题走。
-     不设的话亮色皮肤下滚动条仍是深色的，很出戏。 */
+
+/* 自托管字体（生产 CSP 是 font-src 'self'，不能用外链）。只带拉丁子集，中文落到系统字体。
+   三款都是 SIL Open Font License 1.1，文件来自 @fontsource-variable/*。 */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal; font-display: swap; font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Sora Variable';
+  font-style: normal; font-display: swap; font-weight: 100 800;
+  src: url('@fontsource-variable/sora/files/sora-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal; font-display: swap; font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+:root {
   color-scheme: dark;
 
-  /* ---- 表面档：越大越亮 ----
-     2026-08-21 整体抬亮了一档。原来页面底是 #0c0c0e（L* 3.37），比 Material
-     建议的深色底 #121212（L* 6.5）还暗一半，白色标题压上去有 19.54:1 ——
-     深色主题的舒适区是 12–16:1，再高就会出现 halation：高亮元素边缘发虚发光，
-     眼睛反复对焦，长时间看很累。高饱和的青柠尤其明显。
-     抬的幅度是暗端 +3.1、亮端 +1.5：暗端才是刺眼的来源，亮端跟着抬会把
-     上半段的层级压扁。 */
-  --n-black: #000000;   /* L*  0.00  纯黑；媒体区与遮罩用，不参与这次抬亮 */
-  --n-0:     #151517;   /* L*  6.47  页面底 canvas */
-  --n-1:     #18181b;   /* L*  8.22  低层面板 */
-  --n-2:     #1b1b1e;   /* L*  9.49  面板 panel */
-  --n-3:     #212125;   /* L* 12.44  输入框、抬高面板、标签页底 */
-  --n-4:     #2a2a2f;   /* L* 16.96  hover、选中底 */
-  --n-5:     #313137;   /* L* 20.30  常规边框 */
-  --n-6:     #37373d;   /* L* 23.18  强边框、分隔线 */
-  --n-7:     #404049;   /* L* 27.73  最强边框、禁用态描边 */
-  --n-8:     #474751;   /* L* 30.84  分隔重线、滚动条滑块 */
-  --n-9:     #585864;   /* L* 37.87  禁用态描边、次级滑块 */
-  --n-10:    #6e6e7b;   /* L* 46.50  装饰线、图标描边；对比度不足，禁止做文字 */
-
-  /* ---- 文字档 ----
-     跟着表面档一起收了一档，最要紧的是标题不再用纯白：#fff 压在页面底上是
-     19.54:1，收到 #e8e8e8 后是 14.88:1，落在舒适区中段。纯白在深色界面里
-     是天花板，只抬背景撼动不了这个比值，必须两头一起收。
-     校验：最低 4.85:1（t-dim 压在最亮的 n-4 上），全部仍过 AA。 */
-  --t-dim:    #96969c;  /* 次要文字、占位符、辅助说明 */
-  --t-body:   #bcbcc2;  /* 正文 */
-  --t-strong: #d4d4d8;  /* 强调正文 */
-  --t-max:    #e8e8e8;  /* 标题；刻意不用纯白 */
-
-  /* ---- 主色：实色仅限主操作与当前位置 ---- */
-  --accent:       #c3f53c;
-  --accent-hover: #d4ff47;
-  --accent-press: #a8d935;
-  --accent-text:  #c3f53c;              /* 链接、关键数值 */
-  /* 非文字元素的强调边（节点选中框这类）。浅色侧同名令牌是墨绿 #45a180，
-     深色侧不直接用满格青柠 —— 一圈 #c3f53c 压在深画布上太扎眼，
-     退到 accent-press 那一档，仍然一眼是青柠，但不刺。 */
-  --accent-edge:  #a8d935;
-  --accent-ink:   #071007;              /* 压在青柠上的深字，15.14:1 */
-  /* 半透明青柠：改造前散着 38 种不同透明度、241 处，归成下面 5 档，
-     每处与原透明度的偏差 ≤ 0.09。 */
-  --accent-ghost: rgba(195,245,60,.06); /* 极弱底纹、hover 微光 */
-  --accent-dim:   rgba(195,245,60,.14); /* 选中行底纹 */
-  --accent-line:  rgba(195,245,60,.28); /* 聚焦边框、选中描边 */
-  --accent-mid:   rgba(195,245,60,.42); /* 强调描边、拖放高亮 */
-  --accent-veil:  rgba(195,245,60,.60); /* 覆盖层、进度轨 */
-  /* 生命线跑完那一段（components/result/TaskLifeLine.vue）。
-     不复用 --accent-line：那一档在浅色底上淡到看不见，而这条线是要被读的。 */
-  --ll-done:      rgba(195,245,60,.28);
-
-  /* ---- 语义色 ----
-     成功色刻意与主色分开：青柠在本体系里专指「可点击的主操作」，
-     退款/成功一类的状态标签若也用青柠，会被当成可点。
-     #4ade80 与 #c3f53c 色相差 66°，足以区分。 */
-  --danger:      #f2555a;
-  --danger-dim:  rgba(242,85,90,.14);
-  --warning:     #f5a524;
-  --warning-dim: rgba(245,165,36,.14);
-  --info:        #4aa8ff;
-  --info-dim:    rgba(74,168,255,.14);
-  --success:     #4ade80;
-  --success-dim: rgba(74,222,128,.14);
-
-  /* ---- 品牌装饰色：不参与语义，勿用于状态 ---- */
-  --gold:        #ffd700;   /* 徽章 */
-  --gold-a:      #ffd700;   /* 金色渐变文字起点 */
-  --gold-b:      #ffaa00;   /* 金色渐变文字终点 */
-
-  /* ---- 通道色：只用于侧栏图标、页头光带、作品卡角标 ---- */
-  --lane-image: #7fd4c1;  /* 图片类 */
-  --lane-video: #7aa2f7;  /* 视频类 */
-  --lane-agent: #c39bf5;  /* 画布、文本类 */
-  --lane-shop:  #f5b78a;  /* 工具类 */
-
-  /* ---- 主操作按钮 ----
-     深色下青柠填充最好看（深底衬托它发光）；浅色下同样做法失效——
-     青柠 L*90.4 与浅底 98 几乎持平，按钮浮不起来。所以浅色侧翻成深底+青柠字。 */
-  --btn-bg: var(--accent);
-  --btn-fg: var(--accent-ink);
-  --btn-bg-hover: var(--accent-hover);
-
-  /* ---- 标签 / 页签选中态 ----
-     深色下青柠实心底配深字，很好看；浅色下同样的实心青柠会在界面里乱跳，
-     所以浅色侧换成淡底 + 墨绿字。深色侧取值不变，观感零改动。 */
-  --chip-bg: var(--accent);
-  --chip-fg: var(--accent-ink);
-
-  /* ---- 恒黑：不随主题翻转 ----
-     图片区/播放器底在亮色皮肤下也必须是黑的，否则作品展示会被毁掉。 */
-  --media-bg: #000000;   /* 视频/摄影作品的衬底：黑底衬托，恒黑 */
-
-  /* 压在「恒黑」上的前景：遮罩(--scrim)、媒体衬底、饱和色块。
-     这类底色两个主题同值，前景就绝不能用会翻的 --t-* / --n-* / --ink-* ——
-     深色皮肤下是浅字压黑底（看得见），换到浅色皮肤前景翻成深字，
-     照片上那些「×」「▶」「第 2 张」就全糊在半透明黑里了。
-     所以单开一对恒定浅字，跟 --media-bg 同属「不随主题翻转」那一档。
-     注意：青柠底(--accent)不在此列，那是亮底，要用 --accent-ink 的深字。 */
-  --on-scrim:     rgba(255,255,255,.92);  /* 主要：图标、按钮字、角标 */
-  --on-scrim-dim: rgba(255,255,255,.70);  /* 次要：说明文字、未激活态 */
-  /* 出图页成品区的衬底。
-     不能跟 --media-bg 共用：那个是恒黑，专为视频与摄影作品设计。
-     出图页的成品大量是白底（线稿、白底商品图、宫格图），contain 之后
-     四周露出来的那圈衬底就成了显眼的边框 —— 浅色皮肤下尤其难看，
-     #e3e7e6 压在 #f7f7f7 的卡片上是一道实打实的灰框。
-     取值贴着卡片底色只低一档，图片周围仍有极弱层次，但不再是「边框」。 */
-  --canvas-bg: #1b1b1e;
-  --player-bg: #000000;  /* 视频播放器：两个主题都必须是黑的 */
-
-  /* 无限画布的工作台底色与点阵。
-     注意别跟上面的 --canvas-bg 搞混：那个是「出图页成品区的衬底」，名字里的
-     canvas 指 HTML canvas 语义；这两个才是无限画布（vue-flow）那片工作区。
-     单独开一对令牌而不是直接用 --n-0，是因为工作台需要比页面底再压暗一档：
-     节点卡片浮在上面才有「摆在台面上」的层次，浅色皮肤下尤其明显。
-     深色侧取值与原来的 n-0 / n-5 完全一致，等于没动。 */
-  --flow-bg:  #151517;
-  --flow-dot: #313137;
-
-  /* 拖动节点时的对齐参考线。
-     原来直接写死 #ff3d8b —— 那是「报错」那一档的饱和度，参考线却是常态提示，
-     每拖一下就闪一根荧光粉，观感非常硬。改用品牌青柠压透明度：既属于这套皮肤，
-     又比节点边框亮一档，一眼能认出是辅助线而不是内容。
-     --guide-dim 是「还没吸附、只是靠近」时的预告色，比命中态弱得多。 */
-  --guide:     rgba(195, 245, 60, 0.72);
-  --guide-dim: rgba(195, 245, 60, 0.30);
-
-  /* ---- 半透明语义层 ----
-     深色下靠「加白」提亮，亮色下靠「加黑」压暗，两边语义相同、取值相反。
-     scrim/shadow 例外：遮罩与投影在两个主题下都是黑的。 */
-  --line-1: rgba(255,255,255,.06);   /* 细分隔线 */
-  --line-2: rgba(255,255,255,.12);   /* 中分隔线 */
-  --film-1: rgba(255,255,255,.03);   /* 表面微提 */
-  --film-2: rgba(255,255,255,.06);   /* 表面提一档 */
-  --ink-soft: rgba(255,255,255,.56); /* 叠加式弱文字 */
-  --ink-hard: rgba(255,255,255,.82); /* 叠加式强文字 */
-  --shadow-1: rgba(0,0,0,.30);
-  --shadow-2: rgba(0,0,0,.45);
-  --shadow-3: rgba(0,0,0,.65);
-
-  /* ---- 半透明工具色 ---- */
-  --glass:       rgba(255,255,255,.03);
-  --hairline:    rgba(255,255,255,.06);
-  --border-weak: rgba(255,255,255,.02);
-  /* 毛玻璃面板：跟随主题的半透明底，配 backdrop-filter 用。
-     改造前这类写死成 rgba(30,30,35,.9) 一类的深灰，既不是纯白也不是纯黑，
-     上一轮的半透明脚本只认纯白/纯黑，整类漏掉，亮色下就是一块黑。 */
-  --glass-panel: color-mix(in srgb, var(--n-1) 92%, transparent);
-  --glass-soft:  color-mix(in srgb, var(--n-2) 60%, transparent);
-  --scrim:       rgba(0,0,0,.6);
-  --scrim-soft:  rgba(0,0,0,.3);
-
-  /* ---- 几何与字体 ---- */
-  --radius-lg: 14px;
-  --radius-md: 10px;
-  --font-family: "Inter", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  /* ---- 底色 ---- */
+  --bg-0: #050a1e;
+  --bg-1: #0a1433;
+  --bg-2: #0e1a40;
+  /* ---- 面板 ---- */
+  --panel: rgba(16, 27, 64, .74);
+  --panel-solid: #0f1a3d;
+  --panel-2: #15224d;
+  --panel-3: #1b2b5e;
+  --well: rgba(4, 9, 28, .62);
+  --well-solid: #070d27;
+  /* ---- 线 ---- */
+  --line: rgba(124, 160, 255, .16);
+  --line-2: rgba(124, 170, 255, .30);
+  --line-3: rgba(124, 190, 255, .5);
+  /* ---- 文字 ---- */
+  --text: #e9efff;
+  --text-2: #aab7da;
+  --text-3: #8492b8;
+  --text-inv: #04102b;
+  /* ---- 强调 ---- */
+  --cyan: #3fd8ff;
+  --blue: #3b7bff;
+  --violet: #8a5cff;
+  --cyan-soft: #9be9ff;
+  --grad: linear-gradient(90deg, #3fd8ff 0%, #3b7bff 55%, #8a5cff 100%);
+  --grad-line: linear-gradient(135deg, rgba(63, 216, 255, .85), rgba(59, 123, 255, .45) 45%, rgba(138, 92, 255, .8));
+  --grad-btn: linear-gradient(90deg, #4fe0ff, #5a9bff);
+  --grad-btn-hover: linear-gradient(90deg, #86ecff, #7db2ff);
+  --grad-text: linear-gradient(90deg, #8ff0ff 0%, #3fd8ff 35%, #6f9dff 75%, #a98bff 100%);
+  --grad-panel: linear-gradient(180deg, rgba(21, 34, 78, .78), rgba(11, 19, 48, .78));
+  --grad-card: linear-gradient(180deg, rgba(21, 34, 78, .7), rgba(12, 21, 52, .7));
+  --grad-node: linear-gradient(180deg, rgba(25, 39, 88, .95), rgba(13, 22, 54, .96));
+  /* ---- 语义 ---- */
+  --ok: #3ee6a8;
+  --warn: #ffc35a;
+  --err: #ff6b8b;
+  --err-soft: #ff9db3;
+  --magenta: #ff5fb7;
+  /* ---- 类型色：图片青、视频紫、对话蓝 ---- */
+  --kind-image-fg: #9be9ff; --kind-image-bg: rgba(63, 216, 255, .12);
+  --kind-video-fg: #c7b3ff; --kind-video-bg: rgba(138, 92, 255, .18);
+  --kind-chat-fg: #a9c5ff;  --kind-chat-bg: rgba(59, 123, 255, .18);
+  /* ---- 圆角 ---- */
+  --r-xs: 6px; --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-xl: 24px;
+  /* ---- 阴影 / 光晕 ---- */
+  --sh-1: 0 8px 24px rgba(2, 6, 22, .45);
+  --sh-2: 0 24px 64px rgba(2, 6, 22, .6);
+  --glow-s: 0 0 0 1px rgba(63, 216, 255, .35), 0 0 16px rgba(63, 216, 255, .22);
+  --glow-m: 0 0 32px rgba(59, 123, 255, .32), 0 0 2px rgba(63, 216, 255, .6);
+  --glow-l: 0 0 96px rgba(59, 123, 255, .30), 0 0 32px rgba(138, 92, 255, .22);
+  --ring: 0 0 0 3px rgba(63, 216, 255, .28);
+  --ring-err: 0 0 0 3px rgba(255, 107, 139, .18);
+  /* ---- 字体 ---- */
+  --f-body: 'Inter Variable', 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, 'Segoe UI', sans-serif;
+  --f-disp: 'Sora Variable', 'Sora', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --f-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, Consolas, 'PingFang SC', 'Microsoft YaHei', monospace;
+  /* ---- 外壳尺寸 ---- */
+  --shell-top: 56px;
+  --shell-side: 200px;
+  --shell-side-mini: 64px;
 
   /* ============================================================
-     兼容别名 —— 改造前的旧变量名，供
-     既有组件继续使用。新代码请直接用上面的令牌，勿用这一段。
+     画布编辑器沿用的一组名字（表面阶 n-*、文字阶 t-*、accent-* 等）。
+     编辑器里几十个节点 / 弹窗组件都按这组名字取色，这里把它们接到霓虹取值上，
+     保证「整站一个取值来源」。新写的页面请直接用上面那一组。
      ============================================================ */
-  --bg-app:           var(--n-0);
-  --bg-panel:         var(--n-2);
-  --bg-panel-darker:  var(--n-black);
-  --bg-input:         var(--n-3);
-  --tab-bg:           var(--n-3);
-  --border:           var(--n-5);
-  --primary:          var(--accent);
-  --primary-hover:    var(--accent-hover);
-  --text-main:        var(--t-max);
-  --text-muted:       var(--t-dim);
+  --n-black: #02040f;
+  --n-0: var(--bg-0);
+  --n-1: var(--bg-1);
+  --n-2: var(--panel-solid);
+  --n-3: #111d45;
+  --n-4: var(--panel-3);
+  --n-5: #233468;
+  --n-6: #2c3f7c;
+  --n-7: #384c90;
+  --n-8: #4759a0;
+  --n-9: #5d6fb0;
+  --n-10: #7484bd;
 
-  --bg-100:        var(--n-0);
-  --bg-200:        var(--n-1);
-  --panel-bg:      var(--n-1);
+  --t-dim: #93a1c8;
+  --t-body: #c0cbea;
+  --t-strong: #dbe3fa;
+  --t-max: var(--text);
+
+  --accent: var(--cyan);
+  --accent-hover: #86ecff;
+  --accent-press: #2fb8e6;
+  --accent-text: var(--cyan-soft);
+  --accent-edge: var(--cyan);
+  --accent-ink: var(--text-inv);
+  --accent-ghost: rgba(63, 216, 255, .06);
+  --accent-dim: rgba(63, 216, 255, .14);
+  --accent-line: rgba(63, 216, 255, .32);
+  --accent-mid: rgba(63, 216, 255, .5);
+  --accent-veil: rgba(63, 216, 255, .65);
+  --ll-done: rgba(63, 216, 255, .32);
+
+  --danger: var(--err);
+  --danger-dim: rgba(255, 107, 139, .14);
+  --warning: var(--warn);
+  --warning-dim: rgba(255, 195, 90, .14);
+  --info: #6f9dff;
+  --info-dim: rgba(59, 123, 255, .18);
+  --success: var(--ok);
+  --success-dim: rgba(62, 230, 168, .14);
+
+  --gold: #ffc35a; --gold-a: #ffd98a; --gold-b: #ffb347;
+
+  --lane-image: #9be9ff;
+  --lane-video: #c7b3ff;
+  --lane-agent: #a9c5ff;
+  --lane-shop: #ffc35a;
+
+  --btn-bg: #56c8ff;
+  --btn-fg: var(--text-inv);
+  --btn-bg-hover: #86ecff;
+  --chip-bg: rgba(59, 123, 255, .28);
+  --chip-fg: var(--text);
+
+  --media-bg: #070c26;
+  --on-scrim: rgba(255, 255, 255, .92);
+  --on-scrim-dim: rgba(255, 255, 255, .70);
+  --canvas-bg: #0a1230;
+  --player-bg: #000000;
+
+  --flow-bg: #060b22;
+  --flow-dot: rgba(124, 160, 255, .22);
+  --guide: rgba(63, 216, 255, .8);
+  --guide-dim: rgba(63, 216, 255, .32);
+
+  --line-1: var(--line);
+  --film-1: rgba(124, 160, 255, .04);
+  --film-2: rgba(124, 160, 255, .08);
+  --ink-soft: rgba(233, 239, 255, .6);
+  --ink-hard: rgba(233, 239, 255, .86);
+  --shadow-1: rgba(2, 6, 22, .35);
+  --shadow-2: rgba(2, 6, 22, .5);
+  --shadow-3: rgba(2, 6, 22, .7);
+
+  --glass: rgba(124, 160, 255, .05);
+  --hairline: var(--line);
+  --border-weak: rgba(124, 160, 255, .06);
+  --glass-panel: rgba(12, 21, 52, .92);
+  --glass-soft: rgba(12, 21, 52, .6);
+  --scrim: rgba(2, 5, 18, .72);
+  --scrim-soft: rgba(2, 5, 18, .4);
+
+  --radius-lg: var(--r-md);
+  --radius-md: var(--r-sm);
+  --font-family: var(--f-body);
+
+  --bg-app: var(--n-0);
+  --bg-panel: var(--n-2);
+  --bg-panel-darker: var(--n-black);
+  --bg-input: var(--well-solid);
+  --tab-bg: var(--n-3);
+  --border: var(--n-5);
+  --primary: var(--accent);
+  --primary-hover: var(--accent-hover);
+  --text-main: var(--t-max);
+  --text-muted: var(--t-dim);
+  --bg-100: var(--n-0);
+  --bg-200: var(--n-1);
+  --panel-bg: var(--n-1);
   --border-accent: var(--accent-dim);
-  --muted:         var(--t-dim);
-  --text:          var(--t-body);
-  --subtext:       var(--t-dim);
+  --muted: var(--t-dim);
+  --subtext: var(--t-dim);
   --btn-text-dark: var(--accent-ink);
-
-  /* 下面四个改造前从未定义过，全站一直靠 var() 的 fallback 值在跑
-     （--text-secondary 甚至有 #888 和 #666 两种 fallback，同一个变量
-     在不同文件里是两个颜色）。这里补上定义，fallback 才能安全去掉。 */
-  --text-primary:   var(--t-body);
+  --text-primary: var(--t-body);
   --text-secondary: var(--t-dim);
-  --border-hover:   var(--n-9);
-  --skel-bg:        var(--n-4);
+  --border-hover: var(--n-9);
+  --skel-bg: rgba(124, 160, 255, .1);
 }
 
-
-/* ============================================================
-   C 墨绿 · 亮色皮肤
-   ------------------------------------------------------------
-   默认是深色（上面的 :root）。这里只覆盖需要翻转的令牌。
-   三条不覆盖，因为它们不随主题走：
-     --media-bg  图片/视频区恒黑
-     --scrim-*   遮罩恒黑
-     --accent    青柠填充值不变（只是浅色下不再用于大面积按钮）
-   取值全部以最暗表面 n-4 #eaeceb 为基准校验，均 ≥4.8:1。
-   ============================================================ */
-:root[data-theme="light"]{
-  color-scheme: light;
-  --n-black: #000000;
-  --n-0:  #f9fafa;   /* L* 98.20  页面底，不用纯白 */
-  --n-1:  #f7f7f7;   /* L* 97.23 */
-  --n-2:  #f3f5f4;   /* L* 96.37 */
-  --n-3:  #eff1f1;   /* L* 95.00 */
-  --n-4:  #eaeceb;   /* L* 93.22 */
-  --n-5:  #e1e4e3;   /* L* 90.34 */
-  --n-6:  #cfd4d2;   /* L* 84.49 */
-  --n-7:  #bac2c0;   /* L* 77.77 */
-  --n-8:  #a2acaa;   /* L* 69.53 */
-  --n-9:  #889592;   /* L* 60.61 */
-  --n-10: #72807d;   /* L* 52.39 */
-
-  --t-dim:    #516c65;   /* 5.45 on n-0，4.81 on n-4 */
-  --t-body:   #3a504b;   /* 8.27 */
-  --t-strong: #2b3e3a;   /* 10.84 */
-  --t-max:    #1e2d2a;   /* 13.72 */
-
-  /* 青柠是霓虹色，没有暗色版本：不给它造一个，而是限制它的出场。
-     文字/边框改用墨绿，填充退到按钮内部（深底衬托）。 */
-  --accent-text: #2d7259;   /* 5.48 on n-0 */
-  --accent-edge: #45a180;   /* 3.01 vs 页面底，非文字元素要求 3:1 */
-  --btn-bg:      #192e28;   /* 青柠压其上 11.24:1；vs 页面底 13.7:1 */
-  --btn-bg-hover:#223f36;
-  --chip-bg:     rgba(45,114,89,.14);
-  --chip-fg:     #2d7259;
-  --btn-fg:      #c3f53c;   /* 青柠回到深底，回到它最好看的状态 */
-
-  --danger:  #ad4349;
-  --warning: #8d5b23;
-  --info:    #3e689f;
-  --success: #317252;
-  --danger-dim:  rgba(173,67,73,.12);
-  --warning-dim: rgba(141,91,35,.12);
-  --info-dim:    rgba(62,104,159,.12);
-  --success-dim: rgba(49,114,82,.12);
-
-  /* 半透明：由「加白提亮」翻成「加黑压暗」 */
-  --line-1: rgba(0,0,0,.07);
-  --line-2: rgba(0,0,0,.13);
-  --film-1: rgba(0,0,0,.022);
-  --film-2: rgba(0,0,0,.045);
-  --ink-soft: rgba(0,0,0,.56);
-  --ink-hard: rgba(0,0,0,.82);
-  --glass:    rgba(0,0,0,.028);
-  --hairline: rgba(0,0,0,.07);
-  --border-weak: rgba(0,0,0,.03);
-  /* 投影在亮底上要更淡，否则显脏 */
-  --shadow-1: rgba(31,45,42,.08);
-  --shadow-2: rgba(31,45,42,.13);
-  --shadow-3: rgba(31,45,42,.20);
-
-  /* 青柠半透明在浅底上几乎不可见，整组换成墨绿 */
-  --accent-ghost: rgba(45,114,89,.07);
-  --accent-dim:   rgba(45,114,89,.13);
-  --accent-line:  rgba(45,114,89,.30);
-  --accent-mid:   rgba(45,114,89,.45);
-  --accent-veil:  rgba(45,114,89,.62);
-  /* 深色下 28% 就够亮了，浅色底上得加到 55% 才读得出来 */
-  --ll-done:      rgba(45,114,89,.55);
-
-  /* 通道色压暗，浅底上原值太淡 */
-  --lane-image: #2f7d6c;
-  --lane-video: #3d63a8;
-  --lane-agent: #6b4a9e;
-  --lane-shop:  #9a5a28;
-  --gold:       #7e6300;
-  --gold-a:     #7e6300;
-  --gold-b:     #714b00;
-
-  /* 图片衬底在亮色下不用纯黑——浅色界面里挖一块纯黑非常突兀。
-     用略深于页面的中性灰衬托即可。视频播放器另走 --player-bg，仍恒黑。 */
-  --media-bg:   #e3e7e6;
-  --canvas-bg:  #f3f5f4;   /* 见深色侧注释：贴着卡片底色，不做灰框 */
-
-  /* 无限画布工作台：原来直接吃 --n-0 #f9fafa（L* 98.2），几乎是纸白，
-     一整屏铺开太晃眼，节点也浮不起来。压到 n-4 这一档（L* 93.2），
-     跟页面底差 5 个 L*，是「台面 vs 纸」的关系，不是脏了一块。
-     点阵跟着往下走一档，否则 #e1e4e3 压在 #eaeceb 上基本看不见。 */
-  --flow-bg:  #eaeceb;
-  --flow-dot: #c9d0cd;
-
-  /* 参考线在浅底上必须压暗：青柠原色 #c3f53c 压在 #eaeceb 上几乎看不见。
-     压到墨绿这一档，明度差够了，色相仍是品牌那一支。 */
-  --guide:     rgba(95, 158, 23, 0.82);
-  --guide-dim: rgba(95, 158, 23, 0.34);
-}
-
-
-/* ============================================================
-   SVG presentation attribute 的兜底
-   ------------------------------------------------------------
-   fill="#c3f53c" 这类写法在 SVG 上是 presentation attribute，
-   不是 CSS 属性值，塞 var() 进去多数浏览器解析不出来。
-   但 CSS 里的 fill/stroke 优先级高于 presentation attribute，
-   所以这里用属性选择器把那 24 处硬编码接管过来 ——
-   不用改任何一处标记，深色下取值不变（--accent-text 就是 #c3f53c），
-   亮色下自动跟着翻。新代码请直接用 currentColor，别再写死色值。
-   ============================================================ */
+/* 旧标记里写死在 SVG 属性上的颜色，接到令牌上 */
 [fill="#c3f53c"]   { fill: var(--accent-text); }
 [stroke="#c3f53c"] { stroke: var(--accent-text); }
 [fill="#4ade80"]   { fill: var(--success); }
@@ -321,5 +215,3 @@
 [stroke="#ffd700"] { stroke: var(--gold); }
 [fill="#3a3a3e"]   { fill: var(--n-7); }
 [stroke="#3a3a3e"] { stroke: var(--n-7); }
-
-html,body{font-family:var(--font-family);}

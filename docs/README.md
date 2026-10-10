@@ -8,8 +8,8 @@
 
 | Page | What it covers |
 | --- | --- |
-| [Getting started](getting-started.md) | From zero to your first generated image. |
-| [User guide](user-guide.md) | The canvas: nodes, wiring, running, results, brand kits, templates, assets, share links, shortcuts. |
+| [Getting started](getting-started.md) | From zero to your first generated image: start the stack, register, add a provider, run a node. Accounts. |
+| [User guide](user-guide.md) | Finding your way around (workbench, canvases, assets, models, history, settings) and the canvas: nodes, wiring, running, results and history, brand kits, templates, assets, share links, shortcuts. |
 | [FAQ](faq.md) | Problems people run into, and licensing pointers. |
 
 ## Running it
@@ -17,7 +17,7 @@
 | Page | What it covers |
 | --- | --- |
 | [Deployment](deployment.md) | Docker Compose, running without Docker, reverse proxy and HTTPS, backups, upgrades. |
-| [Configuration](configuration.md) | Environment variables, admin settings, in-canvas settings, fixed limits. |
+| [Configuration](configuration.md) | Environment variables, admin settings and where each one is on the Settings page, in-canvas settings, fixed limits. |
 | [Storage](storage.md) | Local disk or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO): setup per vendor, private buckets, delivery, switching, what has been tested. |
 | [Providers](providers.md) | The three vendors and the models each supports, custom models, changing the address, upgrading from the previous version, how media reaches upstreams, pricing and usage. |
 | [Security](security.md) | Hardening a deployment, what is public, what LoomCanvas does not do. |

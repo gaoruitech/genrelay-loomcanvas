@@ -4,13 +4,14 @@
     <span v-if="data.label" class="sn-frame-title">{{ data.label }}</span>
   </div>
 
-  <div v-else class="share-node" :class="`sn-${type}`">
-    <div class="sn-head">
-      <span class="sn-dot" :class="dotClass" />
-      <span class="sn-title">{{ typeLabel }}</span>
+  <div v-else class="cv-node share-node" :class="`sn-${type}`">
+    <div class="cv-head">
+      <LcIcon :name="iconName" />
+      <span class="cv-title">{{ typeLabel }}</span>
+      <span v-if="modelName" class="cv-head-x" :title="modelName">{{ modelName }}</span>
     </div>
 
-    <div class="sn-body">
+    <div class="cv-body">
       <!-- 文本 / 大语言模型的回答 / 视频分析的结论 -->
       <p v-if="TEXT_TYPES.has(type)" class="sn-text">{{ data.text || t('nodeui.share.emptyText') }}</p>
 
@@ -31,7 +32,7 @@
         <div v-if="promptText" class="sn-prompt">{{ promptText }}</div>
         <div class="sn-media">
           <img v-if="data.imageUrl" :src="https(data.imageUrl)" alt="" />
-          <span v-else class="sn-empty">{{ modelLabel }}</span>
+          <span v-else class="sn-empty">{{ t('nodeui.share.noResult') }}</span>
         </div>
       </template>
 
@@ -57,7 +58,7 @@
         <div v-if="data.prompt" class="sn-prompt">{{ data.prompt }}</div>
         <div class="sn-media">
           <video v-if="data.videoUrl" :src="https(data.videoUrl)" muted preload="metadata" controls />
-          <span v-else class="sn-empty">{{ modelLabel }}</span>
+          <span v-else class="sn-empty">{{ t('nodeui.share.noResult') }}</span>
         </div>
       </template>
 
@@ -88,6 +89,7 @@ import { Handle, Position } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { ensureHttps } from '@/utils/mediaUrl'
 import { getAdapter } from '@/utils/canvasModels'
+import LcIcon from '@/components/LcIcon.vue'
 
 const props = defineProps<{
   id: string
@@ -123,11 +125,12 @@ const VIDEO_TYPES = new Set(['video', 'video-gen', 'video-edit'])
 const TOOL_TYPES = new Set(['platform-export', 'slice', 'collage', 'watermark', 'fit-size'])
 const typeLabel = computed(() => (LABEL_KEYS[props.type] ? t(LABEL_KEYS[props.type]) : props.type))
 
-const dotClass = computed(() => {
-  if (TEXT_TYPES.has(props.type)) return 'd-text'
-  if (VIDEO_TYPES.has(props.type)) return 'd-video'
-  return 'd-image'
-})
+// 表头图标：和编辑态各节点用的是同一套
+const ICONS: Record<string, string> = {
+  'text': 'text', 'llm': 'chat', 'image-edit': 'edit', 'image-collection': 'layout', 'output': 'check',
+  'slice': 'layout', 'collage': 'layout', 'watermark': 'shield', 'fit-size': 'fit', 'platform-export': 'share',
+}
+const iconName = computed(() => ICONS[props.type] || (VIDEO_TYPES.has(props.type) || props.type === 'video-analysis' ? 'video' : 'image'))
 
 const toolImages = computed<string[]>(() => {
   const list = Array.isArray(props.data.imageUrls) ? props.data.imageUrls.filter(Boolean) : []
@@ -141,127 +144,128 @@ const frameStyle = computed(() => ({
 }))
 
 const promptText = computed(() => props.data.prompt || props.data.instruction || '')
-const modelLabel = computed(() => {
+// 表头右侧的副标：生成类节点用的是哪个模型
+const GEN_TYPES = new Set(['image-gen', 'image-edit', 'video-gen', 'video-edit'])
+// 看分享的人没有发布者的服务商（多半连账号都没有），模型标识对他们没有意义，也查不出名字：
+// 显示发布时随快照存下的显示名；快照里没有（发布者已经删掉了这个模型）就写一个中性的说法，不露出标识。
+const modelName = computed(() => {
   const m = props.data.model
-  return m ? t('nodeui.share.model', { model: getAdapter(m)?.label || m }) : t('nodeui.share.noResult')
+  if (!m || !GEN_TYPES.has(props.type)) return ''
+  const stored = typeof props.data.modelLabel === 'string' ? props.data.modelLabel.trim() : ''
+  return stored || t('nodeui.share.modelUnlisted')
 })
 
 interface H { id: string; type: 'source' | 'target'; position: Position; cls: string; style?: Record<string, string> }
 
 const HANDLES: Record<string, H[]> = {
   'text': [
-    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text' },
+    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text h-top' },
   ],
   'image': [
-    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image' },
+    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image h-top' },
   ],
   'image-collection': [
     { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
-    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image' },
+    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image h-top' },
   ],
   'image-gen': [
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '38%' } },
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '50%' } },
-    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image h-top' },
   ],
   'image-edit': [
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '38%' } },
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '50%' } },
-    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image h-top' },
   ],
   'video-gen': [
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '38%' } },
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '50%' } },
-    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video h-top' },
   ],
   'video': [
-    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video' },
+    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video h-top' },
   ],
   'video-edit': [
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '38%' } },
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '50%' } },
-    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video', style: { top: '62%' } },
-    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video' },
+    { id: 'video-out', type: 'source', position: Position.Right, cls: 'h-video h-top' },
   ],
   'video-analysis': [
-    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video', style: { top: '30%' } },
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '52%' } },
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '74%' } },
-    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text' },
+    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text h-top' },
   ],
   'llm': [
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '38%' } },
-    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text', style: { top: '66%' } },
-    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text' },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'text-in', type: 'target', position: Position.Left, cls: 'h-text' },
+    { id: 'text-out', type: 'source', position: Position.Right, cls: 'h-text h-top' },
   ],
   'output': [
-    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image', style: { top: '38%' } },
-    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video', style: { top: '50%' } },
+    { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
+    { id: 'video-in', type: 'target', position: Position.Left, cls: 'h-video' },
   ],
 }
 // 五个工具节点的端口一样：左进一张（或一组）图，右出图
 const TOOL_HANDLES: H[] = [
   { id: 'image-in', type: 'target', position: Position.Left, cls: 'h-image' },
-  { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image' },
+  { id: 'image-out', type: 'source', position: Position.Right, cls: 'h-image h-top' },
 ]
-const handles = computed<H[]>(() =>
-  TOOL_TYPES.has(props.type) ? TOOL_HANDLES : (HANDLES[props.type] || []))
+// 输入口从表头下方起自上而下排开（多个输入口各占一行的高度），输出口在表头那一行
+const handles = computed<H[]>(() => {
+  const list = TOOL_TYPES.has(props.type) ? TOOL_HANDLES : (HANDLES[props.type] || [])
+  const targets = list.filter(h => h.type === 'target')
+  if (targets.length < 2) return list.map(h => (h.type === 'target' ? { ...h, cls: h.cls + ' h-top' } : h))
+  let i = 0
+  return list.map(h => (h.type === 'target' ? { ...h, style: { top: `${52 + 22 * i++}px` } } : h))
+})
 </script>
 
 <style scoped>
-.share-node {
-  width: 220px;
-  background: var(--n-3);
-  border: 1px solid var(--n-6);
-  border-radius: 12px;
-  color: var(--t-strong);
-  font-size: 13px;
-  overflow: hidden;
-}
+@import './node-shared.css';
+/* 只读节点：和编辑态同一种卡片，去掉全部控件，只留内容 */
+.share-node { width: 240px; min-height: 104px; cursor: default; }
+
+/* 分组：只画一个带标题的虚线框 */
 .sn-frame {
   position: relative;
-  border: 1.5px dashed color-mix(in srgb, var(--accent-text) 55%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--accent-text) 5%, transparent);
+  border: 1.5px dashed rgba(63, 216, 255, .4);
+  border-radius: 18px;
+  background: rgba(63, 216, 255, .04);
   box-sizing: border-box;
 }
 .sn-frame-title {
-  position: absolute; top: -30px; left: 0;
-  max-width: 100%; padding: 4px 10px;
-  background: var(--n-2); border: 1px solid var(--n-5); border-radius: 9px;
-  font-size: 12px; font-weight: 600; color: var(--t-strong);
+  position: absolute; top: -32px; left: 0;
+  max-width: 100%; height: 26px; padding: 0 10px; display: inline-flex; align-items: center;
+  background: rgba(12, 21, 52, .92); border: 1px solid var(--line-2); border-radius: 9px;
+  font: 600 12px var(--f-body); color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sn-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-bottom: 1px solid var(--n-5);
-  font-weight: 600; font-size: 12px;
-}
-.sn-dot { width: 8px; height: 8px; border-radius: 50%; }
-.d-text { background: var(--info); }
-.d-image { background: var(--accent); }
-.d-video { background: #ff9d5c; }
-.sn-body { padding: 10px 12px; }
-.sn-text {
-  margin: 0; white-space: pre-wrap; word-break: break-word;
-  max-height: 160px; overflow: auto; line-height: 1.5; color: var(--t-body);
-}
+
+.sn-text,
 .sn-prompt {
-  margin-bottom: 8px; color: var(--t-dim); line-height: 1.5;
-  max-height: 96px; overflow: auto; word-break: break-word;
+  margin: 0;
+  border-radius: 9px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
 }
-.sn-media img, .sn-media video {
-  width: 100%; border-radius: 8px; display: block; background: var(--n-0);
-}
-.sn-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
-}
-.sn-grid img { width: 100%; border-radius: 6px; display: block; }
+.sn-text { max-height: 180px; }
+.sn-prompt { max-height: 96px; }
+.sn-media { border-radius: 9px; border: 1px solid var(--line); overflow: hidden; background: var(--media-bg); }
+.sn-media img, .sn-media video { width: 100%; display: block; }
+.sn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.sn-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .sn-empty {
-  display: block; text-align: center; color: var(--t-dim); font-size: 12px;
-  padding: 18px 0; border: 1px dashed var(--n-6); border-radius: 8px;
+  display: block; text-align: center; color: var(--text-3); font-size: 12px; padding: 20px 8px;
 }
-:deep(.h-text) { background: var(--info) !important; }
-:deep(.h-image) { background: var(--accent) !important; }
-:deep(.h-video) { background: #ff9d5c !important; }
+.sn-grid .sn-empty { grid-column: 1 / -1; border: 1px dashed var(--line-2); border-radius: 9px; }
 </style>

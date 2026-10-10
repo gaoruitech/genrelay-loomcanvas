@@ -46,7 +46,7 @@ export default {
     },
     share: {
       search: '搜索我的分享',
-      empty: '还没有分享链接。在画布顶栏点「创建分享链接」就能生成一条。',
+      empty: '还没有分享链接。在画布右上角点「分享」就能生成一条。',
       nodeCount: '{n} 个节点',
       active: '有效',
       expired: '已过期',
@@ -133,29 +133,30 @@ export default {
           title: '快速上手',
           intro: '无限画布是一块可自由拖动、无限延展的工作台：把「素材」和「模型能力」摆成一个个方块（节点），用线连起来，就拼出一条自动生产流水线 —— 左边放素材 → 中间接模型处理 → 右边出成品。',
           items: [
-            '第一步：到「设置」里添加一个服务商，填上你自己的 API Key。没有服务商，生成节点就没有模型可选。',
+            '第一步：到「模型管理」里添加一个服务商，填上你自己的 API Key。没有服务商，生成节点就没有模型可选。',
             '第二步：用「画布模板」套一条现成流水线，或在空白处右键自己添加节点。',
-            '第三步：换上自己的图和提示词，点顶栏的「运行全部」；满意的成品在节点上右键「存入我的资产」，下次直接复用。',
+            '第三步：换上自己的图和提示词，点底部工具条的「运行全部」；满意的成品在节点上右键「存入我的资产」，下次直接复用。',
           ],
         },
         models: {
           title: '连接模型',
           intro: 'LoomCanvas 自己不提供模型，它调用的是你添加的服务商，用的是你自己的 API Key。',
           items: [
-            '在「设置」里添加服务商：选一家服务商，看清它支持哪些模型，填 API Key，然后做一次连通性测试。接口地址默认是官方地址，在「高级」里可以改。',
+            '在「模型管理」里添加服务商：选一家服务商，看清它支持哪些模型，填 API Key，然后做一次连通性测试。接口地址默认是官方地址，在「高级」里可以改。',
             'API Key 加密保存在你自己的服务端，界面上只显示末四位。',
-            '可选的模型是服务商明确支持的那些，清单以外的可以在「设置 → 模型」里作为自定义模型添加（类型由你指定）；价格也在这一页填，没填的显示「成本未知」。同一页还能启用或停用某个模型、改显示名称和排序。',
-            '设置里有这几页：服务商、模型、存储、限制（并发数、重试次数、图片 / 视频超时、结果保留天数）、外观（站点名称、Logo、默认主题和语言）、用量。',
-            '还没有可用模型时，生成节点会提示「还没有可用的模型」，这时去设置里连接即可。',
+            '可选的模型是服务商明确支持的那些，清单以外的可以在「模型管理」里作为自定义模型添加（类型由你指定）；价格也在这一页填，没填的显示「成本未知」。同一页还能启用或停用某个模型、改显示名称和排序。',
+            '服务商、模型和价格每个账号各管各的，都在「模型管理」；每一次运行的记录和成本在「生成记录」。「设置」里是账号与安全（改密码、登录中的设备）；站点所有者还能看到站点（是否开放注册）、用户管理、存储、运行限制（并发数、重试次数、图片 / 视频超时、结果保留天数）和外观（站点名称、Logo、默认语言）。',
+            '还没有可用模型时，生成节点会提示「还没有可用的模型」，这时去「模型管理」添加服务商即可。',
           ],
         },
         ui: {
           title: '界面速览',
           items: [
-            '顶栏：画布名和保存状态、返回我的画布、使用教程、更多 ⋯、撤销 / 重做、运行全部、创建分享链接、保存。',
-            '浮动工具条：添加节点、画布模板、素材库、我的分享等入口。按住顶部的手柄可以把它拖到任意位置，也能在竖排和横排之间切换。',
-            '右下角是缩放控制，左下角是小地图（可拖可缩放，用来快速定位）。',
-            '空白处右键 = 添加节点 + 画布操作；节点上右键 = 针对该节点的操作。顶栏「更多 ⋯」里是同一份画布操作。',
+            '左上角：返回我的画布、画布名（点一下就能改）和保存状态；点保存状态可以立即保存。右上角：分享和「更多 ⋯」。',
+            '左侧节点面板：「+」是全部节点，下面按文本 / 图片 / 视频 / 对话 / 工具分类，最下面是素材库、画布模板、品牌包和我的分享。',
+            '底部工具条：缩放、适应屏幕、撤销 / 重做、自动整理、运行全部。左下角是小地图（可拖可缩放，用来快速定位）。',
+            '右侧「生成队列」：这张画布上正在运行、排队和已完成的节点，点一条就定位到对应节点；可以收起，把宽度还给画布。',
+            '空白处右键 = 添加节点 + 画布操作；节点上右键 = 针对该节点的操作。右上角「更多 ⋯」里是同一份画布操作。',
           ],
         },
         basic: {
@@ -166,7 +167,7 @@ export default {
             '拖文件进画布：把本地图片 / 视频直接拖进来（可一次拖多个），落在鼠标位置自动建节点并上传。',
             '粘贴图片：从别处复制的图片按 Ctrl+V 直接贴到画布上；在输入框里粘贴文字不受影响。',
             '复制节点：选中后 Ctrl+C、再 Ctrl+V，连同它们之间的连线一起贴出来；Ctrl+D 或右键「复制节点」是原地复制一份。',
-            '撤销 / 重做：Ctrl+Z / Ctrl+Shift+Z，顶栏也有按钮。',
+            '撤销 / 重做：Ctrl+Z / Ctrl+Shift+Z，底部工具条也有按钮。',
           ],
         },
         nodes: {
@@ -176,7 +177,7 @@ export default {
             '生成（调用付费模型）：图片生成、图片编辑、视频生成、视频编辑、视频分析、大语言模型。',
             '输出：成品。',
             '工具（本机处理，免费）：多平台导出、切片、拼图、加水印、改尺寸。',
-            '添加节点：空白处右键，或点工具条上的「＋」。',
+            '添加节点：空白处右键，或点左侧面板的「＋」。',
           ],
         },
         source: {
@@ -211,7 +212,7 @@ export default {
             '运行后：这一次的实际成本记在节点的任务详情和历史版本里（大语言模型、视频分析节点直接显示在节点底部）。',
             '成品节点会汇总它上游整条链路的成本：跑过的节点按实际成本算，还没跑的按预估算。',
             '按钮约定：实心按钮 = 调用付费模型；描边按钮 = 本机处理，免费。',
-            '用量统计：在「设置 → 用量」里按天或按模型查看汇总，也能翻每一次运行的明细。',
+            '用量统计：「生成记录」里能翻每一次运行的明细、按时间和模型筛选并看这段时间的合计；「工作台」上有本月合计和最近 14 天每天的运行次数。',
           ],
           tip: '这里的金额是按你配置的价格算出来的，仅供参考；真实账单以上游服务商为准。',
         },
@@ -219,7 +220,7 @@ export default {
           title: '成品与运行',
           items: [
             '成品节点：把连进来的产物汇总成一个九宫格，点开看大图；「运行此分支」一键跑它上游的整条链。要下载就用「批量下载」，里面可以只筛成品。',
-            '运行全部（顶栏）：按连线先后自动从头跑到尾，自动排队，上游失败时下游不跑。画布里要有「成品」节点收口。',
+            '运行全部（底部工具条）：按连线先后自动从头跑到尾，自动排队，上游失败时下游不跑。画布里要有「成品」节点收口。',
             '单节点：点节点自己的运行按钮，会连它需要更新的上游一起跑；已经出过结果的节点再点一次就是重跑，旧结果进历史版本。',
             '批量运行（更多 ⋯）：选一个「图片」节点当变量位，逐张换图让下游整条链重跑。运行期间页面要一直开着，一次最多 100 份素材。',
             '改了上游内容后，下游会标「输入已更新」，重新运行才生效。刷新页面后会接着等结果，不会重复提交。',
@@ -272,7 +273,7 @@ export default {
         lib: {
           title: '资源库与我的资产',
           items: [
-            '点工具条上的「素材库」打开资源库，里面有 4 个标签页：我的资产、画布模板、文本模板、我的分享。部署方预置了公共素材时，最前面还会多一个「素材库」。',
+            '点左侧面板最下面那颗按钮里的「素材库」打开资源库，里面有 4 个标签页：我的资产、画布模板、文本模板、我的分享。部署方预置了公共素材时，最前面还会多一个「素材库」。',
             '我的资产是你自己上传和存下来的图片、视频，分为产品图、品牌素材、参考、成品四类。',
             '画布模板：一键套用整套流水线；文本模板：选一段现成的提示词放进画布。',
             '成品回收：在生成节点上右键「存入我的资产」，它会出现在「我的资产 → 成品」，下次直接复用。',
@@ -281,7 +282,7 @@ export default {
         share: {
           title: '分享链接',
           items: [
-            '点顶栏的「创建分享链接」，为当前画布生成一条只读链接。有效期可以选 1 天、7 天、30 天或永久。',
+            '点右上角的「分享」，为当前画布生成一条只读链接。有效期可以选 1 天、7 天、30 天或永久。',
             '分享的是当时的快照：之后再修改或删除原画布，都不影响已经分享出去的内容。',
             '资源库的「我的分享」里列出所有链接，可以复制链接、打开、复制回自己的画布。',
             '不想再公开时点「撤销」，链接立即失效；过了有效期的链接也会自动失效。',
@@ -308,8 +309,8 @@ export default {
         faq: {
           title: '常见问题',
           items: [
-            '模型下拉是空的？→ 先到设置里添加一个服务商，并确认模型已启用。',
-            '显示「成本未知」？→ 这个模型没有配置价格。可以照常运行，也可以在设置里给它填上价格。',
+            '模型下拉是空的？→ 先到「模型管理」里添加一个服务商，并确认模型已启用。',
+            '显示「成本未知」？→ 这个模型没有配置价格。可以照常运行，也可以在「模型管理」里给它填上价格。',
             '连不上线？→ 看接口类型（图片接图片、文本接文本），并从右侧（输出）拖到左侧（输入）。',
             '点了运行没反应？→ 检查提示词和参考图是否填全；要跑「全部」或「分支」，得有「成品」节点收口。',
             '想省钱？→ 素材节点、工具节点、图片裁剪旋转都是本机处理，不产生成本。',
@@ -367,7 +368,7 @@ export default {
     },
     share: {
       search: 'Search my share links',
-      empty: 'No share links yet. Click "Create share link" in the canvas top bar to make one.',
+      empty: 'No share links yet. Click "Share" at the top right of a canvas to make one.',
       nodeCount: '{n} node(s)',
       active: 'Active',
       expired: 'Expired',
@@ -454,29 +455,30 @@ export default {
           title: 'Quick start',
           intro: 'The canvas is a workspace you can pan and extend without limit. Place your source material and model steps as blocks (nodes), wire them together, and you have a small production pipeline: sources on the left, model steps in the middle, finished work on the right.',
           items: [
-            'Step 1: open Settings and add a provider with your own API key. Without a provider, generation nodes have no models to choose from.',
+            'Step 1: open Models and add a provider with your own API key. Without a provider, generation nodes have no models to choose from.',
             'Step 2: apply a canvas template to get a ready-made pipeline, or right-click the empty canvas and add nodes yourself.',
-            'Step 3: swap in your own images and prompts, then click "Run all" in the top bar. Right-click a result you like and choose "Save to my assets" to reuse it later.',
+            'Step 3: swap in your own images and prompts, then click "Run all" in the bottom toolbar. Right-click a result you like and choose "Save to my assets" to reuse it later.',
           ],
         },
         models: {
           title: 'Connect models',
           intro: 'LoomCanvas does not ship its own models. It calls the upstream services you connect, using your own API keys.',
           items: [
-            'Add a provider in Settings: pick a provider, check which models it supports, enter the API key, then run the connection test. The base URL defaults to the official address and can be changed under Advanced.',
+            'Add a provider on the Models page: pick a provider, check which models it supports, enter the API key, then run the connection test. The base URL defaults to the official address and can be changed under Advanced.',
             'API keys are stored encrypted on your own server. The interface only ever shows the last four characters.',
-            'The available models are the ones the provider explicitly supports; anything else can be added as a custom model under Settings → Models, where you state its type. Prices are filled in on the same page; a model without one shows "Cost unknown". There you can also enable or disable a model and change its display name and order.',
-            'Settings has these pages: Providers, Models, Storage, Limits (concurrency, retries, image / video timeouts, how long results are kept), Appearance (site name, logo, default theme and language) and Usage.',
-            'When no model is available, generation nodes show "No models available yet". Add a provider in Settings to fix that.',
+            'The available models are the ones the provider explicitly supports; anything else can be added as a custom model on the Models page, where you state its type. Prices are filled in on the same page; a model without one shows "Cost unknown". There you can also enable or disable a model and change its display name and order.',
+            'Providers, models and prices belong to each account and live on the Models page; the record and cost of every run is under History. Settings holds Account & security (password, signed-in devices); the site owner also sees Site (whether sign-up is open), Users, Storage, Run limits (concurrency, retries, image / video timeouts, how long results are kept) and Appearance (site name, logo, default language).',
+            'When no model is available, generation nodes show "No models available yet". Add a provider on the Models page to fix that.',
           ],
         },
         ui: {
           title: 'The interface',
           items: [
-            'Top bar: canvas name and save status, back to your canvases, this guide, More ⋯, undo / redo, Run all, Create share link, Save.',
-            'Floating toolbar: add nodes, canvas templates, the asset library, your share links and more. Drag it anywhere by the handle at its top, and switch it between vertical and horizontal.',
-            'Zoom controls sit at the bottom right and the minimap at the bottom left (drag or scroll it to jump around).',
-            'Right-click the empty canvas to add nodes and reach canvas actions; right-click a node for actions on that node. "More ⋯" in the top bar opens the same canvas actions.',
+            'Top left: back to your canvases, the canvas name (click it to rename) and the save status; click the status to save right away. Top right: Share and "More ⋯".',
+            'Node palette on the left: "+" lists every node, the buttons below group them by text / image / video / chat / tools, and the last one opens the asset library, canvas templates, brand kits and your share links.',
+            'Bottom toolbar: zoom, fit to screen, undo / redo, tidy up, Run all. The minimap sits at the bottom left (drag or scroll it to jump around).',
+            'Queue on the right: the nodes on this canvas that are running, queued or finished. Click a row to jump to its node; hide the panel to give the width back to the canvas.',
+            'Right-click the empty canvas to add nodes and reach canvas actions; right-click a node for actions on that node. "More ⋯" at the top right opens the same canvas actions.',
           ],
         },
         basic: {
@@ -487,7 +489,7 @@ export default {
             'Drop files: drag images or videos from your computer onto the canvas (several at once is fine). A node is created at the pointer and the file is uploaded.',
             'Paste images: press Ctrl+V to drop a copied image onto the canvas. Pasting text into an input works as usual.',
             'Copy nodes: select them, press Ctrl+C, then Ctrl+V. The connections between them are pasted too. Ctrl+D, or "Duplicate node" in the right-click menu, makes a copy in place.',
-            'Undo / redo: Ctrl+Z / Ctrl+Shift+Z, or the buttons in the top bar.',
+            'Undo / redo: Ctrl+Z / Ctrl+Shift+Z, or the buttons in the bottom toolbar.',
           ],
         },
         nodes: {
@@ -497,7 +499,7 @@ export default {
             'Generation (calls a paid model): Image generation, Image edit, Video generation, Video edit, Video analysis, Language model.',
             'Output: Output.',
             'Tools (processed locally, free): Multi-platform export, Slice, Collage, Watermark, Resize.',
-            'Add a node by right-clicking the empty canvas, or with the "+" button on the toolbar.',
+            'Add a node by right-clicking the empty canvas, or with the "+" button on the left palette.',
           ],
         },
         source: {
@@ -532,7 +534,7 @@ export default {
             'After a run: the actual cost of that run is kept in the node\'s run details and history (Language model and Video analysis nodes show it at the bottom of the node).',
             'An Output node adds up the cost of everything upstream of it: actual cost for nodes that have run, the estimate for those that have not.',
             'Button convention: a solid button calls a paid model; an outline button runs locally and is free.',
-            'Usage: Settings → Usage shows totals by day or by model, plus a record of every run.',
+            'Usage: History lists every run, filters by date and model and totals the period; the Workbench shows the totals for this month and the runs per day for the last 14 days.',
           ],
           tip: 'These amounts are calculated from the prices you configured and are for reference only. Your real bill comes from the upstream provider.',
         },
@@ -540,7 +542,7 @@ export default {
           title: 'Outputs and running',
           items: [
             'Output node: collects everything connected to it into one grid; click a tile to see it full size. "Run this branch" runs the whole chain upstream of it. To download, use Batch download, which can filter to outputs only.',
-            'Run all (top bar): runs everything in wiring order, queues automatically, and skips downstream nodes when an upstream one fails. The canvas needs at least one Output node.',
+            'Run all (bottom toolbar): runs everything in wiring order, queues automatically, and skips downstream nodes when an upstream one fails. The canvas needs at least one Output node.',
             'Single node: a node\'s own Run button also runs any upstream nodes that need updating. Clicking it on a node that already has a result runs it again; the old result moves to its history.',
             'Batch run (More ⋯): pick an Image node as the variable, then swap images in one by one and re-run the chain below it. Keep the page open while it runs; up to 100 source files per batch.',
             'After you change something upstream, downstream nodes are marked "Inputs changed" until you run them again. If you reload the page, it keeps waiting for the result and does not submit the job twice.',
@@ -593,7 +595,7 @@ export default {
         lib: {
           title: 'Library and my assets',
           items: [
-            'Click "Asset library" on the toolbar to open the library. It has 4 tabs: My assets, Canvas templates, Text templates, My share links. If the person who runs this instance has preloaded shared assets, a "Stock assets" tab appears in front.',
+            'Click "Asset library" under the last button of the left palette to open the library. It has 4 tabs: My assets, Canvas templates, Text templates, My share links. If the person who runs this instance has preloaded shared assets, a "Stock assets" tab appears in front.',
             'My assets are the images and videos you uploaded or saved, in four categories: product shots, brand assets, references and outputs.',
             'Canvas templates apply a whole pipeline in one click. Text templates drop a ready-made prompt onto the canvas.',
             'Keep a result: right-click a generation node and choose "Save to my assets". It appears under My assets → Outputs, ready to reuse.',
@@ -602,7 +604,7 @@ export default {
         share: {
           title: 'Share links',
           items: [
-            'Click "Create share link" in the top bar to make a read-only link to the current canvas. It can expire after 1, 7 or 30 days, or never.',
+            'Click "Share" at the top right to make a read-only link to the current canvas. It can expire after 1, 7 or 30 days, or never.',
             'A link shares a snapshot: editing or deleting the original canvas later does not change what you shared.',
             'The "My share links" tab in the library lists every link. From there you can copy a link, open it, or copy the shared canvas back into your own canvases.',
             'Click "Revoke" to stop sharing; the link stops working immediately. Links past their expiry date stop working on their own.',
@@ -629,8 +631,8 @@ export default {
         faq: {
           title: 'FAQ',
           items: [
-            'The model dropdown is empty? Add a provider in Settings and make sure its models are enabled.',
-            'Seeing "Cost unknown"? That model has no price configured. Run it as usual, or add a price for it in Settings.',
+            'The model dropdown is empty? Add a provider on the Models page and make sure its models are enabled.',
+            'Seeing "Cost unknown"? That model has no price configured. Run it as usual, or add a price for it on the Models page.',
             'A wire won\'t connect? Check the port types (image to image, text to text) and drag from the right side (output) to the left side (input).',
             'Nothing happens when you click Run? Check that the prompt and reference images are filled in. "Run all" and "Run this branch" need an Output node.',
             'Want to spend less? Source nodes, tool nodes, and cropping or rotating an image all run locally and cost nothing.',

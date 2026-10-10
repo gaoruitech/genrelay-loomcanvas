@@ -5,8 +5,11 @@
  *
  * A VENDOR is a module (gaorui.js, openai.js, gemini.js): how to talk to one
  * company's API, plus a catalog stating which models it supports.
- * A provider INSTANCE is a row in `providers`: a vendor plus the user's key,
- * optionally another address, and the custom models the user added by hand.
+ * A provider INSTANCE is a row in `providers`: a vendor plus one account's key,
+ * optionally another address, and the custom models that account added by hand.
+ * Instances, their slugs and the overrides on their models are per account:
+ * every lookup below takes the account's id, and "gaorui:some-model" of one
+ * account has nothing to do with the same id of another.
  *
  * The model list of an instance is never fetched and never inferred:
  *
@@ -20,7 +23,6 @@ const { getConfig } = require('../config')
 const { decrypt } = require('../utils/crypto')
 const { ApiError } = require('../utils/http')
 const { LocalizedError, has, t } = require('../i18n')
-const { LOCAL_USER } = require('../constants')
 const { KINDS: KIND_LIST, MODEL_NAME } = require('./catalog')
 
 const VENDORS = new Map()
@@ -226,20 +228,27 @@ function configFor(doc) {
   return { baseUrl: doc.baseUrl || (plugin && plugin.defaultBaseUrl) || '', apiKey }
 }
 
-async function loadInstances({ enabledOnly }) {
-  const filter = { userId: LOCAL_USER }
+function ownerOf(userId) {
+  // Refused loudly: a lookup without an account would otherwise read across accounts.
+  if (typeof userId !== 'string' || !userId) throw new Error('a provider lookup needs the account id')
+  return userId
+}
+
+async function loadInstances({ userId, enabledOnly }) {
+  const filter = { userId }
   if (enabledOnly) filter.enabled = true
   return Provider.find(filter).select('+apiKeyEnc').sort({ sort: 1, createdAt: 1 }).lean()
 }
 
 /**
- * All models across instances, merged with overrides.
- * @param {{ includeDisabled?: boolean, kind?: string }} opts
+ * All models across one account's instances, merged with its overrides.
+ * @param {{ userId: string, includeDisabled?: boolean, kind?: string }} opts
  */
-async function listModels({ includeDisabled = false, kind } = {}) {
+async function listModels({ userId, includeDisabled = false, kind } = {}) {
+  ownerOf(userId)
   const [instances, overrides] = await Promise.all([
-    loadInstances({ enabledOnly: !includeDisabled }),
-    ModelOverride.find({ userId: LOCAL_USER }).lean(),
+    loadInstances({ userId, enabledOnly: !includeDisabled }),
+    ModelOverride.find({ userId }).lean(),
   ])
   const lists = instances.map((doc) => specsForInstance(doc).map((s) => ({ ...s, providerEnabled: doc.enabled !== false })))
   let models = mergeOverrides(lists.flat(), overrides)
@@ -249,20 +258,21 @@ async function listModels({ includeDisabled = false, kind } = {}) {
 }
 
 /**
- * Everything needed to run one model. Throws a user-facing error when the
- * model, its provider or its key is not usable.
+ * Everything needed to run one of an account's models. Throws a user-facing
+ * error when the model, its provider or its key is not usable.
  */
-async function resolveModel(fullId, { requireEnabled = true } = {}) {
+async function resolveModel(fullId, { userId, requireEnabled = true } = {}) {
+  ownerOf(userId)
   const fail = (key, params) => new ApiError(400, key, params)
   const parts = splitModelId(fullId)
   if (!parts) throw fail('model.bad_id')
-  const doc = await Provider.findOne({ userId: LOCAL_USER, slug: parts.slug }).select('+apiKeyEnc').lean()
+  const doc = await Provider.findOne({ userId, slug: parts.slug }).select('+apiKeyEnc').lean()
   if (!doc) throw fail('model.provider_missing')
   if (requireEnabled && doc.enabled === false) throw fail('model.provider_disabled')
   const plugin = getType(doc.type)
   if (!plugin) throw fail('provider.type_unsupported_named', { type: doc.type })
   const specs = specsForInstance(doc)
-  const override = await ModelOverride.findOne({ modelId: fullId }).lean()
+  const override = await ModelOverride.findOne({ userId, modelId: fullId }).lean()
   const base = specs.find((s) => s.id === fullId) || null
   const spec = base ? mergeOverrides([base], override ? [override] : [])[0] : null
   if (requireEnabled && spec && !spec.enabled) throw fail('model.disabled')

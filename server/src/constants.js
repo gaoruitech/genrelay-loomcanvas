@@ -1,11 +1,16 @@
 'use strict'
 
 /**
- * The first version is single-user. Every collection still carries a userId so
- * multi-user support can be added later without a data migration; for now it
- * is always this constant.
+ * Before accounts existed every document was owned by this constant. Documents
+ * that still carry it belong to nobody yet: the first account that registers
+ * (the owner) adopts them, see services/accounts.js.
  */
-const LOCAL_USER = 'local'
+const LEGACY_USER = 'local'
+
+/** Owner of what belongs to the site rather than to an account (built-in templates). */
+const SYSTEM_USER = 'system'
+
+const ROLES = Object.freeze({ OWNER: 'owner', USER: 'user' })
 
 const RUN_STATUS = Object.freeze({
   QUEUED: 'queued',
@@ -18,4 +23,4 @@ const RUN_STATUS = Object.freeze({
 
 const RUN_KINDS = Object.freeze(['image', 'video', 'chat'])
 
-module.exports = { LOCAL_USER, RUN_STATUS, RUN_KINDS }
+module.exports = { LEGACY_USER, SYSTEM_USER, ROLES, RUN_STATUS, RUN_KINDS }

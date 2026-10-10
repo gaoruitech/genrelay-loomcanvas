@@ -18,7 +18,6 @@ const crypto = require('crypto')
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomcanvas-vendors-'))
 process.env.SECRET_KEY = 'vendors-test-secret-key-0123456789'
-process.env.ACCESS_PASSWORD = ''
 process.env.STORAGE_DRIVER = 'local'
 process.env.STORAGE_LOCAL_DIR = tmpDir
 process.env.PUBLIC_URL = ''
@@ -88,7 +87,9 @@ test('vendors, custom models and the provider migration', async (t) => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  async function call(method, pathname, body, headers = {}) {
+  let token = ''
+  async function call(method, pathname, body, extra = {}) {
+    const headers = token ? { Authorization: `Bearer ${token}`, ...extra } : extra
     const res = await fetch(base + pathname, {
       method,
       headers: body === undefined ? headers : { 'Content-Type': 'application/json', ...headers },
@@ -105,6 +106,10 @@ test('vendors, custom models and the provider migration', async (t) => {
     const r = await call(method, pathname, body)
     return [r.status, r.body.code]
   }
+  // Everything below runs as one account; providers, models and prices are that account's own.
+  const me = await data('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })
+  token = me.token
+  const userId = me.user.id
   const providers = mongoose.connection.collection('providers')
   let vendors = []
   const finished = async (taskId) => {
@@ -227,7 +232,7 @@ test('vendors, custom models and the provider migration', async (t) => {
     const { migrateProviders } = require('../src/services/providerMigration')
     await providers.deleteMany({})
     const oid = () => new mongoose.Types.ObjectId()
-    const row = (extra) => ({ userId: 'local', baseUrl: upstream.baseUrl, apiKeyEnc: encrypt(KEY, process.env.SECRET_KEY), hasKey: true, keyTail: '5678', enabled: true, sort: 0, createdAt: new Date(), updatedAt: new Date(), ...extra })
+    const row = (extra) => ({ userId, baseUrl: upstream.baseUrl, apiKeyEnc: encrypt(KEY, process.env.SECRET_KEY), hasKey: true, keyTail: '5678', enabled: true, sort: 0, createdAt: new Date(), updatedAt: new Date(), ...extra })
     const gaoruiId = oid()
     const relayId = oid()
     const discoveredId = oid()
@@ -238,7 +243,7 @@ test('vendors, custom models and the provider migration', async (t) => {
       row({ _id: discoveredId, type: 'openai-compatible', name: 'Discovered', slug: 'gateway', enabled: false, sort: 3, options: { models: '', imageModels: '' } }),
     ])
     // What was in use. Runs record the kind; canvas nodes imply it.
-    const run = (providerId, upstreamModel, kind, slug) => ({ userId: 'local', kind, status: 'succeeded', modelId: `${slug}:${upstreamModel}`, upstreamModel, providerId, createdAt: new Date(), updatedAt: new Date() })
+    const run = (providerId, upstreamModel, kind, slug) => ({ userId, kind, status: 'succeeded', modelId: `${slug}:${upstreamModel}`, upstreamModel, providerId, createdAt: new Date(), updatedAt: new Date() })
     await mongoose.connection.collection('runs').insertMany([
       run(gaoruiId, 'gpt-4o-mini', 'chat', 'gaorui'),
       run(gaoruiId, 'gpt-4o-mini', 'chat', 'gaorui'),
@@ -247,16 +252,16 @@ test('vendors, custom models and the provider migration', async (t) => {
       run(relayId, 'removed-long-ago', 'chat', 'openai-compatible'),
     ])
     await mongoose.connection.collection('workflows').insertMany([
-      { userId: 'local', name: 'c1', isDeleted: false, nodes: [
+      { userId, name: 'c1', isDeleted: false, nodes: [
         { id: 'a', type: 'llm', data: { model: 'gaorui:claude-on-canvas' } },
         { id: 'b', type: 'video-analysis', data: { model: 'gaorui:gpt-4o-mini' } },
         { id: 'c', type: 'image-gen', data: { model: 'gaorui:nano-banana-pro' } },
         { id: 'd', type: 'llm', data: { model: 'gateway:local-llm' } },
         { id: 'e', type: 'text', data: { model: 'gaorui:not-a-model-node' } },
       ], edges: [] },
-      { userId: 'local', name: 'trash', isDeleted: true, nodes: [{ id: 'a', type: 'llm', data: { model: 'gaorui:only-in-trash' } }], edges: [] },
+      { userId, name: 'trash', isDeleted: true, nodes: [{ id: 'a', type: 'llm', data: { model: 'gaorui:only-in-trash' } }], edges: [] },
     ])
-    await mongoose.connection.collection('modeloverrides').insertOne({ userId: 'local', modelId: 'openai-compatible:my-old-llm', pricing: { currency: 'USD', unit: 'per_1m_tokens', table: { input: 1, output: 2 } } })
+    await mongoose.connection.collection('modeloverrides').insertOne({ userId, modelId: 'openai-compatible:my-old-llm', pricing: { currency: 'USD', unit: 'per_1m_tokens', table: { input: 1, output: 2 } } })
 
     assert.deepEqual(await migrateProviders(), { providers: 4, customModels: 8 })
     const stored = Object.fromEntries((await providers.find().toArray()).map((p) => [p.slug, p]))
@@ -405,7 +410,7 @@ test('vendors, custom models and the provider migration', async (t) => {
     upstream.chats.length = 0
     const form = new FormData()
     form.append('file', new Blob([Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(2048)])]), 'a.mp4')
-    const up = await (await fetch(base + '/api/files/upload', { method: 'POST', body: form })).json()
+    const up = await (await fetch(base + '/api/files/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })).json()
     assert.equal(up.result, 0, JSON.stringify(up).slice(0, 200))
     const task = await data('POST', '/api/llm/tasks', { model: 'gaorui:gemini-3.5-flash-c', prompt: 'describe the clip', videoUrl: up.data.url })
     let run

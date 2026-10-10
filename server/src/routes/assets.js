@@ -2,8 +2,8 @@
 
 /**
  * Asset libraries.
- *   /api/user-asset    the user's own library (editable)
- *   /api/canvas-asset  the read-only stock library (empty unless imported)
+ *   /api/user-asset    the caller's own library (editable, private to the account)
+ *   /api/canvas-asset  the read-only stock library of the site (empty unless imported)
  * Response shapes follow the original canvas frontend.
  */
 const express = require('express')
@@ -11,7 +11,6 @@ const { UserAsset, CanvasAsset, USER_ASSET_KINDS } = require('../models/Asset')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, pageParams, isMediaUrl, escapeRegExp, text } = require('../utils/validate')
 const { t } = require('../i18n')
-const { LOCAL_USER } = require('../constants')
 const sharp = require('sharp')
 const { loadImage } = require('../services/media')
 
@@ -37,7 +36,8 @@ async function withDimensions(fields) {
 /** Per-kind cap, to keep one runaway script from filling the library. */
 const LIMIT_PER_KIND = 5000
 
-const live = { userId: LOCAL_USER, isDeleted: false }
+/** The caller's assets that are not deleted: the base of every query below. */
+const live = (req) => ({ userId: req.userId, isDeleted: false })
 
 function tagsOf(v) {
   if (!Array.isArray(v)) return []
@@ -92,8 +92,8 @@ function mediaFields(b) {
   }
 }
 
-async function assertRoom(kind) {
-  if ((await UserAsset.countDocuments({ ...live, kind })) >= LIMIT_PER_KIND) {
+async function assertRoom(req, kind) {
+  if ((await UserAsset.countDocuments({ ...live(req), kind })) >= LIMIT_PER_KIND) {
     throw badRequest('asset.kind_full', { max: LIMIT_PER_KIND })
   }
 }
@@ -106,7 +106,7 @@ function userAssetRouter() {
     const { page, pageSize, skip } = pageParams(req.query, { defaultSize: 60, maxSize: 200 })
     const q = req.query
     const kind = USER_ASSET_KINDS.includes(q.kind) ? q.kind : null
-    const query = { ...live }
+    const query = { ...live(req) }
     if (kind) query.kind = kind
     if (typeof q.folder === 'string' && q.folder) query.folder = q.folder.slice(0, 120)
     if (typeof q.tag === 'string' && q.tag) query.tags = q.tag.slice(0, 40)
@@ -116,8 +116,8 @@ function userAssetRouter() {
     const [total, docs, folders, kindCount] = await Promise.all([
       UserAsset.countDocuments(query),
       UserAsset.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
-      UserAsset.distinct('folder', { ...live, folder: { $ne: '' } }),
-      UserAsset.countDocuments({ ...live, kind: kind || 'product' }),
+      UserAsset.distinct('folder', { ...live(req), folder: { $ne: '' } }),
+      UserAsset.countDocuments({ ...live(req), kind: kind || 'product' }),
     ])
     ok(res, {
       list: docs.map(serializeUserAsset),
@@ -134,8 +134,8 @@ function userAssetRouter() {
     const b = req.body || {}
     const kind = USER_ASSET_KINDS.includes(b.kind) ? b.kind : 'product'
     const fields = await withDimensions(mediaFields(b))
-    await assertRoom(kind)
-    const doc = await UserAsset.create({ userId: LOCAL_USER, kind, name: text(b.name, 300), source: 'upload', ...fields })
+    await assertRoom(req, kind)
+    const doc = await UserAsset.create({ userId: req.userId, kind, name: text(b.name, 300), source: 'upload', ...fields })
     ok(res, serializeUserAsset(doc.toObject()))
   }))
 
@@ -143,9 +143,9 @@ function userAssetRouter() {
   router.post('/register-output', wrap(async (req, res) => {
     const b = req.body || {}
     const fields = await withDimensions(mediaFields(b))
-    await assertRoom('output')
+    await assertRoom(req, 'output')
     const doc = await UserAsset.create({
-      userId: LOCAL_USER,
+      userId: req.userId,
       kind: 'output',
       name: text(b.name, 300) || t(req.locale, 'asset.default_output_name'),
       source: 'generated',
@@ -160,7 +160,7 @@ function userAssetRouter() {
   router.post('/folder/delete', wrap(async (req, res) => {
     const name = text(req.body && req.body.name, 120)
     if (!name) throw badRequest('asset.folder_required')
-    const r = await UserAsset.updateMany({ ...live, folder: name }, { $set: { folder: '' } })
+    const r = await UserAsset.updateMany({ ...live(req), folder: name }, { $set: { folder: '' } })
     ok(res, { moved: r.modifiedCount || 0 })
   }))
 
@@ -173,7 +173,7 @@ function userAssetRouter() {
     if (typeof b.folder === 'string') set.folder = b.folder.trim().slice(0, 120)
     if (Array.isArray(b.tags)) set.tags = tagsOf(b.tags)
     if (USER_ASSET_KINDS.includes(b.kind)) set.kind = b.kind
-    const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live }, { $set: set }, { new: true }).lean()
+    const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live(req) }, { $set: set }, { new: true }).lean()
     if (!doc) throw notFound('asset.not_found')
     ok(res, serializeUserAsset(doc))
   }))
@@ -181,7 +181,7 @@ function userAssetRouter() {
   /** DELETE /api/user-asset/:id - soft delete; the file itself is kept (canvases may still use it) */
   router.delete('/:id', wrap(async (req, res) => {
     requireObjectId(req.params.id)
-    const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live }, { $set: { isDeleted: true } }).lean()
+    const doc = await UserAsset.findOneAndUpdate({ _id: req.params.id, ...live(req) }, { $set: { isDeleted: true } }).lean()
     if (!doc) throw notFound('asset.not_found')
     ok(res, { id: String(doc._id) })
   }))

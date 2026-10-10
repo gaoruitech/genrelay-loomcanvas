@@ -38,7 +38,6 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomcanvas-s3-'))
 process.env.SECRET_KEY = 'storage-live-secret-key-0123456789'
 process.env.STORAGE_LOCAL_DIR = tmpDir
 process.env.PUBLIC_URL = ''
-process.env.ACCESS_PASSWORD = ''
 process.env.WEB_DIST = ''
 process.env.BILLING_HOOK = ''
 for (const name of Object.keys(process.env)) if (/^(S3_|STORAGE_DRIVER$)/.test(name)) delete process.env[name]
@@ -466,7 +465,9 @@ test('settings API against live S3: test, save, switch, and everything that read
   await storageSettings.load()
   const app = await listen(require('../src/app').createApp())
 
-  const call = async (method, pathname, body, headers = {}) => {
+  let token = ''
+  const call = async (method, pathname, body, extra = {}) => {
+    const headers = token ? { Authorization: `Bearer ${token}`, ...extra } : extra
     const res = await fetch(app.url + pathname, {
       method,
       headers: body instanceof FormData || body === undefined ? headers : { 'Content-Type': 'application/json', ...headers },
@@ -486,6 +487,8 @@ test('settings API against live S3: test, save, switch, and everything that read
   const s3 = { ...form, preset: 'minio' }
 
   try {
+    // Storage is the owner's to configure: the first account registered is the owner.
+    token = (await call('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })).body.data.token
     let status = (await call('GET', '/api/admin/storage')).body.data
     assert.deepEqual([status.source, status.driver, status.s3], ['default', 'local', null])
     const localFile = await upload(await picture('#101010'))

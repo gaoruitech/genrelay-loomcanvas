@@ -18,12 +18,25 @@ module.exports = {
   'common.name_required': 'Please enter a name',
   'common.nothing_to_update': 'Nothing to update',
 
-  /* ---- sign-in ---- */
-  'auth.login_required': 'Please sign in first',
+  /* ---- accounts and sign-in ---- */
+  'auth.required': 'Please sign in first',
+  'auth.forbidden': 'Only the owner of this site can do that',
   'auth.too_many_attempts': 'Too many attempts. Please try again later',
-  'auth.not_enabled': 'This instance does not require a password',
-  'auth.password_required': 'Please enter the access password',
-  'auth.wrong_password': 'Incorrect password',
+  'auth.credentials_required': 'Please enter your username or email and your password',
+  'auth.invalid_credentials': 'Incorrect username, email or password',
+  'auth.account_disabled': 'This account has been disabled. Contact the owner of this site',
+  'auth.registration_closed': 'Registration is closed on this site',
+  'auth.username_taken': 'This username is already taken',
+  'auth.email_taken': 'This email is already registered',
+  'auth.invalid_username': 'A username is 3 to 32 characters: letters, digits, _ and -',
+  'auth.invalid_email': 'Please enter a valid email address',
+  'auth.weak_password': 'A password must be {min} to {max} characters long',
+  'auth.wrong_current_password': 'The current password is not correct',
+  'auth.session_not_found': 'Session not found',
+  'auth.user_not_found': 'Account not found',
+  'auth.cannot_modify_self': 'You cannot disable, delete or reset your own account here',
+  'auth.cannot_modify_owner': 'The owner account cannot be disabled, deleted or reset',
+  'auth.confirm_mismatch': 'Type the username of the account to confirm deleting it',
 
   /* ---- validation ---- */
   'validation.failed': 'The data is not valid',
@@ -36,7 +49,6 @@ module.exports = {
   'validation.bad_date': '{field} is not a valid date',
   'validation.bad_url': '{field} is not a valid URL',
   'validation.bad_url_in': '{field} contains an invalid URL',
-  'validation.bad_timezone': 'tz is not a valid time zone',
   'validation.string': '{field} must be a string',
   'validation.number': '{field} must be a number',
   'validation.boolean': '{field} must be true or false',

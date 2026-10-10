@@ -1,68 +1,97 @@
 <template>
-  <div class="cv-node video-edit" :class="{
+  <div class="cv-node cv-gen video-edit" :class="{
     selected,
     shaking,
+    'is-running': isRunning,
     'has-validation-error': !!data.validationError,
     'has-runtime-error': status === 'error',
   }">
-    <!-- 固定比例视频框：单击展开面板；成品 hover 出放大看详情，角上常驻状态标 -->
-    <div
-      class="cv-frame"
-      :style="boxStyle"
-      @click.stop="togglePanel"
-      @mouseenter="onVideoEnter"
-      @mouseleave="onVideoLeave"
-    >
-      <span v-if="statusLabel" class="cv-frame-status" :class="statusClass">{{ statusLabel }}</span>
-      <button v-if="hasResult" class="cv-frame-zoom nodrag" :title="t('nodes.action.detail')" @click.stop="onDetail" @mousedown.stop>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-          <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-        </svg>
-      </button>
-      <video
-        v-if="data.videoUrl"
-        ref="mainVideoRef"
-        :key="data.videoUrl"
-        :src="data.videoUrl"
-        :poster="canvasVideoPoster(data.videoUrl, 480)"
-        class="cv-frame-img"
-        muted
-        playsinline
-        preload="metadata"
-        @loadedmetadata="onMeta"
-      />
-      <div v-else class="cv-frame-empty">
-        <span class="cv-empty-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-            <circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" />
-            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
-          </svg>
-        </span>
-        <span>{{ t('gen.node.videoEditEmpty') }}</span>
-      </div>
-      <span v-if="data.videoUrl && !isRunning" class="cv-frame-play">
-        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
-      </span>
-      <span v-if="isRunning" class="cv-frame-running">{{ progress }}%</span>
-      <button v-if="canCancel" class="cv-frame-cancel nodrag" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
+    <div class="cv-head">
+      <LcIcon name="video" />
+      <span class="cv-title">{{ t('nodes.title.videoEdit') }}</span>
+      <span v-if="statusLabel" class="cv-tag" :class="statusClass">{{ statusLabel }}</span>
     </div>
 
-    <!-- 底部面板：点击时向下滑出 —— 多条选择 + 提示词 + 参数 + 运行 -->
-    <div
-      v-if="panelOpen"
-      class="cv-prompt-popover nodrag nowheel"
-      @mousedown.stop
-      @click.stop
-      @wheel.stop
-    >
-      <div
-        v-if="videoList.length > 1"
-        class="cv-thumb-strip"
-        @click.stop
-        @mousedown.stop
-        @wheel.stop
-      >
+    <div class="cv-body">
+      <!-- 输入口：端口就在这一行的左边缘，右侧写明接了几个 -->
+      <div class="cv-in">
+        <Handle id="video-in" type="target" :position="Position.Left" class="h-video" />
+        {{ t('gen.node.sourceVideo') }}<em :class="{ on: videoInCount > 0 }">{{ videoInCount ? t('gen.node.connectedOne') : t('gen.node.notConnected') }}</em>
+      </div>
+      <div class="cv-in">
+        <Handle id="text-in" type="target" :position="Position.Left" class="h-text" :title="t('gen.node.promptIn')" />
+        {{ t('nodes.field.prompt') }}<em :class="{ on: textInCount > 0 }">{{ textInCount ? t('gen.node.connected', { n: textInCount }) : t('gen.node.notConnected') }}</em>
+      </div>
+      <div class="cv-in">
+        <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :title="t('gen.node.imageIn')" />
+        {{ t('gen.node.refImages') }}<em :class="{ on: imageRefs.length > 0 }">{{ imageRefs.length ? (maxRefs ? t('gen.node.connectedOf', { n: imageRefs.length, max: maxRefs }) : t('gen.node.connected', { n: imageRefs.length })) : t('gen.node.notConnected') }}</em>
+      </div>
+
+      <!-- 提示词摘要：点开在节点下方编辑（带参考图条和 @ 指代） -->
+      <button type="button" class="cv-well nodrag" :class="{ open: panelOpen }" @click.stop="togglePanel" @mousedown.stop>
+        <span class="cv-well-text" :class="{ ph: !prompt }">{{ prompt || t('gen.node.videoEditPlaceholder') }}</span>
+      </button>
+
+      <div class="nodrag" @click.stop @mousedown.stop>
+        <ChipSelect v-if="modelOpts.length" field :badge="t('gen.node.kindVideo')" badge-kind="vid" v-model="modelKey" :options="modelOpts" :display-value="modelLabel" />
+        <div v-else class="cv-hint">{{ t('models.none') }}</div>
+      </div>
+      <div v-if="adapter" class="cv-kv nodrag" @click.stop @mousedown.stop>
+        <span>{{ t('gen.node.params') }}</span>
+        <ImageParamsChip
+          :resolutions="adapter.options.resolutions"
+          :aspect-ratios="adapter.options.aspectRatios"
+          :durations="adapter.options.durations"
+          :fixed-duration="adapter.options.fixedDuration"
+          :counts="adapter.options.counts"
+          v-model:resolution="resolution"
+          v-model:aspect-ratio="aspectRatio"
+          v-model:duration="duration"
+          v-model:count="count"
+        />
+      </div>
+      <div v-if="brandKitCtx" class="cv-kv nodrag" @click.stop @mousedown.stop>
+        <span>{{ t('gen.node.brandKit') }}</span>
+        <span class="cv-kv-val">
+          <ChipSelect label="" v-model="brandKitId" :options="brandKitOptions" />
+          <button class="cv-link" :title="t('gen.brandKit.manage')" @click.stop="brandKitCtx.open()">{{ t('common.manage') }}</button>
+        </span>
+      </div>
+      <div v-if="brandKitCtx && brandKitRefCount" class="cv-hint">
+        {{ t('gen.brandKit.refCount', { used: brandKitRefCount, max: brandKitMaxRefs }) }}
+      </div>
+
+      <!-- 画面：按比例出框；成品悬停出「放大看详情」 -->
+      <div class="cv-frame" :class="{ empty: !hasResult }" :style="hasResult ? boxStyle : undefined" @click.stop="togglePanel" @mouseenter="onVideoEnter" @mouseleave="onVideoLeave">
+        <button v-if="hasResult" class="cv-frame-zoom nodrag" :title="t('nodes.action.detail')" @click.stop="onDetail" @mousedown.stop>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
+        <video
+          v-if="data.videoUrl"
+          ref="mainVideoRef"
+          :key="data.videoUrl"
+          :src="data.videoUrl"
+          :poster="canvasVideoPoster(data.videoUrl, 480)"
+          class="cv-frame-img"
+          muted
+          playsinline
+          preload="metadata"
+          @loadedmetadata="onMeta"
+        />
+        <div v-else class="cv-frame-empty">
+          <span class="cv-empty-icon"><LcIcon name="video" /></span>
+          <span>{{ t('gen.node.videoEditEmpty') }}</span>
+        </div>
+        <span v-if="data.videoUrl && !isRunning" class="cv-frame-play">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
+        </span>
+        <span v-if="isRunning" class="cv-frame-running" />
+      </div>
+
+      <div v-if="videoList.length > 1" class="cv-thumb-strip nodrag nowheel" @click.stop @mousedown.stop @wheel.stop>
         <button
           v-for="(url, i) in videoList"
           :key="url + i"
@@ -79,24 +108,35 @@
         </button>
       </div>
 
-      <div v-if="brandKitCtx" class="cv-bk-row nodrag" @click.stop @mousedown.stop>
-        <ChipSelect class="cv-bk-chip" label="" v-model="brandKitId" :options="brandKitOptions" />
-        <span v-if="brandKitRefCount" class="cv-bk-hint">
-          {{ t('gen.brandKit.refCount', { used: brandKitRefCount, max: brandKitMaxRefs }) }}
-        </span>
-        <button class="cv-bk-mng" :title="t('gen.brandKit.manage')" @click.stop="brandKitCtx.open()">{{ t('common.manage') }}</button>
+      <NodeResultHistory :node-id="id" :results="data.results" :result-index="data.resultIndex" kind="video" />
+
+      <div v-if="displayError" class="cv-error nodrag" @click.stop @mousedown.stop>
+        <div class="cv-error-msg nowheel">{{ displayError }}</div>
+        <button v-if="status === 'error'" class="cv-retry" @click.stop="handleRun">{{ t('common.retry') }}</button>
+      </div>
+      <div v-else-if="publicUrlNotice" class="cv-notice clamp" :title="publicUrlNotice"><span>{{ publicUrlNotice }}</span></div>
+
+      <!-- 预估成本固定在运行按钮正上方：运行前一定看得到 -->
+      <div v-if="estimateText" class="cv-kv" :title="t('cost.estimateTip')">
+        <span>{{ t('cost.estimate') }}</span>
+        <span v-if="data.estimatedCost?.unknown" class="cv-unk">{{ estimateText }}</span>
+        <b v-else>{{ estimateText }}</b>
       </div>
 
-      <NodeResultHistory
-        :node-id="id"
-        :results="data.results"
-        :result-index="data.resultIndex"
-        kind="video"
-      />
+      <div v-if="isRunning" class="cv-progress nodrag" :class="{ indet: status === 'running' && !progress }">
+        <i :style="progress ? { width: progress + '%' } : undefined" />
+        <span>
+          <b>{{ runningLabel }}</b>
+          <button v-if="canCancel" class="cv-progress-cancel" @click.stop="handleCancel" @mousedown.stop>{{ t('nodes.action.cancel') }}</button>
+        </span>
+      </div>
+      <button v-else class="cv-run nodrag" @click.stop="handleRun" @mousedown.stop>
+        <LcIcon name="play" size="s" />{{ hasResult ? t('nodes.action.rerun') : t('nodes.action.run') }}
+      </button>
+    </div>
 
-      <div v-if="displayError" class="cv-error">{{ displayError }}</div>
-      <div v-else-if="publicUrlNotice" class="cv-notice">{{ publicUrlNotice }}</div>
-
+    <!-- 提示词面板：点提示词或画面时在节点下方滑出 -->
+    <div v-if="panelOpen" class="cv-prompt-popover nodrag nowheel" @mousedown.stop @click.stop @wheel.stop>
       <NodeImageRefs
         :refs="imageRefs"
         :reorderable="refsReorderable"
@@ -104,14 +144,13 @@
         @reorder="onRefsReorder"
         @rename="onRefRename"
       />
-
       <div class="cv-textarea-wrap">
         <textarea
           ref="promptInputRef"
           v-model="prompt"
           class="cv-prompt-textarea"
           :placeholder="t('gen.node.videoEditPlaceholder')"
-          rows="4"
+          rows="5"
           maxlength="5000"
           @input="mention.onInput"
           @keydown="mention.onKeydown"
@@ -123,69 +162,23 @@
           <span class="cv-footer-right">
             <button class="cv-zoom-btn nodrag" :title="t('nodes.action.expand')" @click.stop="openExpand" @mousedown.stop>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
+            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
             </button>
             <span class="cv-char-count">{{ prompt.length }} / 5000</span>
           </span>
         </div>
       </div>
-
-      <div class="cv-popover-toolbar">
-        <ChipSelect v-if="modelOpts.length" :label="t('nodes.field.model')" v-model="modelKey" :options="modelOpts" :display-value="modelLabel" />
-        <span v-else class="cv-no-model">{{ t('models.none') }}</span>
-        <ImageParamsChip
-          v-if="adapter"
-          :resolutions="adapter.options.resolutions"
-          :aspect-ratios="adapter.options.aspectRatios"
-          :durations="adapter.options.durations"
-          :fixed-duration="adapter.options.fixedDuration"
-          :counts="adapter.options.counts"
-          v-model:resolution="resolution"
-          v-model:aspect-ratio="aspectRatio"
-          v-model:duration="duration"
-          v-model:count="count"
-        />
-        <span v-if="estimateText" class="cv-run-cost" :title="t('cost.estimateTip')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /></svg>
-          {{ estimateText }}
-        </span>
-        <button
-          class="cv-run-icon nodrag"
-          :disabled="isRunning"
-          :title="isRunning ? t('nodes.action.running', { progress }) : t('nodes.action.run')"
-          @click.stop="handleRun"
-          @mousedown.stop
-        >
-          <span v-if="isRunning" class="cv-run-pct">{{ progress }}%</span>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="20" x2="12" y2="5" />
-            <polyline points="6 11 12 5 18 11" />
-          </svg>
-        </button>
-      </div>
     </div>
 
-    <Handle id="text-in" type="target" :position="Position.Left" class="h-text" :style="{ top: '38%', left: '10px' }" />
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :style="{ top: '50%', left: '10px' }" />
-    <Handle id="video-in" type="target" :position="Position.Left" class="h-video" :style="{ top: '62%', left: '10px' }" />
-    <Handle id="video-out" type="source" :position="Position.Right" class="h-video" :style="{ right: '10px' }" />
+    <Handle id="video-out" type="source" :position="Position.Right" class="h-video h-top" />
 
     <!-- 放大编辑浮层：teleport 到 body 居中 -->
     <Teleport to="body">
-      <div
-        v-if="expanded"
-        class="cv-prompt-popover expanded nodrag nowheel"
-        @click.stop
-        @mousedown.stop
-        @wheel.stop
-      >
+      <div v-if="expanded" class="cv-prompt-popover expanded nodrag nowheel" @click.stop @mousedown.stop @wheel.stop>
         <button class="cv-popover-zoom" :title="t('nodes.action.collapse')" @click.stop="expanded = false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-            <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
+          <LcIcon name="x" size="s" />
         </button>
         <div class="cv-textarea-wrap">
           <textarea
@@ -218,13 +211,7 @@
       @hover="mention.picker.active = $event"
     />
 
-    <TaskDetailModal
-      :open="detailOpen"
-      type="video-edit"
-      :data="data"
-      @close="detailOpen = false"
-    />
-
+    <TaskDetailModal :open="detailOpen" type="video-edit" :data="data" @close="detailOpen = false" />
   </div>
 </template>
 
@@ -244,6 +231,7 @@ import {
   defaultVideoEditModelId, getAdapter, listFlatVideoEditModels, modelKeyOf, alignParams,
 } from '@/utils/canvasModels'
 import ChipSelect from './ChipSelect.vue'
+import LcIcon from '@/components/LcIcon.vue'
 import ImageParamsChip from './ImageParamsChip.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import { canvasVideoPoster } from '@/utils/canvasMedia'
@@ -287,7 +275,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const { updateNodeData, onPaneClick, onNodeClick, onMoveStart } = useVueFlow()
+const { updateNodeData, onPaneClick, onNodeClick, onMoveStart, edges } = useVueFlow()
 const executor = inject(CANVAS_EXECUTOR_KEY)
 
 const { t } = useI18n()
@@ -375,7 +363,8 @@ const videoList = computed<string[]>(() => props.data.videoUrls || [])
 const estimateText = computed(() => formatEstimate(props.data.estimatedCost))
 
 // ===== 固定比例视频框 =====
-const FRAME_LONG = 240
+const FRAME_LONG = 230
+const FRAME_MAX_H = 172
 const naturalRatio = ref(0)
 function onMeta(e: Event) {
   const v = e.target as HTMLVideoElement
@@ -396,9 +385,10 @@ const boxStyle = computed(() => {
       ratioWH = naturalRatio.value || 16 / 9
     }
   }
-  let width: number, height: number
-  if (ratioWH >= 1) { width = FRAME_LONG; height = Math.round(FRAME_LONG / ratioWH) }
-  else { height = FRAME_LONG; width = Math.round(FRAME_LONG * ratioWH) }
+  // 横图撑满卡片内宽；方图 / 竖图限高，免得一个节点占掉半屏
+  let width = FRAME_LONG
+  let height = Math.round(FRAME_LONG / ratioWH)
+  if (height > FRAME_MAX_H) { height = FRAME_MAX_H; width = Math.round(FRAME_MAX_H * ratioWH) }
   return { width: `${width}px`, height: `${height}px` }
 })
 
@@ -491,6 +481,7 @@ function onDocClickClose(e: MouseEvent) {
   if (el.closest('.cv-mention')) return
   if (el.closest('.cv-top-panel')) return
   if (el.closest('.cv-frame')) return
+  if (el.closest('.cv-well')) return
   if (el.closest('.chip-menu')) return
   close()
 }
@@ -527,7 +518,7 @@ const statusLabel = computed(() => {
   if (status.value === 'stale') return t('nodes.status.stale')
   if (status.value === 'canceled') return t('nodes.status.canceled')
   if (status.value === 'queued') return t('nodes.status.queued')
-  if (status.value === 'running') return `${progress.value}%`
+  if (status.value === 'running') return t('nodes.status.running')
   if (status.value === 'error') return t('nodes.status.error')
   if (status.value === 'done' || hasResult.value) return t('nodes.status.done')
   return ''
@@ -562,64 +553,21 @@ async function handleRun() {
 function handleCancel() {
   void executor?.cancelNode(props.id)
 }
+
+/* ── 表头下方「输入口」各行的已连接数：只读，数的是真实连线 / 真正会送出去的图 ── */
+const inCount = (handle: string) => edges.value.filter(e => e.target === props.id && e.targetHandle === handle).length
+const textInCount = computed(() => inCount('text-in'))
+const maxRefs = computed(() => adapter.value?.options.maxReferenceImages || 0)
+const runningLabel = computed(() => {
+  if (status.value === 'queued') return t('nodes.status.queued')
+  // 上游报了进度才显示百分比；没报就只说「生成中」，不编数字
+  return progress.value ? t('nodes.action.running', { progress: progress.value }) : t('gen.node.runningPlain')
+})
+const videoInCount = computed(() => inCount('video-in'))
 </script>
+
 
 <style scoped>
 @import './node-shared.css';
-
-/* 品牌包选择器：贴着面板，一行放下下拉、额度提示和管理入口 */
-.cv-bk-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.cv-bk-sel {
-  flex: 1; min-width: 0; background: var(--n-2); border: 1px solid var(--n-5);
-  border-radius: 5px; color: var(--t-body); font-size: 11.5px; padding: 3px 6px; outline: none;
-}
-.cv-bk-sel:focus { border-color: var(--accent-text); }
-.cv-bk-hint { font-size: 10px; color: var(--t-dim); white-space: nowrap; }
-.cv-bk-mng {
-  background: none; border: 1px solid var(--n-5); border-radius: 5px;
-  color: var(--t-dim); font-size: 10.5px; padding: 2px 7px; cursor: pointer; white-space: nowrap;
-}
-.cv-bk-mng:hover { border-color: var(--accent-text); color: var(--accent-text); }
-/* 外框裹住视频画面：宽度跟着 .cv-frame（按视频真实比例出尺寸）走，
-   覆盖 .cv-node 默认的 min-width:240，竖版视频不再留大黑边 */
-.video-edit { width: fit-content; min-width: 0; max-width: none; align-items: center; }
-/* 外框收窄后，展开面板改为固定宽度居中，避免窄外框把工具条压得放不下。
-   用 left calc 居中，避开弹出动画的 transform 冲突。 */
-.video-edit .cv-prompt-popover:not(.expanded) {
-  left: calc(50% - 240px);
-  right: auto;
-  width: 480px;
-}
-.video-edit .cv-top-panel {
-  left: calc(50% - 160px);
-  right: auto;
-  width: 320px;
-}
-
-/* 角上常驻状态标 */
-.cv-frame-status {
-  position: absolute; top: 6px; right: 6px; z-index: 3;
-  font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 999px;
-  background: rgba(0,0,0,.5); color: #fff; pointer-events: none;
-}
-.cv-frame-status.done { background: color-mix(in srgb, var(--success, #16a34a) 82%, transparent); }
-.cv-frame-status.running { background: color-mix(in srgb, var(--accent-text) 82%, transparent); color: var(--n-black, #111); }
-.cv-frame-status.error { background: color-mix(in srgb, var(--danger, #dc2626) 85%, transparent); }
-.cv-frame-status.stale { background: rgba(120,120,120,.7); }
-.cv-frame-zoom {
-  position: absolute; top: 6px; left: 6px; z-index: 3;
-  width: 28px; height: 28px; border: 0; border-radius: 8px; cursor: pointer;
-  background: rgba(0,0,0,.55); color: #fff; display: grid; place-items: center;
-  opacity: 0; transition: opacity .15s ease;
-}
-.cv-frame-zoom svg { width: 15px; height: 15px; }
-.cv-frame:hover .cv-frame-zoom { opacity: 1; }
-.cv-frame-zoom:hover { background: rgba(0,0,0,.8); }
-.cv-footer-right { display: inline-flex; align-items: center; gap: 6px; }
-.cv-zoom-btn { border: 0; background: transparent; color: var(--t-dim); cursor: pointer; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; pointer-events: auto; }
-.cv-zoom-btn:hover { color: var(--accent-text); background: var(--n-4); }
-.cv-zoom-btn svg { width: 14px; height: 14px; }
-.cv-bk-chip { flex: 1; min-width: 0; }
-/* 一个可用模型都没有时，顶替模型下拉的提示 */
-.cv-no-model { font-size: 11px; color: var(--t-dim); white-space: nowrap; }
+.cv-gen { width: 256px; }
 </style>

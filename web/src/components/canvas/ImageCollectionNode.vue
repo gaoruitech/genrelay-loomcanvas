@@ -1,13 +1,16 @@
 <template>
   <div class="cv-node coll" :class="{ selected }">
-    <div class="cv-node-header">
-      <span class="cv-count">{{ t('nodeui.collection.total', { n: totalCount }) }}</span>
+    <div class="cv-head">
+      <LcIcon name="layout" />
+      <span class="cv-title">{{ t('nodes.title.imageCollection') }}</span>
+      <span class="cv-head-x">{{ t('nodeui.collection.total', { n: totalCount }) }}</span>
     </div>
 
-    <div class="grid nodrag" @mousedown.stop>
+    <div class="cv-body">
+    <div class="grid nodrag nowheel" @mousedown.stop>
       <div v-for="(url, i) in internalUrls" :key="`int-${i}`" class="cell">
         <img :src="canvasImageThumb(url, 96)" alt="" />
-        <button class="cell-x" @click.stop="removeInternal(i)" :title="t('common.remove')">×</button>
+        <button class="cell-x" :title="t('common.remove')" @click.stop="removeInternal(i)"><LcIcon name="x" size="s" /></button>
       </div>
 
       <div v-for="i in uploadingCount" :key="`up-${i}`" class="cell uploading-cell">
@@ -29,22 +32,19 @@
           style="display:none"
           @change="handleSelect"
         />
-        <span class="plus">+</span>
+        <LcIcon name="plus" />
         <span class="plus-label">{{ t('common.upload') }}</span>
       </label>
 
       <button class="cell add-cell pick-cell" :title="t('nodes.action.pickFromLibrary')" @click.stop="pickFromLibrary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
+        <LcIcon name="folder" />
         <span class="plus-label">{{ t('nodeui.collection.library') }}</span>
       </button>
     </div>
+    </div>
 
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" />
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image" />
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" />
   </div>
 </template>
 
@@ -57,6 +57,7 @@ import { CANVAS_PICKER_KEY } from '@/composables/canvasPickerKey'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { apiErrorMessage } from '@/utils/api'
 import { canvasImageThumb, registerThumb } from '@/utils/canvasMedia'
+import LcIcon from '@/components/LcIcon.vue'
 
 const props = defineProps<{
   id: string
@@ -118,50 +119,42 @@ async function pickFromLibrary() {
 
 <style scoped>
 @import './node-shared.css';
-.coll { min-width: 280px; max-width: 280px; height: 300px; }
-.coll .grid { flex: 1 1 auto; align-content: start; }
-.cv-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--t-dim);
-}
+.coll { width: 280px; height: 300px; }
 .grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
+  align-content: start;
 }
 .cell {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
+  background: var(--media-bg);
+  border: 1px solid var(--line);
 }
-.cell img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+.cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cell-x {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--scrim);
-  border: none;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(4, 9, 28, .66);
   color: var(--on-scrim);
   cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
-.cell-x:hover { background: rgba(0, 0, 0, 0.9); }
+.cell-x:hover { background: rgba(4, 9, 28, .9); }
+.cell-x svg { width: 11px; height: 11px; }
 
 .upstream-cell {
   display: flex;
@@ -169,56 +162,46 @@ async function pickFromLibrary() {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  color: var(--info);
-  background: rgba(74, 163, 255, 0.08);
-  border-color: rgba(74, 163, 255, 0.3);
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--kind-image-fg);
+  background: var(--kind-image-bg);
+  border-color: rgba(63, 216, 255, .3);
+  font: 500 12px var(--f-mono);
 }
-.upstream-cell svg {
-  width: 18px;
-  height: 18px;
-}
+.upstream-cell svg { width: 16px; height: 16px; }
 
 .add-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  color: var(--t-dim);
-  border-style: dashed;
-  transition: border-color 0.15s ease, color 0.15s ease;
-  font-size: 11px;
-  gap: 2px;
-}
-.add-cell:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.plus { font-size: 22px; line-height: 1; }
-.plus-label { font-size: 10px; }
-
-.pick-cell {
-  background: transparent;
-  font-family: inherit;
+  gap: 4px;
   padding: 0;
+  cursor: pointer;
+  color: var(--text-3);
+  background: rgba(4, 9, 28, .3);
+  border: 1px dashed var(--line-2);
+  font: inherit;
+  transition: border-color .15s ease, color .15s ease;
 }
-.pick-cell svg { width: 18px; height: 18px; }
+.add-cell:hover { border-color: var(--cyan); color: var(--cyan-soft); }
+.plus-label { font-size: 11px; }
 
 .uploading-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--t-dim);
   border-style: dashed;
+  border-color: var(--line-2);
 }
 .uploading-cell .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--n-10);
+  background: var(--cyan);
   animation: cv-pulse 1s ease-in-out infinite;
 }
 @keyframes cv-pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.85); }
-  50%      { opacity: 1;   transform: scale(1.1); }
+  0%, 100% { opacity: .3; transform: scale(.85); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 </style>

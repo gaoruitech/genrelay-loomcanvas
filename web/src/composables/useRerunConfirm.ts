@@ -36,11 +36,13 @@ export function confirmRerun(info: RerunInfo): Promise<boolean> {
       header: t('canvas.rerun.title'),
       body: () => h('div', { class: 'cv-rerun-confirm' }, [
         ...lines.map(line => h('p', { class: 'cv-rerun-line' }, line)),
-        h('label', { class: 'cv-rerun-skip' }, [
+        // 用全局的 .lc-check（隐藏原生框 + .box），原生复选框在深色弹窗里是一块灰白方块
+        h('label', { class: 'lc-check', style: { marginTop: '6px', fontSize: '13px' } }, [
           h('input', {
             type: 'checkbox',
             onChange: (e: Event) => { dontAsk = (e.target as HTMLInputElement).checked },
           }),
+          h('span', { class: 'box' }),
           h('span', t('canvas.rerun.dontAsk')),
         ]),
       ]),

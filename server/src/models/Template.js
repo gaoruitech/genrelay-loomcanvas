@@ -1,7 +1,7 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
+const { SYSTEM_USER } = require('../constants')
 
 const { Mixed } = mongoose.Schema.Types
 
@@ -11,8 +11,10 @@ const { Mixed } = mongoose.Schema.Types
  * fresh ids when applying it.
  */
 const templateSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
-  key: { type: String, required: true, unique: true, maxlength: 60 },
+  // Built-in templates belong to the site and are shown to everyone; any other
+  // template is private to the account in userId.
+  userId: { type: String, default: SYSTEM_USER, index: true },
+  key: { type: String, required: true, maxlength: 60 },
   title: { type: String, required: true, maxlength: 80 },
   description: { type: String, default: '', maxlength: 500 },
   cover: { type: String, default: '' },
@@ -26,5 +28,7 @@ const templateSchema = new mongoose.Schema({
     group: { type: Boolean, default: false },
   },
 }, { timestamps: true, minimize: false })
+
+templateSchema.index({ userId: 1, key: 1 }, { unique: true })
 
 module.exports = mongoose.model('Template', templateSchema)

@@ -7,8 +7,8 @@
         <p class="cp-text">{{ text }}</p>
         <p v-if="hint" class="cp-hint">{{ hint }}</p>
         <div class="cp-ops">
-          <button class="cp-btn" @click="close">{{ t('common.cancel') }}</button>
-          <button class="cp-btn danger" @click="confirm">{{ okText || t('common.delete') }}</button>
+          <button class="lc-btn sm" @click="close">{{ t('common.cancel') }}</button>
+          <button class="lc-btn sm danger" @click="confirm">{{ okText || t('common.delete') }}</button>
         </div>
       </div>
     </Teleport>
@@ -96,19 +96,13 @@ onBeforeUnmount(() => {
 .cp-wrap { display: inline-flex; }
 .cp-trigger { display: inline-flex; }
 
+/* 确认气泡：和下拉菜单同一种玻璃面板 */
 .cp-pop {
-  position: fixed; z-index: 2400; width: 232px;
-  background: var(--n-1); border: 1px solid var(--n-5); border-radius: 12px;
-  padding: 12px 13px 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .3);
+  position: fixed; z-index: 3400; width: 240px; max-width: calc(100vw - 16px);
+  background: #131f4a; border: 1px solid var(--line-2); border-radius: 12px;
+  padding: 12px 12px 10px; box-shadow: var(--sh-1);
 }
-.cp-text { margin: 0; font-size: 13px; line-height: 1.6; color: var(--t-strong); }
-.cp-hint { margin: 5px 0 0; font-size: 11px; line-height: 1.55; color: var(--t-dim); }
-.cp-ops { display: flex; gap: 7px; justify-content: flex-end; margin-top: 11px; }
-.cp-btn {
-  border: 1px solid var(--n-5); background: var(--n-2); color: var(--t-body);
-  border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap;
-}
-.cp-btn:hover { border-color: var(--accent-edge); color: var(--accent-text); }
-.cp-btn.danger { border-color: var(--danger); color: var(--danger); }
-.cp-btn.danger:hover { background: var(--danger-dim); }
+.cp-text { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text); }
+.cp-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-3); }
+.cp-ops { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 </style>

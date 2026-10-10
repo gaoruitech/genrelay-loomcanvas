@@ -1,22 +1,24 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
 
 const { Mixed } = mongoose.Schema.Types
 
 /**
- * Admin adjustments layered on top of a provider's declared ModelSpec.
+ * One account's adjustments layered on top of a provider's declared ModelSpec.
  * A field left undefined means "use what the provider declared".
  */
 const modelOverrideSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
-  modelId: { type: String, required: true, unique: true, maxlength: 200 },
+  userId: { type: String, required: true, index: true },
+  modelId: { type: String, required: true, maxlength: 200 },
   enabled: { type: Boolean },
   label: { type: String, maxlength: 80 },
   sort: { type: Number },
   defaults: { type: Mixed },
   pricing: { type: Mixed },
 }, { timestamps: true, minimize: false })
+
+// Model ids are per account, so the same id may be overridden by several accounts.
+modelOverrideSchema.index({ userId: 1, modelId: 1 }, { unique: true })
 
 module.exports = mongoose.model('ModelOverride', modelOverrideSchema)

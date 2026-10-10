@@ -1,11 +1,12 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
+const { SYSTEM_USER } = require('../constants')
 
 /** Preset prompt text that a text node can be filled with in one click. */
 const textTemplateSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  // Built-in snippets belong to the site; any other one is private to this account.
+  userId: { type: String, default: SYSTEM_USER, index: true },
   key: { type: String, default: '' },
   title: { type: String, required: true, maxlength: 80 },
   content: { type: String, required: true, maxlength: 5000 },

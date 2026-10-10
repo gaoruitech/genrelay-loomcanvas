@@ -20,21 +20,26 @@ loomcanvas/
 │  │  ├─ runner/           任务队列、时限、结果转存、计价
 │  │  ├─ storage/          存储层：本地磁盘与 S3 兼容的桶、key 生成
 │  │  ├─ billing/          计费钩子的加载（默认空实现）
-│  │  ├─ services/         设置、存储设置、素材读取、图片工具、内置内容、结果清理、画布图
-│  │  ├─ middleware/       登录、语言、错误、安全响应头
+│  │  ├─ services/         账号与会话、设置、存储设置、素材读取、图片工具、内置内容、结果清理、画布图
+│  │  ├─ cli/              reset-password.js
+│  │  ├─ middleware/       会话与角色、语言、错误、安全响应头
 │  │  ├─ i18n/             服务端提示语：en.js、zh-CN.js
 │  │  └─ utils/            crypto、safeFetch、sniff、validate、workflowSchema
 │  └─ test/                node:test 测试
 ├─ web/                    Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  ├─ src/
-│  │  ├─ views/            CanvasList、Canvas、CanvasShareView、Settings、Setup、NotFound
+│  │  ├─ views/            Landing、Login、Register、Setup、Workbench、CanvasList、Canvas、Assets、Models、History、Settings、CanvasShareView、NotFound
+│  │  ├─ components/AppShell.vue  登录后每个页面外面的顶栏和侧栏
 │  │  ├─ components/canvas/    编辑器的节点和对话框
-│  │  ├─ components/settings/  设置页的各个标签页
+│  │  ├─ components/models/    「模型管理」页：服务商表单、自定义模型、价格
+│  │  ├─ components/history/   「生成记录」页：详情弹窗和清理弹窗
+│  │  ├─ components/settings/  「设置」页的各个分区
+│  │  ├─ components/workbench/、landing/、auth/  工作台、落地页、登录注册页用到的部件
 │  │  ├─ composables/      执行器、批量、历史、布局等
 │  │  ├─ utils/            api.ts、canvasModels.ts 等
 │  │  ├─ locales/          zh-CN.ts、en.ts、modules/*.ts
-│  │  ├─ stores/           Pinia（应用状态、主题、语言）
-│  │  └─ router/
+│  │  ├─ stores/           Pinia（bootstrap、当前登录的账号、语言）
+│  │  └─ router/           路由和登录守卫
 │  └─ scripts/check-i18n.mjs
 ├─ scripts/                仓库级检查（版本号、依赖协议）
 ├─ docs/
@@ -108,7 +113,7 @@ npm test
 ```
 
 - 单元测试只需要 Node。
-- 端到端测试（`api.e2e.test.js`、`security.e2e.test.js`）需要 MongoDB。设置 `TEST_MONGODB_URI` 可以用你自己起的那个，每次运行会建自己的库。不设的话会尝试 `mongodb-memory-server`，它第一次使用时要下载 MongoDB 的可执行文件。两个都不行时，这些测试是跳过，不是失败。
+- 端到端测试（`api.e2e.test.js`、`security.e2e.test.js`、`vendors.e2e.test.js`、`accounts.e2e.test.js`）需要 MongoDB。设置 `TEST_MONGODB_URI` 可以用你自己起的那个，每次运行会建自己的库。不设的话会尝试 `mongodb-memory-server`，它第一次使用时要下载 MongoDB 的可执行文件。两个都不行时，这些测试是跳过，不是失败。
 
   ```bash
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
@@ -185,7 +190,7 @@ node --test test/storage.live.test.js
 - 所有请求都走 `web/src/utils/api.ts` 里的同一个 axios 实例，`baseURL: '/api'`。函数按功能分组（`workflowApi`、`adminApi`、`filesApi` 等）。
 - 开发时，Vite 把 `/api` 和 `/files` 代理到 `http://127.0.0.1:3000`（`web/vite.config.ts`），浏览器看到的是同一个来源，不用配跨域。生产环境由服务端直接提供构建好的前端（`WEB_DIST`）。
 - 每个请求都带 `X-Locale`（当前界面语言）；登录后还带 `Authorization: Bearer <token>`。
-- 每个返回都是 `{ result, message, data }`，`unwrap()` 取出 `data` 或抛错。收到 `401` 会清掉凭证并显示口令页。
+- 每个返回都是 `{ result, message, data }`，`unwrap()` 取出 `data` 或抛错。收到 `401` 会清掉凭证并显示登录页。
 - 运行是异步的：前端提交运行，然后拿着在等的 id 轮询 `POST /api/runs/status`。没有 WebSocket。
 - 接口层用到的类型在 `web/src/types/index.ts`。
 
@@ -283,7 +288,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - 凡是来自用户或上游响应的地址，都通过 `utils/safeFetch.js` 去取。文件类型按内容判断（`utils/sniff.js`），不看文件名，也不看对方声明的类型。
 - 存储 key 由 `storage/keys.js` 生成，用户输入的任何内容都不会进入 key。
 - 读写文件一律通过 `getStorage()`（`storage/index.js`），文件在哪个后端它就去哪找。存下来的、返回给客户端的地址永远是 `storage.urlFor(key)`，也就是 `/files/<key>`。预签名地址（`storage.externalUrls()`）只给那一次上游请求用：不要保存，不要返回给客户端，也不要写进日志。
-- 每张数据表都带 `userId`，目前固定是常量 `local`，以后加多用户不需要迁移数据。
+- 每张按账号区分的数据表都带 `userId`（所属账号的 id），对它的每一次查询都要带上 `req.userId`：别的账号的数据必须返回 404，不是 403，更不能返回内容。新增按账号区分的表时，要把它加进 `server/src/services/accounts.js` 的 `OWNED`（接手旧数据和删除账号都按这份清单走），并补进隔离测试 `server/test/accounts.e2e.test.js`。查服务商和模型一律经过 `providers/index.js`，不给账号 id 它会直接报错。站点级的东西（设置、存储、内置模板）只有所有者能改（`requireOwner`）。
 - 执行器核心（`runner/core.js`）的存储、服务商查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
 - 没有理由不加新的运行时依赖：响应头、跨域、限流各自只有几行代码，没有引入包。
 
@@ -293,7 +298,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - TDesign 组件由 `unplugin-vue-components` 自动引入，直接写 `<t-button>` 即可。
 - `@/` 指 `web/src/`。
 - 组件里不写给用户看的字面文字，一律走 `t()`。
-- 颜色和间距来自 `styles/design-tokens.css`，两种主题都要能用。
+- 颜色和间距来自 `styles/design-tokens.css`。界面只有一套深色主题，不要加浅色版本或主题开关。
 
 共同的：
 

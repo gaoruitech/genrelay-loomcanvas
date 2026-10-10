@@ -3,13 +3,17 @@
     v-if="open"
     class="cs-panel"
     :style="{ left: x + 'px', top: y + 'px' }"
+    role="dialog"
+    :aria-label="t('dialogs.bg.title')"
     @mousedown.stop
     @click.stop
     @wheel.stop
   >
     <div class="cs-head">
       <span>{{ t('dialogs.bg.title') }}</span>
-      <button class="cs-close" :title="t('common.close')" @click="$emit('close')">×</button>
+      <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="$emit('close')">
+        <LcIcon name="x" size="s" />
+      </button>
     </div>
 
     <div class="cs-field">
@@ -21,8 +25,9 @@
           class="cs-sw"
           :class="{ auto: p.value === 'auto', on: bg.color === p.value }"
           :style="p.value === 'auto' ? undefined : { background: p.value }"
-          :title="p.label"
-          :aria-label="p.label"
+          :title="presetLabel(p)"
+          :aria-label="presetLabel(p)"
+          :aria-pressed="bg.color === p.value"
           @click="setColor(p.value)"
         />
       </div>
@@ -31,17 +36,16 @@
           <input type="color" :value="pickerValue" @input="onPick" />
           <span>{{ t('dialogs.bg.custom') }}</span>
         </label>
-        <span class="cs-hex">{{ bg.color === 'auto' ? t('dialogs.bg.followTheme') : bg.color.toUpperCase() }}</span>
+        <span class="cs-hex">{{ bg.color === 'auto' ? t('canvas.style.auto') : bg.color.toUpperCase() }}</span>
       </div>
     </div>
 
     <div class="cs-field">
       <div class="cs-label">{{ t('dialogs.bg.pattern') }}</div>
-      <div class="cs-pats">
+      <div class="lc-seg cs-pats">
         <button
           v-for="p in CANVAS_BG_PATTERNS"
           :key="p.value"
-          class="cs-pat"
           :class="{ on: bg.pattern === p.value }"
           @click="patch({ pattern: p.value })"
         >{{ p.label }}</button>
@@ -59,6 +63,7 @@
         :value="bg.gap"
         :disabled="bg.pattern === 'none'"
         :aria-label="t('dialogs.bg.gapAria')"
+        :style="{ '--v': rangePct + '%' }"
         @input="onGap"
       />
       <div class="cs-row">
@@ -67,11 +72,11 @@
       </div>
     </div>
 
-    <p v-if="warning" class="cs-warn">{{ warning }}</p>
+    <p v-if="warning" class="lc-alert warn cs-warn"><LcIcon name="warn" size="s" /><span>{{ warning }}</span></p>
 
     <div class="cs-foot">
       <span class="cs-dim">{{ t('dialogs.bg.autoSaved') }}</span>
-      <button class="cs-reset" :disabled="isDefault" @click="reset">{{ t('dialogs.bg.restoreDefault') }}</button>
+      <button class="lc-btn sm" :disabled="isDefault" @click="reset">{{ t('dialogs.bg.restoreDefault') }}</button>
     </div>
   </div>
 </template>
@@ -79,7 +84,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAppStore } from '@/stores/app'
+import LcIcon from '@/components/LcIcon.vue'
 import {
   CANVAS_BG_PRESETS,
   CANVAS_BG_PATTERNS,
@@ -105,13 +110,20 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const appStore = useAppStore()
 
 const isDefault = computed(() => isDefaultCanvasBg(props.bg))
-const warning = computed(() => canvasBgWarning(props.bg, appStore.resolvedTheme))
+const warning = computed(() => canvasBgWarning(props.bg))
 
-// <input type="color"> 不接受 'auto'，跟随主题时给它一个中性值当起点
-const pickerValue = computed(() => (isHexColor(props.bg.color) ? props.bg.color : '#151517'))
+// 'auto' 这一档就是编辑器的默认底（深蓝 + 点阵），不再是「跟随主题」
+function presetLabel(p: { value: string; label: string }) {
+  return p.value === 'auto' ? t('canvas.style.auto') : p.label
+}
+
+// <input type="color"> 不接受 'auto'，默认底时给它一个接近的深蓝当起点
+const pickerValue = computed(() => (isHexColor(props.bg.color) ? props.bg.color : '#060b22'))
+
+const rangePct = computed(() =>
+  Math.round(((props.bg.gap - CANVAS_BG_GAP_MIN) / (CANVAS_BG_GAP_MAX - CANVAS_BG_GAP_MIN)) * 100))
 
 function patch(part: Partial<CanvasBgSettings>) {
   emit('update:bg', { ...props.bg, ...part })
@@ -135,144 +147,117 @@ function reset() {
 .cs-panel {
   position: fixed;
   z-index: 60;
-  width: 264px;
-  padding: 12px;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px var(--shadow-2);
-  color: var(--t-body);
+  width: 272px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 14px;
+  background: rgba(12, 21, 52, .94);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: var(--sh-2);
+  color: var(--text-2);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
 .cs-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-body);
+  font: 600 14px/1.4 var(--f-disp);
+  color: var(--text);
   margin-bottom: 12px;
 }
-.cs-close {
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--t-dim);
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-}
-.cs-close:hover { background: var(--n-4); color: var(--t-body); }
 
-.cs-field { margin-bottom: 14px; }
-.cs-field.disabled { opacity: 0.45; }
-.cs-label {
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  color: var(--t-dim);
-  margin-bottom: 8px;
-}
-.cs-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.cs-field { margin-bottom: 16px; }
+.cs-field.disabled { opacity: .45; }
+.cs-label { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.cs-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .cs-sw {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 7px;
-  border: 1px solid var(--n-6);
+  border: 1px solid var(--line-2);
   cursor: pointer;
   padding: 0;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color .12s ease, box-shadow .12s ease;
 }
-.cs-sw:hover { transform: translateY(-1px); }
-/* 「跟随主题」用一半深一半浅表达，比写字省地方也更直观 */
-.cs-sw.auto { background: linear-gradient(135deg, #151517 0 50%, #eaeceb 50% 100%); }
-.cs-sw.on {
-  box-shadow: 0 0 0 2px var(--n-2), 0 0 0 3.5px var(--accent);
+.cs-sw:hover { border-color: var(--line-3); }
+/* 默认档：深蓝底 + 点阵，和画布上看到的是同一个样子 */
+.cs-sw.auto {
+  background-color: #060b22;
+  background-image: radial-gradient(rgba(124, 160, 255, .55) 1px, transparent 1px);
+  background-size: 6px 6px;
+  background-position: 2px 2px;
 }
-.cs-sw:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+.cs-sw.on { border-color: var(--cyan); box-shadow: var(--ring); }
+.cs-sw:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
 
 .cs-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 9px;
+  margin-top: 10px;
 }
 .cs-custom {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 12px;
-  color: var(--t-dim);
+  color: var(--text-2);
   cursor: pointer;
 }
 .cs-custom input[type='color'] {
-  width: 26px;
-  height: 22px;
+  width: 28px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--n-6);
+  border: 1px solid var(--line-2);
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
 }
 .cs-hex {
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  padding: 3px 7px;
+  font: 500 11px/1 var(--f-mono);
+  padding: 5px 8px;
   border-radius: 6px;
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  color: var(--t-body);
+  background: var(--well);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  white-space: nowrap;
 }
-.cs-dim { font-size: 12px; color: var(--t-dim); }
+.cs-dim { font-size: 12px; color: var(--text-3); }
 
-.cs-pats { display: flex; gap: 6px; }
-.cs-pat {
-  flex: 1;
-  padding: 7px 0;
-  font-size: 12px;
-  border-radius: 7px;
-  border: 1px solid var(--n-5);
-  background: var(--n-3);
-  color: var(--t-dim);
-  cursor: pointer;
-  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
-}
-.cs-pat:hover { color: var(--t-body); }
-.cs-pat.on {
-  border-color: var(--accent-mid);
-  color: var(--accent-text);
-  background: var(--accent-ghost);
-}
-.cs-range { width: 100%; accent-color: var(--accent); }
+.cs-pats { display: flex; width: 100%; }
+.cs-pats > button { flex: 1 1 0; justify-content: center; padding: 0 4px; font-size: 12px; }
 
-.cs-warn {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.55;
-  border-radius: 8px;
-  border-left: 2px solid var(--warn, #f5b23c);
-  background: var(--n-3);
-  color: var(--t-dim);
+/* 滑块：已走过的一段用渐变，剩下的是细线 */
+.cs-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 16px; margin: 0; background: none; cursor: pointer;
 }
+.cs-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--blue) var(--v, 50%), rgba(124, 160, 255, .2) var(--v, 50%));
+}
+.cs-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(124, 160, 255, .2); }
+.cs-range::-moz-range-progress { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+.cs-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+  background: #e9efff; border: 2px solid var(--cyan);
+}
+.cs-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #e9efff; border: 2px solid var(--cyan); }
+.cs-range:focus-visible { outline: none; }
+.cs-range:focus-visible::-webkit-slider-thumb { box-shadow: var(--ring); }
+.cs-range:disabled { cursor: not-allowed; }
+
+.cs-warn { margin: 0 0 12px; font-size: 12px; padding: 8px 10px; }
 .cs-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--n-5);
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
-.cs-reset {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--n-5);
-  background: var(--n-3);
-  color: var(--t-body);
-  cursor: pointer;
-}
-.cs-reset:hover:not(:disabled) { border-color: var(--n-7); }
-.cs-reset:disabled { opacity: 0.4; cursor: default; }
 </style>

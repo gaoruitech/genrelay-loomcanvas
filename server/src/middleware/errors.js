@@ -9,7 +9,7 @@ function apiNotFound(_req, _res, next) {
 }
 
 function classify(err) {
-  if (err instanceof ApiError) return { status: err.status, message: err.i18n, result: err.result }
+  if (err instanceof ApiError) return { status: err.status, message: err.i18n, result: err.result, data: err.data }
   // Errors raised by our own services that are safe to show (provider/media/registry).
   const shown = messageOf(err)
   if (shown) {
@@ -48,16 +48,18 @@ function errorHandler(err, req, res, _next) {
   const known = classify(err)
   if (!known) {
     // Unexpected: log everything server-side, tell the client nothing specific.
-    console.error(`[error] ${req.method} ${req.originalUrl}:`, err)
+    // A share link's token is the permission to read it: keep it out of the log.
+    const where = String(req.originalUrl || '').replace(/(\/canvas-share\/)[A-Za-z0-9_-]{32,64}/, '$1***')
+    console.error(`[error] ${req.method} ${where}:`, err)
   }
-  const { status, message, result } = known || { status: 500, message: msg('common.internal') }
+  const { status, message, result, data } = known || { status: 500, message: msg('common.internal') }
   if (res.headersSent) return res.end()
   res.status(status).json({
     result: result || -1,
     message: render(req.locale || FALLBACK_LOCALE, message).slice(0, 500),
     // Stable identifier of the message, for clients that branch on it.
     code: message.code === RAW ? '' : message.code,
-    data: null,
+    data: data === undefined ? null : data,
   })
 }
 

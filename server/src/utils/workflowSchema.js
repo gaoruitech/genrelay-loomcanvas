@@ -9,7 +9,7 @@
  * current, so a document can jump several versions in one read.
  */
 
-const CURRENT_SCHEMA_VERSION = 1
+const CURRENT_SCHEMA_VERSION = 2
 
 /** version N -> function that returns the document at version N + 1 */
 const MIGRATIONS = {
@@ -21,6 +21,12 @@ const MIGRATIONS = {
     viewport: doc.viewport && typeof doc.viewport === 'object' ? doc.viewport : { x: 0, y: 0, zoom: 1 },
     settings: doc.settings && typeof doc.settings === 'object' ? doc.settings : {},
   }),
+  // Version 2 came with the redesigned editor, whose generation nodes are about twice as
+  // tall. A canvas laid out before that may now have nodes on top of each other. Only the
+  // browser knows the real node sizes, so the server just flags the document; the editor
+  // checks it once on open, re-arranges it if the nodes do overlap, and clears the flag
+  // (PUT { legacyLayout: false }). A single node, or none, cannot overlap anything.
+  1: (doc) => ({ ...doc, legacyLayout: Array.isArray(doc.nodes) && doc.nodes.length > 1 }),
 }
 
 /**

@@ -36,6 +36,14 @@ async function main() {
   // A custom model the vendor's catalog now lists itself is served from the catalog.
   const shadowed = await require('./services/providerMigration').dropShadowedCustomModels()
   if (shadowed) console.log(`[providers] ${shadowed} custom model(s) are now in their vendor's catalog; the custom entries were removed, settings for them are kept`)
+  // Accounts: per-account indexes, and data from before accounts (see services/accounts.js).
+  if (config.legacyAccessPassword) {
+    console.warn('[auth] ACCESS_PASSWORD is set but no longer used: LoomCanvas has accounts now. Remove it from the environment; see docs/getting-started.md#accounts.')
+  }
+  const accountState = await require('./services/accounts').prepare()
+  if (accountState.adopted) console.log(`[auth] finished handing the data from before accounts to the owner: ${JSON.stringify(accountState.adopted)}`)
+  if (accountState.legacyWaiting) console.log('[auth] data from before accounts is waiting: the first account to register becomes the owner and takes it over')
+  else if (!accountState.users) console.log('[auth] no account yet: the first one to register becomes the owner')
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
   const { getRunner } = require('./runner')
@@ -48,7 +56,7 @@ async function main() {
 
   const app = require('./app').createApp()
   const server = app.listen(config.port, () => {
-    console.log(`[http] LoomCanvas server listening on :${config.port} (storage: ${storage.driver} from ${storage.source === 'saved' ? 'settings' : 'environment'}, login: ${config.accessPassword ? 'on' : 'off'})`)
+    console.log(`[http] LoomCanvas server listening on :${config.port} (storage: ${storage.driver} from ${storage.source === 'saved' ? 'settings' : 'environment'}, accounts: ${accountState.users})`)
   })
   // Long uploads and zip downloads must not be cut by the default timeouts.
   server.requestTimeout = 15 * 60 * 1000

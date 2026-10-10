@@ -4,7 +4,7 @@
 
 How to run LoomCanvas for real: Docker Compose, running without Docker, reverse proxy and HTTPS, backups and upgrades.
 
-LoomCanvas is one Node.js process plus MongoDB. The run queue, the login rate limit and the settings cache live in that process, so run **one** instance per database. Do not put several replicas behind a load balancer.
+LoomCanvas is one Node.js process plus MongoDB. The run queue, the sign-in and registration rate limits and the settings cache live in that process, so run **one** instance per database. Do not put several replicas behind a load balancer.
 
 ## Docker Compose
 
@@ -18,9 +18,11 @@ The repository ships a `docker-compose.yml` with two services:
 MongoDB is not published on the host and has no authentication; it is only reachable from the `app` container over the Compose network.
 
 ```bash
-cp .env.example .env     # set SECRET_KEY, optionally ACCESS_PASSWORD
+cp .env.example .env     # set SECRET_KEY
 docker compose up -d
 ```
+
+Then open the instance, click **Sign up** on the landing page and register. The first account becomes the owner, so do this before the instance is reachable by anyone else. See [Accounts](#accounts).
 
 About the image:
 
@@ -36,7 +38,6 @@ Compose reads the `.env` file next to `docker-compose.yml` and passes these on t
 | --- | --- | --- |
 | `SECRET_KEY` | none, required | Compose refuses to start without it. At least 16 characters. |
 | `PUBLIC_URL` | empty | Optional. Public address of the instance, so upstream models can fetch reference media by URL. See [PUBLIC_URL](#public_url). |
-| `ACCESS_PASSWORD` | empty | Shared access password. Empty means no login. |
 | `PORT` | `3000` | Port published on the host. Inside the container the server always listens on 3000. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
 | `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under **Settings → Storage** takes precedence. |
@@ -114,7 +115,7 @@ Without Docker the server reads `server/.env`, not the `.env` in the repository 
 
 ## Reverse proxy and HTTPS
 
-Serve LoomCanvas over HTTPS whenever it is reachable from outside your machine: the access password and the login token travel in requests.
+Serve LoomCanvas over HTTPS whenever it is reachable from outside your machine: account passwords travel in the sign-in and registration requests, and the session token travels in every request.
 
 Things the proxy must get right:
 
@@ -123,7 +124,7 @@ Things the proxy must get right:
 | Upload size | Allow request bodies a little larger than `MAX_UPLOAD_MB` (multipart adds overhead). Canvas saves are JSON up to 6 MB. |
 | Long requests | Uploads, zip downloads and the download proxy can run for minutes. The server allows 15 minutes per request; give the proxy at least 10. Runs themselves are polled with short requests, so no WebSocket or SSE support is needed. |
 | Files from a bucket | With S3 storage and `proxy` delivery, `/files/*` is streamed from the bucket through the app, videos included. Do not let the proxy buffer those responses on disk (`proxy_buffering off` in nginx, as below), pass `Range` and `If-None-Match` through unchanged (the default), and keep the long timeouts. The responses are immutable, so a cache in front may keep them. With `redirect` delivery the app only answers a `302`. See [Storage](storage.md#private-or-public-bucket-the-two-delivery-modes). |
-| Client address | Set `TRUST_PROXY=1` (one proxy in front) so the login rate limit sees the real client address instead of the proxy's. |
+| Client address | Set `TRUST_PROXY=1` (one proxy in front) so the sign-in and registration rate limits, and the session list, see the real client address instead of the proxy's. |
 | `PUBLIC_URL` | Set it to the public HTTPS address if upstream models should fetch reference media by URL. |
 | HSTS | The app does not send `Strict-Transport-Security`. Add it at the proxy that terminates TLS. |
 
@@ -194,15 +195,48 @@ A file in a bucket is handed to the upstream straight from the bucket instead: i
 
 Share links are built by the browser from the address in the address bar, not from `PUBLIC_URL`.
 
-## Access password
+## Accounts
 
-Set `ACCESS_PASSWORD` to require a password. It is one shared password for the whole instance, not a user system. Everyone who has it has full access, including settings and provider keys (keys are never shown, but can be replaced or used).
+Signing in is always required. Nothing about accounts is configured in the environment: they are created by registering in the web app and stored in the database.
 
-- Empty: no login at all. Only do this on your own machine or a trusted network.
-- Changing the password signs everyone out.
-- To reset a forgotten password, change `ACCESS_PASSWORD` in `.env` and restart. No data is lost.
+- **Register the owner first.** The first account registered on an instance becomes the owner, the one account that manages the site. Until it exists, whoever reaches the instance first can take that place. Register right after the first start, with the port still closed to the outside (or bound to `127.0.0.1`), and expose the instance afterwards. While no account exists the server logs `[auth] no account yet: the first one to register becomes the owner` at start-up.
+- **Decide about registration.** After the owner has registered, registration stays open: anyone who can reach the instance can create an account with its own private space, its own providers and its own keys. If that is not what you want, switch **Open sign-up** off under **Settings → Site**, or send a request:
 
-More in [Security](security.md).
+  ```bash
+  curl -X PUT http://localhost:3000/api/admin/site \
+    -H 'Authorization: Bearer <token>' \
+    -H 'Content-Type: application/json' \
+    -d '{"registrationOpen": false}'
+  ```
+
+  Existing accounts keep signing in. Open it again for as long as it takes someone to register, then close it.
+- **Managing accounts.** Under **Settings → Users** the owner can disable or enable an account, delete it and reset its password. Disabling signs the account out at once and keeps its data. Deleting removes the account together with everything it owns, including its stored files, and cannot be undone.
+- **Limits.** `userConcurrency` and `userQueueLimit` bound what one account can occupy of the queue. The owner sets them under **Settings → Run limits** (**Concurrent runs per account**, **Queue limit per account**); see [Configuration](configuration.md#admin-settings). There is no storage quota per account.
+
+No email is sent by LoomCanvas, so no mail server is needed and addresses are not verified.
+
+### Forgotten password
+
+There is no "forgot password" mail. There are two ways to get back in:
+
+1. **The owner resets it.** Under **Settings → Users**, the owner chooses **Reset password** for the account and is shown a temporary password once.
+2. **Whoever runs the server resets it from the command line.** This is the way for the owner's own password. With Docker Compose:
+
+   ```bash
+   docker compose exec app node src/cli/reset-password.js <username-or-email>
+   ```
+
+   Without Docker, from the repository root:
+
+   ```bash
+   node server/src/cli/reset-password.js <username-or-email>
+   ```
+
+   The command uses the server's own configuration (`MONGODB_URI` from the environment or `server/.env`), prints a temporary password and signs the account out everywhere. The server can keep running. The exit code is 0 on success, 1 when there is no such account and 2 on wrong usage.
+
+Either way, sign in with the temporary password and choose a new one under **Settings → Account & security**.
+
+More in [Security](security.md#accounts).
 
 ## Backups
 
@@ -210,7 +244,7 @@ Back up three things together:
 
 | What | Where | Why |
 | --- | --- | --- |
-| The database | volume `mongo_data` | Canvases, providers (with encrypted keys), settings, the saved storage configuration (with its encrypted secret), runs, shares, assets. |
+| The database | volume `mongo_data` | Accounts (with password hashes) and their sessions, canvases, providers (with encrypted keys), settings, the saved storage configuration (with its encrypted secret), runs, shares, assets. |
 | The files | volume `app_data` | Uploaded and generated media kept on the local disk. |
 | `.env` | repository root | `SECRET_KEY`. Without it the provider keys and the storage secret in the database cannot be decrypted. |
 
@@ -235,6 +269,8 @@ docker compose cp ./loomcanvas-data-backup/. app:/app/data
 
 After restoring files, make sure `/app/data` is still writable by the `node` user inside the container (`docker compose exec -u root app chown -R node:node /app/data`); the process can write nowhere else. Test your restore procedure before you rely on it; these commands have not been exercised as part of the project's test suite.
 
+A database dump now holds every account's username, email and password hash, and the hashes of live session tokens. Store it accordingly. Restoring an older dump brings back the accounts and passwords of that time.
+
 With S3 storage the files live in your bucket; back that up with the vendor's tools (versioning, replication). If you switched storage at some point, files are in both places, the `app_data` volume and the bucket, and both need a backup. See [Storage](storage.md#backups).
 
 ## Upgrading
@@ -248,16 +284,34 @@ There is no separate migration command. On startup the server:
 
 1. Puts unfinished runs back to work. Queued runs start. A run that already has an upstream task id is polled again, not resubmitted. After a crash (no clean shutdown), a run that was caught mid-flight without a task id is marked failed (`run.interrupted`), because it is unknown whether the upstream created the task.
 2. Installs built-in content when its seed version has increased. Built-in canvas templates are overwritten with the new version; built-in text snippets are only added when missing.
-3. Upgrades canvases lazily: a canvas saved under an older `schemaVersion` is migrated when it is next opened.
+3. Upgrades canvases lazily: a canvas saved under an older `schemaVersion` is migrated when it is next read. Canvas documents are at `schemaVersion` 2. Because generation nodes became taller in the redesign, a canvas last saved by an earlier version is also arranged once when it is first opened in the editor, if its nodes overlap at the new sizes; see the [FAQ](faq.md#after-the-upgrade-a-canvas-looks-rearranged).
 4. Converts providers saved by the previous version to the vendor model, once per provider, and logs how many were converted. Keys, addresses and model ids are kept. See [Providers](providers.md#upgrading-from-the-previous-version) for what to check afterwards.
 
 On `docker compose stop`/`down` the server gets `SIGTERM` and stops taking work. Nothing is sent to an upstream twice: an in-flight run goes back to `queued` only if it already has an upstream task id (the next start polls it again) or if nothing was sent for it yet. A run whose request was sent but has no task id yet fails with `run.interrupted` and has to be run again by hand. With a synchronous provider (OpenAI images, Gemini) and with chat requests there never is a task id, so those runs always end this way when they are caught in flight. The server gives itself 20 seconds for the shutdown and Compose allows 30.
 
 Read [CHANGELOG.md](../CHANGELOG.md) before upgrading. Before the first tagged release, interfaces may change.
 
+### Upgrading from a version without accounts
+
+Earlier versions had no accounts: all data belonged to one built-in user, and an optional shared password (`ACCESS_PASSWORD`) guarded the instance. The version with accounts takes that data over as follows.
+
+- **There is nothing to run by hand.** At its first start the new version drops three unique indexes that were site-wide (`providers.slug_1`, `modeloverrides.modelId_1`, `templates.key_1`), creates the per-account ones, and moves the built-in templates to the site.
+- **Existing data waits for the first account.** It is left exactly as it is until somebody registers. The log says: `[auth] data from before accounts is waiting: the first account to register becomes the owner and takes it over`.
+- **The first account registered becomes the owner and takes over all of it in one step**: canvases, share links (they keep working, with the same addresses), assets, brand kits, providers with their keys, custom models, overrides and prices, usage records and hand-made templates. File addresses stored in canvases keep working; files are not moved or renamed.
+- **So register right away, before anybody else can reach the instance.** Whoever registers first owns the old data. If the instance is exposed, do the upgrade with the port closed, or register immediately after the start.
+- **Keep `SECRET_KEY` unchanged.** The provider keys that are handed over are still encrypted with it.
+- The hand-over can be repeated safely: if the server stops in the middle, the next start finishes it. Once an account exists, data that still has no owner is never given to anybody.
+- Runs that were unfinished across the upgrade are resumed as usual, with the provider they were started with. They belong to the owner once the owner exists.
+- **Remove `ACCESS_PASSWORD`** from `.env` and from your Compose file. It is ignored; the server logs one warning at start-up while it is still set. Everybody signs in with an account now, and tokens issued for the old shared password are no longer valid.
+- **Integrations that called the API without a token** (instances that had no `ACCESS_PASSWORD`) must sign in first: `POST /api/auth/login`, then send `Authorization: Bearer <token>`. See [API](api.md#authentication).
+- **`GET /api/bootstrap` changed shape.** `authRequired` and `authed` are gone (signing in is always required; `user` is `null` for an anonymous caller), and so is `site.defaultTheme`. See [API](api.md#get-apibootstrap).
+- **One theme.** The interface has a single dark theme. The `defaultTheme` setting was removed: `PUT /api/admin/settings` refuses it as an unknown key, and a value stored by an earlier version is ignored.
+- **Old links to the Settings tabs still work.** Providers, models and prices moved to the **Models** page and usage to the **History** page; `/settings?tab=providers`, `?tab=models` and `?tab=usage` are redirected there.
+- **Billing hooks**: `ctx.userId` is now the id of the account (it was the constant `'local'`), and there is a new `ctx.username`. See [Billing hook](billing-hook.md).
+
 ## Health check
 
-`GET /api/app/bootstrap` is public and returns HTTP 200 with the running version once the server is up (it only starts listening after the database is connected). The Docker image uses it as its `HEALTHCHECK`.
+`GET /api/app/bootstrap` (the earlier path of `GET /api/bootstrap`; both are answered) is public and returns HTTP 200 with the running version once the server is up (it only starts listening after the database is connected). The Docker image uses it as its `HEALTHCHECK`.
 
 ```bash
 curl -fsS http://localhost:3000/api/app/bootstrap
@@ -267,6 +321,6 @@ curl -fsS http://localhost:3000/api/app/bootstrap
 
 - **Uploads are buffered in memory.** Each upload is held in RAM up to `MAX_UPLOAD_MB` before it is written to storage; "fetch from URL" does the same. Size the container's memory for the number of people uploading at once, and do not raise `MAX_UPLOAD_MB` further than you need.
 - Generated images are also handled in memory (up to 60 MB each) to read their size and make a thumbnail. Generated videos are streamed to storage (up to 1 GB each).
-- Concurrency of runs is the `concurrency` setting (default 4). Most of a run is waiting on the upstream, so CPU use is low; image tools and thumbnails use `sharp`.
+- Concurrency of runs is the `concurrency` setting (default 4) for the whole instance; one account holds at most `userConcurrency` of those slots. Most of a run is waiting on the upstream, so CPU use is low; image tools and thumbnails use `sharp`.
 - With S3 storage and `proxy` delivery, every file view passes through the app as a stream. That costs little memory, but the traffic is the server's.
 - Disk: results are kept forever, on the local disk or in the bucket, unless you set `retentionDays`. See [Configuration](configuration.md#admin-settings).

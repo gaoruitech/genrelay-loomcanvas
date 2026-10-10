@@ -46,7 +46,8 @@ The same object is passed to all three calls of one run.
 | Field | Meaning |
 | --- | --- |
 | `runId` | Run id (string). Use it as your idempotency key. |
-| `userId` | Always `'local'` in this version; LoomCanvas is single-user. |
+| `userId` | Id of the account the run belongs to (a 24-character hex string). `'local'` only for a run left over from before accounts that no account owns yet. Key your own records on this. |
+| `username` | That account's current username; `''` when the account no longer exists or the run is not owned yet. It can change when the user edits their profile. |
 | `kind` | `'image'`, `'video'` or `'chat'`. |
 | `model` | Model id, `<slug>:<upstream model>`. |
 | `providerType` | For example `'gaorui'`. |
@@ -193,5 +194,5 @@ What it does **not** guarantee:
 - **Not transactional.** The hook and the run's database update are separate steps.
 - **No timeout on the hook.** The runner awaits each call. A slow `beforeRun` delays the run and holds one of the `concurrency` slots.
 - **The cost is an estimate.** It comes from the price table an operator typed in, not from the upstream's bill. A run that fails may still have been billed upstream.
-- **`userId` is a constant.** There are no users to bill separately. Anything per-user has to come from your own layer in front of LoomCanvas.
+- **The hook knows the account, not more.** `ctx.userId` and `ctx.username` say whose run it is; balances, plans and quotas per account are yours to keep. A hook written for earlier versions, where `userId` was always the constant `'local'`, has to be changed if it relied on that value.
 - **Tool nodes do not pass through the hook.** Slice, collage, watermark, resize and multi-platform export are not runs.

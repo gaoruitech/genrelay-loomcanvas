@@ -102,7 +102,7 @@ export default {
       title: '画布外观',
       color: '底色',
       custom: '自定义',
-      followTheme: '跟随主题',
+      defaultColor: '默认',
       pattern: '图案',
       density: '密度',
       gapAria: '图案间距',
@@ -120,7 +120,6 @@ export default {
       lines: '网格',
       cross: '十字',
       warnLightOnDark: '当前是深色主题，浅底会让节点文字和边框看不清',
-      warnDarkOnLight: '当前是浅色主题，深底会让节点文字和边框看不清',
     },
   },
   en: {
@@ -226,7 +225,7 @@ export default {
       title: 'Canvas appearance',
       color: 'Background',
       custom: 'Custom',
-      followTheme: 'Match theme',
+      defaultColor: 'Default',
       pattern: 'Pattern',
       density: 'Density',
       gapAria: 'Pattern spacing',
@@ -244,7 +243,6 @@ export default {
       lines: 'Grid',
       cross: 'Crosses',
       warnLightOnDark: 'You\'re on the dark theme. A light background makes node text and borders hard to see.',
-      warnDarkOnLight: 'You\'re on the light theme. A dark background makes node text and borders hard to see.',
     },
   },
 }

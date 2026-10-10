@@ -4,8 +4,10 @@
  * Secrets at rest and key derivation.
  *
  * One master secret (SECRET_KEY) feeds every purpose through HKDF with a
- * distinct label, so the JWT signing key and the data encryption key are
- * unrelated even though they share a root.
+ * distinct label, so keys for different purposes are unrelated even though
+ * they share a root. Today there is one purpose: encrypting stored credentials
+ * (provider API keys, the S3 secret). Passwords and sessions do not use it:
+ * passwords are hashed (utils/password.js) and session tokens are random.
  */
 const crypto = require('crypto')
 

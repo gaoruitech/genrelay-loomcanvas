@@ -20,13 +20,13 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | MongoDB Community Server | image `mongo:7.0` in `docker-compose.yml` | SSPL-1.0 (server); the image also contains mongosh (Apache-2.0) and an Ubuntu base | Run as a separate service from the upstream image referenced in docker-compose.yml. It is not linked into LoomCanvas and is not copied into the application image; the application talks to it over the network through the Apache-2.0 `mongodb` driver. |
 | Node.js runtime and Alpine Linux base image | image `node:20-alpine` in `Dockerfile` | Node.js: MIT, with bundled components under their own licenses (V8 BSD-3-Clause, libuv MIT, OpenSSL Apache-2.0, ICU Unicode-3.0, zlib Zlib, npm Artistic-2.0, and others listed in the Node.js LICENSE file). Alpine packages: musl MIT, busybox GPL-2.0-only, apk-tools GPL-2.0-only, alpine-baselayout GPL-2.0-only, libstdc++/libgcc GPL-3.0-or-later WITH GCC-exception-3.1, and others. | Base image of both build stages and of the final application image. The application runs on top of these as separate programs; the image health check calls busybox `wget`. |
 | libvips and the libraries built into it | npm packages `@img/sharp-libvips-darwin-arm64`, `@img/sharp-libvips-darwin-x64`, `@img/sharp-libvips-linux-arm`, `@img/sharp-libvips-linux-arm64`, `@img/sharp-libvips-linux-ppc64`, `@img/sharp-libvips-linux-riscv64`, `@img/sharp-libvips-linux-s390x`, `@img/sharp-libvips-linux-x64`, `@img/sharp-libvips-linuxmusl-arm64`, `@img/sharp-libvips-linuxmusl-x64` (prebuilt binaries published by the sharp project) | LGPL-3.0-or-later for libvips; each binary package carries a notice file for the libraries built into it | Image processing on the server through `sharp`. See "Reviewed exceptions" below. |
-| Fonts | none | n/a | No font files are in `web/public` or `web/src`, and the web app loads none from a CDN. The stylesheets name `Inter` first and fall back to fonts already installed on the viewer's system. |
+| Fonts (npm) | npm packages `@fontsource-variable/inter` (OFL-1.1), `@fontsource-variable/jetbrains-mono` (OFL-1.1), `@fontsource-variable/sora` (OFL-1.1) | SIL Open Font License 1.1; see the web table below | The web app self-hosts the Latin variable `.woff2` file of each family, unmodified and under its original family name (none of the three declares a Reserved Font Name). The build writes the copyright notices and the full licence text to `licenses/fonts-OFL-1.1.txt` next to the bundle (`web/vite.config.ts`), so they travel with every deployment. No font is loaded from a CDN. |
 | Icon packages | npm packages `tdesign-icons-vue-next` (MIT) | see the web table below | Icon components used by the UI library are compiled into the web bundle as inline SVG. No icon font is loaded. |
 | Inline SVG icons | SVG markup in `web/src` (not an npm package) | Feather: MIT, Copyright (c) 2013-2023 Cole Bemis, https://github.com/feathericons/feather | The interface icons are inline 24x24 stroke SVGs. Several of them (for example image, chevron-left, book, download, upload, check, x, video, trash, edit) have the same geometry as the corresponding Feather icons; the others were drawn for LoomCanvas in the same style. |
 
 ## server: production dependencies
 
-254 packages from `server/package-lock.json`. By license: MIT (162), Apache-2.0 (55), ISC (13), LGPL-3.0-or-later (10), BlueOak-1.0.0 (4), Apache-2.0 AND LGPL-3.0-or-later (3), BSD-3-Clause (3), BSD-2-Clause (2), 0BSD (1), Apache-2.0 AND LGPL-3.0-or-later AND MIT (1).
+242 packages from `server/package-lock.json`. By license: MIT (152), Apache-2.0 (54), ISC (13), LGPL-3.0-or-later (10), BlueOak-1.0.0 (4), Apache-2.0 AND LGPL-3.0-or-later (3), BSD-2-Clause (2), BSD-3-Clause (2), 0BSD (1), Apache-2.0 AND LGPL-3.0-or-later AND MIT (1).
 
 | Package | Version | License | Scope | Repository |
 | --- | --- | --- | --- | --- |
@@ -118,7 +118,6 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | buffer | 5.6.0 | MIT | required | https://github.com/feross/buffer |
 | buffer | 6.0.3 | MIT | required | https://github.com/feross/buffer |
 | buffer-crc32 | 1.0.0 | MIT | required | https://github.com/brianloveswords/buffer-crc32 |
-| buffer-equal-constant-time | 1.0.1 | BSD-3-Clause | required | https://github.com/goinstant/buffer-equal-constant-time |
 | busboy | 1.6.0 | MIT | required | https://github.com/mscdex/busboy |
 | bytes | 3.1.2 | MIT | required | https://github.com/visionmedia/bytes.js |
 | call-bind-apply-helpers | 1.0.2 | MIT | required | https://github.com/ljharb/call-bind-apply-helpers |
@@ -144,7 +143,6 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | dotenv | 16.6.1 | BSD-2-Clause | required | https://github.com/motdotla/dotenv |
 | dunder-proto | 1.0.1 | MIT | required | https://github.com/es-shims/dunder-proto |
 | eastasianwidth | 0.2.0 | MIT | required | https://github.com/komagata/eastasianwidth |
-| ecdsa-sig-formatter | 1.0.11 | Apache-2.0 | required | https://github.com/Brightspace/node-ecdsa-sig-formatter |
 | ee-first | 1.1.1 | MIT | required | https://github.com/jonathanong/ee-first |
 | emoji-regex | 8.0.0 | MIT | required | https://github.com/mathiasbynens/emoji-regex |
 | emoji-regex | 9.2.2 | MIT | required | https://github.com/mathiasbynens/emoji-regex |
@@ -186,19 +184,9 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | isarray | 1.0.0 | MIT | required | https://github.com/juliangruber/isarray |
 | isexe | 2.0.0 | ISC | required | https://github.com/isaacs/isexe |
 | jackspeak | 3.4.3 | BlueOak-1.0.0 | required | https://github.com/isaacs/jackspeak |
-| jsonwebtoken | 9.0.3 | MIT | required | https://github.com/auth0/node-jsonwebtoken |
-| jwa | 2.0.1 | MIT | required | https://github.com/brianloveswords/node-jwa |
-| jws | 4.0.1 | MIT | required | https://github.com/brianloveswords/node-jws |
 | kareem | 2.6.3 | Apache-2.0 | required | https://github.com/mongoosejs/kareem |
 | lazystream | 1.0.1 | MIT | required | https://github.com/jpommerening/node-lazystream |
 | lodash | 4.18.1 | MIT | required | https://github.com/lodash/lodash |
-| lodash.includes | 4.3.0 | MIT | required | https://github.com/lodash/lodash |
-| lodash.isboolean | 3.0.3 | MIT | required | https://github.com/lodash/lodash |
-| lodash.isinteger | 4.0.4 | MIT | required | https://github.com/lodash/lodash |
-| lodash.isnumber | 3.0.3 | MIT | required | https://github.com/lodash/lodash |
-| lodash.isplainobject | 4.0.6 | MIT | required | https://github.com/lodash/lodash |
-| lodash.isstring | 4.0.1 | MIT | required | https://github.com/lodash/lodash |
-| lodash.once | 4.1.1 | MIT | required | https://github.com/lodash/lodash |
 | lru-cache | 10.4.3 | ISC | required | https://github.com/isaacs/node-lru-cache |
 | math-intrinsics | 1.1.0 | MIT | required | https://github.com/es-shims/math-intrinsics |
 | media-typer | 0.3.0 | MIT | required | https://github.com/jshttp/media-typer |
@@ -287,7 +275,7 @@ the machine it runs on, and they are all listed here regardless of where this fi
 
 ## web: production dependencies
 
-91 packages from `web/package-lock.json`. By license: MIT (78), ISC (9), BSD-3-Clause (2), Apache-2.0 (1), BSD-2-Clause (1).
+94 packages from `web/package-lock.json`. By license: MIT (78), ISC (9), OFL-1.1 (3), BSD-3-Clause (2), Apache-2.0 (1), BSD-2-Clause (1).
 
 | Package | Version | License | Scope | Repository |
 | --- | --- | --- | --- | --- |
@@ -296,6 +284,9 @@ the machine it runs on, and they are all listed here regardless of where this fi
 | @babel/parser | 7.29.9 | MIT | required | https://github.com/babel/babel |
 | @babel/runtime | 7.29.10 | MIT | required | https://github.com/babel/babel |
 | @babel/types | 7.29.8 | MIT | required | https://github.com/babel/babel |
+| @fontsource-variable/inter | 5.3.0 | OFL-1.1 | required | https://github.com/fontsource/font-files |
+| @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | required | https://github.com/fontsource/font-files |
+| @fontsource-variable/sora | 5.3.0 | OFL-1.1 | required | https://github.com/fontsource/font-files |
 | @intlify/core-base | 9.14.4 | MIT | required | https://github.com/intlify/vue-i18n |
 | @intlify/message-compiler | 9.14.4 | MIT | required | https://github.com/intlify/vue-i18n |
 | @intlify/shared | 9.14.4 | MIT | required | https://github.com/intlify/vue-i18n |

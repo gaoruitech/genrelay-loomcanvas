@@ -1,6 +1,16 @@
 'use strict'
 
-/** Settings page backend: providers, model overrides, site settings, usage (contract section 5). */
+/**
+ * Settings page backend (contract section 5). Two kinds of thing live under
+ * /api/admin:
+ *
+ *  - per account, for every signed-in user: vendors, providers and their keys,
+ *    custom models, model overrides (enabled, order, price) and usage. Each
+ *    query below carries the caller's id; another account's row is a 404.
+ *  - the site, for the owner only: settings (appearance, limits, retention)
+ *    and storage. Those routes carry `requireOwner`; accounts and registration
+ *    are in adminUsers.js.
+ */
 const express = require('express')
 const Provider = require('../models/Provider')
 const ModelOverride = require('../models/ModelOverride')
@@ -12,9 +22,10 @@ const { getConfig } = require('../config')
 const { encrypt, keyTail } = require('../utils/crypto')
 const { normalizePricing } = require('../runner/pricing')
 const { ok, wrap, badRequest, notFound, ApiError } = require('../utils/http')
-const { requireObjectId, isPlainObject, pageParams, parseDate, text } = require('../utils/validate')
+const { requireObjectId, isPlainObject, pageParams, parseDate, parseTimeZone, parseDayOrInstant, text } = require('../utils/validate')
 const { t, render, messageOf, renderStored } = require('../i18n')
-const { LOCAL_USER, RUN_KINDS, RUN_STATUS } = require('../constants')
+const { requireOwner } = require('../middleware/auth')
+const { RUN_KINDS, RUN_STATUS } = require('../constants')
 
 const router = express.Router()
 
@@ -62,11 +73,12 @@ function parseApiKey(v) {
   return key
 }
 
-async function uniqueSlug(wanted) {
+/** A slug no other provider of this account has. Other accounts' slugs do not matter. */
+async function uniqueSlug(userId, wanted) {
   const base = wanted.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'provider'
   for (let i = 1; i <= MAX_PROVIDERS + 1; i++) {
     const slug = i === 1 ? base : `${base}-${i}`
-    if (!(await Provider.exists({ slug }))) return slug
+    if (!(await Provider.exists({ userId, slug }))) return slug
   }
   throw new ApiError(409, 'provider.slug_exhausted')
 }
@@ -77,8 +89,8 @@ router.get('/vendors', wrap(async (req, res) => {
 }))
 
 /** GET /api/admin/providers */
-router.get('/providers', wrap(async (_req, res) => {
-  const list = await Provider.find({ userId: LOCAL_USER }).sort({ sort: 1, createdAt: 1 }).lean()
+router.get('/providers', wrap(async (req, res) => {
+  const list = await Provider.find({ userId: req.userId }).sort({ sort: 1, createdAt: 1 }).lean()
   ok(res, list.map(serializeProvider))
 }))
 
@@ -87,7 +99,7 @@ router.post('/providers', wrap(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   const plugin = registry.getType(body.type)
   if (!plugin) throw badRequest('provider.type_unsupported')
-  if ((await Provider.countDocuments({ userId: LOCAL_USER })) >= MAX_PROVIDERS) {
+  if ((await Provider.countDocuments({ userId: req.userId })) >= MAX_PROVIDERS) {
     throw badRequest('provider.max', { max: MAX_PROVIDERS })
   }
   const name = text(body.name, 60) || registry.typeLabel(plugin, req.locale)
@@ -96,10 +108,10 @@ router.post('/providers', wrap(async (req, res) => {
   if (!apiKey) throw badRequest('provider.api_key_required')
   const slugSource = typeof body.slug === 'string' && body.slug.trim() ? body.slug : plugin.type
   const doc = await Provider.create({
-    userId: LOCAL_USER,
+    userId: req.userId,
     type: plugin.type,
     name,
-    slug: await uniqueSlug(slugSource),
+    slug: await uniqueSlug(req.userId, slugSource),
     // The official address is stored as "none", so it follows the vendor module.
     baseUrl: baseUrl === plugin.defaultBaseUrl ? '' : baseUrl,
     apiKeyEnc: encrypt(apiKey, getConfig().secretKey),
@@ -115,7 +127,7 @@ router.post('/providers', wrap(async (req, res) => {
 router.put('/providers/:id', wrap(async (req, res) => {
   requireObjectId(req.params.id)
   const body = isPlainObject(req.body) ? req.body : {}
-  const doc = await Provider.findOne({ _id: req.params.id, userId: LOCAL_USER }).select('+apiKeyEnc')
+  const doc = await Provider.findOne({ _id: req.params.id, userId: req.userId }).select('+apiKeyEnc')
   if (!doc) throw notFound('provider.not_found')
   const plugin = registry.getType(doc.type)
   if (!plugin) throw badRequest('provider.type_gone')
@@ -150,16 +162,16 @@ router.put('/providers/:id', wrap(async (req, res) => {
 /** DELETE /api/admin/providers/:id - also drops the overrides of its models */
 router.delete('/providers/:id', wrap(async (req, res) => {
   requireObjectId(req.params.id)
-  const doc = await Provider.findOneAndDelete({ _id: req.params.id, userId: LOCAL_USER }).lean()
+  const doc = await Provider.findOneAndDelete({ _id: req.params.id, userId: req.userId }).lean()
   if (!doc) throw notFound('provider.not_found')
-  await ModelOverride.deleteMany({ modelId: { $regex: `^${doc.slug}:` } })
+  await ModelOverride.deleteMany({ userId: req.userId, modelId: { $regex: `^${doc.slug}:` } })
   ok(res, { id: String(doc._id) })
 }))
 
 /** POST /api/admin/providers/:id/test -> { ok, message } */
 router.post('/providers/:id/test', wrap(async (req, res) => {
   requireObjectId(req.params.id)
-  const doc = await Provider.findOne({ _id: req.params.id, userId: LOCAL_USER }).select('+apiKeyEnc').lean()
+  const doc = await Provider.findOne({ _id: req.params.id, userId: req.userId }).select('+apiKeyEnc').lean()
   if (!doc) throw notFound('provider.not_found')
   const plugin = registry.getType(doc.type)
   if (!plugin) return ok(res, { ok: false, message: t(req.locale, 'provider.type_gone') })
@@ -183,9 +195,9 @@ router.post('/providers/:id/test', wrap(async (req, res) => {
  * What parameters it gets is fixed per vendor and kind (customSpec()).
  */
 
-async function providerForCustom(id) {
-  requireObjectId(id)
-  const doc = await Provider.findOne({ _id: id, userId: LOCAL_USER })
+async function providerForCustom(req) {
+  requireObjectId(req.params.id)
+  const doc = await Provider.findOne({ _id: req.params.id, userId: req.userId })
   if (!doc) throw notFound('provider.not_found')
   const plugin = registry.getType(doc.type)
   if (!plugin) throw badRequest('provider.type_gone')
@@ -194,7 +206,7 @@ async function providerForCustom(id) {
 
 /** POST /api/admin/providers/:id/models { model, kind, label? } */
 router.post('/providers/:id/models', wrap(async (req, res) => {
-  const { doc, plugin } = await providerForCustom(req.params.id)
+  const { doc, plugin } = await providerForCustom(req)
   const body = isPlainObject(req.body) ? req.body : {}
   const entry = registry.checkCustomModel(plugin, { id: body.model, kind: body.kind, label: body.label })
   if (doc.customModels.some((m) => m.id === entry.id)) throw badRequest('provider.custom_exists', { model: entry.id })
@@ -210,7 +222,7 @@ router.post('/providers/:id/models', wrap(async (req, res) => {
  * cannot be edited: delete the entry and add the right one instead.
  */
 router.put('/providers/:id/models/:model(*)', wrap(async (req, res) => {
-  const { doc, plugin } = await providerForCustom(req.params.id)
+  const { doc, plugin } = await providerForCustom(req)
   const body = isPlainObject(req.body) ? req.body : {}
   const current = doc.customModels.find((m) => m.id === req.params.model)
   if (!current) throw notFound('provider.custom_not_found')
@@ -224,18 +236,18 @@ router.put('/providers/:id/models/:model(*)', wrap(async (req, res) => {
   current.label = entry.label
   await doc.save()
   // A name typed into the model list earlier would otherwise hide this one.
-  if (body.label !== undefined) await ModelOverride.updateOne({ modelId: `${doc.slug}:${current.id}` }, { $unset: { label: '' } })
+  if (body.label !== undefined) await ModelOverride.updateOne({ userId: req.userId, modelId: `${doc.slug}:${current.id}` }, { $unset: { label: '' } })
   ok(res, serializeProvider(doc.toObject()))
 }))
 
 /** DELETE /api/admin/providers/:id/models/:model - also drops its override (enabled, order, price) */
 router.delete('/providers/:id/models/:model(*)', wrap(async (req, res) => {
-  const { doc } = await providerForCustom(req.params.id)
+  const { doc } = await providerForCustom(req)
   const before = doc.customModels.length
   doc.customModels = doc.customModels.filter((m) => m.id !== req.params.model)
   if (doc.customModels.length === before) throw notFound('provider.custom_not_found')
   await doc.save()
-  await ModelOverride.deleteOne({ modelId: `${doc.slug}:${req.params.model}` })
+  await ModelOverride.deleteOne({ userId: req.userId, modelId: `${doc.slug}:${req.params.model}` })
   ok(res, serializeProvider(doc.toObject()))
 }))
 
@@ -244,8 +256,8 @@ router.delete('/providers/:id/models/:model(*)', wrap(async (req, res) => {
 /** GET /api/admin/models - every model incl. disabled ones, with its override */
 router.get('/models', wrap(async (req, res) => {
   const [models, overrides] = await Promise.all([
-    registry.listModels({ includeDisabled: true }),
-    ModelOverride.find({ userId: LOCAL_USER }).lean(),
+    registry.listModels({ userId: req.userId, includeDisabled: true }),
+    ModelOverride.find({ userId: req.userId }).lean(),
   ])
   const byId = new Map(overrides.map((o) => [o.modelId, o]))
   ok(res, models.map((m) => {
@@ -280,7 +292,7 @@ router.put('/models/:modelId(*)', wrap(async (req, res) => {
   const modelId = String(req.params.modelId || '')
   if (!modelId || modelId.length > 200 || !registry.splitModelId(modelId)) throw badRequest('model.bad_id')
   const body = isPlainObject(req.body) ? req.body : {}
-  const { spec } = await registry.resolveModel(modelId, { requireEnabled: false })
+  const { spec } = await registry.resolveModel(modelId, { userId: req.userId, requireEnabled: false })
   if (!spec) throw notFound('model.not_found')
 
   const set = {}
@@ -309,26 +321,26 @@ router.put('/models/:modelId(*)', wrap(async (req, res) => {
   }
   if (!Object.keys(set).length && !Object.keys(unset).length) throw badRequest('common.nothing_to_update')
 
-  const update = { $setOnInsert: { userId: LOCAL_USER } }
+  const update = {}
   if (Object.keys(set).length) update.$set = set
   if (Object.keys(unset).length) update.$unset = unset
-  await ModelOverride.updateOne({ modelId }, update, { upsert: true })
+  await ModelOverride.updateOne({ userId: req.userId, modelId }, update, { upsert: true })
 
-  const { spec: merged } = await registry.resolveModel(modelId, { requireEnabled: false })
+  const { spec: merged } = await registry.resolveModel(modelId, { userId: req.userId, requireEnabled: false })
   ok(res, registry.localizeSpec(merged, req.locale))
 }))
 
-/* ------------------------------------------------------------- settings */
+/* ------------------------------------------- site settings (owner only) */
 
-router.get('/settings', wrap(async (_req, res) => {
+router.get('/settings', requireOwner, wrap(async (_req, res) => {
   ok(res, settings.getAll())
 }))
 
-router.put('/settings', wrap(async (req, res) => {
+router.put('/settings', requireOwner, wrap(async (req, res) => {
   ok(res, await settings.update(req.body))
 }))
 
-/* -------------------------------------------------------------- storage */
+/* ------------------------------------------------- storage (owner only) */
 
 /** A connection test in the reader's language: per-step results plus one actionable sentence. */
 function serializeStorageTest(result, locale) {
@@ -341,12 +353,12 @@ function serializeStorageTest(result, locale) {
 }
 
 /** GET /api/admin/storage - the storage in use, where that was decided, and the S3 form's values (no secret) */
-router.get('/storage', wrap(async (_req, res) => {
+router.get('/storage', requireOwner, wrap(async (_req, res) => {
   ok(res, storageSettings.status())
 }))
 
 /** POST /api/admin/storage/test { s3 } - real round trip with the submitted, unsaved configuration */
-router.post('/storage/test', wrap(async (req, res) => {
+router.post('/storage/test', requireOwner, wrap(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   ok(res, serializeStorageTest(await storageSettings.test(body.s3), req.locale))
 }))
@@ -357,28 +369,32 @@ router.post('/storage/test', wrap(async (req, res) => {
  * fails nothing is saved and the answer is 400 with the test in `data`, unless
  * `force` is true.
  */
-router.put('/storage', wrap(async (req, res) => {
+router.put('/storage', requireOwner, wrap(async (req, res) => {
   const out = await storageSettings.save(req.body)
   if (out.saved) return ok(res, out.status)
   const test = serializeStorageTest(out.test, req.locale)
   res.status(400).json({ result: -1, message: t(req.locale, 'storage.save_needs_test', { reason: test.message }), code: 'storage.save_needs_test', data: { test } })
 }))
 
-/* ---------------------------------------------------------------- usage */
+/* ------------------------------------------------- usage (the caller's) */
 
-function usageMatch(query) {
-  const match = { userId: LOCAL_USER }
-  const from = parseDate(query.from, 'from')
-  const to = parseDate(query.to, 'to')
+/**
+ * `from` / `to` of the usage queries. A bare date ("2025-01-31") is a calendar
+ * day in the caller's time zone (`tz`, an IANA name; UTC when absent, which is
+ * what it always meant before `tz` was read here): `from` starts with that day
+ * and `to` runs through the end of it. A full instant is taken as it is.
+ */
+function usageMatch(req, tz = parseTimeZone(req.query.tz)) {
+  const { query } = req
+  const match = { userId: req.userId }
+  const from = parseDayOrInstant(query.from, 'from', tz)
+  const to = parseDayOrInstant(query.to, 'to', tz, 1)
   if (from || to) {
     match.createdAt = {}
-    if (from) match.createdAt.$gte = from
-    if (to) {
-      // A bare date ("2025-01-31") means "through the end of that day".
-      const end = /^\d{4}-\d{2}-\d{2}$/.test(String(query.to)) ? new Date(to.getTime() + 24 * 3600 * 1000) : to
-      match.createdAt.$lt = end
-    }
-    if (from && match.createdAt.$lt && from >= match.createdAt.$lt) throw badRequest('validation.from_before_to')
+    if (from) match.createdAt.$gte = from.date
+    // Bare date: before the start of the next day. Instant: before that instant.
+    if (to) match.createdAt.$lt = to.bare ? to.date : parseDate(query.to, 'to')
+    if (from && to && match.createdAt.$gte >= match.createdAt.$lt) throw badRequest('validation.from_before_to')
   }
   if (query.kind !== undefined && query.kind !== '') {
     if (!RUN_KINDS.includes(query.kind)) throw badRequest('validation.invalid', { field: 'kind' })
@@ -403,8 +419,8 @@ const flag = (cond) => ({ $sum: { $cond: [cond, 1, 0] } })
  */
 router.get('/usage', wrap(async (req, res) => {
   const groupBy = req.query.groupBy === 'model' ? 'model' : 'day'
-  const tz = typeof req.query.tz === 'string' && /^[A-Za-z_+\-/0-9:]{1,40}$/.test(req.query.tz) ? req.query.tz : 'UTC'
-  const match = usageMatch(req.query)
+  const tz = parseTimeZone(req.query.tz)
+  const match = usageMatch(req, tz)
   const key = groupBy === 'model'
     ? '$modelId'
     : { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: tz } }
@@ -428,7 +444,7 @@ router.get('/usage', wrap(async (req, res) => {
       },
     ])
   } catch (err) {
-    if (/time ?zone/i.test(String(err && err.message))) throw badRequest('validation.bad_timezone')
+    if (/time ?zone/i.test(String(err && err.message))) throw badRequest('validation.invalid', { field: 'tz' })
     throw err
   }
 
@@ -472,7 +488,7 @@ router.get('/usage', wrap(async (req, res) => {
 /** GET /api/admin/usage/records?page&pageSize&from&to&kind&status&model */
 router.get('/usage/records', wrap(async (req, res) => {
   const { page, pageSize, skip } = pageParams(req.query, { defaultSize: 20, maxSize: 100 })
-  const match = usageMatch(req.query)
+  const match = usageMatch(req)
   const [total, runs] = await Promise.all([
     Run.countDocuments(match),
     Run.find(match)
@@ -520,8 +536,9 @@ router.delete('/usage/records', wrap(async (req, res) => {
   const raw = req.query.before
   if (raw === undefined || raw === '') throw badRequest('validation.required', { field: 'before' })
   if (typeof raw !== 'string') throw badRequest('validation.bad_date', { field: 'before' })
-  const before = parseDate(raw, 'before')
-  const r = await Run.deleteMany({ userId: LOCAL_USER, status: { $in: FINISHED }, createdAt: { $lt: before } })
+  // A bare date is the start of that day in the caller's time zone (`tz`; UTC when absent).
+  const before = parseDayOrInstant(raw, 'before', parseTimeZone(req.query.tz)).date
+  const r = await Run.deleteMany({ userId: req.userId, status: { $in: FINISHED }, createdAt: { $lt: before } })
   ok(res, { deleted: r.deletedCount || 0 })
 }))
 

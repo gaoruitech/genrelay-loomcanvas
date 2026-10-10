@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-if="open" class="ml-mask" @click.self="emit('close')" @mousedown.self.stop @wheel.stop>
-      <button class="ml-close" :title="t('common.close')" @click="emit('close')">×</button>
+      <button class="ml-close" :title="t('common.close')" @click="emit('close')"><LcIcon name="x" /></button>
       <video
         v-if="type === 'video'"
         :src="url"
@@ -18,6 +18,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
 
 const { t } = useI18n()
 const props = defineProps<{
@@ -43,33 +44,40 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(2, 5, 18, .88);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px;
 }
 .ml-media {
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 12px 60px var(--shadow-3);
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-2);
+  background: var(--player-bg);
 }
 .ml-close {
   position: fixed;
-  top: 20px;
-  right: 24px;
+  top: 16px;
+  right: 16px;
   width: 40px;
   height: 40px;
-  background: var(--film-2);
-  border: none;
-  border-radius: 8px;
-  color: var(--t-max);
-  font-size: 26px;
-  line-height: 1;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 21, 52, .88);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  color: var(--text-2);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
 }
-.ml-close:hover { background: rgba(255, 255, 255, 0.22); }
+.ml-close:hover { background: #1b2b5e; border-color: var(--line-3); color: var(--text); }
+@media (max-width: 600px) {
+  .ml-mask { padding: 64px 12px 24px; }
+}
 </style>

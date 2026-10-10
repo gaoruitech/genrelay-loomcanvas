@@ -32,7 +32,7 @@ The same can be done over HTTP: see [API](api.md#storage).
 2. Otherwise the **environment** (`STORAGE_DRIVER`, `S3_*`).
 3. Otherwise the **local disk**.
 
-The Storage tab shows where the active choice comes from: "Saved here", "From environment variables" or "Default". Once something has been saved on the page, including "local disk", the environment no longer decides where new files go. The form starts from the saved S3 configuration, or from the environment's when nothing was saved.
+**Settings → Storage** shows where the active choice comes from: "Saved here", "From environment variables" or "Default". Once something has been saved on the page, including "local disk", the environment no longer decides where new files go. The form starts from the saved S3 configuration, or from the environment's when nothing was saved.
 
 The startup log line says the same: `storage: s3 from settings` or `storage: local from environment`.
 
@@ -61,7 +61,7 @@ Things the driver always does, whatever the vendor:
 
 ## Connection test
 
-**Test connection** on the Storage tab (and `POST /api/admin/storage/test`) makes a real round trip with the values in the form, before anything is saved:
+**Test connection** under **Settings → Storage** (and `POST /api/admin/storage/test`) makes a real round trip with the values in the form, before anything is saved:
 
 | Step | What happens |
 | --- | --- |
@@ -254,7 +254,7 @@ Backends that are read:
 | --- | --- |
 | The local disk (`STORAGE_LOCAL_DIR`) | Always. |
 | The S3 configuration saved on the settings page | Always, also while the driver is set back to local disk. |
-| Up to 5 earlier saved buckets | They are remembered automatically when you save a configuration that points somewhere else (another endpoint, bucket or key prefix). The Storage tab lists them. The sixth-oldest is dropped. |
+| Up to 5 earlier saved buckets | They are remembered automatically when you save a configuration that points somewhere else (another endpoint, bucket or key prefix). **Settings → Storage** lists them. The sixth-oldest is dropped. |
 | The environment's S3 configuration | While `STORAGE_DRIVER=s3` and the `S3_*` variables are still set. |
 
 So:
@@ -274,7 +274,7 @@ Addresses stored by earlier versions: before this change the S3 driver stored ab
 Because files are found by looking, files you copy are found wherever they are. Keep the keys the same:
 
 - An object's name in the bucket is `<key prefix><key>`.
-- A file's key on the local disk is its path relative to `STORAGE_LOCAL_DIR` (for example `outputs/2026/10/9a…7e.png`).
+- A file's key on the local disk is its path relative to `STORAGE_LOCAL_DIR` (for example `outputs/<account id>/2026/10/9a…7e.png`; files stored before accounts existed have no account segment, and their keys stay valid).
 
 For example, local disk to a bucket (with Docker, the directory is `/app/data/files` in the `app_data` volume):
 
@@ -322,7 +322,7 @@ Limits you should know:
 
 The saved storage configuration, including the encrypted secret and the earlier buckets, lives in MongoDB. Restoring the database brings it back, and it needs the same `SECRET_KEY` to be usable.
 
-If `SECRET_KEY` changes, the saved S3 secret cannot be decrypted. The server then logs this at startup, writes new files to what the environment says (the local disk unless `STORAGE_DRIVER=s3`), and the Storage tab asks for the secret again. Until you enter it, files in that bucket do not load.
+If `SECRET_KEY` changes, the saved S3 secret cannot be decrypted. The server then logs this at startup, writes new files to what the environment says (the local disk unless `STORAGE_DRIVER=s3`), and **Settings → Storage** asks for the secret again. Until you enter it, files in that bucket do not load.
 
 ## Environment variable reference
 
@@ -405,7 +405,7 @@ Other symptoms:
 | --- | --- |
 | Files answer `502` | A storage service that is configured (active, saved or earlier) cannot be reached or refuses the credential. The server log has a `[files]` line with the error name. |
 | Images of older canvases are broken after a switch | The old backend is gone: the local directory was removed, the old bucket deleted or its key revoked, or the `S3_*` variables removed. |
-| The Storage tab asks for the secret again | `SECRET_KEY` changed; see [Backups](#backups). |
+| **Settings → Storage** asks for the secret again | `SECRET_KEY` changed; see [Backups](#backups). |
 | The server exits with `STORAGE_DRIVER=s3 requires …` or `The S3_* storage settings are not valid` | A required variable is empty or a value is not valid. This only concerns the environment; a configuration saved on the settings page is not checked at startup. |
 | "A publicly reachable URL is needed…" with S3 storage | Neither the bucket's addresses nor `PUBLIC_URL` look public; see [Reference media](#reference-media-for-upstream-models). |
 

@@ -1,7 +1,6 @@
 'use strict'
 
 const mongoose = require('mongoose')
-const { LOCAL_USER } = require('../constants')
 
 const { Mixed } = mongoose.Schema.Types
 
@@ -13,7 +12,7 @@ const { Mixed } = mongoose.Schema.Types
  * random token, can expire, and can be revoked.
  */
 const shareSchema = new mongoose.Schema({
-  userId: { type: String, default: LOCAL_USER, index: true },
+  userId: { type: String, required: true, index: true },
   token: { type: String, required: true, unique: true },
   sourceWorkflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', index: true },
 
@@ -29,6 +28,8 @@ const shareSchema = new mongoose.Schema({
       zoom: { type: Number, default: 1 },
     },
     settings: { type: Mixed, default: {} },
+    // 2 = positions made for the current node sizes; absent or 1 = from before the redesign.
+    layoutVersion: { type: Number },
   },
 
   thumbnail: { type: String, default: '' },

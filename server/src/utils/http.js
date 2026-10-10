@@ -9,12 +9,14 @@ class ApiError extends LocalizedError {
    * @param {string|{code:string,params?:object}} key catalog key (or message) shown to the user
    * @param {object} [params] placeholders of the message
    * @param {number} [result] non-zero envelope code, defaults to -1
+   * @param {object} [data] sent as the envelope's `data` (e.g. how long to wait); null otherwise
    */
-  constructor(status, key, params = {}, result = -1) {
+  constructor(status, key, params = {}, result = -1, data = null) {
     super(key, params)
     this.name = 'ApiError'
     this.status = status
     this.result = result
+    this.data = data
     this.code = this.i18n.code
     this.params = this.i18n.params
   }
@@ -22,6 +24,7 @@ class ApiError extends LocalizedError {
 
 const badRequest = (key, params) => new ApiError(400, key, params)
 const notFound = (key = 'common.not_found', params) => new ApiError(404, key, params)
+const forbidden = (key = 'auth.forbidden', params) => new ApiError(403, key, params)
 
 /** Success envelope. `key` is an optional catalog key for a message worth showing. */
 function ok(res, data = null, key = '', params) {
@@ -35,4 +38,4 @@ function wrap(fn) {
   }
 }
 
-module.exports = { ApiError, badRequest, notFound, ok, wrap }
+module.exports = { ApiError, badRequest, notFound, forbidden, ok, wrap }

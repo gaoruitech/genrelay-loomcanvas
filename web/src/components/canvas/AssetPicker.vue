@@ -1,19 +1,19 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="cp-mask" @click.self="cancel">
-      <div class="cp-box">
-        <header class="cp-header">
+    <div v-if="open" class="lc-mask lc-sheet cp-mask" @click.self="cancel">
+      <div class="lc-dialog cp-box">
+        <header class="lc-dialog-head">
           <div class="cp-title">
-            <div class="cp-source-tabs">
-              <button :class="['cp-source-tab', { active: source === 'mine' }]" @click="switchSource('mine')">{{ t('library.picker.mine') }}</button>
-              <button :class="['cp-source-tab', { active: source === 'material' }]" @click="switchSource('material')">{{ t('library.picker.material') }}</button>
+            <div class="lc-seg">
+              <button :class="{ on: source === 'mine' }" @click="switchSource('mine')">{{ t('library.picker.mine') }}</button>
+              <button :class="{ on: source === 'material' }" @click="switchSource('material')">{{ t('library.picker.material') }}</button>
             </div>
             <span class="cp-sub">{{ mediaTypeLabel }}{{ multiSelect ? ' · ' + t('library.picker.multi') : '' }}</span>
           </div>
-          <button class="cp-close" :title="t('common.close')" @click="cancel">×</button>
+          <button class="lc-x" :title="t('common.close')" @click="cancel">×</button>
         </header>
 
-        <div class="cp-body">
+        <div class="lc-dialog-body cp-body">
           <div v-if="loading && list.length === 0" class="cp-empty">{{ t('common.loading') }}</div>
           <div v-else-if="!loading && list.length === 0" class="cp-empty">{{ t('library.picker.empty') }}</div>
 
@@ -30,22 +30,22 @@
                 <video v-else :src="item.fileUrl" :poster="item.thumbnailUrl || undefined" muted preload="metadata" />
               </div>
               <div class="cp-prompt" :title="item.name">{{ item.name || t('library.picker.unnamed') }}</div>
-              <div class="cp-check" v-if="selected.has(item.id)">✓</div>
+              <span v-if="selected.has(item.id)" class="lc-cb on cp-check" />
             </div>
           </div>
 
           <div v-if="hasMore && !loading" class="cp-more">
-            <button class="cp-more-btn" @click="loadMore">{{ t('library.picker.loadMore') }}</button>
+            <button class="lc-btn sm" @click="loadMore">{{ t('library.picker.loadMore') }}</button>
           </div>
           <div v-else-if="loading && list.length > 0" class="cp-more">{{ t('common.loading') }}</div>
         </div>
 
-        <footer class="cp-footer">
+        <footer class="lc-dialog-foot cp-footer">
           <span class="cp-count">{{ t('library.picker.selected', { n: selected.size }) }}</span>
           <div class="cp-actions">
-            <button class="cp-btn" @click="cancel">{{ t('common.cancel') }}</button>
+            <button class="lc-btn" @click="cancel">{{ t('common.cancel') }}</button>
             <button
-              class="cp-btn primary"
+              class="lc-btn primary quiet"
               :disabled="selected.size === 0"
               @click="confirm"
             >{{ t('common.confirm') }}</button>
@@ -214,170 +214,45 @@ defineExpose({ show })
 </script>
 
 <style scoped>
-.cp-mask {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.cp-box {
-  width: 880px;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 60px);
-  display: flex;
-  flex-direction: column;
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 12px;
-  overflow: hidden;
-}
-.cp-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--n-5);
-}
-.cp-title {
-  color: var(--t-max);
-  font-size: 15px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.cp-sub {
-  font-size: 12px;
-  color: var(--t-dim);
-  font-weight: 400;
-}
-.cp-source-tabs { display: flex; gap: 4px; background: var(--n-3); border-radius: 8px; padding: 3px; }
-.cp-source-tab {
-  padding: 5px 14px; border: none; background: none; color: var(--t-dim);
-  border-radius: 6px; cursor: pointer; font-size: 13px;
-}
-.cp-source-tab.active { background: var(--chip-bg); color: var(--chip-fg); font-weight: 600; }
-.cp-close {
-  background: transparent;
-  border: none;
-  color: var(--t-dim);
-  font-size: 22px;
-  cursor: pointer;
-  line-height: 1;
-}
-.cp-close:hover { color: var(--t-max); }
-
-.cp-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-.cp-empty {
-  text-align: center;
-  color: var(--t-dim);
-  font-size: 13px;
-  padding: 60px 0;
-}
-.cp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
-}
+.cp-mask { z-index: 9999; }
+.cp-box { width: 880px; }
+.cp-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cp-sub { font: 400 12px var(--f-body); color: var(--text-3); white-space: nowrap; }
+.cp-body { flex: 1; min-height: 240px; }
+.cp-empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 60px 0; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .cp-item {
   position: relative;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
-  background: var(--n-3);
-  border: 2px solid transparent;
+  background: var(--grad-card);
+  border: 1px solid var(--line);
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-.cp-item:hover { border-color: var(--n-7); }
-.cp-item.selected { border-color: var(--accent-text); }
-
-.cp-thumb {
-  aspect-ratio: 1;
-  background: var(--n-0);
-  overflow: hidden;
-}
+.cp-item:hover { border-color: var(--line-3); }
+.cp-item.selected { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
+.cp-thumb { aspect-ratio: 1; background: var(--media-bg); overflow: hidden; }
 .cp-thumb img,
-.cp-thumb video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+.cp-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cp-prompt {
-  padding: 6px 8px;
-  font-size: 11px;
-  color: var(--t-body);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-2);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cp-check {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  /* 压在实心青柠上的对勾。青柠两个主题同值，所以字色也必须恒定：
-     原来的 --n-0 在亮色下是 #f9fafa，白勾压青柠基本看不见 */
-  color: var(--accent-ink);
-  font-size: 14px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.cp-check { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 6px; }
+.cp-more { text-align: center; padding: 16px 0 0; color: var(--text-3); font-size: 13px; }
+.cp-footer { justify-content: space-between; align-items: center; }
+.cp-count { font-size: 13px; color: var(--text-2); }
+.cp-actions { display: flex; gap: 10px; }
+@media (max-width: 600px) {
+  .cp-box { height: 92vh; height: 92dvh; }
+  .cp-sub { display: none; }
+  .cp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .cp-prompt { padding: 6px 8px; font-size: 11px; }
 }
-
-.cp-more {
-  text-align: center;
-  padding: 16px 0;
-  color: var(--t-dim);
-  font-size: 13px;
-}
-.cp-more-btn {
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 6px;
-  padding: 6px 16px;
-  color: var(--t-body);
-  font-size: 13px;
-  cursor: pointer;
-}
-.cp-more-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
-
-.cp-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  border-top: 1px solid var(--n-5);
-}
-.cp-count { font-size: 12px; color: var(--t-dim); }
-.cp-actions { display: flex; gap: 8px; }
-.cp-btn {
-  padding: 7px 16px;
-  background: var(--n-3);
-  border: 1px solid var(--n-5);
-  border-radius: 6px;
-  color: var(--t-body);
-  font-size: 13px;
-  cursor: pointer;
-}
-.cp-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.cp-btn.primary {
-  background: var(--btn-bg);
-  color: var(--btn-fg);
-  border-color: var(--accent-text);
-}
-.cp-btn.primary:hover:not(:disabled) { background: var(--btn-bg-hover); }
-.cp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

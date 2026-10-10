@@ -36,11 +36,11 @@ test('decrypt fails when the ciphertext or tag was tampered with', () => {
 })
 
 test('deriveKey: 32 bytes, stable, separated by purpose and by secret', () => {
-  const a = deriveKey(SECRET, 'auth-jwt')
+  const a = deriveKey(SECRET, 'some-other-purpose')
   assert.equal(a.length, 32)
-  assert.ok(a.equals(deriveKey(SECRET, 'auth-jwt')))
+  assert.ok(a.equals(deriveKey(SECRET, 'some-other-purpose')))
   assert.ok(!a.equals(deriveKey(SECRET, 'provider-credentials')))
-  assert.ok(!a.equals(deriveKey(SECRET + 'x', 'auth-jwt')))
+  assert.ok(!a.equals(deriveKey(SECRET + 'x', 'some-other-purpose')))
   assert.throws(() => deriveKey('short', 'x'))
 })
 

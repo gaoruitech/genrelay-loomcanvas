@@ -3,7 +3,8 @@
 /**
  * Run executor.
  *
- * An in-process queue with bounded concurrency. It owns the life cycle of a
+ * An in-process queue with bounded concurrency, shared fairly between the
+ * accounts that have work in it (see _pick). It owns the life cycle of a
  * run (queued -> running -> archiving -> succeeded | failed | canceled) and
  * nothing else: persistence, provider lookup, result transfer and billing are
  * injected, which is also what makes this file testable without a database.
@@ -29,12 +30,13 @@
  *
  * Injected dependencies:
  *   store    { claim(id), get(id), update(id, patch), cancelQueued(id),
- *              recover() -> { queued: id[], interrupted: run[] } }
+ *              recover() -> { queued: [{ id, userId }], interrupted: run[] } }
  *   resolve  async (run) -> { provider, cfg, request, sync? }
- *   transfer async (output, { signal, kind }) -> stored output
+ *   transfer async (output, { signal, kind, userId }) -> stored output
  *   billing  { beforeRun, afterRun, onFailed }
- *   settings () -> { concurrency, submitTimeoutMs, pollTimeoutMs:{image,video},
- *                    chatTimeoutMs, downloadTimeoutMs, retries }
+ *   settings () -> { concurrency, userConcurrency?, submitTimeoutMs,
+ *                    pollTimeoutMs:{image,video}, chatTimeoutMs,
+ *                    downloadTimeoutMs, retries }
  */
 
 const { LocalizedError, RAW, isMessage, msg, messageOf, storedError } = require('../i18n')
@@ -135,8 +137,10 @@ class Runner {
     this.log = logger
     this.now = now
     this.pollIntervalMs = pollIntervalMs
-    this.queue = []
-    this.active = new Map() // runId -> { ctl, reason, promise }
+    this.queue = [] // { id, userId }, oldest first
+    this.active = new Map() // runId -> { ctl, reason, promise, sent, userId }
+    this.lastTurn = new Map() // userId -> when that account last got a slot (a counter, not a time)
+    this.turns = 0
     this.stopping = false
   }
 
@@ -157,24 +161,59 @@ class Runner {
         finishedAt: new Date(this.now()),
       })
     }
-    for (const id of queued) this.enqueue(id)
+    for (const q of queued) {
+      if (q && typeof q === 'object') this.enqueue(q.id, q.userId)
+      else this.enqueue(q)
+    }
     return queued.length
   }
 
-  enqueue(id) {
+  /** `userId` is whose run it is: the queue is shared out between accounts by it. */
+  enqueue(id, userId = '') {
     if (this.stopping) return
     const key = String(id)
-    if (this.active.has(key) || this.queue.includes(key)) return
-    this.queue.push(key)
+    if (this.active.has(key) || this.queue.some((q) => q.id === key)) return
+    this.queue.push({ id: key, userId: String(userId || '') })
     this._pump()
   }
 
+  /**
+   * Index of the queued run to start next, or -1. The account with the fewest
+   * runs in flight goes first; among those, the one that was given a slot
+   * longest ago; within an account, its oldest run. An account at its own limit
+   * waits. So one account with a hundred queued runs does not keep everybody
+   * else waiting behind them, and with a single account this is plain FIFO.
+   */
+  _pick(perUser) {
+    const busy = new Map()
+    for (const e of this.active.values()) busy.set(e.userId, (busy.get(e.userId) || 0) + 1)
+    let best = -1
+    let bestBusy = Infinity
+    let bestTurn = Infinity
+    for (let i = 0; i < this.queue.length; i++) {
+      const { userId } = this.queue[i]
+      const n = busy.get(userId) || 0
+      const turn = this.lastTurn.get(userId) || 0
+      if (n >= perUser || n > bestBusy || (n === bestBusy && turn >= bestTurn)) continue
+      best = i
+      bestBusy = n
+      bestTurn = turn
+    }
+    return best
+  }
+
   _pump() {
-    const limit = Math.max(1, Number(this.settings().concurrency) || 1)
+    const s = this.settings()
+    const limit = Math.max(1, Number(s.concurrency) || 1)
+    const perUser = Math.max(1, Number(s.userConcurrency) || limit)
     while (!this.stopping && this.active.size < limit && this.queue.length) {
-      const id = this.queue.shift()
+      const at = this._pick(perUser)
+      if (at < 0) break // everything queued belongs to accounts that are at their limit
+      const [{ id, userId }] = this.queue.splice(at, 1)
+      if (this.lastTurn.size > 10000) this.lastTurn.clear()
+      this.lastTurn.set(userId, ++this.turns)
       // `sent`: something of this run may have reached the upstream in this process.
-      const entry = { ctl: new AbortController(), reason: null, promise: null, sent: false }
+      const entry = { ctl: new AbortController(), reason: null, promise: null, sent: false, userId }
       this.active.set(id, entry)
       entry.promise = this._execute(id, entry)
         .catch((err) => this.log.error(`[runner] run ${id} crashed:`, err))
@@ -197,7 +236,7 @@ class Runner {
       await entry.promise
       return this.store.get(key)
     }
-    const idx = this.queue.indexOf(key)
+    const idx = this.queue.findIndex((q) => q.id === key)
     if (idx >= 0) this.queue.splice(idx, 1)
     await this.store.cancelQueued(key, { status: STATUS.CANCELED, ...storedError(CANCELED), finishedAt: new Date(this.now()) })
     return this.store.get(key)
@@ -342,7 +381,7 @@ class Runner {
     await this.store.update(id, { status: STATUS.ARCHIVING, progress: 95 })
     const stored = await withDeadline(async (sig) => {
       const out = []
-      for (const o of outputs) out.push(await this.transfer(o, { signal: sig, kind: run.kind }))
+      for (const o of outputs) out.push(await this.transfer(o, { signal: sig, kind: run.kind, userId: run.userId }))
       return out
     }, s.downloadTimeoutMs, signal, 'run.timeout_download')
     return { outputs: stored }

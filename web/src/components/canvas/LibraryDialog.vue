@@ -1,24 +1,20 @@
 <template>
-  <div v-if="modelValue" class="lib-mask" @click.self="close">
-    <div class="lib-dialog">
+  <div v-if="modelValue" class="lc-mask lc-sheet lib-mask" @click.self="close">
+    <div class="lc-dialog lib-dialog">
       <div class="lib-header">
-        <div class="lib-tabs">
+        <div class="lc-seg lib-tabs">
           <button
             v-for="tab in visibleTabs"
             :key="tab.key"
-            :class="['lib-tab', { active: activeTab === tab.key }]"
+            :class="{ on: activeTab === tab.key }"
             @click="switchTab(tab.key)"
           >{{ t(tab.label) }}</button>
         </div>
-        <div class="lib-actions">
-          <input
-            v-if="activeTab === 'mine' || activeTab === 'text-template'"
-            v-model="searchText"
-            class="lib-search"
-            :placeholder="searchPlaceholder"
-          />
-          <button class="lib-close" :title="t('common.close')" @click="close">×</button>
-        </div>
+        <label v-if="activeTab === 'mine' || activeTab === 'text-template'" class="lc-inp sm lib-search">
+          <LcIcon name="search" size="s" />
+          <input v-model="searchText" :placeholder="searchPlaceholder" />
+        </label>
+        <button class="lc-x lib-close" :title="t('common.close')" @click="close">×</button>
       </div>
 
       <div class="lib-body" ref="bodyRef" @scroll="onBodyScroll">
@@ -71,7 +67,7 @@
 
                   <!-- hover overlay: 添加到画布 -->
                   <div class="thumb-overlay">
-                    <button class="add-btn" @click="addMaterial(item)">{{ t('library.addToCanvas') }}</button>
+                    <button class="lc-btn sm primary quiet add-btn" @click="addMaterial(item)">{{ t('library.addToCanvas') }}</button>
                   </div>
                 </div>
                 <div class="lib-meta">
@@ -90,8 +86,8 @@
             <div class="cat-tabs">
               <button v-for="k in MY_KINDS" :key="k" :class="['cat-tab', { active: myAssetKind === k }]" @click="switchMyKind(k)">{{ t('library.myAsset.kinds.' + k) }}</button>
             </div>
-            <button class="sub-btn" :disabled="myAssetUploading" @click="assetFileInput?.click()">
-              {{ myAssetUploading ? t('common.uploading') : t('library.myAsset.upload') }}
+            <button class="lc-btn sm" :disabled="myAssetUploading" @click="assetFileInput?.click()">
+              <LcIcon name="upload" size="s" />{{ myAssetUploading ? t('common.uploading') : t('library.myAsset.upload') }}
             </button>
             <input ref="assetFileInput" type="file" accept="image/*,video/*" multiple hidden @change="onAssetFiles" />
           </div>
@@ -111,14 +107,8 @@
                   />
                   <span class="play-overlay"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg></span>
                 </template>
-                <div class="thumb-overlay"><button class="add-btn" @click="addMyAsset(item)">{{ t('library.addToCanvas') }}</button></div>
-                <button class="btn-del" :title="t('common.delete')" @click.stop="confirmRemoveAsset(item)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                    <path d="M10 11v6M14 11v6" />
-                  </svg>
-                </button>
+                <div class="thumb-overlay"><button class="lc-btn sm primary quiet add-btn" @click="addMyAsset(item)">{{ t('library.addToCanvas') }}</button></div>
+                <button class="btn-del" :title="t('common.delete')" @click.stop="confirmRemoveAsset(item)"><LcIcon name="trash" size="s" /></button>
               </div>
               <div class="lib-meta"><div class="lib-name">{{ item.name || t('library.unnamed') }}</div></div>
             </div>
@@ -148,7 +138,7 @@
                   </svg>
                 </span>
                 <div class="thumb-overlay">
-                  <button class="add-btn">{{ t('library.useTemplate') }}</button>
+                  <button class="lc-btn sm primary quiet add-btn">{{ t('library.useTemplate') }}</button>
                 </div>
               </div>
               <div class="lib-meta">
@@ -170,9 +160,9 @@
                 @click="textTplCat = c"
               >{{ c === '__all__' ? t('common.all') : c }}</button>
             </div>
-            <div class="tt-lang">
-              <button :class="['tt-lang-btn', { active: textTplLang === 'zh' }]" @click="switchTextLang('zh')">{{ t('library.text.langZh') }}</button>
-              <button :class="['tt-lang-btn', { active: textTplLang === 'en' }]" @click="switchTextLang('en')">{{ t('library.text.langEn') }}</button>
+            <div class="lc-seg tt-lang">
+              <button :class="{ on: textTplLang === 'zh' }" @click="switchTextLang('zh')">{{ t('library.text.langZh') }}</button>
+              <button :class="{ on: textTplLang === 'en' }" @click="switchTextLang('en')">{{ t('library.text.langEn') }}</button>
             </div>
           </div>
 
@@ -184,14 +174,14 @@
             <div>{{ t('library.text.empty') }}</div>
           </div>
           <div v-else class="tt-grid">
-            <div v-for="tpl in filteredTextTpl" :key="tpl.id" class="tt-card" @click="pickTextTpl(tpl)">
+            <div v-for="tpl in filteredTextTpl" :key="tpl.id" class="lc-card tt-card" @click="pickTextTpl(tpl)">
               <div class="tt-card-head">
                 <span class="tt-card-title">{{ tpl.title }}</span>
-                <span v-if="tpl.category" class="tt-card-cat">{{ tpl.category }}</span>
+                <span v-if="tpl.category" class="lc-chip tt-card-cat">{{ tpl.category }}</span>
               </div>
               <div class="tt-card-content">{{ tpl.content }}</div>
               <div class="tt-card-hover">
-                <span class="tt-use-btn">{{ t('library.addToCanvas') }}</span>
+                <span class="lc-btn sm primary quiet">{{ t('library.addToCanvas') }}</span>
               </div>
             </div>
           </div>
@@ -225,7 +215,7 @@
                   </svg>
                 </span>
 
-                <span class="status-tag" :class="'st-' + shareState(item)">{{ t('library.share.' + shareState(item)) }}</span>
+                <span class="lc-bd status-tag" :class="'st-' + shareState(item)">{{ t('library.share.' + shareState(item)) }}</span>
               </div>
 
               <div class="lib-meta">
@@ -236,14 +226,14 @@
                 </div>
                 <!-- 都是本机操作，不调模型：一律描边按钮 -->
                 <div class="share-actions">
-                  <button class="share-btn" :disabled="shareState(item) !== 'active'" @click="copyLink(item)">{{ t('library.share.copyLink') }}</button>
-                  <button class="share-btn" :disabled="shareState(item) !== 'active'" @click="openShare(item)">{{ t('library.share.open') }}</button>
+                  <button class="lc-btn sm" :disabled="shareState(item) !== 'active'" @click="copyLink(item)">{{ t('library.share.copyLink') }}</button>
+                  <button class="lc-btn sm" :disabled="shareState(item) !== 'active'" @click="openShare(item)">{{ t('library.share.open') }}</button>
                   <button
-                    class="share-btn"
+                    class="lc-btn sm"
                     :disabled="shareState(item) !== 'active' || !!copyingId"
                     @click="copyToMine(item)"
                   >{{ copyingId === item.id ? t('library.share.copying') : t('library.share.copyToMine') }}</button>
-                  <button v-if="!item.revoked" class="share-btn danger" @click="confirmRevoke(item)">{{ t('library.share.revoke') }}</button>
+                  <button v-if="!item.revoked" class="lc-btn sm danger" @click="confirmRevoke(item)">{{ t('library.share.revoke') }}</button>
                 </div>
               </div>
             </div>
@@ -253,15 +243,15 @@
     </div>
 
     <!-- 二次确认（撤销分享链接 / 删除资产） -->
-    <div v-if="pending" class="confirm-mask" @click.self="cancelPending">
-      <div class="confirm-dialog">
-        <div class="confirm-header"><span>{{ pending.title }}</span><button class="confirm-close" :disabled="pendingBusy" @click="cancelPending">×</button></div>
-        <div class="confirm-body">
+    <div v-if="pending" class="lc-mask confirm-mask" @click.self="cancelPending">
+      <div class="lc-dialog confirm-dialog">
+        <div class="lc-dialog-head"><span>{{ pending.title }}</span><button class="lc-x" :disabled="pendingBusy" @click="cancelPending">×</button></div>
+        <div class="lc-dialog-body">
           <p class="confirm-text">{{ pending.text }}</p>
         </div>
-        <div class="confirm-footer">
-          <button class="confirm-btn" :disabled="pendingBusy" @click="cancelPending">{{ t('common.cancel') }}</button>
-          <button class="confirm-btn danger" :disabled="pendingBusy" @click="runPending">{{ pendingBusy ? pending.busyText : pending.okText }}</button>
+        <div class="lc-dialog-foot">
+          <button class="lc-btn" :disabled="pendingBusy" @click="cancelPending">{{ t('common.cancel') }}</button>
+          <button class="lc-btn danger" :disabled="pendingBusy" @click="runPending">{{ pendingBusy ? pending.busyText : pending.okText }}</button>
         </div>
       </div>
     </div>
@@ -272,6 +262,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import LcIcon from '@/components/LcIcon.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
   canvasShareApi, canvasAssetApi, canvasTemplateApi, canvasTextTemplateApi, userAssetApi, apiErrorMessage,
@@ -781,307 +772,131 @@ watch(() => props.modelValue, (open) => {
 </script>
 
 <style scoped>
-.lib-mask {
-  position: fixed; inset: 0; z-index: 9000;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-  padding: 32px;
-}
-
-.lib-dialog {
-  width: min(1200px, 100%);
-  height: min(780px, calc(100vh - 64px));
-  background: var(--n-2);
-  color: var(--t-strong);
-  border: 1px solid var(--n-5);
-  border-radius: 16px;
-  display: flex; flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 12px 60px var(--shadow-2);
-}
+.lib-mask { z-index: 9000; }
+.lib-dialog { width: min(1200px, 100%); height: min(780px, calc(100vh - 40px)); overflow: hidden; }
 
 .lib-header {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--n-4);
+  flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px; border-bottom: 1px solid var(--line);
 }
+.lib-tabs { flex: 0 1 auto; min-width: 0; }
+.lib-search { flex: 0 1 240px; margin-left: auto; }
+.lib-close { margin-left: auto; }
+.lib-search + .lib-close { margin-left: 0; }
 
-.lib-tabs { display: flex; gap: 6px; }
-.lib-tab {
-  padding: 8px 16px; border-radius: 8px; border: none;
-  background: transparent; color: var(--t-body); font-size: 14px;
-  cursor: pointer; font-weight: 500;
-  transition: background-color 0.15s, color 0.15s;
-}
-.lib-tab:hover { color: var(--t-max); background: var(--n-4); }
-.lib-tab.active { background: var(--chip-bg); color: var(--chip-fg); font-weight: 600; }
+.lib-body { flex: 1; min-height: 0; padding: 16px 20px 20px; overflow-y: auto; }
 
-.lib-actions { display: flex; align-items: center; gap: 12px; }
-.lib-search {
-  width: 220px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--n-5);
-  background: var(--n-3);
-  color: var(--t-strong);
-  font-size: 13px;
-  outline: none;
-}
-.lib-search:focus { border-color: var(--n-7); }
-.lib-search::placeholder { color: var(--t-dim); }
-.lib-close {
-  width: 32px; height: 32px;
-  background: transparent; border: none; color: var(--t-dim);
-  font-size: 24px; cursor: pointer; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-}
-.lib-close:hover { background: var(--n-4); color: var(--t-max); }
-
-.lib-body {
-  flex: 1;
-  padding: 16px 20px 20px;
-  overflow-y: auto;
-}
-/* 手机宽度：一行放不下四个标签页加搜索框，标签页会折成三行、搜索框和关闭按钮被挤出弹窗。
-   改成两行 —— 搜索和关闭在上，标签页单独一行、放不下就横向滑 */
-@media (max-width: 720px) {
-  .lib-mask { padding: 12px; }
-  .lib-dialog { height: calc(100vh - 24px); }
-  .lib-header { flex-wrap: wrap; gap: 10px; padding: 12px; }
-  .lib-actions { order: 1; flex: 1; justify-content: flex-end; min-width: 0; }
-  .lib-search { flex: 1; width: auto; min-width: 0; }
-  .lib-tabs { order: 2; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .lib-tabs::-webkit-scrollbar { display: none; }
-  .lib-tab { flex: none; white-space: nowrap; padding: 8px 12px; }
-  .lib-body { padding: 12px; }
-}
-.lib-body::-webkit-scrollbar { width: 6px; }
-.lib-body::-webkit-scrollbar-thumb { background: var(--n-5); border-radius: 3px; }
-
-.lib-sub-bar { display: flex; justify-content: flex-start; margin-bottom: 14px; }
-.lib-sub-bar.spread { justify-content: space-between; align-items: center; gap: 12px; }
-.lib-sub-bar.spread .cat-tabs { flex: 1; }
-.sub-btn {
-  flex-shrink: 0; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--n-6);
-  background: transparent; color: var(--t-strong); cursor: pointer; font-size: 13px;
-}
-.sub-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.sub-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* 素材库分类子 tab */
-.cat-tabs {
-  display: flex; gap: 6px; flex-wrap: wrap;
-}
+/* 二级：分类 + 右侧动作 */
+.lib-sub-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.lib-sub-bar.spread { justify-content: space-between; }
+.cat-tabs { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .cat-tab {
-  padding: 6px 16px; border: 1px solid var(--n-5); background: var(--n-3);
-  color: var(--t-body); border-radius: 999px; cursor: pointer; font-size: 13px;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  height: 28px; padding: 0 12px; border: 1px solid var(--line); background: var(--well);
+  color: var(--text-2); border-radius: 8px; cursor: pointer; font-size: 13px; white-space: nowrap;
+  transition: background-color .15s, color .15s, border-color .15s;
 }
-.cat-tab:hover { color: var(--t-max); border-color: var(--n-7); }
-.cat-tab.active { background: var(--chip-bg); color: var(--chip-fg); border-color: var(--accent-text); font-weight: 600; }
-
-.lib-loading-more {
-  text-align: center; color: var(--t-dim); font-size: 13px; padding: 20px 0 4px;
-}
+.cat-tab:hover { color: var(--text); border-color: var(--line-3); }
+.cat-tab.active { background: rgba(59, 123, 255, .28); color: var(--text); border-color: var(--line-3); }
+.tt-lang { flex: none; }
 
 .lib-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; padding: 100px 20px; color: var(--t-dim); font-size: 14px; text-align: center;
-  min-height: 320px;
+  gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 13px; text-align: center; min-height: 280px;
 }
-.lib-empty svg { width: 48px; height: 48px; color: var(--n-7); }
+.lib-empty svg { width: 40px; height: 40px; color: rgba(124, 160, 255, .4); }
+.lib-loading-more { text-align: center; padding: 16px 0 0; color: var(--text-3); font-size: 12px; }
 
-.lib-grid {
-  display: grid; gap: 16px;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-}
-
+/* 卡片网格 */
+.lib-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .lib-card {
-  background: var(--n-3);
-  border: 1px solid var(--n-4);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: border-color 0.15s, transform 0.15s;
+  border-radius: var(--r-md); border: 1px solid var(--line); background: var(--grad-card);
+  overflow: hidden; transition: border-color .15s ease;
 }
-.lib-card:hover { border-color: var(--accent-text); transform: translateY(-2px); }
-.lib-card:hover .thumb-overlay { opacity: 1; }
-.lib-card:hover .btn-del { opacity: 1; }
+.lib-card:hover { border-color: rgba(63, 216, 255, .55); }
 .lib-card.clickable { cursor: pointer; }
-.lib-card.inactive .lib-thumb img, .lib-card.inactive .lib-thumb video { opacity: 0.45; }
-
+.lib-card.inactive .lib-thumb { opacity: .5; }
 .lib-thumb {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  background: var(--n-0);
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
+  position: relative; aspect-ratio: 4 / 3; background: var(--media-bg);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
-.lib-thumb img, .lib-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.lib-thumb img, .lib-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-empty { color: rgba(124, 160, 255, .4); }
+.thumb-empty svg { width: 36px; height: 36px; }
+/* 压在画面上的件：底是恒暗遮罩，字固定用浅色 */
 .play-overlay {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--scrim-soft);
-  pointer-events: none;
+  position: absolute; inset: 0; margin: auto; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; pointer-events: none;
+  background: rgba(4, 9, 28, .6); border: 1px solid rgba(255, 255, 255, .35); color: var(--on-scrim);
+  transition: opacity .15s ease;
 }
-.play-overlay svg { width: 38px; height: 38px; color: var(--t-max); opacity: 0.9; }
-.thumb-empty svg { width: 40px; height: 40px; color: var(--n-7); }
-
+.play-overlay svg { width: 13px; height: 13px; margin-left: 2px; }
+.lib-thumb:hover .play-overlay { opacity: 0; }
 .thumb-overlay {
-  position: absolute; inset: 0;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transition: opacity 0.18s;
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(4, 9, 28, .6); opacity: 0; transition: opacity .15s ease;
 }
-/* 「添加到画布 / 使用模板」都用这个：白药丸压在恒黑的
-   thumb-overlay 上。既然底衬不随主题翻，字色也不能翻 ——
-   原来写的 var(--n-3) 在深色下是 #212125（能看），亮色下变成 #eff1f1，
-   白底白字，整颗按钮只剩一块白疙瘩。
-   --btn-text-dark 是「压在浅色填充上的深字」，两个主题同值，正对这个位置。
-   hover 也不能用 var(--t-max)：亮色下它是近黑，药丸会整颗翻黑再配深字，
-   又糊一次。改成纯白，两个主题都只是提亮一档。 */
-.add-btn {
-  padding: 9px 18px;
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--btn-text-dark);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: background-color 0.15s;
-}
-.add-btn:hover { background: #ffffff; }
-.add-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.status-tag {
-  position: absolute; top: 8px; left: 8px;
-  padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
-  z-index: 1;
-}
-/* 半透明底色下面垫一层缩略图区的底色：标签压在封面图上，只有半透明的话
-   红字落在红图、深图上就读不出来了。没有封面时看起来与原来一样。 */
-.st-active { background: linear-gradient(var(--accent-line), var(--accent-line)), var(--n-0); color: var(--accent-text); }
-.st-expired { background: linear-gradient(rgba(150,150,150,0.2), rgba(150,150,150,0.2)), var(--n-0); color: var(--t-body); }
-.st-revoked { background: linear-gradient(var(--danger-dim), var(--danger-dim)), var(--n-0); color: var(--danger); }
-
+.lib-thumb:hover .thumb-overlay { opacity: 1; }
 .btn-del {
-  position: absolute; top: 8px; right: 8px;
-  width: 28px; height: 28px; border-radius: 7px;
-  border: none; background: var(--scrim);
-  color: var(--danger); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1;
-  opacity: 0; transition: opacity 0.18s;
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 8px;
+  background: rgba(4, 9, 28, .7); color: var(--on-scrim); cursor: pointer;
+  opacity: 0; transition: opacity .15s ease, color .15s ease;
 }
-.btn-del:hover { background: rgba(255, 80, 80, 0.3); }
-.btn-del svg { width: 15px; height: 15px; }
+.lib-thumb:hover .btn-del { opacity: 1; }
+.btn-del:hover { color: var(--err-soft); }
+.status-tag { position: absolute; top: 8px; left: 8px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgba(12, 21, 52, .8); }
+.status-tag.st-active { color: var(--ok); }
+.status-tag.st-expired { color: var(--warn); }
+.status-tag.st-revoked { color: var(--text-3); }
 
-.lib-meta { padding: 10px 12px; }
-.lib-name {
-  font-size: 13.5px; font-weight: 600; color: var(--t-strong);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.lib-sub {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 6px; font-size: 12px; color: var(--t-dim);
-  gap: 8px;
-}
+.lib-meta { padding: 10px 12px 12px; }
+.lib-name { font-size: 14px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-sub { margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-3); }
 .sub-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub-side { white-space: nowrap; flex-shrink: 0; }
-
-/* 分享链接卡片上的操作：全是本机操作，描边按钮 */
+.sub-side { flex: none; }
 .share-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.share-btn {
-  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--n-6);
-  background: transparent; color: var(--t-body); cursor: pointer; font-size: 12px;
-}
-.share-btn:hover:not(:disabled) { border-color: var(--accent-text); color: var(--accent-text); }
-.share-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
-.share-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.share-actions .lc-btn { flex: 1 1 auto; padding: 0 8px; }
 
-/* 二次确认 */
-.confirm-mask {
-  position: fixed; inset: 0; z-index: 9100;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-}
-.confirm-dialog {
-  width: 400px; max-width: calc(100vw - 32px);
-  background: var(--n-3); border: 1px solid var(--n-5); border-radius: 12px;
-}
-.confirm-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--n-5); font-weight: 600;
-}
-.confirm-close {
-  background: none; border: none; color: var(--t-dim); font-size: 22px;
-  cursor: pointer; line-height: 1;
-}
-.confirm-body { padding: 18px 20px; }
-.confirm-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--t-body); }
-.confirm-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 14px 20px; border-top: 1px solid var(--n-5);
-}
-.confirm-btn {
-  padding: 8px 16px; border-radius: 8px; border: 1px solid var(--n-7);
-  background: var(--n-4); color: var(--t-strong); cursor: pointer; font-size: 14px;
-}
-.confirm-btn:hover { background: var(--n-5); }
-.confirm-btn.danger { background: var(--danger); border-color: var(--danger); color: var(--t-max); font-weight: 600; }
-.confirm-btn.danger:hover { background: #d83b3b; }
-.confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* ===== 文本模板 tab ===== */
-
-.tt-lang { display: flex; gap: 3px; background: var(--n-3); border-radius: 8px; padding: 3px; flex-shrink: 0; }
-.tt-lang-btn {
-  padding: 5px 12px; border: none; background: none; color: var(--t-dim);
-  border-radius: 6px; cursor: pointer; font-size: 13px;
-}
-.tt-lang-btn.active { background: var(--btn-bg); color: var(--btn-fg); font-weight: 600; }
-
-.tt-grid {
-  display: grid; gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-}
+/* 文本模板卡 */
+.tt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .tt-card {
-  position: relative;
-  background: var(--n-3); border: 1px solid var(--n-4); border-radius: 12px;
-  padding: 12px 14px; cursor: pointer; overflow: hidden;
-  min-height: 132px; display: flex; flex-direction: column;
-  transition: border-color 0.15s, transform 0.15s;
+  position: relative; padding: 12px 14px; cursor: pointer; overflow: hidden;
+  min-height: 132px; display: flex; flex-direction: column; transition: border-color .15s;
 }
-.tt-card:hover { border-color: var(--accent-text); transform: translateY(-2px); }
+.tt-card:hover { border-color: rgba(63, 216, 255, .55); }
 .tt-card:hover .tt-card-hover { opacity: 1; }
 .tt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.tt-card-title {
-  font-size: 13.5px; font-weight: 600; color: var(--t-strong);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
-}
-.tt-card-cat {
-  flex-shrink: 0; font-size: 11px; color: var(--t-dim);
-  background: var(--n-4); border-radius: 5px; padding: 2px 7px;
-}
+.tt-card-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.tt-card-cat { flex-shrink: 0; }
 .tt-card-content {
-  font-size: 12px; line-height: 1.55; color: var(--t-dim);
-  overflow: hidden;
+  font-size: 12px; line-height: 1.6; color: var(--text-2); overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
   white-space: pre-wrap; word-break: break-word;
 }
 .tt-card-hover {
-  position: absolute; inset: 0;
-  display: flex; align-items: flex-end; justify-content: center;
-  padding-bottom: 14px;
-  background: linear-gradient(to top, var(--glass-panel) 30%, rgba(20,20,24,0) 100%);
-  opacity: 0; transition: opacity 0.18s;
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 12px;
+  background: linear-gradient(to top, rgba(12, 21, 52, .96) 30%, rgba(12, 21, 52, 0) 100%);
+  opacity: 0; transition: opacity .18s;
 }
-/* 主按钮配色要成对取：--btn-bg 配 --btn-fg。原来配的 var(--n-3) 在亮色下
-   碰巧还能看（浅字压深绿底），但那是运气，不是设计 —— 令牌一调就翻车。 */
-.tt-use-btn {
-  padding: 7px 20px; background: var(--btn-bg); color: var(--btn-fg);
-  border-radius: 8px; font-size: 13px; font-weight: 600;
+
+/* 二次确认 */
+.confirm-mask { z-index: 9100; }
+.confirm-dialog { width: 420px; }
+.confirm-text { margin: 0; font-size: 14px; line-height: 1.7; color: var(--text-2); }
+
+@media (max-width: 600px) {
+  .lib-dialog { height: 92vh; height: 92dvh; }
+  .lib-header { flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
+  .lib-tabs { order: 1; flex: 1 1 0; }
+  .lib-close { order: 2; margin-left: 0; }
+  .lib-search { order: 3; flex: 1 1 100%; margin-left: 0; }
+  .lib-body { padding: 12px 16px 16px; }
+  .lib-sub-bar { flex-wrap: wrap; }
+  .cat-tabs { flex-wrap: nowrap; overflow-x: auto; flex: 1 1 100%; scrollbar-width: none; }
+  .lib-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .tt-grid { grid-template-columns: 1fr; }
+  /* 触屏没有悬停：动作直接露出来 */
+  .thumb-overlay { opacity: 1; inset: auto 0 0 0; padding: 8px; background: linear-gradient(to top, rgba(4, 9, 28, .8), transparent); }
+  .btn-del { opacity: 1; }
 }
 </style>

@@ -120,104 +120,53 @@ function shapeStyle(v: string): CSSProperties {
 </script>
 
 <style scoped>
-.cv-pp {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 4px;
-  min-width: 268px;
-}
-.cv-pp-label {
-  font-size: 11px;
-  color: var(--t-dim);
-  padding: 0 4px;
-  margin-top: 2px;
-}
-.cv-pp-row {
-  display: flex;
-  gap: 8px;
-  padding: 0 2px;
-}
+.cv-pp { display: flex; flex-direction: column; gap: 8px; padding: 6px 4px; width: 276px; max-width: calc(100vw - 40px); }
+.cv-pp-label { font-size: 12px; color: var(--text-3); padding: 0 2px; margin-top: 2px; }
+.cv-pp-row { display: flex; gap: 6px; padding: 0 2px; }
 .cv-pp-wrap { flex-wrap: wrap; }
-.cv-pp-pill {
-  flex: 1;
-  min-width: 44px;
-  padding: 7px 0;
-  background: var(--n-5);
-  border: 1px solid transparent;
+.cv-pp-pill,
+.cv-pp-cell {
+  background: var(--well);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  color: var(--t-body);
-  font-size: 12px;
-  font-family: inherit;
+  color: var(--text-2);
+  font: inherit;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
 }
-.cv-pp-pill:hover { background: var(--n-6); }
-.cv-pp-pill.active {
-  background: var(--n-7);
-  border-color: var(--accent-text);
-  color: var(--t-max);
-}
-.cv-pp-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  padding: 0 2px;
-}
+.cv-pp-pill { flex: 1; min-width: 44px; height: 30px; padding: 0 6px; font-size: 12px; }
+.cv-pp-pill:hover,
+.cv-pp-cell:hover { border-color: var(--line-3); color: var(--text); }
+.cv-pp-pill.active,
+.cv-pp-cell.active { background: rgba(59, 123, 255, .28); border-color: var(--line-3); color: var(--text); }
+.cv-pp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 2px; }
 .cv-pp-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 56px;
-  background: var(--n-5);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--t-dim);
-  font-size: 10px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  height: 54px;
+  font-size: 10.5px;
+  font-family: var(--f-mono);
+  color: var(--text-3);
 }
-.cv-pp-cell:hover { background: var(--n-6); }
-.cv-pp-cell.active {
-  background: var(--n-7);
-  border-color: var(--accent-text);
-  color: var(--t-max);
-}
-.cv-pp-shape {
-  display: block;
-  border: 1.6px solid currentColor;
-  border-radius: 2px;
-  opacity: 0.9;
-}
+.cv-pp-cell.active .cv-pp-shape { border-color: var(--cyan); }
+.cv-pp-shape { display: block; border: 1.6px solid currentColor; border-radius: 2px; }
 .cv-pp-cap { line-height: 1; }
-.cv-pp-stepper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 2px;
-}
+.cv-pp-stepper { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
 .cv-pp-step {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: var(--n-5);
-  border: 1px solid transparent;
-  color: var(--t-body);
-  font-size: 17px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease;
 }
-.cv-pp-step:hover:not(:disabled) { background: var(--n-7); }
-.cv-pp-step:disabled { opacity: 0.4; cursor: not-allowed; }
-.cv-pp-count {
-  min-width: 24px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--t-max);
-  font-variant-numeric: tabular-nums;
-}
+.cv-pp-step:hover:not(:disabled) { border-color: var(--line-3); }
+.cv-pp-step:disabled { opacity: .4; cursor: not-allowed; }
+.cv-pp-count { min-width: 24px; text-align: center; font: 500 13px var(--f-mono); color: var(--text); }
 </style>

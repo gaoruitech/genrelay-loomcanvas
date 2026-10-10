@@ -8,7 +8,9 @@
  * or meter usage point BILLING_HOOK at a module exporting any of the three
  * functions below; missing ones fall back to these no-ops.
  *
- *   ctx  = { runId, userId, kind, model, providerType, workflowId, nodeId, params, count }
+ *   ctx  = { runId, userId, username, kind, model, providerType, workflowId, nodeId, params, count }
+ *          userId / username: the account the run belongs to (its id, and its
+ *          name at the time of the call)
  *   cost = { amount, currency, unknown }
  *
  * beforeRun runs once per run before anything is sent upstream; returning

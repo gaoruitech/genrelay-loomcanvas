@@ -43,7 +43,7 @@ function isSubnet(v) {
  * TRUST_PROXY: how many reverse proxies sit in front (1, 2...), or which
  * addresses they connect from. There is deliberately no "trust everything":
  * with it any client could pick its own address in X-Forwarded-For and walk
- * around the login rate limit.
+ * around the sign-in rate limit.
  */
 function trustProxy(name) {
   const raw = str(name)
@@ -123,7 +123,8 @@ function build() {
     mongodbUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017/loomcanvas'),
     secretKey,
     publicUrl,
-    accessPassword: str('ACCESS_PASSWORD'),
+    // Set by an install from before accounts. It no longer does anything; index.js says so once.
+    legacyAccessPassword: str('ACCESS_PASSWORD') !== '',
     corsOrigins: str('CORS_ORIGIN').split(',').map((s) => s.trim()).filter(Boolean),
     trustProxy: trustProxy('TRUST_PROXY'),
     // Hosts exempt from the private-address block of the downloader, for

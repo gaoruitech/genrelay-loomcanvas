@@ -19,16 +19,20 @@ LoomCanvas 不卖积分，也不自带模型。你填自己的 API Key，画布�
 - **显示成本，不用积分。** 按你自己维护的价格表预估每次运行的成本，没填价格时显示「成本未知」；按天、按模型的用量记录。
 - **文件留在你手里。** 结果会转存到你自己的存储：默认本地磁盘，也可以是 S3 兼容的桶（AWS S3、Cloudflare R2、阿里云 OSS、MinIO），在「设置 → 存储」里配置。桶可以保持私有。哪些经过了测试，见[存储](docs/storage.zh-CN.md)。
 - **模板、品牌包、素材库、分享链接。** 只读分享链接，可设有效期，可撤销。
-- **中英文**界面和服务端提示；浅色、深色主题。
-- **按单用户设计。** 一个可选的共用访问口令。没有账号，没有多租户隔离。
+- **工作台、生成记录、模型管理。** 工作台上是最近的画布、模板、生成队列和本月用量；「生成记录」里是每一次运行，可以筛选、导出 CSV；「模型管理」里管服务商、模型和价格。
+- **中英文**界面和服务端提示。界面只有一套深色主题。
+- **账号。** 注册、登录后使用；每个账号有自己的画布、文件、服务商和 API Key。第一个注册的账号是所有者，负责管理站点和账号列表，可以关闭注册。
+- **没有团队。** 账号之间不共用画布和空间；账号之间的隔离也不是加固过的多租户边界。见[安全](docs/security.zh-CN.md)。
 
 ## 截图
 
 | | |
 | --- | --- |
-| ![编辑器](docs/images/04-editor.png) 编辑器 | ![运行完成](docs/images/06-editor-result.png) 画布上的结果 |
-| ![深色主题](docs/images/09-editor-dark.png) 深色主题 | ![引导页](docs/images/01-setup.png) 首次使用的引导页 |
-| ![模型与价格](docs/images/08-settings-models.png) 模型与价格（项目不带价格，由你自己填） | ![英文界面](docs/images/11-editor-en.png) 英文界面 |
+| ![落地页](docs/images/12-landing.png) 落地页 | ![登录页](docs/images/13-login.png) 登录 |
+| ![添加服务商](docs/images/01-setup.png) 注册后添加第一个服务商 | ![工作台](docs/images/14-workbench.png) 工作台 |
+| ![编辑器](docs/images/04-editor.png) 编辑器（中文界面） | ![英文界面](docs/images/11-editor-en.png) 编辑器（英文界面） |
+| ![图生视频模板](docs/images/09-editor-dark.png) 内置的「图生视频」模板 | ![运行完成](docs/images/06-editor-result.png) 画布上的结果 |
+| ![模型与价格](docs/images/08-settings-models.png) 模型管理：服务商、模型与价格（项目不带价格，由你自己填） | ![生成记录](docs/images/15-history.png) 生成记录：每一次运行和汇总 |
 
 ## 快速开始
 
@@ -42,11 +46,11 @@ cp .env.example .env
 docker compose up -d
 ```
 
-打开 http://localhost:3000 （或这台机器的地址，端口是你设的 `PORT`），按引导页添加一个服务商即可开始使用。推荐高瑞，在 https://gaorui.cc 获取 Key。
+打开 http://localhost:3000 （或这台机器的地址，端口是你设的 `PORT`），点「注册」建一个账号，再在接下来的页面上添加一个服务商即可开始使用。推荐高瑞，在 https://gaorui.cc 获取 Key。
 
 - `SECRET_KEY` 用来加密数据库里保存的上游 API Key。请妥善保存，设置后不要再改，否则已保存的 Key 将无法解密。
 - `PUBLIC_URL` 可以不填。本机或内网使用时留空即可：文件按「当前打开的地址」寻址。实例有公网地址时把它设成那个地址，上游模型才能按地址读取参考素材（文件存在本地磁盘上，又要用视频做输入、或者给高瑞的图片模型传参考图时需要）。
-- 别人也能访问这台机器时，请设置 `ACCESS_PASSWORD`。
+- 你注册的第一个账号是这个实例的所有者，所以要赶在别人能访问到实例之前注册。之后注册仍然开放，所有者可以在「设置 → 站点」里关掉。见[账号](docs/getting-started.zh-CN.md#账号)。
 
 逐步说明见[快速上手](docs/getting-started.zh-CN.md)。
 

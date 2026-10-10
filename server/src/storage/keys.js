@@ -2,7 +2,15 @@
 
 /**
  * Storage keys are always generated here. A key never contains anything the
- * user typed (file names, URLs): only a fixed prefix, the date and random hex.
+ * user typed (file names, URLs): only a fixed prefix, the id of the account the
+ * file belongs to, the date and random hex.
+ *
+ *   uploads/<account id>/2025/01/<32 hex chars>.png
+ *
+ * Files written before accounts existed have no account segment
+ * (uploads/2025/01/<hex>.png); those keys stay valid and are served as before.
+ * The account segment is what lets an account's files be removed with it. It
+ * is not an access check: a file's address is public to whoever has it.
  */
 const crypto = require('crypto')
 
@@ -41,13 +49,19 @@ function mimeForKey(key) {
   return EXT_MIME[ext] || 'application/octet-stream'
 }
 
-/** Example: uploads/2025/01/<32 hex chars>.png */
-function newKey(prefix, mime) {
+const ACCOUNT_ID = /^[0-9a-f]{24}$/
+
+/**
+ * Example: uploads/<account id>/2025/01/<32 hex chars>.png. Without an account
+ * id (anything that is not one) the account segment is left out.
+ */
+function newKey(prefix, mime, userId) {
   if (!PREFIXES.has(prefix)) throw new Error(`unknown storage prefix: ${prefix}`)
+  const owner = ACCOUNT_ID.test(String(userId || '')) ? `${userId}/` : ''
   const now = new Date()
   const yyyy = now.getUTCFullYear()
   const mm = String(now.getUTCMonth() + 1).padStart(2, '0')
-  return `${prefix}/${yyyy}/${mm}/${crypto.randomBytes(16).toString('hex')}.${extForMime(mime)}`
+  return `${prefix}/${owner}${yyyy}/${mm}/${crypto.randomBytes(16).toString('hex')}.${extForMime(mime)}`
 }
 
 const THUMB_PREFIX = 'thumbs/of/'
@@ -85,4 +99,13 @@ function isValidKey(key) {
   return typeof key === 'string' && key.length <= 200 && KEY_RE.test(key) && !key.includes('..')
 }
 
-module.exports = { newKey, isValidKey, extForMime, mimeForKey, thumbKeyFor, thumbSourceKey, MIME_EXT }
+/**
+ * Every key prefix under which the files of one account live: its uploads,
+ * results and tool outputs, and the thumbnails derived from them.
+ */
+function accountPrefixes(userId) {
+  if (!ACCOUNT_ID.test(String(userId || ''))) throw new Error('not an account id')
+  return THUMB_SOURCE_PREFIXES.flatMap((p) => [`${p}/${userId}/`, `${THUMB_PREFIX}${p}/${userId}/`])
+}
+
+module.exports = { newKey, isValidKey, extForMime, mimeForKey, thumbKeyFor, thumbSourceKey, accountPrefixes, MIME_EXT }

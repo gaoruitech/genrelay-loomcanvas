@@ -5,6 +5,7 @@
  *
  *   put(key, buffer|stream, { contentType, sameBackendAs? }) -> { key, size, url }
  *   getStream(key) / getBuffer(key) / exists(key) / size(key) / delete(key)
+ *   deleteUserFiles(userId) -> how many files of that account were removed
  *   locate(key)      -> the backend that holds the key, or null
  *   urlFor(key)      -> '/files/<key>', the one address a stored file has
  *   keyFromUrl(url)  -> key when the URL points at a stored file, else null
@@ -160,6 +161,27 @@ const facade = {
     const backend = await locate(key)
     located.delete(key)
     if (backend) await backend.delete(key)
+  },
+
+  /**
+   * Remove the files of one account, on every backend that can be reached:
+   * everything under its key prefixes (keys.accountPrefixes). Files from before
+   * accounts carry no account in their key and are never touched by this.
+   * Resolves the number of files removed; throws the first backend error after
+   * trying them all.
+   */
+  async deleteUserFiles(userId) {
+    const prefixes = keys.accountPrefixes(userId)
+    let count = 0
+    let failure = null
+    for (const backend of current().backends) {
+      for (const prefix of prefixes) {
+        try { count += await backend.deletePrefix(prefix) } catch (err) { failure = failure || err }
+      }
+    }
+    for (const key of [...located.keys()]) if (prefixes.some((p) => key.startsWith(p))) located.delete(key)
+    if (failure) throw failure
+    return count
   },
 
   /**

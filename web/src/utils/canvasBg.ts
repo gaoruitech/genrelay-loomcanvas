@@ -4,14 +4,14 @@ import { t } from '@/locales'
  * 无限画布的背景设置（底色 / 图案 / 密度）。
  *
  * 存在画布本身（Workflow.settings.bg），不是浏览器本地 —— 通过分享链接打开的画布要带着
- * 作者定的底色走，换设备也要一致。默认值 color:'auto' 就是「跟随主题」，
+ * 作者定的底色走，换设备也要一致。默认值 color:'auto' 就是编辑器的默认底色，
  * 等价于改动之前的行为，老画布读出来是空对象也会落到这一档。
  */
 
 export type CanvasBgPattern = 'dots' | 'lines' | 'cross' | 'none'
 
 export interface CanvasBgSettings {
-  /** 'auto' = 跟随主题令牌 --flow-bg；否则是 #rrggbb */
+  /** 'auto' = 默认底色（令牌 --flow-bg）；否则是 #rrggbb */
   color: string
   pattern: CanvasBgPattern
   /** 图案间距，px */
@@ -22,7 +22,7 @@ export interface CanvasSettings {
   bg?: CanvasBgSettings
 }
 
-export const DEFAULT_CANVAS_BG: CanvasBgSettings = { color: 'auto', pattern: 'dots', gap: 20 }
+export const DEFAULT_CANVAS_BG: CanvasBgSettings = { color: 'auto', pattern: 'dots', gap: 24 }
 
 export const CANVAS_BG_GAP_MIN = 12
 export const CANVAS_BG_GAP_MAX = 56
@@ -32,7 +32,7 @@ export const CANVAS_BG_GAP_MAX = 56
  * label 是 getter：语言可以在运行时切换，文案必须在读取时才翻译。
  */
 export const CANVAS_BG_PRESETS: { value: string; label: string }[] = [
-  { value: 'auto',    get label() { return t('dialogs.bg.followTheme') } },
+  { value: 'auto',    get label() { return t('dialogs.bg.defaultColor') } },
   { value: '#151517', get label() { return t('dialogs.bg.presetGraphite') } },
   { value: '#101a24', get label() { return t('dialogs.bg.presetMidnight') } },
   { value: '#1b1714', get label() { return t('dialogs.bg.presetBrown') } },
@@ -105,10 +105,7 @@ export function patternColorFor(hex: string): string {
  * 节点的文字和边框都是按主题配的浅色，压在浅底上直接消失。
  * 不禁止用户选，但要当场告诉他会发生什么。
  */
-export function canvasBgWarning(bg: CanvasBgSettings, theme: 'dark' | 'light'): string {
+export function canvasBgWarning(bg: CanvasBgSettings): string {
   if (bg.color === 'auto' || !isHexColor(bg.color)) return ''
-  const l = relLuminance(bg.color)
-  if (theme === 'dark' && l > 0.45) return t('dialogs.bg.warnLightOnDark')
-  if (theme === 'light' && l < 0.22) return t('dialogs.bg.warnDarkOnLight')
-  return ''
+  return relLuminance(bg.color) > 0.45 ? t('dialogs.bg.warnLightOnDark') : ''
 }

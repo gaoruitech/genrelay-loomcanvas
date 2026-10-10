@@ -51,7 +51,7 @@ function missing(key) {
  *                           connection test wants to fail fast, normal use keeps the SDK defaults
  */
 function createS3Backend(cfg, opts = {}) {
-  const { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, Upload, getSignedUrl } = loadSdk()
+  const { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, ListObjectsV2Command, Upload, getSignedUrl } = loadSdk()
   const client = new S3Client({
     region: cfg.region,
     endpoint: cfg.endpoint || undefined,
@@ -161,6 +161,26 @@ function createS3Backend(cfg, opts = {}) {
     await client.send(new DeleteObjectCommand({ Bucket, Key: objectKey(key) }))
   }
 
+  /**
+   * Remove every object under a key prefix ("uploads/<account id>/"). One
+   * request per object: the batch delete is not implemented alike everywhere.
+   * Resolves how many objects went.
+   */
+  async function removePrefix(keyPrefix) {
+    if (!/^[a-z0-9]+(\/[a-z0-9]+)+\/$/.test(keyPrefix)) throw new Error('invalid storage prefix')
+    let count = 0
+    let token
+    do {
+      const page = await client.send(new ListObjectsV2Command({ Bucket, Prefix: prefix + keyPrefix, ContinuationToken: token }))
+      for (const object of page.Contents || []) {
+        await client.send(new DeleteObjectCommand({ Bucket, Key: object.Key }))
+        count++
+      }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined
+    } while (token)
+    return count
+  }
+
   /** Address of the object on the public domain (custom domain, CDN, r2.dev), or ''. */
   function publicUrl(key) {
     return publicBase && isValidKey(key) ? publicBase + key : ''
@@ -189,6 +209,7 @@ function createS3Backend(cfg, opts = {}) {
     getStream,
     getBuffer,
     delete: remove,
+    deletePrefix: removePrefix,
     publicUrl,
     keyFromPublicUrl,
     presignGet,

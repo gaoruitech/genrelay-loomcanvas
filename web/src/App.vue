@@ -3,7 +3,8 @@
   <t-config-provider :global-config="TDESIGN_LOCALES[app.locale]">
     <!-- 连不上服务端 -->
     <div v-if="!app.bootstrap" class="app-center">
-      <div class="app-notice">
+      <div class="app-notice lc-glass">
+        <LcIcon name="warn" size="xl" class="app-notice-ic" />
         <h1>{{ t('app.bootstrapFailed') }}</h1>
         <p>{{ t('app.bootstrapHint') }}</p>
         <p v-if="app.bootstrapError" class="app-notice-detail">{{ app.bootstrapError }}</p>
@@ -11,33 +12,28 @@
       </div>
     </div>
 
-    <!-- 分享只读页：任何人都能看，不需要口令 -->
-    <router-view v-else-if="route.meta.public" />
+    <!-- 落地页 / 登录 / 注册 / 分享只读页 / 引导页：自己占满整屏 -->
+    <router-view v-else-if="route.meta.public || route.meta.shell === 'none'" />
 
-    <PasswordScreen v-else-if="!app.authed" />
-
-    <div v-else class="app-shell">
-      <AppTopBar v-if="!route.meta.bare && !app.immersive" />
-      <main class="app-main">
-        <router-view />
-      </main>
-    </div>
+    <AppShell v-else>
+      <router-view />
+    </AppShell>
   </t-config-provider>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { loadModels } from '@/utils/canvasModels'
-import { ensureSetup } from '@/router'
 import { TDESIGN_LOCALES } from '@/locales/tdesign'
-import AppTopBar from '@/components/AppTopBar.vue'
-import PasswordScreen from '@/components/PasswordScreen.vue'
+import AppShell from '@/components/AppShell.vue'
+import LcIcon from '@/components/LcIcon.vue'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const app = useAppStore()
 
 const retrying = ref(false)
@@ -45,40 +41,42 @@ async function retry() {
   retrying.value = true
   try {
     await app.loadBootstrap()
-    if (app.bootstrap && app.authed) {
-      await loadModels().catch(() => undefined)
-      ensureSetup()
+    if (app.bootstrap) {
+      if (app.authed) await loadModels().catch(() => undefined)
+      // 连不上的时候守卫没做判断，连上以后按当前地址重新走一遍
+      await router.replace({ path: route.fullPath, force: true })
     }
   } finally {
     retrying.value = false
   }
 }
+
+// 登录状态变了（登录成功、退出、令牌失效被接口打回 401）：
+// 模型清单是按账号的要重取；人在需要登录的页面上就送去登录页，并记下回来的地址。
+watch(() => app.authed, (authed) => {
+  if (authed) {
+    loadModels().catch(() => undefined)
+    return
+  }
+  if (app.leaving) {
+    app.leaving = false
+    router.replace('/')
+    return
+  }
+  if (app.bootstrap && !route.meta.public) {
+    router.replace({ name: 'login', query: { redirect: route.fullPath } })
+  }
+})
 </script>
 
 <style scoped>
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-}
-/* 页面各自管自己的滚动：画布编辑页要占满且不滚，列表 / 设置页自己 overflow-y:auto */
-.app-main {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 .app-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 24px;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; padding: 24px;
 }
-.app-notice { max-width: 420px; text-align: center; }
-.app-notice h1 { font-size: 20px; color: var(--t-max); margin-bottom: 10px; }
-.app-notice p { color: var(--t-dim); line-height: 1.6; margin-bottom: 18px; }
-.app-notice .app-notice-detail { font-size: 12px; color: var(--danger); word-break: break-word; }
+.app-notice { max-width: 440px; padding: 32px; text-align: center; }
+.app-notice-ic { color: var(--warn); margin-bottom: 12px; }
+.app-notice h1 { font: 600 20px/1.3 var(--f-disp); color: var(--text); margin-bottom: 10px; }
+.app-notice p { color: var(--text-2); line-height: 1.7; margin-bottom: 18px; }
+.app-notice .app-notice-detail { font-size: 12px; color: var(--err-soft); word-break: break-word; }
 </style>

@@ -7,7 +7,7 @@ const express = require('express')
 const { getConfig } = require('./config')
 const { getStorage } = require('./storage')
 const { securityHeaders, noStore, cors, buildContentSecurityPolicy, inlineScriptHashes } = require('./middleware/security')
-const { requireAuth } = require('./middleware/auth')
+const { requireAuth, requireOwner } = require('./middleware/auth')
 const { locale } = require('./middleware/locale')
 const { apiNotFound, errorHandler } = require('./middleware/errors')
 const files = require('./routes/files')
@@ -18,7 +18,7 @@ function createApp() {
   const app = express()
   app.disable('x-powered-by')
   app.set('etag', false)
-  // Needed behind a reverse proxy so req.ip (login rate limit) is the client's address.
+  // Needed behind a reverse proxy so req.ip (sign-in rate limit, session list) is the client's address.
   if (config.trustProxy) app.set('trust proxy', config.trustProxy)
 
   const indexHtml = config.webDist ? path.join(config.webDist, 'index.html') : ''
@@ -46,12 +46,13 @@ function createApp() {
   api.use(noStore)
 
   // --- public ---
-  // What anybody may send is small: a password, the fields of a share link.
+  // What anybody may send is small: a name and a password, the fields of a share link.
   api.use(['/auth', '/canvas-share'], express.json({ limit: '64kb' }))
-  api.use(require('./routes/base')) // bootstrap, login
+  api.use(require('./routes/base')) // bootstrap
+  api.use('/auth', require('./routes/auth')) // register and login are public; the rest guards itself
   api.use('/canvas-share', require('./routes/canvasShare')) // public read; the rest guards itself
 
-  // --- everything below needs a token when ACCESS_PASSWORD is set ---
+  // --- everything below needs a session, and works on the caller's own data only ---
   // Bodies are parsed after this check, so only a signed-in client gets megabytes read and parsed.
   api.use(requireAuth)
   // Canvas saves carry the whole graph; everything else is small.
@@ -59,7 +60,10 @@ function createApp() {
   api.use(express.json({ limit: '1mb' }))
   api.use('/files', files.apiRouter())
   api.use(require('./routes/runs')) // models, runs, llm tasks
+  // Per account: providers, models, usage. Owner only: settings and storage (guarded inside).
   api.use('/admin', require('./routes/admin'))
+  // Owner only: accounts and registration.
+  api.use('/admin', requireOwner, require('./routes/adminUsers'))
   api.use('/workflow', require('./routes/workflow'))
   api.use('/canvas-asset', assets.canvasAssetRouter())
   api.use('/user-asset', assets.userAssetRouter())

@@ -20,7 +20,6 @@ const en = require('../src/i18n/en')
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomcanvas-e2e-'))
 process.env.SECRET_KEY = 'e2e-test-secret-key-0123456789'
-process.env.ACCESS_PASSWORD = 'correct horse'
 process.env.STORAGE_DRIVER = 'local'
 process.env.STORAGE_LOCAL_DIR = tmpDir
 process.env.PUBLIC_URL = ''
@@ -116,6 +115,7 @@ test('LoomCanvas API end to end', async (t) => {
   })
 
   let token = ''
+  let userId = ''
   /** JSON call; returns { status, body }. */
   async function call(method, pathname, body, { auth = true, raw = false, headers: extra = {} } = {}) {
     const headers = { ...extra }
@@ -142,28 +142,38 @@ test('LoomCanvas API end to end', async (t) => {
     }
   }
 
-  await t.test('auth: everything but bootstrap/login/share-read needs a token', async () => {
+  await t.test('auth: everything but bootstrap/register/login/share-read needs a session', async () => {
     const boot = await call('GET', '/api/app/bootstrap')
-    assert.deepEqual([boot.status, boot.body.data.authRequired, boot.body.data.authed, boot.body.data.hasProvider], [200, true, false, false])
+    assert.deepEqual([boot.status, boot.body.data.user, boot.body.data.hasProvider], [200, null, false])
+    // Gone with the access password and the theme switch: nothing reads them any more.
+    for (const k of ['authRequired', 'authed']) assert.equal(k in boot.body.data, false, k)
+    assert.equal('defaultTheme' in boot.body.data.site, false)
+    assert.deepEqual([boot.body.data.auth, boot.body.data.user], [{ registrationOpen: true, hasUsers: false }, null])
+    assert.deepEqual((await call('GET', '/api/bootstrap')).body.data.auth, boot.body.data.auth, 'the same answer at the path of the contract')
     assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
     assert.deepEqual(boot.body.data.media, { upstreamByUrl: false })
     for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['GET', '/api/admin/storage'], ['POST', '/api/admin/storage/test'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
       const r = await call(m, p, m === 'POST' ? {} : undefined)
-      assert.equal(r.status, 401, `${m} ${p}`)
+      assert.deepEqual([r.status, r.body.code], [401, 'auth.required'], `${m} ${p}`)
       assert.notEqual(r.body.result, 0)
     }
-    assert.equal((await call('POST', '/api/auth/login', { password: 'wrong' })).status, 401)
+    // The first account is the owner; this file runs as that account.
+    const reg = await call('POST', '/api/auth/register', { username: 'owner', email: 'owner@example.com', password: 'correct horse' })
+    assert.deepEqual([reg.status, reg.body.data.user.role], [200, 'owner'])
+    userId = reg.body.data.user.id
+    assert.equal((await call('POST', '/api/auth/login', { account: 'owner', password: 'wrong horse' })).status, 401)
     assert.equal((await call('POST', '/api/auth/login', {})).status, 400)
-    const ok = await call('POST', '/api/auth/login', { password: 'correct horse' })
+    const ok = await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })
     assert.equal(ok.status, 200)
     token = ok.body.data.token
-    assert.equal((await call('GET', '/api/app/bootstrap')).body.data.authed, true)
+    const after = (await call('GET', '/api/app/bootstrap')).body.data
+    assert.deepEqual([after.user.username, after.user.role, after.auth.hasUsers], ['owner', 'owner', true])
     // No PUBLIC_URL and files on the local disk: an upstream cannot be given a stored file by URL.
     // The canvas reads this to warn before a run with a model that only takes URLs (ModelSpec.imageByUrlOnly).
     assert.deepEqual((await call('GET', '/api/app/bootstrap')).body.data.media, { upstreamByUrl: false })
 
-    // A forged or foreign-signed token is not accepted.
-    const forged = require('jsonwebtoken').sign({ sub: 'local' }, 'some-other-key')
+    // A token nobody was given is not accepted, however well-formed.
+    const forged = crypto.randomBytes(32).toString('base64url')
     const res = await fetch(base + '/api/workflow/list', { headers: { Authorization: `Bearer ${forged}` } })
     assert.equal(res.status, 401)
   })
@@ -223,7 +233,9 @@ test('LoomCanvas API end to end', async (t) => {
     const form = new FormData()
     form.append('file', new Blob([png]), '../../etc/passwd.html')
     uploaded = await data('POST', '/api/files/upload', form)
-    assert.match(uploaded.key, /^uploads\/\d{4}\/\d{2}\/[0-9a-f]{32}\.png$/)
+    // The key carries the account the file belongs to, and nothing the client sent.
+    assert.match(uploaded.key, /^uploads\/[0-9a-f]{24}\/\d{4}\/\d{2}\/[0-9a-f]{32}\.png$/)
+    assert.equal(uploaded.key.split('/')[1], userId)
     assert.deepEqual([uploaded.mime, uploaded.width, uploaded.height, uploaded.size], ['image/png', 1024, 768, png.length])
     // The thumbnail URL is derived from the image's own key.
     assert.equal(uploaded.thumbnailUrl, `/files/thumbs/of/${uploaded.key.replace(/\.png$/, '_png.webp')}`)
@@ -268,7 +280,7 @@ test('LoomCanvas API end to end', async (t) => {
     const node = { id: 'i1', type: 'image', position: { x: 0, y: 0 }, data: { imageUrl: uploaded.url, status: 'done' } }
     const created = await data('POST', '/api/workflow', { name: '画布', nodes: [node], edges: [], settings: { bg: { color: '#111', pattern: 'dots' } } })
     workflowId = created.id
-    assert.deepEqual([created.thumbnail, created.thumbnailType, created.schemaVersion], [uploaded.url, 'image', 1])
+    assert.deepEqual([created.thumbnail, created.thumbnailType, created.schemaVersion, created.legacyLayout], [uploaded.url, 'image', 2, false])
 
     const renamed = await data('PUT', `/api/workflow/${workflowId}`, { name: '新名字' })
     assert.equal(renamed.name, '新名字')
@@ -287,8 +299,17 @@ test('LoomCanvas API end to end', async (t) => {
 
     const dup = await data('POST', `/api/workflow/${workflowId}/duplicate`)
     assert.equal(dup.name, zh['canvas.copy_name'].replace('{name}', '新名字'))
+    assert.equal(dup.legacyLayout, false)
     await data('DELETE', `/api/workflow/${dup.id}`)
     assert.equal((await data('GET', '/api/workflow/list')).length, 1)
+
+    // Panning and zooming are not edits: saving only the viewport stores it and leaves updatedAt alone.
+    const beforePan = await data('GET', `/api/workflow/${workflowId}`)
+    await new Promise((r) => setTimeout(r, 15))
+    const panned = await data('PUT', `/api/workflow/${workflowId}`, { viewport: { x: 120, y: -40, zoom: 0.5 } })
+    assert.deepEqual([panned.viewport, panned.updatedAt, panned.nodes], [{ x: 120, y: -40, zoom: 0.5 }, beforePan.updatedAt, beforePan.nodes])
+    const edited = await data('PUT', `/api/workflow/${workflowId}`, { viewport: { x: 0, y: 0, zoom: 1 }, nodes: beforePan.nodes })
+    assert.ok(new Date(edited.updatedAt) > new Date(beforePan.updatedAt), 'a save with content does move it')
 
     const dl = await call('POST', '/api/workflow/download', { url: uploaded.url, filename: '成品.png' }, { raw: true })
     assert.equal(dl.status, 200)
@@ -305,6 +326,89 @@ test('LoomCanvas API end to end', async (t) => {
     assert.ok(bytes.includes(png.subarray(0, 64)), 'stored uncompressed, so the image bytes are in the archive')
     // urls only narrows the canvas content; an address not on the canvas yields nothing.
     assert.equal((await call('POST', `/api/workflow/${workflowId}/download-zip`, { urls: ['http://169.254.169.254/'] })).status, 404)
+  })
+
+  await t.test('workflow: a canvas from before the redesign is flagged once for a layout check, and only such a canvas', async () => {
+    const workflows = mongoose.connection.collection('workflows')
+    const { ObjectId } = mongoose.Types
+    const owner = (await workflows.findOne({ _id: new ObjectId(workflowId) })).userId
+    const three = ['a', 'b', 'c'].map((id, i) => ({ id, type: 'image-gen', position: { x: i * 420, y: 0 }, data: {} }))
+    const stamp = new Date('2026-01-05T00:00:00Z')
+    const old = { userId: owner, name: 'Old layout', edges: [], isDeleted: false, createdAt: stamp, updatedAt: stamp }
+    const ids = { v1: new ObjectId(), v0: new ObjectId(), single: new ObjectId() }
+    await workflows.insertMany([
+      { ...old, _id: ids.v1, schemaVersion: 1, nodes: three },
+      { ...old, _id: ids.v0, nodes: three }, // older still: no version at all
+      { ...old, _id: ids.single, schemaVersion: 1, nodes: three.slice(0, 1) },
+    ])
+    for (const id of [ids.v1, ids.v0]) {
+      const read = await data('GET', `/api/workflow/${id}`)
+      assert.deepEqual([read.schemaVersion, read.legacyLayout, read.nodes], [2, true, three])
+      const row = await workflows.findOne({ _id: id })
+      assert.deepEqual([row.schemaVersion, row.legacyLayout, row.updatedAt.getTime()], [2, true, stamp.getTime()], 'stored, without passing for an edit')
+    }
+    const lone = await data('GET', `/api/workflow/${ids.single}`)
+    assert.deepEqual([lone.schemaVersion, lone.legacyLayout], [2, false], 'one node cannot overlap anything')
+
+    // The flag survives everything except the editor saying it has looked.
+    assert.equal((await data('PUT', `/api/workflow/${ids.v1}`, { name: 'Renamed' })).legacyLayout, true)
+    assert.equal((await data('PUT', `/api/workflow/${ids.v1}`, { nodes: three, edges: [] })).legacyLayout, true)
+    assert.equal((await data('GET', `/api/workflow/${ids.v1}`)).legacyLayout, true, 'reading again does not re-run or drop it')
+    const copy = await data('POST', `/api/workflow/${ids.v1}/duplicate`)
+    assert.equal(copy.legacyLayout, true, 'a copy has the same old positions')
+    for (const bad of [true, 'false', 0, null]) {
+      assert.deepEqual(await call('PUT', `/api/workflow/${ids.v0}`, { legacyLayout: bad }).then((r) => [r.status, r.body.code]), [400, 'validation.invalid'], String(bad))
+    }
+    assert.equal((await data('POST', '/api/workflow', { name: 'New', nodes: three, legacyLayout: false })).legacyLayout, false)
+
+    // Cleared once (with the re-arranged nodes, or alone when nothing overlapped) and it never comes back.
+    const checked = await data('PUT', `/api/workflow/${ids.v0}`, { legacyLayout: false })
+    assert.deepEqual([checked.legacyLayout, checked.updatedAt], [false, stamp.toISOString()], 'clearing the flag alone is not an edit')
+    const arranged = three.map((n, i) => ({ ...n, position: { x: i * 600, y: 0 } }))
+    const fixed = await data('PUT', `/api/workflow/${ids.v1}`, { nodes: arranged, legacyLayout: false })
+    assert.deepEqual([fixed.legacyLayout, fixed.nodes], [false, arranged])
+    for (const id of [ids.v0, ids.v1]) assert.equal((await data('GET', `/api/workflow/${id}`)).legacyLayout, false)
+    assert.equal((await data('PUT', `/api/workflow/${ids.v1}`, { nodes: three })).legacyLayout, false)
+    assert.equal((await data('POST', `/api/workflow/${ids.v1}/duplicate`)).legacyLayout, false)
+
+    // Share links: a snapshot says which layout it was made with; one from before (no marker) is checked when copied.
+    const shares = mongoose.connection.collection('shares')
+    const viaShare = async (wfId) => {
+      const pub = await data('POST', '/api/canvas-share/publish', { workflowId: String(wfId) })
+      const made = await data('POST', `/api/canvas-share/${pub.token}/copy`)
+      return { pub, copy: await data('GET', `/api/workflow/${made.workflowId}`) }
+    }
+    const modern = await viaShare(ids.v1)
+    assert.equal(modern.copy.legacyLayout, false)
+    assert.equal((await shares.findOne({ token: modern.pub.token })).snapshot.layoutVersion, 2)
+    const stale = await viaShare(copy.id)
+    assert.equal(stale.copy.legacyLayout, true, 'published from a canvas still waiting for its check')
+    await shares.updateOne({ token: modern.pub.token }, { $unset: { 'snapshot.layoutVersion': '' } })
+    const made = await data('POST', `/api/canvas-share/${modern.pub.token}/copy`)
+    assert.equal((await data('GET', `/api/workflow/${made.workflowId}`)).legacyLayout, true, 'a snapshot published by an earlier version')
+
+    // Model names: a viewer has none of the publisher's providers, so the snapshot carries the display name.
+    const known = (await data('GET', '/api/admin/models')).find((m) => m.id === 'gaorui:nano-banana-2.1')
+    assert.ok(known && known.label, 'the test provider lists this model')
+    const withModels = await data('POST', '/api/workflow', { name: 'New', nodes: [
+      { id: 'g1', type: 'image-gen', position: { x: 0, y: 0 }, data: { model: known.id, modelLabel: 'Forged by the client' } },
+      { id: 'g2', type: 'image-gen', position: { x: 600, y: 0 }, data: { model: 'gone:some-model', modelLabel: 'Forged too' } },
+      { id: 't1', type: 'text', position: { x: 0, y: 700 }, data: { text: 'hi' } },
+    ] })
+    const labelled = await data('POST', '/api/canvas-share/publish', { workflowId: withModels.id })
+    const seen = async () => (await call('GET', `/api/canvas-share/${labelled.token}`, undefined, { auth: false })).body.data.nodes.map((n) => [n.id, n.data.modelLabel])
+    assert.deepEqual(await seen(), [['g1', known.label], ['g2', undefined], ['t1', undefined]], 'the name the publisher sees, never what the client claimed')
+    // A snapshot published before names were stored gets them from the publisher's models when it is read.
+    await shares.updateOne({ token: labelled.token }, { $unset: { 'snapshot.nodes.0.data.modelLabel': '' } })
+    assert.deepEqual((await seen())[0], ['g1', known.label])
+    const mineNow = await data('GET', `/api/workflow/${(await data('POST', `/api/canvas-share/${labelled.token}/copy`)).workflowId}`)
+    assert.deepEqual(mineNow.nodes.map((n) => [n.data.model, 'modelLabel' in n.data]), [[known.id, false], ['gone:some-model', false], [undefined, false]], 'a copy resolves models against its own providers')
+
+    await workflows.deleteMany({ name: { $in: ['Old layout', 'Renamed', 'New'] } })
+    await workflows.deleteMany({ userId: owner, _id: { $nin: [new ObjectId(workflowId)] } })
+    await shares.deleteMany({ sourceWorkflowId: { $ne: new ObjectId(workflowId) } })
+    assert.equal((await data('GET', '/api/workflow/list')).length, 1)
+
   })
 
   await t.test('image run: submit, poll, transfer into storage, thumbnail, cost, usage', async () => {
@@ -420,6 +524,35 @@ test('LoomCanvas API end to end', async (t) => {
     assert.deepEqual((await data('GET', '/api/admin/usage?groupBy=day&from=2000-01-01&to=2000-01-02')).items, [])
     assert.equal((await call('GET', '/api/admin/usage?from=garbage')).status, 400)
 
+    // A bare date is a calendar day in the caller's time zone (`tz`); without `tz` it is a UTC day, as before.
+    const runsCol = mongoose.connection.collection('runs')
+    const one = await runsCol.findOne({ status: 'succeeded' })
+    const really = one.createdAt
+    // 23:30 UTC on 14 June 2021 = 07:30 on the 15th in Shanghai = 19:30 on the 14th in New York.
+    await runsCol.updateOne({ _id: one._id }, { $set: { createdAt: new Date('2021-06-14T23:30:00Z') } })
+    const on = async (day, tz, path = '/api/admin/usage') => {
+      const r = await data('GET', `${path}?groupBy=day&from=${day}&to=${day}${tz ? `&tz=${encodeURIComponent(tz)}` : ''}`)
+      return path.endsWith('records') ? r.total : r.totals.runs
+    }
+    for (const path of ['/api/admin/usage', '/api/admin/usage/records']) {
+      assert.deepEqual([await on('2021-06-14', '', path), await on('2021-06-15', '', path)], [1, 0], `${path}: UTC when no zone is given`)
+      assert.deepEqual([await on('2021-06-14', 'Asia/Shanghai', path), await on('2021-06-15', 'Asia/Shanghai', path)], [0, 1], `${path}: east of UTC it is already tomorrow`)
+      assert.deepEqual([await on('2021-06-14', 'America/New_York', path), await on('2021-06-15', 'America/New_York', path)], [1, 0], path)
+      assert.deepEqual([await on('2021-06-14', '+08:00', path), await on('2021-06-15', '+08:00', path)], [0, 1], `${path}: a fixed offset works as a zone`)
+    }
+    const shanghai = await data('GET', '/api/admin/usage?groupBy=day&from=2021-06-15&to=2021-06-15&tz=Asia/Shanghai')
+    assert.deepEqual([shanghai.timezone, shanghai.items.map((r) => r.key)], ['Asia/Shanghai', ['2021-06-15']], 'the day it is grouped under is the same local day')
+    // Explicit instants are taken as they are, whatever the zone.
+    const exact = await data('GET', `/api/admin/usage?from=${encodeURIComponent('2021-06-14T23:00:00Z')}&to=${encodeURIComponent('2021-06-14T23:30:00Z')}&tz=Asia/Shanghai`)
+    assert.equal(exact.totals.runs, 0, '`to` as an instant is exclusive')
+    assert.equal((await data('GET', `/api/admin/usage?from=${encodeURIComponent('2021-06-14T23:00:00Z')}&to=${encodeURIComponent('2021-06-14T23:30:01Z')}`)).totals.runs, 1)
+    for (const path of ['/api/admin/usage', '/api/admin/usage/records']) {
+      assert.deepEqual(await call('GET', `${path}?tz=Mars/Phobos`).then((r) => [r.status, r.body.code]), [400, 'validation.invalid'], path)
+    }
+    assert.equal((await call('GET', '/api/admin/usage?from=2021-02-30')).body.code, 'validation.bad_date', 'a day that does not exist')
+    assert.equal((await call('GET', '/api/admin/usage?from=2021-06-15&to=2021-06-14&tz=Asia/Shanghai')).body.code, 'validation.from_before_to')
+    await runsCol.updateOne({ _id: one._id }, { $set: { createdAt: really } })
+
     const records = await data('GET', '/api/admin/usage/records?page=1&pageSize=2')
     assert.deepEqual([records.total, records.page, records.pageSize, records.list.length], [6, 1, 2, 2])
     assert.deepEqual(Object.keys(records.list[0]).filter((k) => ['id', 'createdAt', 'model', 'kind', 'status', 'cost'].includes(k)).length, 6)
@@ -483,10 +616,18 @@ test('LoomCanvas API end to end', async (t) => {
 
   await t.test('settings, templates, brand kits, assets, tools', async () => {
     const s = await data('GET', '/api/admin/settings')
-    for (const k of ['siteName', 'logoUrl', 'defaultTheme', 'defaultLocale', 'concurrency', 'imageTimeoutMinutes', 'videoTimeoutMinutes', 'maxRetries', 'retentionDays']) assert.ok(k in s, k)
+    for (const k of ['siteName', 'logoUrl', 'defaultLocale', 'concurrency', 'imageTimeoutMinutes', 'videoTimeoutMinutes', 'maxRetries', 'retentionDays']) assert.ok(k in s, k)
     const put = await data('PUT', '/api/admin/settings', { siteName: 'Mine', concurrency: 2, imageTimeoutMinutes: 5, maxRetries: 0 })
     assert.deepEqual([put.siteName, put.concurrency, put.imageTimeoutMinutes, put.maxRetries], ['Mine', 2, 5, 0])
     assert.equal(settings.runnerSettings().pollTimeoutMs.image, 300000)
+    // One theme now: `defaultTheme` is not a setting any more, and a value an earlier version stored is ignored.
+    assert.equal('defaultTheme' in s, false)
+    assert.equal((await call('PUT', '/api/admin/settings', { defaultTheme: 'dark' })).body.code, 'settings.unknown_key')
+    await require('../src/models/Setting').updateOne({ key: 'defaultTheme' }, { $set: { value: 'light' } }, { upsert: true })
+    await settings.load()
+    assert.equal('defaultTheme' in settings.getAll(), false)
+    assert.equal('defaultTheme' in (await data('GET', '/api/admin/settings')), false)
+    assert.equal((await data('GET', '/api/admin/settings')).siteName, 'Mine', 'the other stored settings survive the reload')
     assert.equal((await call('GET', '/api/app/bootstrap', undefined, { auth: false })).body.data.site.name, 'Mine')
     assert.equal((await call('PUT', '/api/admin/settings', { concurrency: 0 })).status, 400)
     assert.equal((await call('PUT', '/api/admin/settings', { logoUrl: 'javascript:alert(1)' })).status, 400)
@@ -556,7 +697,7 @@ test('LoomCanvas API end to end', async (t) => {
 
   await t.test('restart recovery: interrupted run with an upstream task resumes polling, one without fails', async () => {
     const Run = require('../src/models/Run')
-    const common = { kind: 'image', modelId: 'gaorui:nano-banana-2', upstreamModel: 'nano-banana-2', providerId, providerType: 'gaorui', prompt: 'x', billingStarted: true }
+    const common = { userId, kind: 'image', modelId: 'gaorui:nano-banana-2', upstreamModel: 'nano-banana-2', providerId, providerType: 'gaorui', prompt: 'x', billingStarted: true }
     const resumable = await Run.create({ ...common, status: 'running', externalId: 'img-1', submittedAt: new Date(), startedAt: new Date() })
     const lost = await Run.create({ ...common, status: 'running', externalId: '' })
     const archiving = await Run.create({ ...common, status: 'archiving', externalId: 'img-1', submittedAt: new Date() })
@@ -594,7 +735,7 @@ test('LoomCanvas API end to end', async (t) => {
     await data('PUT', '/api/admin/settings', { defaultLocale: 'en' })
     assert.equal((await said({})).message, bad(en), 'site default')
     assert.equal((await said({ 'Accept-Language': 'zh-CN' })).message, bad(zh))
-    assert.equal((await call('POST', '/api/auth/login', { password: 'nope' }, { auth: false })).body.message, en['auth.wrong_password'])
+    assert.equal((await call('POST', '/api/auth/login', { account: 'nobody', password: 'nope' }, { auth: false })).body.message, en['auth.invalid_credentials'])
     await data('PUT', '/api/admin/settings', { defaultLocale: 'zh-CN' })
     const types = await call('GET', '/api/admin/vendors', undefined, { headers: { 'X-Locale': 'en' } })
     assert.equal(types.body.data.find((p) => p.type === 'gaorui').label, en['provider.gaorui.label'])
@@ -618,6 +759,10 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal(await runs.countDocuments(), total, 'nothing removed by the rejected calls')
 
     assert.deepEqual(await data('DELETE', '/api/admin/usage/records?before=2020-03-01'), { deleted: 0 }, 'a bare date is the start of that day')
+    // ...of that day where the caller is: noon UTC on 1 March is already 2 March in Kiritimati (UTC+14), and still 1 March in New York.
+    assert.equal((await call('DELETE', '/api/admin/usage/records?before=2020-03-02&tz=Nowhere/Land')).body.code, 'validation.invalid')
+    assert.deepEqual(await data('DELETE', '/api/admin/usage/records?before=2020-03-02&tz=Pacific/Kiritimati'), { deleted: 0 })
+    assert.equal(await runs.countDocuments(), total)
     assert.deepEqual(await data('DELETE', '/api/admin/usage/records?before=2020-03-02'), { deleted: 1 })
     assert.equal(await runs.countDocuments(), total - 1)
     assert.ok(await runs.findOne({ _id: first[1]._id }), 'the queued record of the same age is still there')

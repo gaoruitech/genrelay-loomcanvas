@@ -1,10 +1,23 @@
 <template>
-  <div class="cv-node output-node cv-surface" :class="{ selected }">
-    <div class="cv-node-header">
+  <div class="cv-node output-node" :class="{ selected, 'is-running': branchRunning }">
+    <div class="cv-head">
+      <LcIcon name="check" />
+      <span class="cv-title">{{ t('nodes.title.output') }}</span>
       <span v-if="status === 'stale'" class="cv-tag stale">{{ t('nodes.status.stale') }}</span>
       <span v-else-if="status === 'running'" class="cv-tag running">{{ t('nodes.status.running') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
+      <span v-else-if="outputItems.length" class="cv-head-x">{{ outputItems.length }}</span>
     </div>
+
+    <div class="cv-body">
+      <div class="cv-in">
+        <Handle id="image-in" type="target" :position="Position.Left" class="h-image" />
+        {{ t('nodes.title.image') }}<em :class="{ on: inCount('image-in') > 0 }">{{ inCount('image-in') ? t('gen.node.connected', { n: inCount('image-in') }) : t('gen.node.notConnected') }}</em>
+      </div>
+      <div class="cv-in">
+        <Handle id="video-in" type="target" :position="Position.Left" class="h-video" />
+        {{ t('nodes.title.video') }}<em :class="{ on: inCount('video-in') > 0 }">{{ inCount('video-in') ? t('gen.node.connected', { n: inCount('video-in') }) : t('gen.node.notConnected') }}</em>
+      </div>
 
     <!-- 成品九宫格 -->
     <div
@@ -34,50 +47,40 @@
       </div>
     </div>
     <div v-else class="cv-output-slot empty">
-      <span class="cv-empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
-      </span>
+      <span class="cv-empty-icon"><LcIcon name="image" /></span>
       <span>{{ hasUpstream ? t('nodeui.output.waiting') : t('nodeui.output.connect') }}</span>
     </div>
 
-    <button
-      class="cv-run-active nodrag"
-      :disabled="branchRunning"
-      @click.stop="handleRun"
-      @mousedown.stop
-    >
-      <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
-      <span>{{ branchRunning ? t('nodeui.output.branchRunning') : t('nodeui.output.runBranch') }}</span>
-    </button>
+      <!-- 链路成本固定在运行按钮正上方 -->
+      <div v-if="costBreakdown.total" class="cv-kv">
+        <span>{{ costBreakdown.actual ? t('nodeui.output.chainCost') : t('cost.estimate') }}</span>
+        <span v-if="costBreakdown.total.unknown" class="cv-unk">{{ costBreakdown.estimated ? formatEstimate(costBreakdown.total) : formatCost(costBreakdown.total) }}</span>
+        <b v-else>{{ costBreakdown.estimated ? formatEstimate(costBreakdown.total) : formatCost(costBreakdown.total) }}</b>
+      </div>
+      <div v-if="costBreakdown.actual && costBreakdown.estimated" class="cv-hint cv-cost-sub">
+        {{ t('nodeui.output.breakdown', { actual: formatCost(costBreakdown.actual), estimated: formatEstimate(costBreakdown.estimated) }) }}
+      </div>
 
-    <div v-if="costBreakdown.total" class="cv-total-cost" :class="{ estimate: !costBreakdown.actual }">
-      <span class="cv-total-cost-label">
-        {{ costBreakdown.actual ? t('nodeui.output.chainCost') : t('cost.estimate') }}
-      </span>
-      <span class="cv-total-cost-value">
-        {{ costBreakdown.estimated ? formatEstimate(costBreakdown.total) : formatCost(costBreakdown.total) }}
-      </span>
+      <button
+        class="cv-run nodrag"
+        :disabled="branchRunning"
+        @click.stop="handleRun"
+        @mousedown.stop
+      >
+        <LcIcon name="play" size="s" />
+        <span>{{ branchRunning ? t('nodeui.output.branchRunning') : t('nodeui.output.runBranch') }}</span>
+      </button>
     </div>
-    <div v-if="costBreakdown.actual && costBreakdown.estimated" class="cv-total-cost-sub">
-      {{ t('nodeui.output.breakdown', { actual: formatCost(costBreakdown.actual), estimated: formatEstimate(costBreakdown.estimated) }) }}
-    </div>
-
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :style="{ top: '38%' }" />
-    <Handle id="video-in" type="target" :position="Position.Left" class="h-video" :style="{ top: '50%' }" />
 
     <!-- 查看更多：素材库式网格弹窗 -->
     <Teleport to="body">
-      <div v-if="galleryOpen" class="cv-gal-mask" @click.self="galleryOpen = false" @mousedown.self.stop @wheel.stop>
-        <div class="cv-gal-box">
-          <div class="cv-gal-head">
+      <div v-if="galleryOpen" class="lc-mask lc-sheet cv-gal-mask" @click.self="galleryOpen = false" @mousedown.self.stop @wheel.stop>
+        <div class="lc-dialog cv-gal-box">
+          <div class="lc-dialog-head">
             <span>{{ t('nodeui.output.galleryTitle', { n: outputItems.length }) }}</span>
-            <button class="cv-gal-close" :title="t('common.close')" @click="galleryOpen = false">×</button>
+            <button class="lc-x" :title="t('common.close')" @click="galleryOpen = false">×</button>
           </div>
-          <div class="cv-gal-grid">
+          <div class="lc-dialog-body cv-gal-grid">
             <div
               v-for="(it, i) in outputItems"
               :key="it.url + i"
@@ -113,6 +116,7 @@ import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import MediaLightbox from './MediaLightbox.vue'
+import LcIcon from '@/components/LcIcon.vue'
 import { canvasImageThumb, canvasVideoPoster } from '@/utils/canvasMedia'
 import { formatCost, formatEstimate, sumCosts } from '@/utils/cost'
 import type { Cost } from '@/types'
@@ -130,6 +134,8 @@ const executor = inject(CANVAS_EXECUTOR_KEY)
 const { nodes, edges } = useVueFlow()
 
 const status = computed(() => props.data.status || 'idle')
+// 表头下方两个输入口各接了几根线
+const inCount = (handle: string) => edges.value.filter(e => e.target === props.id && e.targetHandle === handle).length
 const MAX = 9
 
 // 出一组图的节点：生成类（数量 > 1）、切片、多平台导出；其余工具节点只出一张
@@ -284,45 +290,40 @@ async function handleRun() {
 
 <style scoped>
 @import './node-shared.css';
-.output-node { min-width: 280px; max-width: 280px; min-height: 300px; }
+.output-node { width: 280px; min-height: 300px; }
 .cv-grid-wrap, .cv-output-slot { flex: 1 1 auto; min-height: 0; }
 
 /* 成品九宫格 */
-.cv-grid-wrap {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-}
+.cv-grid-wrap { display: grid; gap: 4px; width: 100%; align-content: start; }
 .cv-grid-cell {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  background: var(--n-0);
-  border: 1px solid var(--n-4);
+  background: var(--media-bg);
+  border: 1px solid var(--line);
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: border-color .15s ease;
 }
-.cv-grid-cell:hover { border-color: var(--n-7); }
+.cv-grid-cell:hover { border-color: var(--line-3); }
 .cv-grid-cell img,
-.cv-grid-cell video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.cv-grid-cell video { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 压在画面上的件：底是恒暗遮罩，字固定用浅色 */
 .cv-cell-play {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin: auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .35);
+  background: rgba(4, 9, 28, .6);
   color: var(--on-scrim);
-  opacity: 0.85;
-  background: var(--scrim-soft);
   pointer-events: none;
 }
-.cv-cell-play svg { width: 22px; height: 22px; }
+.cv-cell-play svg { width: 11px; height: 11px; margin-left: 1px; }
 .cv-cell-more {
   position: absolute;
   inset: 0;
@@ -334,85 +335,32 @@ async function handleRun() {
   background: var(--scrim);
   color: var(--on-scrim);
 }
-.cv-cell-more-n { font-size: 18px; font-weight: 700; }
-.cv-cell-more-t { font-size: 11px; opacity: 0.85; }
+.cv-cell-more-n { font: 600 18px var(--f-disp); }
+.cv-cell-more-t { font-size: 11px; color: var(--on-scrim-dim); }
 
 /* 空态槽 */
 .cv-output-slot.empty {
-  position: relative;
-  width: 100%;
-  min-height: 160px;
-  border-radius: 8px;
-  background: var(--n-2);
-  border: 1px solid var(--n-4);
+  min-height: 120px;
+  border-radius: 9px;
+  border: 1px dashed var(--line-2);
+  background: rgba(4, 9, 28, .3);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--t-dim);
+  padding: 12px;
+  color: var(--text-3);
   font-size: 12px;
+  text-align: center;
   user-select: none;
 }
-.cv-output-slot.empty .cv-empty-icon { width: 38px; height: 38px; color: var(--n-8); }
-.cv-output-slot.empty .cv-empty-icon svg { width: 100%; height: 100%; }
+.cv-cost-sub { text-align: right; margin-top: -6px; }
 
-/* 链路成本 */
-.cv-total-cost {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--accent-text);
-  padding: 6px 10px;
-  background: var(--accent-ghost);
-  border: 1px solid transparent;
-  border-radius: 8px;
-}
-.cv-total-cost-label { color: var(--t-dim); }
-.cv-total-cost-value { font-weight: 600; }
-.cv-total-cost.estimate {
-  color: var(--warning);
-  background: rgba(255, 170, 0, 0.08);
-  border-color: rgba(255, 170, 0, 0.25);
-}
-.cv-total-cost-sub {
-  font-size: 10px;
-  color: var(--t-dim);
-  text-align: right;
-  padding: 2px 4px 0;
-}
-
-/* 查看更多弹窗 */
-.cv-gal-mask {
-  position: fixed; inset: 0; z-index: 9500;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-  padding: 40px;
-}
-.cv-gal-box {
-  width: min(900px, 100%);
-  max-height: calc(100vh - 80px);
-  background: var(--n-2);
-  border: 1px solid var(--n-5);
-  border-radius: 14px;
-  display: flex; flex-direction: column;
-  overflow: hidden;
-}
-.cv-gal-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--n-4);
-  color: var(--t-strong); font-size: 14px;
-}
-.cv-gal-close {
-  background: transparent; border: none; color: var(--t-dim);
-  font-size: 24px; cursor: pointer; line-height: 1;
-}
-.cv-gal-close:hover { color: var(--t-max); }
+/* 查看更多：通用弹窗外壳 + 缩略图网格 */
+.cv-gal-mask { z-index: 9500; }
+.cv-gal-box { width: min(900px, 100%); }
 .cv-gal-grid {
-  padding: 16px 18px;
-  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 12px;
@@ -420,14 +368,17 @@ async function handleRun() {
 .cv-gal-item {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  background: var(--n-0);
-  border: 1px solid var(--n-4);
+  background: var(--media-bg);
+  border: 1px solid var(--line);
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color .15s ease;
 }
-.cv-gal-item:hover { border-color: var(--accent-text); transform: translateY(-2px); }
+.cv-gal-item:hover { border-color: var(--cyan); }
 .cv-gal-item img,
 .cv-gal-item video { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 600px) {
+  .cv-gal-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+}
 </style>

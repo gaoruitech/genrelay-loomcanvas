@@ -361,7 +361,8 @@ test('recover(): interrupted runs with an upstream task resume, without one they
     { id: 'e', kind: 'image', status: 'succeeded', createdAt: new Date(4) },
   ])
   const found = await store.recover()
-  assert.deepEqual(found.queued, ['d', 'a', 'c'])
+  assert.deepEqual(found.queued.map((q) => q.id), ['d', 'a', 'c'])
+  assert.ok(found.queued.every((q) => q.userId === 'local'), 'each queued run comes with the account it belongs to')
   assert.deepEqual(found.interrupted.map((r) => r.id), ['b'], 'left for the runner to fail')
   assert.equal((await store.get('e')).status, 'succeeded')
 })
@@ -523,4 +524,74 @@ test('withDeadline rejects on timeout even when the work ignores its signal', as
     (err) => err instanceof RunError && err.code === 'TIMEOUT' && err.message === 'too slow'
   )
   assert.equal(await withDeadline(async () => 7, 1000, parent.signal, 'x'), 7)
+})
+
+/** A runner whose provider records the order runs start in and finishes each after `ms`. */
+function orderedRunner(settings, ms = 15) {
+  const store = createMemoryStore()
+  const started = []
+  let running = 0
+  const peakBy = {}
+  const runner = new Runner({
+    store,
+    resolve: async (run) => ({
+      sync: true,
+      cfg: {},
+      request: {},
+      provider: {
+        async submit() {
+          started.push(run.label)
+          running++
+          const mine = started.filter((l) => l[0] === run.label[0]).length - (peakBy[`done:${run.label[0]}`] || 0)
+          peakBy[run.label[0]] = Math.max(peakBy[run.label[0]] || 0, mine)
+          await new Promise((r) => setTimeout(r, ms))
+          running--
+          peakBy[`done:${run.label[0]}`] = (peakBy[`done:${run.label[0]}`] || 0) + 1
+          return { outputs: [{ type: 'image', url: 'u' }] }
+        },
+        async poll() {},
+      },
+    }),
+    transfer: async (o) => o,
+    billing: recordingBilling(),
+    settings,
+    logger: silent,
+    pollIntervalMs: [5, 10],
+  })
+  const add = (label, userId) => {
+    const id = newRun(store, { label, userId })
+    runner.enqueue(id, userId)
+    return id
+  }
+  return { store, runner, started, peakBy, add }
+}
+
+test('the queue is shared between accounts: a long queue of one does not hold up the other', async () => {
+  const { store, started, add } = orderedRunner(baseSettings({ concurrency: 1 }))
+  const ids = [add('a1', 'alice'), add('a2', 'alice'), add('a3', 'alice'), add('a4', 'alice'), add('b1', 'bob'), add('b2', 'bob')]
+  for (const id of ids) assert.equal((await settled(store, id)).status, 'succeeded')
+  // Strict arrival order would be a1 a2 a3 a4 b1 b2.
+  assert.deepEqual(started, ['a1', 'b1', 'a2', 'b2', 'a3', 'a4'])
+
+  // One account alone is served first in, first out.
+  const solo = orderedRunner(baseSettings({ concurrency: 1 }))
+  const mine = ['x1', 'x2', 'x3', 'x4'].map((l) => solo.add(l, 'alice'))
+  for (const id of mine) await settled(solo.store, id)
+  assert.deepEqual(solo.started, ['x1', 'x2', 'x3', 'x4'])
+})
+
+test('an account holds at most userConcurrency slots, however many are free', async () => {
+  const { store, started, peakBy, add } = orderedRunner(baseSettings({ concurrency: 4, userConcurrency: 2 }), 25)
+  const ids = [...['a1', 'a2', 'a3', 'a4', 'a5'].map((l) => add(l, 'alice')), add('b1', 'bob')]
+  for (const id of ids) assert.equal((await settled(store, id)).status, 'succeeded')
+  assert.equal(peakBy.a, 2, 'two of alice\'s at a time although four slots exist')
+  assert.ok(started.indexOf('b1') <= 2, `bob did not wait for alice's queue: ${started}`)
+})
+
+test('start(): recovered runs are queued under the account they belong to', async () => {
+  const { store, runner, started } = orderedRunner(baseSettings({ concurrency: 1 }))
+  const rows = [['a1', 'alice'], ['a2', 'alice'], ['a3', 'alice'], ['b1', 'bob']].map(([label, userId], i) => newRun(store, { label, userId, createdAt: new Date(i + 1) }))
+  assert.equal(await runner.start(), 4)
+  for (const id of rows) await settled(store, id)
+  assert.deepEqual(started, ['a1', 'b1', 'a2', 'a3'])
 })
