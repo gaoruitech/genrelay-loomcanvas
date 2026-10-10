@@ -16,7 +16,7 @@ loomcanvas/
 │  │  ├─ constants.js
 │  │  ├─ routes/           HTTP endpoints
 │  │  ├─ models/           Mongoose models
-│  │  ├─ providers/        provider plugins, registry, catalog/*.json
+│  │  ├─ providers/        vendor modules, registry, catalog/ (model lists and their validator)
 │  │  ├─ runner/           run queue, deadlines, result transfer, pricing
 │  │  ├─ storage/          storage layer: local disk and S3-compatible buckets, key generation
 │  │  ├─ billing/          billing hook loader (no-op by default)
@@ -114,7 +114,7 @@ npm test
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
   ```
 
-- Providers are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API.
+- Vendor modules are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API.
 - The S3 storage tests against a real service are skipped unless `TEST_S3_ENDPOINT` is set; see [Live S3 tests](#live-s3-tests).
 
 The frontend has no unit tests. `npm run build` (type-check) and `npm run i18n:check` are its gates.
@@ -212,7 +212,7 @@ Rules that keep canvases compatible:
 - Store only media URLs in node data, never inline base64.
 - If you change the shape of data that existing canvases already contain, see [Canvas schema version](#canvas-schema-version-and-migrations).
 
-Adding a **model** is not adding a node type: it needs a catalog entry or a provider, not canvas changes. See [Writing a provider](writing-a-provider.md).
+Adding a **model** is not adding a node type: it needs an entry in a vendor's catalog (`server/src/providers/catalog/<vendor>.json`, with its description key in both server message catalogs), or a new vendor module, not canvas changes. A model's kind is the catalog section it is written in; no code may work it out from the name. See [Writing a provider](writing-a-provider.md).
 
 ## Adding UI strings
 

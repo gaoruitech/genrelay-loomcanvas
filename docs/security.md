@@ -103,7 +103,7 @@ The server downloads URLs on behalf of users in several places: "fetch from URL"
 
 Three things are deliberately **not** behind the guard:
 
-- **A provider's base URL.** It is set by the operator in Settings, and pointing it at a model server on your own network is legitimate. Since anyone with the access password can add a provider, anyone with the password can make the server send requests to internal addresses. This is one more reason the password equals full trust.
+- **A provider's base URL.** It defaults to the vendor's official address. The operator can change it under **Advanced** in Settings, and pointing it at a server on your own network that speaks the same API is legitimate. Since anyone with the access password can add a provider, anyone with the password can make the server send requests to internal addresses. This is one more reason the password equals full trust.
 - **The S3 endpoint and the public base URL of the storage settings.** They are set by the operator under Settings → Storage (or in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. As with providers, anyone with the access password can do this. The guard for URLs that users and upstreams supply is unchanged.
 - **Hosts in `SSRF_ALLOW_HOSTS`.** Use it only when an upstream on your own network returns result links that point at itself. Every host you list becomes reachable for all the download features above. List exact host names or IPs, as few as possible, and never in a deployment where untrusted people have the password.
 

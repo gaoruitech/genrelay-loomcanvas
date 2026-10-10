@@ -19,7 +19,7 @@
 | [Deployment](deployment.md) | Docker Compose, running without Docker, reverse proxy and HTTPS, backups, upgrades. |
 | [Configuration](configuration.md) | Environment variables, admin settings, in-canvas settings, fixed limits. |
 | [Storage](storage.md) | Local disk or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO): setup per vendor, private buckets, delivery, switching, what has been tested. |
-| [Providers](providers.md) | The built-in provider types, their models, how media reaches upstreams, pricing and usage. |
+| [Providers](providers.md) | The three vendors and the models each supports, custom models, changing the address, upgrading from the previous version, how media reaches upstreams, pricing and usage. |
 | [Security](security.md) | Hardening a deployment, what is public, what LoomCanvas does not do. |
 
 ## Extending it
@@ -27,7 +27,7 @@
 | Page | What it covers |
 | --- | --- |
 | [Development](development.md) | Repository layout, dev setup, scripts, adding nodes, strings and migrations, conventions. |
-| [Writing a provider](writing-a-provider.md) | The provider plugin interface, with a worked example and tests. |
+| [Writing a provider](writing-a-provider.md) | The vendor module interface and the catalog file format, with a worked example and tests. |
 | [Billing hook](billing-hook.md) | Metering or limiting runs with your own module. |
 | [HTTP API](api.md) | Endpoint reference. |
 | [Architecture and API contract](architecture.md) | The design contract between frontend and backend (Chinese). |

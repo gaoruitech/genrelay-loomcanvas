@@ -1,82 +1,112 @@
 <template>
   <div class="pf">
-    <div v-if="showName" class="lc-field">
-      <label :for="uid + '-name'">{{ t('settings.providers.name') }}</label>
-      <input :id="uid + '-name'" v-model="form.name" class="lc-input" :placeholder="providerTypeLabel(type)" :disabled="disabled" />
-    </div>
-
-    <div v-for="f in type.fields" :key="f.key" class="lc-field">
-      <label :for="uid + '-' + f.key">
-        {{ providerFieldLabel(type, f) }}<span v-if="f.required && !secretAlreadySet(f)" class="lc-required">*</span>
+    <div class="lc-field">
+      <label :for="uid + '-key'">
+        {{ t('settings.providers.apiKey') }}<span v-if="!existing?.hasKey" class="lc-required">*</span>
       </label>
       <input
-        :id="uid + '-' + f.key"
-        v-model="form[f.key]"
+        :id="uid + '-key'"
+        v-model="form.apiKey"
         class="lc-input"
-        :type="f.secret ? 'password' : 'text'"
-        :autocomplete="f.secret ? 'new-password' : 'off'"
-        :placeholder="placeholderOf(f)"
+        type="password"
+        autocomplete="new-password"
+        :placeholder="keyPlaceholder"
         :disabled="disabled"
       />
-      <span v-if="f.secret && secretAlreadySet(f)" class="lc-help">{{ t('settings.providers.secretKeep') }}</span>
-      <span v-else-if="providerFieldHelp(type, f)" class="lc-help">{{ providerFieldHelp(type, f) }}</span>
+      <span v-if="existing?.hasKey" class="lc-help">{{ t('settings.providers.secretKeep') }}</span>
+      <span v-else-if="vendor.keyUrl && !compact" class="lc-help">
+        <a :href="vendor.keyUrl" target="_blank" rel="noopener noreferrer">{{ t('settings.providers.getKey') }}</a>
+      </span>
     </div>
 
-    <div v-if="showBaseUrl" class="lc-field">
-      <label :for="uid + '-baseUrl'">{{ t('settings.providers.baseUrl') }}</label>
+    <div v-if="!compact" class="lc-field">
+      <label :for="uid + '-name'">{{ t('settings.providers.name') }}</label>
       <input
-        :id="uid + '-baseUrl'"
-        v-model="form.baseUrl"
+        :id="uid + '-name'"
+        v-model="form.name"
         class="lc-input"
-        :placeholder="type.defaultBaseUrl || 'https://'"
+        :placeholder="vendorLabel(vendor)"
         :disabled="disabled"
       />
-      <span class="lc-help">{{ t('settings.providers.baseUrlHelp') }}</span>
+    </div>
+
+    <div class="adv">
+      <button type="button" class="adv-toggle" :aria-expanded="advanced" @click="advanced = !advanced">
+        <svg class="adv-chevron" :class="{ open: advanced }" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span>{{ t('settings.providers.advanced') }}</span>
+        <span v-if="!advanced && isCustomAddress" class="lc-tag warn">{{ t('settings.providers.customAddress') }}</span>
+      </button>
+      <div v-if="advanced" class="lc-field adv-body">
+        <label :for="uid + '-baseUrl'">{{ t('settings.providers.baseUrl') }}</label>
+        <input
+          :id="uid + '-baseUrl'"
+          v-model="form.baseUrl"
+          class="lc-input"
+          :placeholder="vendor.defaultBaseUrl"
+          :disabled="disabled"
+        />
+        <span class="lc-help">
+          {{ vendor.recommended ? t('settings.providers.baseUrlHelpGaorui') : t('settings.providers.baseUrlHelp', { vendor: vendorLabel(vendor) }) }}
+          <button v-if="isCustomAddress" type="button" class="link-btn" :disabled="disabled" @click="form.baseUrl = vendor.defaultBaseUrl">
+            {{ t('settings.providers.baseUrlReset') }}
+          </button>
+        </span>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 一个接入实例的表单，字段由接入类型的 fields 声明驱动。设置页与引导页共用。
+ * 一个服务商实例的表单：API Key，（非精简模式下）名称，以及收在「高级」里的接口地址。
+ * 设置页与引导页共用。没有填模型的地方 —— 模型来自服务商的清单和「模型」页的自定义模型。
  *
- * 密钥类字段只写不读：后端从不返回明文，已保存过的只给 hasKey / keyTail，
+ * Key 只写不读：后端从不返回明文，已保存过的只给 hasKey / keyTail，
  * 这里显示成「已设置 ····1234」的占位；留空提交表示不修改。
  */
-import { computed, useId } from 'vue'
+import { computed, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { ProviderField, ProviderInstance, ProviderType } from '@/types'
-import { providerTypeLabel, providerFieldLabel, providerFieldHelp } from '@/utils/providerMeta'
+import type { ProviderInstance, Vendor } from '@/types'
+import { vendorLabel } from '@/utils/providerMeta'
+import type { ProviderFormState } from './providerForm'
 
 const props = withDefaults(defineProps<{
-  type: ProviderType
-  /** 编辑已有实例时传入，用于显示密钥占位 */
+  vendor: Vendor
+  /** 编辑已有实例时传入，用于显示 Key 占位 */
   existing?: ProviderInstance | null
-  /** 精简模式（引导页）：只渲染类型声明的字段，不显示名称和地址 */
+  /** 精简模式（引导页）：不显示名称；「获取 API Key」的链接由引导页自己放在标题旁 */
   compact?: boolean
   disabled?: boolean
 }>(), { existing: null, compact: false, disabled: false })
 
-const form = defineModel<Record<string, any>>({ required: true })
+const form = defineModel<ProviderFormState>({ required: true })
 
 const { t } = useI18n()
 const uid = useId()
 
-const declaredKeys = computed(() => new Set(props.type.fields.map(f => f.key)))
-const showName = computed(() => !props.compact && !declaredKeys.value.has('name'))
-// 类型自己声明了 baseUrl 字段就用它的；否则非精简模式下给一个可选的地址覆盖
-const showBaseUrl = computed(() => !props.compact && !declaredKeys.value.has('baseUrl'))
+const trim = (v: string) => v.trim().replace(/\/+$/, '')
+const isCustomAddress = computed(() => !!trim(form.value.baseUrl) && trim(form.value.baseUrl) !== trim(props.vendor.defaultBaseUrl))
+// 已经改过地址的实例，打开时直接展开，免得人找不到那个非官方地址在哪
+const advanced = ref(isCustomAddress.value)
 
-function secretAlreadySet(f: ProviderField): boolean {
-  return !!f.secret && !!props.existing?.hasKey
-}
-
-function placeholderOf(f: ProviderField): string {
-  if (secretAlreadySet(f)) {
-    const tail = props.existing?.keyTail
-    return tail ? t('settings.providers.secretSetTail', { tail }) : t('settings.providers.secretSet')
-  }
-  if (f.key === 'baseUrl' && props.type.defaultBaseUrl) return props.type.defaultBaseUrl
-  return f.placeholder || ''
-}
+const keyPlaceholder = computed(() => {
+  if (!props.existing?.hasKey) return ''
+  const tail = props.existing.keyTail
+  return tail ? t('settings.providers.secretSetTail', { tail }) : t('settings.providers.secretSet')
+})
 </script>
+
+<style scoped>
+.adv { margin-bottom: 16px; }
+.adv-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 0;
+  border: 0; background: none; color: var(--t-strong); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.adv-chevron { width: 12px; height: 12px; color: var(--t-dim); transition: transform .15s ease; }
+.adv-chevron.open { transform: rotate(90deg); }
+.adv-body { margin: 10px 0 0; }
+.link-btn { border: 0; background: none; color: var(--accent-text); font: inherit; cursor: pointer; padding: 0; margin-left: 6px; }
+.link-btn:hover:not(:disabled) { text-decoration: underline; }
+</style>

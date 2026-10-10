@@ -109,7 +109,7 @@ import { useI18n } from 'vue-i18n'
 import ChipSelect from './ChipSelect.vue'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
-import { listVideoChatModels } from '@/utils/canvasModels'
+import { listVideoChatModels, modelTag } from '@/utils/canvasModels'
 import { localizedModelDesc } from '@/utils/builtinContent'
 import { formatCost, formatEstimate } from '@/utils/cost'
 import type { Cost } from '@/types'
@@ -146,7 +146,7 @@ const charCount = computed(() => (props.data.text || '').length)
 const expanded = ref(false)
 
 // 可选模型：设置里已启用、且能读视频的对话类模型
-const modelOpts = computed(() => listVideoChatModels().map(m => ({ value: m.id, label: m.label || m.id, desc: localizedModelDesc(m.id, m.desc), tag: m.tag })))
+const modelOpts = computed(() => listVideoChatModels().map(m => ({ value: m.id, label: m.label || m.id, desc: localizedModelDesc(m.id, m.desc), tag: modelTag(m) })))
 // 当前生效的模型：存的那个还在清单里就用它，否则落到第一个（与执行器的回退一致）
 const model = computed(() => {
   const chosen = props.data.model || ''

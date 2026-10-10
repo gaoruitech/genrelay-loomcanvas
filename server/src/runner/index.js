@@ -101,6 +101,11 @@ async function createRun(input) {
   if (wantsChat && (input.videoUrls || []).length && !spec.acceptsVideo) {
     throw new ApiError(400, 'model.no_video_input')
   }
+  // The same for pictures: a text-only chat model is told so, not handed a
+  // prompt about images that were dropped on the way.
+  if (wantsChat && (input.imageUrls || []).length && !spec.acceptsImage) {
+    throw new ApiError(400, 'model.no_image_input')
+  }
   if ((await Run.countDocuments({ userId: LOCAL_USER, status: { $in: UNFINISHED } })) >= limits.unfinishedRuns) {
     throw new ApiError(429, 'run.queue_full', { max: limits.unfinishedRuns })
   }

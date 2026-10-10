@@ -113,7 +113,7 @@ When `ACCESS_PASSWORD` is set, add `-H 'Authorization: Bearer <token>'` (see [AP
 
 The other things you configure on the Settings page are not settings keys and are not part of `GET`/`PUT /api/admin/settings`:
 
-- **Providers**: type, name, base URL, API key, enabled. Stored in their own collection. See [Providers](providers.md).
+- **Providers**: the vendor, name, API key, enabled, a base URL when it is not the vendor's official one, and the custom models added by hand. Stored in their own collection. See [Providers](providers.md).
 - **Model overrides**: per model, `enabled`, display name, order, default parameters and the price table. Stored in their own collection. See [Providers](providers.md#pricing).
 - **Storage**: local disk or an S3-compatible bucket, on the **Storage** tab. It has its own endpoints (`/api/admin/storage`, see [API](api.md#storage)), takes effect immediately and takes precedence over `STORAGE_DRIVER` and `S3_*`. See [Storage](storage.md).
 
@@ -142,6 +142,7 @@ These are constants in the code, listed here so you know where the edges are.
 | Other JSON requests | 1 MB (64 KB for login and share-link requests) |
 | Prompt length | 20,000 characters |
 | Providers | 50 |
+| Custom models per provider | 100 |
 | Brand kits | 50, each with up to 5 reference images |
 | Share links | 500 |
 | Assets per category | 5000 |
@@ -149,4 +150,3 @@ These are constants in the code, listed here so you know where the edges are.
 | Unfinished runs (queued or in flight) | 500; further runs are refused until some finish |
 | Login attempts | 10 per client per 10 minutes (an IPv6 client is its /64), 300 in total |
 | Login token lifetime | 30 days |
-| Model list cache per provider | 5 minutes |

@@ -5,7 +5,7 @@
         <h2>{{ t('settings.providers.title') }}</h2>
         <p class="tab-desc">{{ t('settings.providers.desc') }}</p>
       </div>
-      <button class="lc-btn primary" :disabled="!types.length" @click="openAdd">{{ t('settings.providers.add') }}</button>
+      <button class="lc-btn primary" :disabled="!vendors.length" @click="openAdd">{{ t('settings.providers.add') }}</button>
     </div>
 
     <div v-if="loading" class="lc-empty">{{ t('common.loading') }}</div>
@@ -20,13 +20,15 @@
         <div class="prov-main">
           <div class="prov-title">
             <span class="prov-name">{{ p.name }}</span>
-            <span class="lc-tag">{{ typeLabel(p.type) }}</span>
+            <span class="lc-tag">{{ labelOf(p.type) }}</span>
             <span class="lc-tag" :class="p.enabled ? 'ok' : ''">{{ p.enabled ? t('common.enabled') : t('common.disabled') }}</span>
+            <span v-if="p.customBaseUrl" class="lc-tag warn">{{ t('settings.providers.customAddress') }}</span>
           </div>
           <div class="prov-meta">
             <span>{{ p.hasKey
               ? (p.keyTail ? t('settings.providers.secretSetTail', { tail: p.keyTail }) : t('settings.providers.secretSet'))
               : t('settings.providers.secretUnset') }}</span>
+            <span v-if="countText(p)">{{ countText(p) }}</span>
             <span v-if="p.baseUrl" class="prov-url">{{ p.baseUrl }}</span>
           </div>
           <div v-if="testResult[p.id]" class="prov-test" :class="testResult[p.id].ok ? 'ok' : 'err'">
@@ -45,52 +47,55 @@
 
     <!-- 新增 / 编辑 -->
     <div v-if="dialog" class="lc-mask" @click.self="closeDialog">
-      <div class="lc-dialog">
+      <div class="lc-dialog prov-dialog">
         <div class="lc-dialog-head">
           <span>{{ dialog.existing ? t('settings.providers.editTitle') : t('settings.providers.addTitle') }}</span>
           <button class="lc-x" :aria-label="t('common.close')" @click="closeDialog">×</button>
         </div>
         <div class="lc-dialog-body">
-          <div class="lc-field">
-            <label for="pv-type">{{ t('settings.providers.type') }}</label>
-            <LcSelect
-              id="pv-type"
-              v-model="dialog.typeId"
-              :options="typeOptions"
-              :disabled="!!dialog.existing || saving"
-              @change="onTypeChange"
-            />
-            <span v-if="dialogType && isGaorui(dialogType)" class="lc-help">
-              <a :href="GAORUI_URL" target="_blank" rel="noopener noreferrer">{{ t('setup.getKey') }}</a>
-            </span>
+          <!-- 第一步：选服务商。编辑时固定，不能换 -->
+          <div v-if="dialog.existing && dialogVendor" class="lc-field">
+            <span class="lc-label">{{ t('settings.providers.vendor') }}</span>
+            <div class="vendor-fixed">
+              <span class="vendor-fixed-name">{{ vendorLabel(dialogVendor) }}</span>
+              <span class="lc-help">{{ t('settings.providers.vendorFixed') }}</span>
+            </div>
+          </div>
+          <div v-else class="lc-field">
+            <span class="lc-label">{{ t('settings.providers.pickVendor') }}</span>
+            <VendorPicker v-model="dialog.vendorId" :vendors="vendors" :disabled="saving" @update:model-value="onVendorChange" />
           </div>
 
-          <ProviderForm
-            v-if="dialogType"
-            v-model="dialog.form"
-            :type="dialogType"
-            :existing="dialog.existing"
-            :disabled="saving"
-          />
+          <template v-if="dialogVendor">
+            <VendorModels :key="dialogVendor.type" :vendor="dialogVendor" :expanded="!dialog.existing" />
 
-          <label class="enable-row">
-            <button
-              type="button"
-              class="lc-switch"
-              :class="{ on: dialog.form.enabled }"
+            <ProviderForm
+              :key="'f-' + dialogVendor.type"
+              v-model="dialog.form"
+              :vendor="dialogVendor"
+              :existing="dialog.existing"
               :disabled="saving"
-              role="switch"
-              :aria-checked="!!dialog.form.enabled"
-              @click="dialog.form.enabled = !dialog.form.enabled"
             />
-            <span>{{ t('settings.providers.enabledLabel') }}</span>
-          </label>
+
+            <label class="enable-row">
+              <button
+                type="button"
+                class="lc-switch"
+                :class="{ on: dialog.form.enabled }"
+                :disabled="saving"
+                role="switch"
+                :aria-checked="!!dialog.form.enabled"
+                @click="dialog.form.enabled = !dialog.form.enabled"
+              />
+              <span>{{ t('settings.providers.enabledLabel') }}</span>
+            </label>
+          </template>
 
           <p v-if="dialogError" class="lc-error-text dialog-error">{{ dialogError }}</p>
         </div>
         <div class="lc-dialog-foot">
           <button class="lc-btn" :disabled="saving" @click="closeDialog">{{ t('common.cancel') }}</button>
-          <button class="lc-btn primary" :disabled="saving" @click="save">
+          <button class="lc-btn primary" :disabled="saving || !dialogVendor" @click="save">
             {{ saving ? t('common.saving') : t('common.save') }}
           </button>
         </div>
@@ -120,15 +125,17 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { useAppStore } from '@/stores/app'
-import { GAORUI_URL, isGaorui, providerTypeLabel, providerFieldLabel } from '@/utils/providerMeta'
+import { vendorLabel } from '@/utils/providerMeta'
 import ProviderForm from './ProviderForm.vue'
-import { initialProviderForm, missingProviderField, providerPayload } from './providerForm'
-import type { ProviderInstance, ProviderTestResult, ProviderType } from '@/types'
+import VendorPicker from './VendorPicker.vue'
+import VendorModels from './VendorModels.vue'
+import { initialProviderForm, missingApiKey, providerPayload, type ProviderFormState } from './providerForm'
+import type { ProviderInstance, ProviderTestResult, Vendor } from '@/types'
 
 const { t } = useI18n()
 const app = useAppStore()
 
-const types = ref<ProviderType[]>([])
+const vendors = ref<Vendor[]>([])
 const providers = ref<ProviderInstance[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -137,8 +144,8 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [tp, list] = await Promise.all([adminApi.providerTypes(), adminApi.providers()])
-    types.value = unwrap(tp) || []
+    const [vs, list] = await Promise.all([adminApi.vendors(), adminApi.providers()])
+    vendors.value = unwrap(vs) || []
     providers.value = unwrap(list) || []
   } catch (err) {
     loadError.value = apiErrorMessage(err, t('common.loadFailed'))
@@ -148,12 +155,23 @@ async function load() {
 }
 onMounted(load)
 
-function typeLabel(type: string): string {
-  const tp = types.value.find(x => x.type === type)
-  return tp ? providerTypeLabel(tp) : type
+const vendorOf = (type: string) => vendors.value.find(x => x.type === type) || null
+
+function labelOf(type: string): string {
+  const v = vendorOf(type)
+  return v ? vendorLabel(v) : type
 }
 
-/** 接入变了：启动信息里的 hasProvider 和画布用的模型清单都要跟着刷新 */
+/** 「8 个模型，其中 2 个自定义」：服务商清单里的，加上这个实例自己添加的 */
+function countText(p: ProviderInstance): string {
+  const v = vendorOf(p.type)
+  if (!v) return ''
+  const custom = p.customModels?.length || 0
+  const n = v.models.length + custom
+  return custom ? t('settings.providers.modelCountCustom', { n, custom }) : t('settings.providers.modelCount', { n })
+}
+
+/** 服务商变了：启动信息里的 hasProvider 和画布用的模型清单都要跟着刷新 */
 async function refreshAfterChange() {
   await Promise.all([
     app.loadBootstrap(),
@@ -166,10 +184,7 @@ const testing = ref('')
 const testResult = reactive<Record<string, ProviderTestResult>>({})
 
 function testMessage(r: ProviderTestResult): string {
-  if (!r.ok) return r.message || t('settings.providers.testFailed')
-  return typeof r.modelCount === 'number'
-    ? t('settings.providers.testOkCount', { n: r.modelCount })
-    : (r.message || t('settings.providers.testOk'))
+  return r.message || t(r.ok ? 'settings.providers.testOk' : 'settings.providers.testFailed')
 }
 
 async function test(p: ProviderInstance) {
@@ -186,34 +201,34 @@ async function test(p: ProviderInstance) {
 // ---- 新增 / 编辑 ----
 interface DialogState {
   existing: ProviderInstance | null
-  typeId: string
-  form: Record<string, any>
+  vendorId: string
+  form: ProviderFormState
 }
 const dialog = ref<DialogState | null>(null)
 const dialogError = ref('')
 const saving = ref(false)
-const dialogType = computed(() => types.value.find(x => x.type === dialog.value?.typeId) || null)
-const typeOptions = computed(() => types.value.map(tp => ({ value: tp.type, label: providerTypeLabel(tp) })))
+const dialogVendor = computed(() => vendorOf(dialog.value?.vendorId || ''))
 
 function openAdd() {
-  const first = types.value[0]
+  const first = vendors.value[0]
   if (!first) return
   dialogError.value = ''
-  dialog.value = { existing: null, typeId: first.type, form: initialProviderForm(first) }
+  dialog.value = { existing: null, vendorId: first.type, form: initialProviderForm(first) }
 }
 
 function openEdit(p: ProviderInstance) {
-  const tp = types.value.find(x => x.type === p.type)
-  if (!tp) {
+  const v = vendorOf(p.type)
+  if (!v) {
     MessagePlugin.error(t('settings.providers.unknownType', { type: p.type }))
     return
   }
   dialogError.value = ''
-  dialog.value = { existing: p, typeId: tp.type, form: initialProviderForm(tp, p) }
+  dialog.value = { existing: p, vendorId: v.type, form: initialProviderForm(v, p) }
 }
 
-function onTypeChange() {
-  if (dialog.value && dialogType.value) dialog.value.form = initialProviderForm(dialogType.value)
+function onVendorChange() {
+  dialogError.value = ''
+  if (dialog.value && dialogVendor.value) dialog.value.form = initialProviderForm(dialogVendor.value)
 }
 
 function closeDialog() {
@@ -222,19 +237,19 @@ function closeDialog() {
 
 async function save() {
   const d = dialog.value
-  const tp = dialogType.value
-  if (!d || !tp) return
-  const missing = missingProviderField(tp, d.form, d.existing)
-  if (missing) {
-    dialogError.value = t('settings.providers.fieldRequired', { field: providerFieldLabel(tp, missing) })
+  const v = dialogVendor.value
+  if (!d || !v) return
+  if (missingApiKey(d.form, d.existing)) {
+    dialogError.value = t('settings.providers.apiKeyRequired')
     return
   }
   saving.value = true
   dialogError.value = ''
   try {
-    const body = providerPayload(tp, d.form, d.existing)
-    if (d.existing) unwrap(await adminApi.updateProvider(d.existing.id, body))
-    else unwrap(await adminApi.createProvider(body))
+    const { type, ...rest } = providerPayload(v, d.form, d.existing)
+    // 服务商在添加时定下，编辑时不带 type
+    if (d.existing) unwrap(await adminApi.updateProvider(d.existing.id, rest))
+    else unwrap(await adminApi.createProvider({ type, ...rest }))
     dialog.value = null
     MessagePlugin.success(t('common.saved'))
     await load()
@@ -282,6 +297,9 @@ async function confirmRemove() {
 .prov-test.ok { color: var(--success); }
 .prov-test.err { color: var(--danger); }
 .prov-ops { display: flex; gap: 8px; flex: none; }
+.prov-dialog { width: 640px; }
+.vendor-fixed { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.vendor-fixed-name { font-size: 14.5px; font-weight: 600; color: var(--t-max); }
 .enable-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--t-body); cursor: pointer; }
 .dialog-error { margin-top: 14px; }
 .retry { margin-top: 12px; }

@@ -3,26 +3,33 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const registry = require('../src/providers')
-const catalog = require('../src/providers/catalog/gaorui.json')
+const catalog = registry.getType('gaorui').catalog
 
-const instance = { id: 'abc123', slug: 'gaorui', name: '高睿', type: 'gaorui' }
+const instance = { id: 'abc123', slug: 'gaorui', name: '高瑞', type: 'gaorui' }
 
-test('every built-in provider type is registered with the plugin contract', () => {
-  const types = registry.listTypes()
-  assert.deepEqual(types.map((t) => t.type).sort(), ['gaorui', 'gemini', 'openai-compatible'])
-  for (const t of types) {
-    const plugin = registry.getType(t.type)
-    for (const fn of ['listModels', 'test', 'submit', 'poll', 'chat']) assert.equal(typeof plugin[fn], 'function', `${t.type}.${fn}`)
-    assert.ok(t.fields.some((f) => f.key === 'apiKey' && f.secret), `${t.type} declares a secret apiKey field`)
+test('the three vendors are registered, the built-in one first, each with the vendor contract', () => {
+  const vendors = registry.listVendors()
+  assert.deepEqual(vendors.map((v) => v.type), ['gaorui', 'openai', 'gemini'])
+  assert.deepEqual(vendors.map((v) => v.recommended), [true, false, false])
+  for (const v of vendors) {
+    const plugin = registry.getType(v.type)
+    for (const fn of ['customSpec', 'test', 'submit', 'poll', 'chat']) assert.equal(typeof plugin[fn], 'function', `${v.type}.${fn}`)
+    assert.ok(v.models.length > 0 && v.defaultBaseUrl.startsWith('https://'), v.type)
+    assert.deepEqual(Object.keys(v.customDefaults), v.customKinds)
   }
   assert.equal(registry.getType('gaorui').defaultBaseUrl, 'https://gaorui.cc')
-  assert.equal(registry.getType('gaorui').label, 'Gaorui API')
+  assert.equal(registry.getType('openai').defaultBaseUrl, 'https://api.openai.com/v1')
+  assert.equal(registry.getType('gemini').defaultBaseUrl, 'https://generativelanguage.googleapis.com')
+  assert.equal(registry.getType('openai-compatible'), null, 'the old type name is gone (stored rows are migrated)')
   assert.equal(registry.getType('nope'), null)
 })
 
-test('register() rejects incomplete plugins', () => {
-  assert.throws(() => registry.register({ type: 'x' }), /missing listModels/)
+test('register() rejects incomplete vendor modules', () => {
+  assert.throws(() => registry.register({ type: 'x' }), /missing customSpec/)
   assert.throws(() => registry.register({ type: 'Bad Type' }), /lowercase/)
+  const fns = { customSpec: () => null, test() {}, submit() {}, poll() {}, chat() {} }
+  assert.throws(() => registry.register({ type: 'x', ...fns }), /needs a catalog/)
+  assert.throws(() => registry.register({ type: 'x', ...fns, catalog: [], customKinds: ['chat'] }), /customSpec/)
 })
 
 test('buildSpecs prefixes ids, attaches the provider and drops private fields', () => {
@@ -32,6 +39,7 @@ test('buildSpecs prefixes ids, attaches the provider and drops private fields', 
   assert.ok(nb)
   assert.equal(nb.providerId, 'abc123')
   assert.equal(nb.kind, 'image')
+  assert.equal(nb.custom, false)
   assert.equal(nb.maxReferenceImages, 8)
   assert.deepEqual(nb.options.resolutions, ['1K', '2K', '4K'])
   assert.ok(nb.options.aspectRatios.includes('auto') && nb.options.aspectRatios.includes('21:9'))

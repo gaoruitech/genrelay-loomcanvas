@@ -46,7 +46,7 @@
 | 地域（`region`） | 默认 `us-east-1`。小写字母、数字和连字符。 |
 | 存储桶（`bucket`） | 3 到 63 位的小写字母、数字、点和连字符。桶必须已经存在，应用不会替你创建。 |
 | Access Key ID（`accessKeyId`） | 必填。 |
-| Secret Access Key（`secretAccessKey`） | 只写。保存前用 `SECRET_KEY` 加密（AES-256-GCM，和模型接入的 Key 一样），之后不再返回；页面上只显示「已设置」和末四位。留空表示沿用已保存的那个。 |
+| Secret Access Key（`secretAccessKey`） | 只写。保存前用 `SECRET_KEY` 加密（AES-256-GCM，和服务商的 API Key 一样），之后不再返回；页面上只显示「已设置」和末四位。留空表示沿用已保存的那个。 |
 | 路径风格（`forcePathStyle`） | 开：`https://主机/桶/key`。关：`https://桶.主机/key`。MinIO 和多数自建服务要开；AWS S3、R2、OSS 要关。 |
 | 路径前缀（`keyPrefix`） | 可选，桶里的一个目录，例如 `loomcanvas` 或 `apps/canvas`。只能用字母、数字、`_`、`-`、`.`，目录之间用 `/`。每个对象存成 `<前缀>/<key>`。 |
 | 公开访问地址（`publicBaseUrl`） | 可选。任何人都能通过它读到桶里文件的 `http(s)` 地址：自定义域名、CDN、`r2.dev` 地址。它必须对应**桶的根**，路径前缀会接在它后面。可以带路径（`http://minio.example.com:9000/my-bucket`）。 |
@@ -300,7 +300,7 @@ mc mirror /path/to/data/files ALIAS/BUCKET/PREFIX
 2. 否则给一个**预签名的 GET 地址**，有效期 1 小时，按所填的 Endpoint 生成。
 3. 再否则，设了 `PUBLIC_URL` 的话，给 `<PUBLIC_URL>/files/<key>`。
 
-候选地址只有「看起来公网可达」才会用：`http(s)`，不是 `localhost`，不是内网 IP。一个都不满足时，图片以 base64 内联发给支持这种方式的接入；必须是地址的输入（原视频、部分视频模型的参考图）以 `media.needs_public_url` 失败。哪个接入用哪种形式，见[模型接入](providers.zh-CN.md#素材怎么送到上游)。
+候选地址只有「看起来公网可达」才会用：`http(s)`，不是 `localhost`，不是内网 IP。一个都不满足时，图片以 base64 内联发给支持这种方式的服务商；必须是地址的输入（原视频、交给对话模型分析的视频、部分视频模型的参考图）以 `media.needs_public_url` 失败。哪家服务商用哪种形式，见[服务商](providers.zh-CN.md#素材怎么送到上游)。
 
 所以，只要桶的 Endpoint 在公网上（AWS S3、R2、用公网 Endpoint 的 OSS），不设 `PUBLIC_URL`、桶不公开，也能按地址把参考素材交给上游。
 

@@ -106,7 +106,7 @@ export default {
     imgModeFrames: 'First & last frame',
     imgModeMulti: 'Reference images',
     none: 'No models available yet',
-    noneHint: 'Connect a provider or enable a model in Settings.',
+    noneHint: 'Add a provider or enable a model in Settings.',
     goSettings: 'Open Settings',
   },
 

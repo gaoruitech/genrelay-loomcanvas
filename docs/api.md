@@ -189,11 +189,12 @@ Response: an array of ModelSpec, for the enabled models of enabled providers.
 {
   "id": "gaorui:nano-banana-2",
   "providerId": "665f…",
-  "providerName": "Gaorui API",
+  "providerName": "Gaorui",
   "providerType": "gaorui",
   "label": "Nano Banana 2",
   "desc": "Image generation and editing",
   "kind": "image",
+  "custom": false,
   "acceptsImage": true,
   "acceptsVideo": false,
   "videoEdit": false,
@@ -204,9 +205,11 @@ Response: an array of ModelSpec, for the enabled models of enabled providers.
 }
 ```
 
-`options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional. See [Writing a provider](writing-a-provider.md#modelspec-reference).
+`providerType` is the vendor id (`gaorui`, `openai` or `gemini`). `custom` is `true` for a model the user added by hand and `false` for a model from the vendor's catalog. `options` may contain `aspectRatios`, `resolutions`, `durations`, `counts` and `imgModes`. `desc`, `tag` and `pricing` are optional; a custom model has no `desc`. See [Writing a provider](writing-a-provider.md#modelspec-reference).
 
-For a chat model, `acceptsVideo` says whether it can be given a video (`videoUrl` of `POST /api/llm/tasks`). Chat models of OpenAI-compatible and Gaorui providers report `true`; Gemini chat models report `false`. The Video analysis node lists only chat models with `acceptsVideo`.
+The list is the catalog of each provider's vendor plus that provider's custom models. It is not fetched from an upstream, and a model's `kind` is never derived from its name.
+
+For a chat model, `acceptsVideo` says whether it can be given a video (`videoUrl` of `POST /api/llm/tasks`). OpenAI and Gemini chat models report `false`, catalog and custom ones alike. Of the five chat models in the Gaorui catalog, `gemini-3.5-flash-c` reports `true` and the other four `false`. Custom chat models of a Gaorui provider report `true`. A Gaorui provider sends the video as an `image_url` content part holding its public URL, see [Providers](providers.md#which-node-uses-which-model). The Video analysis node lists only chat models with `acceptsVideo`. `acceptsImage` says whether a chat model reads images (`imageUrls`): `false` is a text-only model, and `maxReferenceImages` is then `0`.
 
 ### POST /api/runs/estimate
 
@@ -307,7 +310,7 @@ Body: `{ "model": string, "prompt"?: string, "systemPrompt"?: string, "imageUrls
 
 Response: `{ "taskId": string }`.
 
-Errors (400): `run.prompt_required`, `model.not_chat`, `model.no_video_input` (a `videoUrl` for a model without `acceptsVideo`), and those of `POST /api/runs`, including `run.queue_full` (429).
+Errors (400): `run.prompt_required`, `model.not_chat`, `model.no_video_input` (a `videoUrl` for a model without `acceptsVideo`), `model.no_image_input` (`imageUrls` for a text-only model, one without `acceptsImage`), and those of `POST /api/runs`, including `run.queue_full` (429).
 
 ### GET /api/llm/tasks/:id
 
@@ -460,44 +463,148 @@ Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_
 
 Base path `/api/admin`. These back the Settings page. There is no separate admin role: anyone who is signed in can call them. When `ACCESS_PASSWORD` is empty, anyone who can reach the instance can.
 
+### Vendors
+
+`GET /api/admin/vendors` returns every vendor a provider can be created for, in display order, with the models it supports. Names and descriptions are in the language of the request. This replaces `GET /api/admin/provider-types` of the previous version, which now answers 404.
+
+```json
+[
+  {
+    "type": "openai",
+    "label": "OpenAI",
+    "recommended": false,
+    "keyUrl": "",
+    "defaultBaseUrl": "https://api.openai.com/v1",
+    "models": [
+      {
+        "model": "gpt-image-2.5-sunburst",
+        "label": "GPT Image 2.5 Sunburst",
+        "kind": "image",
+        "desc": "Image generation and editing, most precise edits",
+        "acceptsImage": true,
+        "acceptsVideo": false,
+        "videoEdit": false,
+        "custom": false,
+        "maxReferenceImages": 16,
+        "options": { "aspectRatios": ["auto", "1:1", "3:2", "2:3"], "counts": [1, 2, 3, 4] },
+        "defaults": { "aspectRatio": "auto", "count": 1 }
+      }
+    ],
+    "customKinds": ["image", "chat"],
+    "customDefaults": {
+      "image": {
+        "kind": "image", "acceptsImage": true, "acceptsVideo": false, "videoEdit": false, "custom": true,
+        "maxReferenceImages": 16,
+        "options": { "aspectRatios": ["auto", "1:1", "3:2", "2:3"], "counts": [1, 2, 3, 4] },
+        "defaults": { "aspectRatio": "auto", "count": 1 }
+      },
+      "chat": {
+        "kind": "chat", "acceptsImage": true, "acceptsVideo": false, "videoEdit": false, "custom": true,
+        "maxReferenceImages": 8, "options": {}, "defaults": {}
+      }
+    }
+  }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `type` | The vendor id: `gaorui`, `openai` or `gemini`. Sent as `type` when creating a provider. |
+| `label` | The vendor's name. |
+| `recommended` | `true` for the vendor to offer first (Gaorui). |
+| `keyUrl` | Where to get a key, or `""`. |
+| `defaultBaseUrl` | The vendor's official address. |
+| `models[]` | The vendor's catalog. `model` is the upstream model name; the other fields are as in a [ModelSpec](#get-apimodels). `desc` is optional. |
+| `customKinds` | The kinds a custom model of this vendor may have. |
+| `customDefaults` | For each of those kinds, what a custom model of that kind gets. |
+
 ### Providers
 
-A provider as returned (the key itself is never returned):
+A provider is a vendor plus a key. As returned (the key itself is never returned):
 
 ```json
 {
-  "id": "665f…", "type": "gaorui", "name": "Gaorui API", "slug": "gaorui",
-  "baseUrl": "https://gaorui.cc", "options": { }, "enabled": true, "sort": 0,
+  "id": "665f…", "type": "gaorui", "name": "Gaorui", "slug": "gaorui",
+  "baseUrl": "https://gaorui.cc", "customBaseUrl": false,
+  "customModels": [ { "model": "some-chat-model", "kind": "chat", "label": "" } ],
+  "enabled": true, "sort": 0,
   "hasKey": true, "keyTail": "3456", "createdAt": "…", "updatedAt": "…"
 }
 ```
 
-Type-specific fields (for example `models` of an OpenAI-compatible provider) appear both inside `options` and at the top level.
+- `baseUrl` is the address in use: the one saved for this provider, or the vendor's official address. `customBaseUrl` is `true` when it is not the official one.
+- `customModels` are the models added by hand; see [Custom models](#custom-models).
+- There is no `options` object any more, and no model fields at the top level.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `/api/admin/provider-types` | | Array of `{ type, label, defaultBaseUrl, fields: [{ key, label, type, secret, required, placeholder, help }] }` |
 | GET | `/api/admin/providers` | | Array of providers. |
-| POST | `/api/admin/providers` | `{ type, name?, baseUrl?, apiKey?, enabled?, sort?, slug?, …type fields }` | The provider. |
-| PUT | `/api/admin/providers/:id` | Any of `name`, `baseUrl`, `apiKey`, `clearKey`, `enabled`, `sort`, type fields | The provider. |
+| POST | `/api/admin/providers` | `{ type, apiKey, name?, baseUrl?, enabled?, sort?, slug? }` | The provider. |
+| PUT | `/api/admin/providers/:id` | Any of `name`, `baseUrl`, `apiKey`, `clearKey`, `enabled`, `sort` | The provider. |
 | DELETE | `/api/admin/providers/:id` | | `{ id }`. Also deletes the overrides of its models. |
-| POST | `/api/admin/providers/:id/test` | | `{ ok, message, modelCount? }` |
+| POST | `/api/admin/providers/:id/test` | | `{ ok, message }` |
 
-- On update, omit `apiKey` or send `""` to keep the stored key; send `"clearKey": true` to remove it. `"baseUrl": ""` goes back to the type's default.
-- `slug` is set at creation (from `slug` in the body, otherwise from the type) and cannot be changed.
-- The test endpoint answers HTTP 200 with `ok: false` and a reason when the upstream cannot be reached. A failed test is an answer, not an error.
+```bash
+curl -X POST http://localhost:3000/api/admin/providers \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"openai","apiKey":"sk-…"}'
+```
 
-Errors: `provider.type_unsupported`, `provider.max`, `provider.api_key_required`, `provider.base_url_required`, `provider.base_url_scheme`, `provider.base_url_credentials`, `validation.bad_url` (400); `provider.not_found` (404); `provider.slug_exhausted` (409).
+- `type` is the vendor id and `apiKey` is required. `name` defaults to the vendor's name. Omit `baseUrl` to use the official address.
+- The vendor is fixed at creation. A `PUT` with a different `type` is refused with `provider.vendor_fixed`; the same `type` is accepted and ignored.
+- On update, omit `apiKey` or send `""` to keep the stored key; send `"clearKey": true` to remove it. `"baseUrl": ""` goes back to the official address.
+- `slug` is set at creation (from `slug` in the body, otherwise from the vendor id) and cannot be changed.
+- The test endpoint calls the upstream's model-list endpoint to prove the address and the key; it no longer returns a model count. It answers HTTP 200 with `ok: false` and a reason when the upstream cannot be reached. A failed test is an answer, not an error.
+
+Errors: `provider.type_unsupported`, `provider.max`, `provider.api_key_required`, `provider.vendor_fixed`, `provider.type_gone`, `provider.base_url_scheme`, `provider.base_url_credentials`, `validation.bad_url`, `validation.bad_format`, `common.name_required` (400); `provider.not_found` (404); `provider.slug_exhausted` (409).
+
+### Custom models
+
+Models outside the vendor's catalog, per provider. Each call returns the provider, with the updated `customModels`.
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | `/api/admin/providers/:id/models` | `{ model, kind, label? }` | Adds a custom model. |
+| PUT | `/api/admin/providers/:id/models/:model` | `{ kind?, label? }` | Changes the kind or the display name. The name cannot be changed. |
+| DELETE | `/api/admin/providers/:id/models/:model` | | Removes it, with its override (enabled state, order, price). |
+
+```bash
+curl -X POST http://localhost:3000/api/admin/providers/665f…/models \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"some-chat-model","kind":"chat","label":"My chat model"}'
+
+curl -X PUT 'http://localhost:3000/api/admin/providers/665f…/models/org%2Fmodel%3Atag' \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"Renamed"}'
+```
+
+- `model` is the upstream model name: letters, digits and `. _ - : / @`, up to 120 characters. In the path it must be URL-encoded.
+- `kind` is required and has no default. It must be one of the vendor's `customKinds`; for the three built-in vendors that is `image` or `chat`, so `video` is refused.
+- `label` is optional, up to 80 characters.
+- The model then appears in `GET /api/models` as `<slug>:<model>` with `custom: true` and the parameters of `customDefaults[kind]`.
+- Sending a new `label` with `PUT` also clears a display name set through `PUT /api/admin/models/:modelId` for that model.
+
+| Code | Status | When |
+| --- | --- | --- |
+| `provider.custom_name_required` | 400 | `model` is missing or empty. |
+| `provider.custom_bad_name` | 400 | `model` has other characters or is longer than 120. |
+| `provider.custom_kind_required` | 400 | `kind` is missing or not `image`, `video` or `chat`. |
+| `provider.custom_kind_unsupported` | 400 | The vendor takes no custom model of that kind. |
+| `provider.custom_in_catalog` | 400 | The vendor's catalog already lists that model. |
+| `provider.custom_exists` | 400 | This provider already has that custom model. |
+| `provider.custom_max` | 400 | The provider already has 100 custom models. |
+| `provider.custom_name_fixed` | 400 | A `PUT` body carries a different `model`. |
+| `provider.custom_not_found` | 404 | No custom model of that name on this provider. |
 
 ### Models (admin)
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `/api/admin/models` | | Every model, including disabled ones: ModelSpec plus `enabled`, `providerEnabled`, `sort` and `override` (`{ enabled, label, sort, defaults, pricing }` or `null`). |
+| GET | `/api/admin/models` | | Every model, including disabled ones and custom ones: ModelSpec (with `custom`) plus `enabled`, `providerEnabled`, `sort` and `override` (`{ enabled, label, sort, defaults, pricing }` or `null`). |
 | PUT | `/api/admin/models/:modelId` | `{ enabled?, label?, sort?, defaults?, pricing? }` | The merged ModelSpec. |
 
 - `:modelId` contains a colon and possibly slashes: URL-encode it (`gaorui%3Anano-banana-2`).
-- Sending `null` for a field removes that part of the override. `"pricing": null` goes back to the price the provider declared, if any.
+- Sending `null` for a field removes that part of the override. `"pricing": null` removes your price; the built-in catalogs declare none, so the model shows "Cost unknown" again.
 - `pricing` is `{ currency, unit, by?, price?, table? }`:
 
 | Field | Values |

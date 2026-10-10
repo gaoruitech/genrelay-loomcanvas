@@ -46,6 +46,8 @@ export interface ModelPricing {
 export interface ModelSpec {
   id: string
   providerId: string
+  /** 所属服务商实例的名称 */
+  providerName?: string
   label: string
   desc?: string
   tag?: string
@@ -53,6 +55,8 @@ export interface ModelSpec {
   acceptsImage?: boolean
   acceptsVideo?: boolean
   videoEdit?: boolean
+  /** 用户自己添加的模型（不在服务商的模型清单里） */
+  custom?: boolean
   maxReferenceImages?: number
   options?: {
     aspectRatios?: string[]
@@ -124,44 +128,57 @@ export interface LlmTask {
   progress?: number
 }
 
-export interface ProviderField {
-  key: string
-  label: string
-  secret?: boolean
-  required?: boolean
-  placeholder?: string
-  help?: string
+/** 服务商模型清单里的一项。model 是上游模型名 */
+export interface VendorModel extends Omit<ModelSpec, 'id' | 'providerId' | 'pricing'> {
+  model: string
 }
 
-export interface ProviderType {
+/** 一个服务商：名字、官方地址、它支持的全部模型，以及自定义模型能选的类型和各自得到的参数 */
+export interface Vendor {
   type: string
   label: string
-  fields: ProviderField[]
-  defaultBaseUrl?: string
+  recommended: boolean
+  /** 申请 API Key 的地址；没有则为空 */
+  keyUrl: string
+  defaultBaseUrl: string
+  models: VendorModel[]
+  customKinds: ModelKind[]
+  customDefaults: Partial<Record<ModelKind, Omit<VendorModel, 'model' | 'label'>>>
+}
+
+export interface CustomModel {
+  model: string
+  kind: ModelKind
+  label: string
 }
 
 export interface ProviderInstance {
   id: string
+  /** 服务商标识 */
   type: string
   name: string
+  slug: string
   baseUrl?: string
+  /** 地址是否改成了官方地址以外的 */
+  customBaseUrl?: boolean
+  customModels: CustomModel[]
   enabled: boolean
   hasKey: boolean
   keyTail?: string
-  [extra: string]: any
 }
 
 export interface ProviderTestResult {
   ok: boolean
   message?: string
-  modelCount?: number
 }
 
 /** 设置页里的模型行：ModelSpec 加上启用状态与排序 */
 export interface AdminModel extends ModelSpec {
   enabled: boolean
   sort?: number
-  providerName?: string
+  /** 所属服务商的标识 */
+  providerType?: string
+  providerEnabled?: boolean
 }
 
 export interface AdminSettings {

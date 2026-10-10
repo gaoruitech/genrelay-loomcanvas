@@ -132,15 +132,4 @@ function openaiBase(baseUrl) {
   return /\/v\d+$/.test(base) ? base : `${base}/v1`
 }
 
-/** "a, b\nc" -> ['a','b','c'], de-duplicated, capped. */
-function parseModelList(text) {
-  const seen = new Set()
-  for (const part of String(text || '').split(/[\s,，;；]+/)) {
-    const id = part.trim()
-    if (id && id.length <= 120 && /^[\w.:/@-]+$/.test(id)) seen.add(id)
-    if (seen.size >= 200) break
-  }
-  return [...seen]
-}
-
-module.exports = { request, ProviderError, messageFromBody, redactSecrets, trimBase, openaiBase, parseModelList }
+module.exports = { request, ProviderError, messageFromBody, redactSecrets, trimBase, openaiBase }

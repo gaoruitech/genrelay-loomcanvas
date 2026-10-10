@@ -36,7 +36,8 @@ For a security problem, do not open an issue: see SECURITY.md.
 
 ## If a run failed / 如果是运行失败
 
-- Provider type (Gaorui API / OpenAI-compatible / Gemini / other) / 接入类型:
+- Provider (Gaorui / OpenAI / Google Gemini), and whether it uses a non-official base URL / 服务商（高瑞 / OpenAI / Google Gemini），以及是否改过接口地址:
+- Is the model a custom model? / 是不是自定义模型:
 - Model id / 模型标识:
 - Error message shown, and its `errorCode` if you have it / 显示的错误信息，以及 `errorCode`（如果有）:
 

@@ -2,7 +2,7 @@
 
 /**
  * Pieces of the OpenAI wire format shared by more than one provider:
- * chat completions (with vision parts), model discovery and generic specs.
+ * chat completions (with vision parts) and the model-list call used to test a key.
  */
 const { request, ProviderError, openaiBase } = require('./http')
 const { msg } = require('../i18n')
@@ -11,22 +11,6 @@ const LONG_CALL_MS = 30 * 60 * 1000 // the runner's deadline is the real limit
 
 function bearer(apiKey) {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
-}
-
-function chatSpec(id) {
-  return {
-    id,
-    label: id,
-    kind: 'chat',
-    acceptsImage: true,
-    // chatCompletion() below sends a video as a `video_url` part. Whether a given
-    // model understands it is the upstream's call; if not, its error is shown.
-    acceptsVideo: true,
-    videoEdit: false,
-    maxReferenceImages: 8,
-    options: {},
-    defaults: {},
-  }
 }
 
 /** choices[0].message.content may be a string or an array of typed parts. */
@@ -52,17 +36,25 @@ function usageFrom(data) {
 /**
  * POST {base}/chat/completions.
  * Images go in as `image_url` content parts (a public URL, or a data URI when
- * the image only exists in local storage). A video is sent as a `video_url`
- * part, which is a common relay extension rather than part of the OpenAI API.
+ * the image only exists in local storage).
+ *
+ * The OpenAI API has no content part for a video, so a video is refused
+ * unless the caller says how its upstream takes one:
+ *
+ *   opts.videoAsImageUrl   send the video as an `image_url` part holding its
+ *                          public URL, right after the text and before the
+ *                          images. This is what the 高瑞 relay reads; see
+ *                          gaorui.js.
  */
-async function chatCompletion(cfg, req) {
+async function chatCompletion(cfg, req, opts = {}) {
+  if (req.videoUrl && !opts.videoAsImageUrl) throw new ProviderError('model.no_video_input')
   const parts = []
   if (req.prompt) parts.push({ type: 'text', text: req.prompt })
+  if (req.videoUrl) {
+    parts.push({ type: 'image_url', image_url: { url: await req.media.toPublicUrl(req.videoUrl, msg('noun.video')) } })
+  }
   for (const url of req.imageUrls || []) {
     parts.push({ type: 'image_url', image_url: { url: await req.media.toRef(url) } })
-  }
-  if (req.videoUrl) {
-    parts.push({ type: 'video_url', video_url: { url: await req.media.toPublicUrl(req.videoUrl, msg('noun.video')) } })
   }
   const plain = parts.length === 1 && parts[0].type === 'text'
   const messages = []
@@ -103,4 +95,4 @@ async function listModelIds(cfg, { signal, timeoutMs = 15000 } = {}) {
   return [...new Set(ids)].slice(0, 500)
 }
 
-module.exports = { chatCompletion, listModelIds, chatSpec, bearer, LONG_CALL_MS }
+module.exports = { chatCompletion, listModelIds, bearer, LONG_CALL_MS }

@@ -1,15 +1,18 @@
 'use strict'
 
 /**
- * Provider registry.
+ * Vendor registry.
  *
- * A provider TYPE is a plugin module (gaorui.js, openaiCompatible.js, ...).
- * A provider INSTANCE is a row in `providers`: a type plus the user's base URL
- * and key. The registry turns instances into the public model list:
+ * A VENDOR is a module (gaorui.js, openai.js, gemini.js): how to talk to one
+ * company's API, plus a catalog stating which models it supports.
+ * A provider INSTANCE is a row in `providers`: a vendor plus the user's key,
+ * optionally another address, and the custom models the user added by hand.
  *
- *   plugin.listModels(cfg)  ->  raw specs (ids local to the provider)
- *   + instance              ->  id "<slug>:<model>", providerId
- *   + ModelOverride         ->  enabled / label / sort / defaults / pricing
+ * The model list of an instance is never fetched and never inferred:
+ *
+ *   vendor catalog  +  instance.customModels   ->  raw specs
+ *   + instance                                 ->  id "<slug>:<model>", providerId
+ *   + ModelOverride                            ->  enabled / label / sort / defaults / pricing
  */
 const Provider = require('../models/Provider')
 const ModelOverride = require('../models/ModelOverride')
@@ -18,78 +21,78 @@ const { decrypt } = require('../utils/crypto')
 const { ApiError } = require('../utils/http')
 const { LocalizedError, has, t } = require('../i18n')
 const { LOCAL_USER } = require('../constants')
+const { KINDS: KIND_LIST, MODEL_NAME } = require('./catalog')
 
-const TYPES = new Map()
-const REQUIRED_FUNCTIONS = ['listModels', 'test', 'submit', 'poll', 'chat']
+const VENDORS = new Map()
+const REQUIRED_FUNCTIONS = ['customSpec', 'test', 'submit', 'poll', 'chat']
 
 function register(plugin) {
   if (!plugin || typeof plugin.type !== 'string' || !/^[a-z0-9-]+$/.test(plugin.type)) {
-    throw new Error('provider plugin needs a lowercase `type`')
+    throw new Error('vendor module needs a lowercase `type`')
   }
   for (const fn of REQUIRED_FUNCTIONS) {
-    if (typeof plugin[fn] !== 'function') throw new Error(`provider "${plugin.type}" is missing ${fn}()`)
+    if (typeof plugin[fn] !== 'function') throw new Error(`vendor "${plugin.type}" is missing ${fn}()`)
   }
-  if (!Array.isArray(plugin.fields)) throw new Error(`provider "${plugin.type}" needs a fields array`)
-  TYPES.set(plugin.type, plugin)
+  if (!Array.isArray(plugin.catalog)) throw new Error(`vendor "${plugin.type}" needs a catalog`)
+  if (!Array.isArray(plugin.customKinds) || plugin.customKinds.some((k) => !KIND_LIST.includes(k) || !plugin.customSpec(k))) {
+    throw new Error(`vendor "${plugin.type}" needs customKinds, each with a customSpec()`)
+  }
+  VENDORS.set(plugin.type, plugin)
 }
 
+// Registration order is display order: the built-in vendor first.
 register(require('./gaorui'))
-register(require('./openaiCompatible'))
+register(require('./openai'))
 register(require('./gemini'))
 
 function getType(type) {
-  return TYPES.get(type) || null
+  return VENDORS.get(type) || null
 }
 
-/** First of the catalog keys that exists, rendered; otherwise the plugin's own text. */
-function localized(locale, keys, own) {
-  const key = keys.find(has)
-  return key ? t(locale, key) : (own || '')
+/** The vendor's name in the reader's language (`provider.<vendor>.label`), else as declared. */
+function typeLabel(plugin, locale) {
+  const key = `provider.${plugin.type}.label`
+  return has(key) ? t(locale, key) : (plugin.label || plugin.type)
+}
+
+/** The part of a raw spec that describes the model itself, with private fields dropped. */
+function describe(raw, vendor, locale) {
+  const [spec] = buildSpecs({ id: '', slug: '_', name: '', type: vendor }, [raw])
+  const { id, providerId, providerName, providerType, ...rest } = localizeSpec(spec, locale)
+  return { ...rest, model: raw.id }
 }
 
 /**
- * Display names of a plugin and its form fields. The catalog is looked up by
- * stable identifiers - `provider.<type>.label`, `provider.<type>.field.<key>.label|help`,
- * then `provider.field.<key>.label` shared by all types - so a plugin without
- * catalog entries simply shows the text it declares.
+ * What the settings page needs to offer a vendor: its name, official address,
+ * every model it supports, and what a custom model of each allowed kind gets.
  */
-function typeLabel(plugin, locale) {
-  return localized(locale, [`provider.${plugin.type}.label`], plugin.label)
-}
-
-function fieldText(plugin, field, part, locale) {
-  return localized(locale, [`provider.${plugin.type}.field.${field.key}.${part}`, `provider.field.${field.key}.${part}`], field[part])
-}
-
-/** What the settings page needs to render the "add provider" form. */
-function listTypes(locale) {
-  return [...TYPES.values()].map((p) => ({
+function listVendors(locale) {
+  return [...VENDORS.values()].map((p) => ({
     type: p.type,
     label: typeLabel(p, locale),
+    recommended: p.recommended === true,
+    keyUrl: p.keyUrl || '',
     defaultBaseUrl: p.defaultBaseUrl || '',
-    fields: p.fields.map((f) => ({
-      key: f.key,
-      label: fieldText(p, f, 'label', locale),
-      type: f.type || (f.secret ? 'password' : 'text'),
-      secret: !!f.secret,
-      required: !!f.required,
-      placeholder: f.placeholder || '',
-      help: fieldText(p, f, 'help', locale),
+    models: p.catalog.map((m) => describe(m, p.type, locale)),
+    customKinds: [...p.customKinds],
+    customDefaults: Object.fromEntries(p.customKinds.map((kind) => {
+      const { model, label, ...caps } = describe({ ...p.customSpec(kind), id: 'x', kind, custom: true }, p.type, locale)
+      return [kind, caps]
     })),
   }))
 }
 
 /**
  * A ModelSpec with its one-line description in the reader's language, for the
- * built-in models that have one in the catalog (`model.<type>.<model>.desc`).
+ * catalog models that have one (`model.<vendor>.<model>.desc`).
  */
 function localizeSpec(spec, locale) {
   const parts = spec && splitModelId(spec.id)
-  const key = parts ? `model.${spec.providerType}.${parts.model}.desc` : ''
+  const key = parts && !spec.custom ? `model.${spec.providerType}.${parts.model}.desc` : ''
   return has(key) ? { ...spec, desc: t(locale, key) } : spec
 }
 
-const KINDS = new Set(['image', 'video', 'chat'])
+const KINDS = new Set(KIND_LIST)
 const strings = (v, max) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.length <= 20).slice(0, max) : undefined)
 const numbers = (v, max) => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, max) : undefined)
 
@@ -123,6 +126,8 @@ function buildSpecs(instance, rawSpecs) {
       acceptsImage: !!raw.acceptsImage,
       acceptsVideo: !!raw.acceptsVideo,
       videoEdit: !!raw.videoEdit,
+      // Added by the user rather than taken from the vendor's catalog.
+      custom: raw.custom === true,
       maxReferenceImages: Number.isInteger(raw.maxReferenceImages) ? raw.maxReferenceImages : 0,
       options,
       defaults: raw.defaults && typeof raw.defaults === 'object' ? { ...raw.defaults } : {},
@@ -167,15 +172,42 @@ function splitModelId(fullId) {
   return { slug: s.slice(0, i), model: s.slice(i + 1) }
 }
 
-/* ---------------------------------------------------------------- database */
+/* ------------------------------------------------------------- instances */
 
-const CACHE_TTL_MS = 5 * 60 * 1000
-const LIST_TIMEOUT_MS = 12 * 1000
-const cache = new Map() // providerId -> { at, specs }
+/**
+ * Check one custom model against its vendor. Returns the stored form, or
+ * throws an ApiError (400) naming what is wrong.
+ */
+function checkCustomModel(plugin, input) {
+  const fail = (key, params) => new ApiError(400, key, params)
+  const id = typeof input.id === 'string' ? input.id.trim() : ''
+  if (!id) throw fail('provider.custom_name_required')
+  if (!MODEL_NAME.test(id)) throw fail('provider.custom_bad_name')
+  if (!KIND_LIST.includes(input.kind)) throw fail('provider.custom_kind_required')
+  if (!plugin.customKinds.includes(input.kind)) throw fail('provider.custom_kind_unsupported', { kind: input.kind })
+  if (plugin.catalog.some((m) => m.id === id)) throw fail('provider.custom_in_catalog', { model: id })
+  if (input.label !== undefined && input.label !== null && typeof input.label !== 'string') throw fail('validation.string', { field: 'label' })
+  const label = typeof input.label === 'string' ? input.label.trim().slice(0, 80) : ''
+  return { id, kind: input.kind, label }
+}
 
-function invalidate(providerId) {
-  if (providerId) cache.delete(String(providerId))
-  else cache.clear()
+/** Raw specs of one instance: the vendor's catalog, then the instance's custom models. */
+function rawSpecsFor(doc) {
+  const plugin = getType(doc.type)
+  if (!plugin) return []
+  const taken = new Set(plugin.catalog.map((m) => m.id))
+  const custom = []
+  for (const c of Array.isArray(doc.customModels) ? doc.customModels : []) {
+    // Stored entries were checked on the way in; this guards hand-edited rows.
+    if (!c || typeof c.id !== 'string' || taken.has(c.id) || !plugin.customKinds.includes(c.kind)) continue
+    taken.add(c.id)
+    custom.push({ ...plugin.customSpec(c.kind), id: c.id, kind: c.kind, label: c.label || c.id, custom: true })
+  }
+  return [...plugin.catalog, ...custom]
+}
+
+function specsForInstance(doc) {
+  return buildSpecs({ id: String(doc._id), slug: doc.slug, name: doc.name, type: doc.type }, rawSpecsFor(doc))
 }
 
 /** Plugin config for an instance, with the key decrypted. Needs apiKeyEnc selected. */
@@ -189,39 +221,13 @@ function configFor(doc) {
       throw new LocalizedError('provider.key_undecryptable')
     }
   }
-  return {
-    ...(doc.options && typeof doc.options === 'object' ? doc.options : {}),
-    baseUrl: doc.baseUrl || (plugin && plugin.defaultBaseUrl) || '',
-    apiKey,
-  }
+  return { baseUrl: doc.baseUrl || (plugin && plugin.defaultBaseUrl) || '', apiKey }
 }
 
 async function loadInstances({ enabledOnly }) {
   const filter = { userId: LOCAL_USER }
   if (enabledOnly) filter.enabled = true
   return Provider.find(filter).select('+apiKeyEnc').sort({ sort: 1, createdAt: 1 }).lean()
-}
-
-async function specsForInstance(doc) {
-  const key = String(doc._id)
-  const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.specs
-  const plugin = getType(doc.type)
-  if (!plugin) return []
-  const instance = { id: key, slug: doc.slug, name: doc.name, type: doc.type }
-  let raw
-  try {
-    raw = await plugin.listModels(configFor(doc), { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) })
-  } catch (err) {
-    // Keep serving the last good list rather than emptying the model picker
-    // because the upstream had a bad minute.
-    if (hit) return hit.specs
-    console.warn(`[providers] listModels failed for "${doc.name}": ${err && err.message}`)
-    return []
-  }
-  const specs = buildSpecs(instance, raw)
-  cache.set(key, { at: Date.now(), specs })
-  return specs
 }
 
 /**
@@ -233,10 +239,7 @@ async function listModels({ includeDisabled = false, kind } = {}) {
     loadInstances({ enabledOnly: !includeDisabled }),
     ModelOverride.find({ userId: LOCAL_USER }).lean(),
   ])
-  const lists = await Promise.all(instances.map(async (doc) => {
-    const specs = await specsForInstance(doc)
-    return specs.map((s) => ({ ...s, providerEnabled: doc.enabled !== false }))
-  }))
+  const lists = instances.map((doc) => specsForInstance(doc).map((s) => ({ ...s, providerEnabled: doc.enabled !== false })))
   let models = mergeOverrides(lists.flat(), overrides)
   if (kind) models = models.filter((m) => m.kind === kind)
   if (!includeDisabled) models = models.filter((m) => m.enabled && m.providerEnabled)
@@ -256,7 +259,7 @@ async function resolveModel(fullId, { requireEnabled = true } = {}) {
   if (requireEnabled && doc.enabled === false) throw fail('model.provider_disabled')
   const plugin = getType(doc.type)
   if (!plugin) throw fail('provider.type_unsupported_named', { type: doc.type })
-  const specs = await specsForInstance(doc)
+  const specs = specsForInstance(doc)
   const override = await ModelOverride.findOne({ modelId: fullId }).lean()
   const base = specs.find((s) => s.id === fullId) || null
   const spec = base ? mergeOverrides([base], override ? [override] : [])[0] : null
@@ -267,14 +270,15 @@ async function resolveModel(fullId, { requireEnabled = true } = {}) {
 module.exports = {
   register,
   getType,
-  listTypes,
+  listVendors,
   typeLabel,
   localizeSpec,
   buildSpecs,
   mergeOverrides,
   splitModelId,
+  checkCustomModel,
+  specsForInstance,
   configFor,
   listModels,
   resolveModel,
-  invalidate,
 }

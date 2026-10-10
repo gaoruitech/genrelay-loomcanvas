@@ -16,7 +16,7 @@ loomcanvas/
 │  │  ├─ constants.js
 │  │  ├─ routes/           HTTP 接口
 │  │  ├─ models/           Mongoose 模型
-│  │  ├─ providers/        模型接入插件、注册表、catalog/*.json
+│  │  ├─ providers/        服务商模块、注册表、catalog/（模型清单及其校验）
 │  │  ├─ runner/           任务队列、时限、结果转存、计价
 │  │  ├─ storage/          存储层：本地磁盘与 S3 兼容的桶、key 生成
 │  │  ├─ billing/          计费钩子的加载（默认空实现）
@@ -114,7 +114,7 @@ npm test
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
   ```
 
-- 模型接入是对着测试里现起的假上游测的，见[编写模型接入](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口。
+- 服务商模块是对着测试里现起的假上游测的，见[编写服务商模块](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口。
 - 对着真实服务的 S3 存储测试，没设 `TEST_S3_ENDPOINT` 时是跳过的，见[对着真实的 S3 测试](#对着真实的-s3-测试)。
 
 前端没有单元测试，把关的是 `npm run build`（类型检查）和 `npm run i18n:check`。
@@ -212,7 +212,7 @@ node --test test/storage.live.test.js
 - 节点数据里只存素材地址，不存内联 base64。
 - 如果改动了现有画布里已经存在的数据形状，见[画布的 schemaVersion 与迁移](#画布的-schemaversion-与迁移)。
 
-加一个**模型**不等于加一种节点：它只需要一条模型声明或一个接入，不用改画布。见[编写模型接入](writing-a-provider.zh-CN.md)。
+加一个**模型**不等于加一种节点：它只需要在某家服务商的模型清单里加一条（`server/src/providers/catalog/<服务商标识>.json`，并在服务端两个语言文件里加上它的说明文字），或者新写一个服务商模块，不用改画布。模型的类型就是它在清单里所在的那一段，任何代码都不能根据名字去推断。见[编写服务商模块](writing-a-provider.zh-CN.md)。
 
 ## 添加界面文案
 
@@ -284,7 +284,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - 存储 key 由 `storage/keys.js` 生成，用户输入的任何内容都不会进入 key。
 - 读写文件一律通过 `getStorage()`（`storage/index.js`），文件在哪个后端它就去哪找。存下来的、返回给客户端的地址永远是 `storage.urlFor(key)`，也就是 `/files/<key>`。预签名地址（`storage.externalUrls()`）只给那一次上游请求用：不要保存，不要返回给客户端，也不要写进日志。
 - 每张数据表都带 `userId`，目前固定是常量 `local`，以后加多用户不需要迁移数据。
-- 执行器核心（`runner/core.js`）的存储、接入查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
+- 执行器核心（`runner/core.js`）的存储、服务商查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
 - 没有理由不加新的运行时依赖：响应头、跨域、限流各自只有几行代码，没有引入包。
 
 前端：

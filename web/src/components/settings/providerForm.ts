@@ -1,43 +1,37 @@
-import type { ProviderField as PF, ProviderInstance as PI, ProviderType as PT } from '@/types'
+import type { ProviderInstance as PI, Vendor } from '@/types'
+import { vendorLabel } from '@/utils/providerMeta'
 
-/** 新建 / 编辑时表单的初始值 */
-export function initialProviderForm(type: PT, existing?: PI | null): Record<string, any> {
-  const form: Record<string, any> = {
+export interface ProviderFormState {
+  name: string
+  apiKey: string
+  baseUrl: string
+  enabled: boolean
+}
+
+/** 新建 / 编辑时表单的初始值。地址预填官方地址，Key 永远从空开始（后端不回传明文） */
+export function initialProviderForm(vendor: Vendor, existing?: PI | null): ProviderFormState {
+  return {
     name: existing?.name || '',
-    baseUrl: existing?.baseUrl || '',
+    apiKey: '',
+    baseUrl: existing?.baseUrl || vendor.defaultBaseUrl || '',
     enabled: existing ? !!existing.enabled : true,
   }
-  for (const f of type.fields) {
-    if (f.secret) form[f.key] = ''
-    else if (form[f.key] === undefined) form[f.key] = existing?.[f.key] ?? ''
-  }
-  return form
 }
 
-/** 必填但没填的第一个字段；都填了返回 null。已保存过的密钥留空算「不修改」 */
-export function missingProviderField(type: PT, form: Record<string, any>, existing?: PI | null): PF | null {
-  for (const f of type.fields) {
-    if (!f.required) continue
-    if (f.secret && existing?.hasKey) continue
-    if (!String(form[f.key] ?? '').trim()) return f
-  }
-  return null
+/** 还缺 API Key 吗？已保存过的留空算「不修改」 */
+export function missingApiKey(form: ProviderFormState, existing?: PI | null): boolean {
+  return !existing?.hasKey && !form.apiKey.trim()
 }
 
-/** 表单 → 提交给后端的请求体。留空的密钥、留空的可选项不带 */
-export function providerPayload(type: PT, form: Record<string, any>, existing?: PI | null): Record<string, any> {
+/** 表单 → 提交给后端的请求体。留空的 Key 不带；地址清空表示回到官方地址 */
+export function providerPayload(vendor: Vendor, form: ProviderFormState, existing?: PI | null): Record<string, any> {
   const body: Record<string, any> = {
-    type: type.type,
-    name: String(form.name || '').trim() || existing?.name || type.label,
+    type: vendor.type,
+    name: form.name.trim() || existing?.name || vendorLabel(vendor),
     enabled: form.enabled !== false,
+    baseUrl: form.baseUrl.trim(),
   }
-  const baseUrl = String(form.baseUrl || '').trim()
-  if (baseUrl) body.baseUrl = baseUrl
-  else if (existing?.baseUrl) body.baseUrl = ''
-  for (const f of type.fields) {
-    const v = String(form[f.key] ?? '').trim()
-    if (f.secret) { if (v) body[f.key] = v }
-    else if (f.key !== 'name' && f.key !== 'baseUrl' && (v || existing)) body[f.key] = v
-  }
+  const key = form.apiKey.trim()
+  if (key) body.apiKey = key
   return body
 }

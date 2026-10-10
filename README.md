@@ -15,7 +15,7 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 - **Canvas editor.** Source nodes (text, image, image set, video), generation nodes (image generation, image edit, video generation, video edit, language model, video analysis), an output node, and groups. Typed connections, undo/redo, copy and paste, auto layout, node search.
 - **Local tool nodes.** Slice, collage, resize, watermark and multi-platform export run on your own server and cost nothing.
 - **Run orchestration.** Run a single node, a branch or the whole canvas; batch runs over a set of source images. Runs are queued with a concurrency limit and hard timeouts. After a server restart, queued runs and runs that already have an upstream task carry on.
-- **Bring your own models.** Providers are plugins. Built in: Gaorui API (one key for image, video and chat models), any OpenAI-compatible endpoint (chat and text-to-image), and Google Gemini (image and chat).
+- **Bring your own models.** Pick a provider and enter your own API key. Built in: Gaorui (one key for image, video and chat models), OpenAI (chat, image generation and editing) and Google Gemini (image and chat), the last two through their official APIs. Which models each provider supports is listed explicitly; a model that is not listed can be added as a custom model.
 - **Cost, not credits.** An estimate per run from a price table you maintain, shown as "Cost unknown" until you enter prices, plus usage records by day and by model.
 - **Your files stay with you.** Results are copied into your own storage: the local disk by default, or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO), configured under Settings → Storage. The bucket can stay private. See [Storage](docs/storage.md) for what has been tested.
 - **Templates, brand kits, asset library, share links.** Read-only share links with expiry and revocation.
@@ -42,7 +42,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open http://localhost:3000 (or the host's address, with the `PORT` you set) and follow the setup page to connect a model provider. The recommended one is the Gaorui API; get a key at https://gaorui.cc.
+Open http://localhost:3000 (or the host's address, with the `PORT` you set) and follow the setup page to add a provider. The recommended one is Gaorui; get a key at https://gaorui.cc.
 
 - `SECRET_KEY` encrypts your provider API keys in the database. Keep it safe and do not change it afterwards, or the saved keys can no longer be decrypted.
 - `PUBLIC_URL` is optional. Leave it empty for local or LAN use: files are addressed relative to whatever address the app is opened at. Set it to the instance's public address so that upstream models can fetch reference media by URL (needed for video inputs when files are kept on the local disk).
@@ -59,11 +59,11 @@ Step by step: [Getting started](docs/getting-started.md).
 | [Deployment](docs/deployment.md) | Docker, reverse proxy, backups, upgrades |
 | [Configuration](docs/configuration.md) | Environment variables and settings |
 | [Storage](docs/storage.md) | Local disk or an S3-compatible bucket |
-| [Providers](docs/providers.md) | Provider types, models, pricing |
+| [Providers](docs/providers.md) | Providers, supported models, custom models, pricing |
 | [Security](docs/security.md) | Hardening and limits |
 | [FAQ](docs/faq.md) | Common problems |
 | [Development](docs/development.md) | Working on the code |
-| [Writing a provider](docs/writing-a-provider.md) | Adding an upstream API format |
+| [Writing a provider](docs/writing-a-provider.md) | Adding another vendor |
 | [Billing hook](docs/billing-hook.md) | Metering and limits |
 | [HTTP API](docs/api.md) | Endpoint reference |
 | [Architecture](docs/architecture.md) | Frontend/backend contract (Chinese) |

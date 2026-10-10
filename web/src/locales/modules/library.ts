@@ -133,19 +133,19 @@ export default {
           title: '快速上手',
           intro: '无限画布是一块可自由拖动、无限延展的工作台：把「素材」和「模型能力」摆成一个个方块（节点），用线连起来，就拼出一条自动生产流水线 —— 左边放素材 → 中间接模型处理 → 右边出成品。',
           items: [
-            '第一步：到「设置」里连接一个模型接入，填上你自己的 API Key。没有接入，生成节点就没有模型可选。',
+            '第一步：到「设置」里添加一个服务商，填上你自己的 API Key。没有服务商，生成节点就没有模型可选。',
             '第二步：用「画布模板」套一条现成流水线，或在空白处右键自己添加节点。',
             '第三步：换上自己的图和提示词，点顶栏的「运行全部」；满意的成品在节点上右键「存入我的资产」，下次直接复用。',
           ],
         },
         models: {
           title: '连接模型',
-          intro: 'LoomCanvas 自己不提供模型，它调用的是你接入的上游服务，用的是你自己的 API Key。',
+          intro: 'LoomCanvas 自己不提供模型，它调用的是你添加的服务商，用的是你自己的 API Key。',
           items: [
-            '在「设置」里添加模型接入：选一种接入类型，填 API Key（有的类型还要填接口地址），然后做一次连通性测试。',
+            '在「设置」里添加服务商：选一家服务商，看清它支持哪些模型，填 API Key，然后做一次连通性测试。接口地址默认是官方地址，在「高级」里可以改。',
             'API Key 加密保存在你自己的服务端，界面上只显示末四位。',
-            '可选的模型来自接入；价格要你自己在「设置 → 模型」里填，没填的显示「成本未知」。同一页还能启用或停用某个模型、改显示名称和排序。',
-            '设置一共五页：模型接入、模型、限制（并发数、重试次数、图片 / 视频超时、结果保留天数）、外观（站点名称、Logo、默认主题和语言）、用量。',
+            '可选的模型是服务商明确支持的那些，清单以外的可以在「设置 → 模型」里作为自定义模型添加（类型由你指定）；价格也在这一页填，没填的显示「成本未知」。同一页还能启用或停用某个模型、改显示名称和排序。',
+            '设置里有这几页：服务商、模型、存储、限制（并发数、重试次数、图片 / 视频超时、结果保留天数）、外观（站点名称、Logo、默认主题和语言）、用量。',
             '还没有可用模型时，生成节点会提示「还没有可用的模型」，这时去设置里连接即可。',
           ],
         },
@@ -308,7 +308,7 @@ export default {
         faq: {
           title: '常见问题',
           items: [
-            '模型下拉是空的？→ 先到设置里连接一个模型接入，并确认模型已启用。',
+            '模型下拉是空的？→ 先到设置里添加一个服务商，并确认模型已启用。',
             '显示「成本未知」？→ 这个模型没有配置价格。可以照常运行，也可以在设置里给它填上价格。',
             '连不上线？→ 看接口类型（图片接图片、文本接文本），并从右侧（输出）拖到左侧（输入）。',
             '点了运行没反应？→ 检查提示词和参考图是否填全；要跑「全部」或「分支」，得有「成品」节点收口。',
@@ -454,7 +454,7 @@ export default {
           title: 'Quick start',
           intro: 'The canvas is a workspace you can pan and extend without limit. Place your source material and model steps as blocks (nodes), wire them together, and you have a small production pipeline: sources on the left, model steps in the middle, finished work on the right.',
           items: [
-            'Step 1: open Settings and connect a model provider with your own API key. Without a provider, generation nodes have no models to choose from.',
+            'Step 1: open Settings and add a provider with your own API key. Without a provider, generation nodes have no models to choose from.',
             'Step 2: apply a canvas template to get a ready-made pipeline, or right-click the empty canvas and add nodes yourself.',
             'Step 3: swap in your own images and prompts, then click "Run all" in the top bar. Right-click a result you like and choose "Save to my assets" to reuse it later.',
           ],
@@ -463,11 +463,11 @@ export default {
           title: 'Connect models',
           intro: 'LoomCanvas does not ship its own models. It calls the upstream services you connect, using your own API keys.',
           items: [
-            'Add a provider in Settings: pick a provider type, enter the API key (some types also need a base URL), then run the connection test.',
+            'Add a provider in Settings: pick a provider, check which models it supports, enter the API key, then run the connection test. The base URL defaults to the official address and can be changed under Advanced.',
             'API keys are stored encrypted on your own server. The interface only ever shows the last four characters.',
-            'The available models come from the provider. Prices are yours to fill in under Settings → Models; a model without one shows "Cost unknown". On the same page you can enable or disable a model and change its display name and order.',
-            'Settings has five pages: Providers, Models, Limits (concurrency, retries, image / video timeouts, how long results are kept), Appearance (site name, logo, default theme and language) and Usage.',
-            'When no model is available, generation nodes show "No models available yet". Connect a provider in Settings to fix that.',
+            'The available models are the ones the provider explicitly supports; anything else can be added as a custom model under Settings → Models, where you state its type. Prices are filled in on the same page; a model without one shows "Cost unknown". There you can also enable or disable a model and change its display name and order.',
+            'Settings has these pages: Providers, Models, Storage, Limits (concurrency, retries, image / video timeouts, how long results are kept), Appearance (site name, logo, default theme and language) and Usage.',
+            'When no model is available, generation nodes show "No models available yet". Add a provider in Settings to fix that.',
           ],
         },
         ui: {
@@ -629,7 +629,7 @@ export default {
         faq: {
           title: 'FAQ',
           items: [
-            'The model dropdown is empty? Connect a model provider in Settings and make sure its models are enabled.',
+            'The model dropdown is empty? Add a provider in Settings and make sure its models are enabled.',
             'Seeing "Cost unknown"? That model has no price configured. Run it as usual, or add a price for it in Settings.',
             'A wire won\'t connect? Check the port types (image to image, text to text) and drag from the right side (output) to the left side (input).',
             'Nothing happens when you click Run? Check that the prompt and reference images are filled in. "Run all" and "Run this branch" need an Output node.',

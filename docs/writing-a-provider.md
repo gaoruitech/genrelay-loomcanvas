@@ -2,32 +2,42 @@
 
 [简体中文](writing-a-provider.zh-CN.md)
 
-A provider type is one CommonJS module in `server/src/providers/`. It translates between LoomCanvas runs and one upstream API format. This guide describes the interface exactly as the registry and the runner use it.
+A vendor is two files: a CommonJS module in `server/src/providers/` that translates between LoomCanvas runs and the vendor's API, and a catalog in `server/src/providers/catalog/` that states which models the vendor supports. This guide describes both exactly as the registry and the runner use them.
 
-Read the built-in ones alongside this page: `gaorui.js` (asynchronous tasks), `openaiCompatible.js` and `gemini.js` (synchronous).
+Read the built-in ones alongside this page: `gaorui.js` (asynchronous tasks), `openai.js` and `gemini.js` (synchronous), and their catalogs `catalog/gaorui.json`, `catalog/openai.json`, `catalog/gemini.json`.
 
-## What the plugin does and does not do
+Two rules apply to every vendor:
 
-| The plugin | LoomCanvas |
+- **Models are stated, never inferred.** A vendor's models are the entries of its catalog. A module does not fetch a model list from the upstream to offer it, and nothing may derive a model's kind or abilities from its name. `server/test/vendors.test.js` fails if a vendor module has a function that lists models from the upstream, or tests a model name against a pattern.
+- **Official API only for vendors other than Gaorui.** Gaorui's API is our own and may be non-standard. Any other vendor module sends what that vendor's official API documents and nothing else: no relay extensions, no private fields. A user may point a provider at another address, but only one that speaks the same official API.
+
+## What the module does and does not do
+
+| The vendor module and catalog | LoomCanvas |
 | --- | --- |
-| Lists its models | Prefixes ids with the instance slug, applies admin overrides, caches the list |
-| Builds upstream requests, reads responses | Decrypts the key, validates input, queues, enforces deadlines, retries, cancels |
-| Returns where the result is | Downloads it into storage, sniffs its type, makes thumbnails |
-| Reports token usage for chat | Estimates and records cost, calls the billing hook |
+| State the vendor's models and what a custom model gets | Prefixes ids with the provider's slug, adds the user's custom models, applies admin overrides |
+| Build upstream requests, read responses | Decrypts the key, validates input, queues, enforces deadlines, retries, cancels |
+| Return where the result is | Downloads it into storage, sniffs its type, makes thumbnails |
+| Report token usage for chat | Estimates and records cost, calls the billing hook |
 
-A plugin never touches the database or the storage.
+A vendor module never touches the database or the storage.
 
 ## The module shape
 
 ```js
-module.exports = {
-  type: 'acme',                 // required, /^[a-z0-9-]+$/, stable forever
-  label: 'Acme',                // display name
-  defaultBaseUrl: 'https://…',  // optional
-  fields: [ /* form fields */ ],// required (may be empty)
-  sync: false,                  // optional, see "Sync and async"
+const { loadCatalog } = require('./catalog')
 
-  async listModels(cfg, { signal }) {},
+module.exports = {
+  type: 'acme',                       // required, /^[a-z0-9-]+$/, stable forever: the vendor id
+  label: 'Acme',                      // display name
+  defaultBaseUrl: 'https://…',        // the vendor's official address
+  catalog: loadCatalog('acme'),       // required: catalog/acme.json, validated
+  customKinds: ['image', 'chat'],     // required (may be empty): kinds a user may add by hand
+  customSpec: (kind) => CUSTOM[kind], // required: what a custom model of that kind gets
+  sync: false,                        // optional, see "Sync and async"
+  recommended: false,                 // optional: shows the "Recommended" badge
+  keyUrl: '',                         // optional: the "Get an API key" link in the form
+
   async test(cfg, { signal }) {},
   async submit(cfg, run) {},
   async poll(cfg, run) {},
@@ -35,45 +45,108 @@ module.exports = {
 }
 ```
 
-All five functions are required; `register()` throws at startup if one is missing. A function your upstream has no use for must still exist and throw (see the example).
+`register()` throws at startup when:
 
-### `fields`
+- `type` is missing or not lowercase letters, digits and hyphens;
+- one of `customSpec`, `test`, `submit`, `poll`, `chat` is not a function. A function your upstream has no use for must still exist and throw (see the example);
+- `catalog` is not an array;
+- `customKinds` is not an array, contains something other than `image`, `video` or `chat`, or lists a kind for which `customSpec(kind)` returns nothing.
 
-Each entry describes one input of the provider form.
-
-| Property | Type | Meaning |
-| --- | --- | --- |
-| `key` | string | Field name. Two keys are special, see below. |
-| `label` | string | Shown next to the input. |
-| `type` | `'text'` \| `'password'` \| `'textarea'` | Optional. Defaults to `password` when `secret`, else `text`. |
-| `secret` | boolean | Mask the input. |
-| `required` | boolean | The server enforces it for `apiKey` and `baseUrl`; the form checks the rest. |
-| `placeholder`, `help` | string | Optional hints. |
-
-- `apiKey` is encrypted at rest and reaches you as `cfg.apiKey`.
-- `baseUrl` is validated as an `http(s)` URL without credentials and reaches you as `cfg.baseUrl` (or `defaultBaseUrl` when the user left it empty).
-- Every other field is stored as a plain string (up to 5000 characters) and reaches you as `cfg.<key>`. Do not put secrets in them.
+There are no form fields to declare. Every vendor has the same form: API key, name, and the base URL under **Advanced**.
 
 ### `cfg`
 
-`{ baseUrl, apiKey, ...your other fields }`, with the key already decrypted. Never log it and never put it in an error message.
+`{ baseUrl, apiKey }`, with the key already decrypted. `baseUrl` is the address the user entered under **Advanced**, or your `defaultBaseUrl` when they did not. It is validated as an `http(s)` URL without credentials. Never log the key and never put it in an error message.
+
+## The catalog file
+
+`server/src/providers/catalog/<type>.json` has exactly three sections, and all three must be present. A vendor without models of some kind writes an empty list, so "none" is stated rather than implied.
+
+```json
+{
+  "image": [
+    {
+      "id": "acme-image-1",
+      "label": "Acme Image 1",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 4,
+      "options": { "aspectRatios": ["1:1", "16:9", "9:16"], "resolutions": ["1K", "2K"] },
+      "defaults": { "aspectRatio": "1:1", "resolution": "1K", "count": 1 }
+    }
+  ],
+  "video": [],
+  "chat": []
+}
+```
+
+**The section an entry sits in is its kind.** An entry must not carry a `kind` field.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | string | The upstream model name, sent as is. Letters, digits and `. _ - : / @`, up to 120 characters. Becomes `<slug>:<id>`. Unique across the whole file. |
+| `label` | string | Display name. Required, not empty. |
+| `acceptsImage` | boolean | Reference images are accepted. For a chat model: it can read images. A chat model with `false` is text only: a chat request with images for it is refused with `model.no_image_input` before it reaches the module, and the Language model node does not send connected images to it. |
+| `maxReferenceImages` | integer ≥ 0 | How many. Must be greater than 0 exactly when `acceptsImage` is `true`. |
+| `acceptsVideo` | boolean | A video is accepted: for a video model as the source, for a chat model to read. A chat model with this flag is offered in the Video analysis node, and your `chat` receives `videoUrl`. A chat request with a video for a model without it is refused with `model.no_video_input` before it reaches the module. The OpenAI API has no content part for a video, so `chatCompletion()` in `openaiShared.js` refuses one too, unless the module states how its upstream takes it (the Gaorui module passes `{ videoAsImageUrl: true }`). |
+| `videoEdit` | boolean | Offer this model in the Video edit node (and not in Video generation). Only allowed in the `video` section, on a model with `acceptsVideo`. |
+| `options.aspectRatios` | string[] | Choices in the parameters dropdown. `'auto'` is conventional for "let the model decide". |
+| `options.resolutions` | string[] | For example `["1K", "2K"]` or `["720p"]`. |
+| `options.durations` | number[] | Seconds. |
+| `options.counts` | number[] | How many results per click. |
+| `options.imgModes` | string[] | `"multi"` (reference images) and/or `"frames"` (first and last frame). Arrives as `params.imgMode`. |
+| `defaults` | object | Initial parameter values, merged under what the node sends: `aspectRatio`, `resolution`, `duration`, `imgMode`, `count`. |
+| `_anything` | any | Private to the vendor module, never served. See below. |
+
+The validator (`validateCatalog` in `catalog/index.js`) runs when the module is loaded and throws on the first problem, so a broken catalog stops the server at startup instead of surfacing later as a model that half works. Beyond the table above it requires:
+
+- no sections other than `image`, `video`, `chat`;
+- all three flags (`acceptsImage`, `acceptsVideo`, `videoEdit`) written out as `true` or `false`, and `options` and `defaults` present as objects (`{}` when empty);
+- no unknown fields. There is no `desc`, `tag` or `pricing` in a catalog: descriptions are i18n keys (below), and prices are entered by the operator;
+- every option list non-empty, of the right type, without duplicates. An option list that is absent means the node does not show that control;
+- every default taken from the matching option list (`defaults.aspectRatio` from `options.aspectRatios`, and so on). `defaults.count` is a positive integer, and one of `options.counts` when that list exists.
+
+**Private fields.** A field whose name starts with `_` passes validation and is dropped before a spec leaves the server. Use it for what only your module needs, such as which request format a model takes (`"_protocol"` in `catalog/gaorui.json`). Private fields are not on `run.spec`; look the entry up in your own catalog by `run.model`.
+
+**Where the entries come from.** For the built-in OpenAI and Gemini catalogs, the source of each entry is recorded in `server/src/providers/catalog/SOURCES.md`. Do the same for a vendor you add.
+
+**Descriptions and names.** Both server message catalogs (`server/src/i18n/en.js` and `zh-CN.js`) carry:
+
+- `provider.<type>.label`: the vendor's name. Without it, the `label` you declared is shown.
+- `model.<type>.<model id>.desc`: a one-line description of each catalog model, shown in the model dropdown and in the supported-models list.
+
+For the built-in vendors, `server/test/i18n.test.js` requires the label key and a `desc` key for every catalog model, in both languages, and rejects keys of these two shapes that belong to no known vendor or model. Its list of vendors is written out in the test, so add yours there.
+
+## Custom models
+
+A user can add a model your catalog does not list (see [Providers](providers.md#custom-models)). They state its name and its kind. You decide which kinds are possible and what such a model gets:
+
+```js
+const CUSTOM = {
+  image: {
+    acceptsImage: true,
+    acceptsVideo: false,
+    videoEdit: false,
+    maxReferenceImages: 4,
+    options: { aspectRatios: ['1:1', '16:9', '9:16'] },
+    defaults: { aspectRatio: '1:1', count: 1 },
+  },
+}
+```
+
+- `customKinds` lists the kinds a user may pick. Leave a kind out when there is no request that fits any model of that kind. All three built-in vendors leave out `video`.
+- `customSpec(kind)` returns the abilities and parameters for that kind, in the same shape as a catalog entry without `id` and `label`. The registry adds the name, the kind and `custom: true`.
+- A custom model reaches `submit` and `chat` like any other. `run.model` is the name the user typed, `run.kind` the kind they chose, and `run.spec.custom` is `true`. It has no catalog entry, so a module that picks a request format per catalog entry needs a fallback by `run.kind` (see `protocolOf` in `gaorui.js`).
+- The registry refuses a custom model whose name is in your catalog, and one of a kind you did not list.
 
 ## Functions
 
-### `listModels(cfg, { signal }) → ModelSpec[]`
+### `test(cfg, { signal }) → { ok?, message? }`
 
-Return the models this instance offers, with ids local to the upstream (no slug prefix). Called with a 12-second abort signal; the result is cached for five minutes.
+Connection test behind the **Test connection** button, with a 20-second abort signal. Do something cheap that proves the address and key work. The built-in modules call the upstream's model-list endpoint for this and discard the list.
 
-- If it throws, the last good list is used, or an empty list when there is none. So a fixed catalog should not depend on the network.
-- It may be called before a key is set. Return what you can instead of throwing.
-
-See [ModelSpec reference](#modelspec-reference).
-
-### `test(cfg, { signal }) → { ok?, message?, modelCount? }`
-
-Connection test behind the **Test connection** button, with a 20-second abort signal. Do something cheap that proves the address and key work.
-
-- Return `{ ok: true, modelCount }` on success. `message` is optional; without it a standard "Connected" is shown.
+- Return `{ ok: true }` on success. `message` is optional; without it a standard "Connected" is shown.
 - Throw on failure. A user-facing error's message is shown; anything else shows "Connection failed".
 
 ### `submit(cfg, run) → { externalId } | { outputs }`
@@ -108,8 +181,8 @@ One chat completion for the Language model and Video analysis nodes. `usage` is 
 | --- | --- |
 | `id` | Run id (string). |
 | `kind` | `'image'`, `'video'` or `'chat'`. |
-| `model` | The upstream model id (your spec's `id`, without the slug). |
-| `spec` | The merged ModelSpec, or `null` if the model has since disappeared from your list. |
+| `model` | The upstream model name, without the slug: the catalog entry's `id`, or the name of a custom model. |
+| `spec` | The merged [ModelSpec](#modelspec-reference), or `null` if the model has since been removed (a deleted custom model). `spec.maxReferenceImages` is the model's reference image limit, available for capping what you send; `spec.custom` tells a custom model from a catalog one. |
 | `prompt`, `systemPrompt` | Strings, possibly empty. |
 | `imageUrls` | Canvas URLs of reference images, already cut to the model's `maxReferenceImages`. |
 | `videoUrls`, `videoUrl` | Source video (at most one), only for models with `acceptsVideo`, chat models included. |
@@ -157,9 +230,9 @@ The URL that `toRef` and `toPublicUrl` return is for the upstream request you ar
 
 Set `sync: true` whenever `submit` waits for the finished result. Without it, the call is cut off after the submit timeout.
 
-An async plugin may still return `{ outputs }` from `submit` for individual requests; that works too.
+An async vendor module may still return `{ outputs }` from `submit` for individual requests; that works too.
 
-Restart behaviour of a run that has no `externalId` yet: nothing is sent to an upstream twice. If the server shuts down before `submit` (or `chat`) was called for the run, it goes back to the queue and is submitted by the next process. If the call had started, the run fails with `run.interrupted`, because nobody knows whether the upstream accepted it; the same happens to runs found in that state after a crash. A sync plugin never has an `externalId`, so each of its runs that is in flight when the server stops ends this way, and so does every `chat` call.
+Restart behaviour of a run that has no `externalId` yet: nothing is sent to an upstream twice. If the server shuts down before `submit` (or `chat`) was called for the run, it goes back to the queue and is submitted by the next process. If the call had started, the run fails with `run.interrupted`, because nobody knows whether the upstream accepted it; the same happens to runs found in that state after a crash. A sync vendor module never has an `externalId`, so each of its runs that is in flight when the server stops ends this way, and so does every `chat` call.
 
 ## Errors
 
@@ -202,60 +275,81 @@ Other rules:
 - Many APIs answer HTTP 200 with an error inside the body. Check for it and throw.
 - If you need a new message, add the key to **both** catalogs; `server/test/i18n.test.js` fails when the two differ, when code uses a missing key, or when a catalog key is unused. Reusing existing `upstream.*` keys avoids that work.
 
-Display names can be localized the same way, by adding `provider.<type>.label` and `provider.<type>.field.<key>.label` / `.help` to both catalogs. Without them, the `label` and `help` you declared are shown.
+The vendor's name and the model descriptions are entries of the same two message catalogs; see [The catalog file](#the-catalog-file).
 
 ## ModelSpec reference
 
-What `listModels` returns for each model. Unknown properties (and anything starting with `_`) are dropped before the spec leaves the server, so you can keep private data such as a protocol name on the same object.
+What the server serves for each model (`GET /api/models`, `run.spec`). It is built from a catalog entry or from `customSpec(kind)`; you do not write it yourself.
 
-| Property | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `id` | string | required | Upstream model id. Becomes `<slug>:<id>`. |
-| `kind` | `'image'` \| `'video'` \| `'chat'` | required | Entries with another kind are dropped. |
-| `label` | string | `id` | Display name. |
-| `desc` | string | none | One-line description in the dropdown. |
-| `tag` | string | none | Small badge in the dropdown. |
-| `acceptsImage` | boolean | `false` | Reference images are accepted. |
-| `acceptsVideo` | boolean | `false` | A source video is accepted. For a chat model: it is offered in the Video analysis node, and your `chat` receives `videoUrl`. A chat request with a video for a model without this flag is refused with `model.no_video_input` before it reaches the plugin. |
-| `videoEdit` | boolean | `false` | Offer this model in the Video edit node (and not in Video generation). |
-| `maxReferenceImages` | integer | `0` | Extra images are cut off before `submit`. |
-| `options.aspectRatios` | string[] | none | Choices in the parameters dropdown. `'auto'` is conventional for "let the model decide". |
-| `options.resolutions` | string[] | none | For example `['1K', '2K']` or `['720p']`. |
-| `options.durations` | number[] | none | Seconds. |
-| `options.counts` | number[] | none | How many results per click. The canvas submits one run per unit. |
-| `options.imgModes` | string[] | none | `'multi'` (reference images) and/or `'frames'` (first and last frame). Arrives as `params.imgMode`. |
-| `defaults` | object | `{}` | Initial parameter values, merged under what the node sends. |
-| `pricing` | object | none | Only if you are sure of the price. Without it the model shows "Cost unknown" and the operator can enter a price. See [Providers](providers.md#pricing). |
+| Property | From | Meaning |
+| --- | --- | --- |
+| `id` | the provider's slug and the entry's `id` | `<slug>:<id>` |
+| `providerId`, `providerName`, `providerType` | the provider | Its database id, its name, and the vendor id. |
+| `kind` | the catalog section, or the kind the user chose | `'image'`, `'video'` or `'chat'` |
+| `label` | the entry's `label`; for a custom model the user's display name, else the model name | Display name. An admin override can replace it. |
+| `custom` | | `true` for a custom model, `false` for a catalog model. |
+| `desc` | `model.<type>.<model id>.desc` | One-line description, in the reader's language. Catalog models only. |
+| `acceptsImage`, `acceptsVideo`, `videoEdit`, `maxReferenceImages`, `options`, `defaults` | the entry or `customSpec(kind)` | As in [the catalog file](#the-catalog-file). An admin override can change `defaults`. |
+| `pricing` | the admin override | Only when the operator entered a price. Without it the model shows "Cost unknown". See [Providers](providers.md#pricing). |
 
-An option list that is absent means the node does not show that control.
+Private (`_`) fields and anything not in this table are dropped.
 
 ## A worked example
 
-An imaginary upstream with this API:
+An imaginary vendor whose official API is:
 
 - `GET /v1/me` → 200 when the key is valid
 - `POST /v1/generate` `{ model, prompt, images, ratio, size }` → `{ task_id }`
 - `GET /v1/tasks/:id` → `{ state: 'working' | 'done' | 'failed', percent, image_url, message }`
+
+`server/src/providers/catalog/acme.json`:
+
+```json
+{
+  "image": [
+    {
+      "id": "acme-image-1",
+      "label": "Acme Image 1",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 4,
+      "options": { "aspectRatios": ["1:1", "16:9", "9:16"], "resolutions": ["1K", "2K"] },
+      "defaults": { "aspectRatio": "1:1", "resolution": "1K", "count": 1 }
+    }
+  ],
+  "video": [],
+  "chat": []
+}
+```
 
 `server/src/providers/acme.js`:
 
 ```js
 'use strict'
 
+const { loadCatalog } = require('./catalog')
 const { request, ProviderError, trimBase } = require('./http')
 const { msg } = require('../i18n')
 
-const MODELS = [
-  {
-    id: 'acme-image-1',
-    label: 'Acme Image 1',
-    kind: 'image',
+const DEFAULT_BASE_URL = 'https://api.acme.example'
+
+// What a model the user added by hand gets. No resolution option: sizes
+// differ per model, so a custom one is left at the model's own default.
+const CUSTOM = {
+  image: {
     acceptsImage: true,
+    acceptsVideo: false,
+    videoEdit: false,
     maxReferenceImages: 4,
-    options: { aspectRatios: ['1:1', '16:9', '9:16'], resolutions: ['1K', '2K'] },
-    defaults: { aspectRatio: '1:1', resolution: '1K', count: 1 },
+    options: { aspectRatios: ['1:1', '16:9', '9:16'] },
+    defaults: { aspectRatio: '1:1', count: 1 },
   },
-]
+}
+
+function base(cfg) {
+  return trimBase(cfg.baseUrl || DEFAULT_BASE_URL)
+}
 
 function auth(cfg) {
   if (!cfg.apiKey) throw new ProviderError('provider.api_key_missing')
@@ -265,28 +359,26 @@ function auth(cfg) {
 module.exports = {
   type: 'acme',
   label: 'Acme',
-  defaultBaseUrl: 'https://api.acme.example',
-  fields: [
-    { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: 'Base URL', placeholder: 'https://api.acme.example' },
-  ],
-
-  async listModels() {
-    return MODELS
-  },
+  defaultBaseUrl: DEFAULT_BASE_URL,
+  catalog: loadCatalog('acme'),
+  // This API has no chat and no video endpoint, so only images can be added by hand.
+  customKinds: ['image'],
+  customSpec: (kind) => CUSTOM[kind],
 
   async test(cfg, { signal } = {}) {
-    await request({ url: `${trimBase(cfg.baseUrl)}/v1/me`, headers: auth(cfg), signal, timeoutMs: 15000 })
-    return { ok: true, modelCount: MODELS.length }
+    await request({ url: `${base(cfg)}/v1/me`, headers: auth(cfg), signal, timeoutMs: 15000 })
+    return { ok: true }
   },
 
   async submit(cfg, run) {
+    if (run.kind !== 'image') throw new ProviderError('provider.model_not_supported', { model: run.model })
     if (!run.prompt) throw new ProviderError('run.prompt_required')
+    const max = (run.spec && run.spec.maxReferenceImages) || CUSTOM.image.maxReferenceImages
     const images = []
-    for (const url of run.imageUrls || []) images.push(await run.media.toRef(url))
+    for (const url of (run.imageUrls || []).slice(0, max)) images.push(await run.media.toRef(url))
     const data = await request({
       method: 'POST',
-      url: `${trimBase(cfg.baseUrl)}/v1/generate`,
+      url: `${base(cfg)}/v1/generate`,
       headers: { 'Content-Type': 'application/json', ...auth(cfg) },
       data: { model: run.model, prompt: run.prompt, images, ratio: run.params.aspectRatio, size: run.params.resolution },
       signal: run.signal,
@@ -298,7 +390,7 @@ module.exports = {
 
   async poll(cfg, run) {
     const data = await request({
-      url: `${trimBase(cfg.baseUrl)}/v1/tasks/${encodeURIComponent(run.externalId)}`,
+      url: `${base(cfg)}/v1/tasks/${encodeURIComponent(run.externalId)}`,
       headers: auth(cfg),
       signal: run.signal,
       timeoutMs: 20000,
@@ -318,21 +410,34 @@ module.exports = {
 }
 ```
 
+Messages, in both `server/src/i18n/en.js` and `zh-CN.js`:
+
+```js
+'provider.acme.label': 'Acme',
+'model.acme.acme-image-1.desc': 'Image generation with up to 4 reference images',
+```
+
 ## Registering it
 
-Add one line to `server/src/providers/index.js`, next to the built-in ones:
+Add one line to `server/src/providers/index.js`, after the built-in ones. Registration order is display order:
 
 ```js
 register(require('./acme'))
 ```
 
-Restart the server. The type appears in **Settings → Providers → Add provider** and on the setup page. No frontend change is needed: the form is drawn from `fields`.
+Then update the tests that pin the set of vendors on purpose:
 
-There is no way to load a provider from outside the source tree yet; a provider is part of your build.
+- `server/test/registry.test.js`: the list of registered vendor ids and their order.
+- `server/test/vendors.test.js`: the `VENDORS` list, and the model names each catalog holds.
+- `server/test/i18n.test.js`: the list of vendors whose label and description keys are required.
+
+Restart the server. The vendor appears in **Settings → Providers → Add provider** and on the setup page, with its supported models. No frontend change is needed: the page is drawn from `GET /api/admin/vendors`. Optionally add `settings.vendors.acme` (`label`, `desc`) to `web/src/locales/modules/settings.ts` for the one-line description on the vendor card, and so that the name follows a language switch without a reload.
+
+There is no way to load a vendor from outside the source tree yet; a vendor is part of your build.
 
 ## Testing against a fake upstream
 
-The project tests providers by starting a small HTTP server that records requests and answers from a route table, then calling the plugin functions directly. Copy the pattern from `server/test/providers.test.js`. For the example above, `server/test/acme.test.js`:
+The project tests vendor modules by starting a small HTTP server that records requests and answers from a route table, then calling the module's functions directly. Copy the pattern from `server/test/providers.test.js`. For the example above, `server/test/acme.test.js`:
 
 ```js
 'use strict'
@@ -408,10 +513,11 @@ npm test
 What such a test proves, and what it does not:
 
 - It pins the request you send and the responses you accept.
-- It does **not** prove the real upstream agrees. Run at least one real generation before relying on a provider.
+- It does **not** prove the real upstream agrees. Run at least one real generation before relying on a vendor module.
 
-For the layers around the plugin:
+For the layers around the module:
 
+- `server/test/vendors.test.js` checks every catalog against the validator, the custom-model rules of each vendor, and that no code reads a kind off a model name. `server/test/vendors.e2e.test.js` does the same through the admin API.
 - `server/test/runner.test.js` drives the runner with stub providers and an in-memory store (`runner/memoryStore.js`): deadlines, retries, cancellation, restart.
 - `server/test/api.e2e.test.js` runs the whole server over HTTP against a fake upstream, including the download of results. It sets `SSRF_ALLOW_HOSTS`-style access to `127.0.0.1` so the fake upstream's result links can be fetched.
-- To try a plugin by hand against a fake upstream on your machine, start the server with `SSRF_ALLOW_HOSTS=127.0.0.1`. Do not set that in production.
+- To try a vendor module by hand against a fake upstream on your machine, start the server with `SSRF_ALLOW_HOSTS=127.0.0.1`. Do not set that in production.

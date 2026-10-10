@@ -26,6 +26,8 @@
       <div class="va-section">
         <ChipSelect v-if="modelOpts.length" :label="t('nodes.field.model')" :model-value="model" :options="modelOpts" @update:model-value="v => selectModel(String(v))" />
         <div v-else class="va-hint">{{ t('executor.noChatModel') }}</div>
+        <!-- 纯文本模型却连着图片：说清楚这些图不会发出去 -->
+        <div v-if="!readsImages && imageCount" class="va-hint llm-noimg">{{ t('nodeui.llm.imagesIgnored', { n: imageCount }) }}</div>
       </div>
       <!-- 多条文本输入的拼接顺序 -->
       <div v-if="textInputs.length > 1" class="va-section">
@@ -86,7 +88,8 @@
       </div>
     </div>
 
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :style="{ top: '38%' }" :title="t('nodeui.llm.imageIn')" />
+    <!-- 纯文本模型：图片口变灰且不再接受新连线 -->
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image" :class="{ 'h-off': !readsImages }" :connectable="readsImages" :style="{ top: '38%' }" :title="readsImages ? t('nodeui.llm.imageIn') : t('nodeui.llm.imageInOff')" />
     <Handle id="text-in" type="target" :position="Position.Left" class="h-text" :style="{ top: '66%' }" :title="t('nodeui.llm.textIn')" />
     <Handle id="text-out" type="source" :position="Position.Right" class="h-text" />
 
@@ -132,7 +135,8 @@ import { useI18n } from 'vue-i18n'
 import ChipSelect from './ChipSelect.vue'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
-import { listChatModels } from '@/utils/canvasModels'
+import { chatReadsImages, listChatModels, modelTag } from '@/utils/canvasModels'
+import { capsSummary } from '@/utils/modelCaps'
 import { localizedModelDesc } from '@/utils/builtinContent'
 import { formatCost, formatEstimate } from '@/utils/cost'
 import type { Cost } from '@/types'
@@ -171,13 +175,22 @@ const charCount = computed(() => (props.data.text || '').length)
 const expanded = ref(false)
 
 // 可选模型：设置里已启用的对话类模型
-const modelOpts = computed(() => listChatModels().map(m => ({ value: m.id, label: m.label || m.id, desc: localizedModelDesc(m.id, m.desc), tag: m.tag })))
+// 每行副标题：模型自己的一句话说明 + 它读不读图（「纯文本」/「可读图片，最多 N 张」）
+const modelOpts = computed(() => listChatModels().map(m => ({
+  value: m.id,
+  label: m.label || m.id,
+  desc: [localizedModelDesc(m.id, m.desc), capsSummary(m)[0]].filter(Boolean).join(' · '),
+  tag: modelTag(m),
+})))
 // 当前生效的模型：存的那个还在清单里就用它，否则落到第一个（与执行器的回退一致）
 const model = computed(() => {
   const chosen = props.data.model || ''
   if (chosen && modelOpts.value.some(o => o.value === chosen)) return chosen
   return modelOpts.value[0]?.value || ''
 })
+// 当前模型读不读图；纯文本模型时图片口关掉，已连着的图片数量用来提示
+const readsImages = computed(() => !model.value || chatReadsImages(model.value))
+const imageCount = computed(() => edges.value.filter((e: any) => e.target === props.id && e.targetHandle === 'image-in').length)
 function selectModel(v: string) {
   updateNodeData(props.id, { model: v })
 }
@@ -288,6 +301,8 @@ function handleCancel() {
   margin-top: 2px;
 }
 .va-hint { font-size: 11px; color: var(--t-dim); line-height: 1.5; }
+.llm-noimg { color: var(--warning); }
+:global(.vue-flow__handle.h-image.h-off) { border-color: var(--line-2); opacity: .55; cursor: not-allowed; }
 .va-cost { font-size: 11px; color: var(--accent-text); white-space: nowrap; }
 .va-footer .va-run-wrap { margin-left: auto; }
 

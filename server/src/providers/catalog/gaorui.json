@@ -1,125 +1,173 @@
-[
-  {
-    "id": "nano-banana-pro",
-    "label": "Nano Banana Pro",
-    "kind": "image",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 8,
-    "options": {
-      "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
-      "resolutions": ["1K", "2K", "4K"]
+{
+  "image": [
+    {
+      "id": "nano-banana-pro",
+      "label": "Nano Banana Pro",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
+      "_protocol": "nano-banana"
     },
-    "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
-    "_protocol": "nano-banana"
-  },
-  {
-    "id": "nano-banana-2",
-    "label": "Nano Banana 2",
-    "kind": "image",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 8,
-    "options": {
-      "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
-      "resolutions": ["1K", "2K", "4K"]
+    {
+      "id": "nano-banana-2",
+      "label": "Nano Banana 2",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
+      "_protocol": "nano-banana"
     },
-    "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
-    "_protocol": "nano-banana"
-  },
-  {
-    "id": "nano-banana-2.1",
-    "label": "Nano Banana 2.1",
-    "kind": "image",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 8,
-    "options": {
-      "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
-      "resolutions": ["1K", "2K", "4K"]
+    {
+      "id": "nano-banana-2.1",
+      "label": "Nano Banana 2.1",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
+      "_protocol": "nano-banana"
     },
-    "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
-    "_protocol": "nano-banana"
-  },
-  {
-    "id": "nano-banana-2-lite",
-    "label": "Nano Banana 2 Lite",
-    "kind": "image",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 8,
-    "options": {
-      "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
-      "resolutions": ["1K"]
+    {
+      "id": "nano-banana-2-lite",
+      "label": "Nano Banana 2 Lite",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "16:9", "9:16", "21:9"],
+        "resolutions": ["1K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
+      "_protocol": "nano-banana"
+    }
+  ],
+  "video": [
+    {
+      "id": "omni-flash",
+      "label": "Omni Flash",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 5,
+      "options": {
+        "aspectRatios": ["16:9", "9:16"],
+        "resolutions": ["720p", "1080p", "4k"],
+        "durations": [6, 8, 10],
+        "imgModes": ["multi", "frames"]
+      },
+      "defaults": { "aspectRatio": "16:9", "resolution": "720p", "duration": 6, "imgMode": "multi", "count": 1 },
+      "_protocol": "videos-omni-flash"
     },
-    "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 },
-    "_protocol": "nano-banana"
-  },
-  {
-    "id": "omni-flash",
-    "label": "Omni Flash",
-    "kind": "video",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 5,
-    "options": {
-      "aspectRatios": ["16:9", "9:16"],
-      "resolutions": ["720p", "1080p", "4k"],
-      "durations": [6, 8, 10],
-      "imgModes": ["multi", "frames"]
+    {
+      "id": "omni-flash-edit",
+      "label": "Omni Flash Edit",
+      "acceptsImage": true,
+      "acceptsVideo": true,
+      "videoEdit": true,
+      "maxReferenceImages": 5,
+      "options": {
+        "aspectRatios": ["16:9", "9:16"],
+        "resolutions": ["720p", "1080p", "4k"]
+      },
+      "defaults": { "aspectRatio": "16:9", "resolution": "720p", "count": 1 },
+      "_protocol": "videos-omni-flash-edit"
     },
-    "defaults": { "aspectRatio": "16:9", "resolution": "720p", "duration": 6, "imgMode": "multi", "count": 1 },
-    "_protocol": "videos-omni-flash"
-  },
-  {
-    "id": "omni-flash-edit",
-    "label": "Omni Flash Edit",
-    "kind": "video",
-    "acceptsImage": true,
-    "acceptsVideo": true,
-    "videoEdit": true,
-    "maxReferenceImages": 5,
-    "options": {
-      "aspectRatios": ["16:9", "9:16"],
-      "resolutions": ["720p", "1080p", "4k"]
+    {
+      "id": "sora-2-openai-12s",
+      "label": "Sora 2 (12s)",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 1,
+      "options": {
+        "aspectRatios": ["9:16", "16:9"],
+        "durations": [12]
+      },
+      "defaults": { "aspectRatio": "9:16", "duration": 12, "count": 1 },
+      "_protocol": "videos-sora-openai"
     },
-    "defaults": { "aspectRatio": "16:9", "resolution": "720p", "count": 1 },
-    "_protocol": "videos-omni-flash-edit"
-  },
-  {
-    "id": "sora-2-openai-12s",
-    "label": "Sora 2 (12s)",
-    "kind": "video",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 1,
-    "options": {
-      "aspectRatios": ["9:16", "16:9"],
-      "durations": [12]
+    {
+      "id": "grok-imagine-video-1.5-preview",
+      "label": "Grok Video 1.5",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 5,
+      "options": {
+        "aspectRatios": ["9:16", "16:9", "1:1", "3:2", "2:3"],
+        "resolutions": ["480p", "720p"],
+        "durations": [4, 6, 8, 10, 12, 15]
+      },
+      "defaults": { "aspectRatio": "9:16", "resolution": "480p", "duration": 10, "count": 1 },
+      "_protocol": "videos-grok-15"
+    }
+  ],
+  "chat": [
+    {
+      "id": "deepseek-v4-pro",
+      "label": "DeepSeek V4 Pro",
+      "acceptsImage": false,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 0,
+      "options": {},
+      "defaults": {}
     },
-    "defaults": { "aspectRatio": "9:16", "duration": 12, "count": 1 },
-    "_protocol": "videos-sora-openai"
-  },
-  {
-    "id": "grok-imagine-video-1.5-preview",
-    "label": "Grok Video 1.5",
-    "kind": "video",
-    "acceptsImage": true,
-    "acceptsVideo": false,
-    "videoEdit": false,
-    "maxReferenceImages": 5,
-    "options": {
-      "aspectRatios": ["9:16", "16:9", "1:1", "3:2", "2:3"],
-      "resolutions": ["480p", "720p"],
-      "durations": [4, 6, 8, 10, 12, 15]
+    {
+      "id": "gpt-5.5",
+      "label": "GPT 5.5",
+      "acceptsImage": false,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 0,
+      "options": {},
+      "defaults": {}
     },
-    "defaults": { "aspectRatio": "9:16", "resolution": "480p", "duration": 10, "count": 1 },
-    "_protocol": "videos-grok-15"
-  }
-]
+    {
+      "id": "glm-5.3",
+      "label": "GLM 5.3",
+      "acceptsImage": false,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 0,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-6-astra",
+      "label": "GPT 6 Astra",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gemini-3.5-flash-c",
+      "label": "Gemini 3.5 Flash",
+      "acceptsImage": true,
+      "acceptsVideo": true,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    }
+  ]
+}

@@ -1,52 +1,32 @@
-import type { ProviderField, ProviderType } from '@/types'
+import type { Vendor } from '@/types'
 import { i18n } from '@/locales'
 
-/** 「高睿 API」申请 Key 的地址 */
-export const GAORUI_URL = 'https://gaorui.cc'
-
-export type ProviderFamily = 'gaorui' | 'openai' | 'gemini' | 'other'
-
-/** 按类型标识归到几个已知家族，用于引导页的排序与说明文案 */
-export function providerFamily(type: ProviderType | string): ProviderFamily {
-  const id = (typeof type === 'string' ? type : type.type).toLowerCase()
-  if (id.includes('gaorui')) return 'gaorui'
-  if (id.includes('openai')) return 'openai'
-  if (id.includes('gemini')) return 'gemini'
-  return 'other'
-}
-
-export function isGaorui(type: ProviderType | string): boolean {
-  return providerFamily(type) === 'gaorui'
-}
-
-const ORDER: Record<ProviderFamily, number> = { gaorui: 0, openai: 1, gemini: 2, other: 3 }
-
-/** 引导页卡片顺序：高睿 API 排第一，其余保持后端给的顺序 */
-export function sortProviderTypes(types: ProviderType[]): ProviderType[] {
-  return types
-    .map((tp, i) => ({ tp, i }))
-    .sort((a, b) => (ORDER[providerFamily(a.tp)] - ORDER[providerFamily(b.tp)]) || (a.i - b.i))
-    .map(x => x.tp)
-}
-
 /*
- * 接入类型和它的表单字段，名字是后端声明里带的（固定一种语言）。
- * 内置的三种类型在语言文件里各有一份译文（settings.providerTypes.<类型>），按界面语言取；
- * 语言文件里没有的（以后新加的接入）才用后端给的原文。
+ * 服务商的名字和一句话介绍。后端也会按请求语言给名字，但那是请求那一刻的语言；
+ * 内置的三家在语言文件里各有一份（settings.vendors.<标识>），切语言后立刻跟着变。
+ * 语言文件里没有的（以后新加的服务商）用后端给的。
  */
 function localized(key: string, fallback: string): string {
   const { te, t } = i18n.global
   return te(key) ? t(key) : fallback
 }
 
-export function providerTypeLabel(tp: Pick<ProviderType, 'type' | 'label'>): string {
-  return localized(`settings.providerTypes.${tp.type}.label`, tp.label)
+export function vendorLabel(v: Pick<Vendor, 'type' | 'label'>): string {
+  return localized(`settings.vendors.${v.type}.label`, v.label)
 }
 
-export function providerFieldLabel(tp: Pick<ProviderType, 'type'>, f: ProviderField): string {
-  return localized(`settings.providerTypes.${tp.type}.fields.${f.key}.label`, f.label)
+/**
+ * 这个名称是不是服务商自己的名字（任何一种界面语言下的）。
+ * 添加服务商时不填名称，存下来的就是当时界面语言里的服务商名；之后换了语言，
+ * 两者字面上不再相等，但它仍然只是默认名，界面上不必在服务商名后面再重复一遍。
+ */
+export function isVendorDefaultName(v: Pick<Vendor, 'type' | 'label'>, name: string | undefined | null): boolean {
+  if (!name || name === v.label) return true
+  const key = `settings.vendors.${v.type}.label`
+  const { availableLocales, te, t } = i18n.global
+  return availableLocales.some(locale => te(key, locale) && t(key, {}, { locale }) === name)
 }
 
-export function providerFieldHelp(tp: Pick<ProviderType, 'type'>, f: ProviderField): string {
-  return localized(`settings.providerTypes.${tp.type}.fields.${f.key}.help`, f.help || '')
+export function vendorDesc(v: Pick<Vendor, 'type'>): string {
+  return localized(`settings.vendors.${v.type}.desc`, '')
 }

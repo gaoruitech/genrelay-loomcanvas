@@ -56,7 +56,7 @@ function withoutComments(code) {
 const placeholders = (s) => [...new Set(s.match(/\{\w+\}/g) || [])].sort()
 
 /* Keys that are built at run time from stable identifiers. */
-const DYNAMIC = [/^provider\.[a-z0-9-]+\.label$/, /^provider\.(?:[a-z0-9-]+\.)?field\.\w+\.(?:label|help)$/, /^model\.[a-z0-9-]+\..+\.desc$/, /^export\.\w+$/]
+const DYNAMIC = [/^provider\.[a-z0-9-]+\.label$/, /^model\.[a-z0-9-]+\..+\.desc$/, /^export\.\w+$/]
 const isDynamic = (key) => DYNAMIC.some((re) => re.test(key))
 
 test('both catalogs have exactly the same keys and placeholders', () => {
@@ -95,32 +95,23 @@ test('keys built at run time exist for every built-in provider, model and export
   const registry = require('../src/providers')
   const { PLATFORM_SIZES } = require('../src/services/imageTools')
   const expected = new Set()
-  for (const type of ['gaorui', 'openai-compatible', 'gemini']) {
-    const plugin = registry.getType(type)
+  for (const type of ['gaorui', 'openai', 'gemini']) {
     expected.add(`provider.${type}.label`)
-    for (const f of plugin.fields) {
-      for (const part of ['label', 'help']) {
-        if (!f[part]) continue
-        const own = `provider.${type}.field.${f.key}.${part}`
-        const shared = `provider.field.${f.key}.${part}`
-        assert.ok(own in zh || shared in zh, `${own} has no catalog entry`)
-        expected.add(own in zh ? own : shared)
-      }
-    }
+    for (const m of registry.getType(type).catalog) expected.add(`model.${type}.${m.id}.desc`)
   }
-  for (const m of require('../src/providers/catalog/gaorui.json')) expected.add(`model.gaorui.${m.id}.desc`)
   for (const group of Object.values(PLATFORM_SIZES)) for (const key of Object.keys(group)) expected.add(`export.${key}`)
   assert.deepEqual([...expected].filter((k) => !(k in zh)), [], 'missing')
   assert.deepEqual(Object.keys(zh).filter((k) => isDynamic(k) && !expected.has(k)), [], 'stale')
 
   // The registry serves them in the reader's language; ids stay put.
-  const label = (locale) => registry.listTypes(locale).find((p) => p.type === 'openai-compatible')
-  assert.equal(label('en').label, en['provider.openai-compatible.label'])
-  assert.equal(label('zh-CN').fields.find((f) => f.key === 'models').label, zh['provider.openai-compatible.field.models.label'])
-  assert.equal(label('zh-CN').fields.find((f) => f.key === 'baseUrl').label, zh['provider.field.baseUrl.label'])
+  const vendor = (locale) => registry.listVendors(locale).find((p) => p.type === 'gaorui')
+  assert.equal(vendor('en').label, en['provider.gaorui.label'])
+  assert.equal(vendor('zh-CN').label, '高瑞')
+  assert.equal(vendor('zh-CN').models.find((m) => m.model === 'omni-flash').desc, zh['model.gaorui.omni-flash.desc'])
   const spec = { id: 'mine:nano-banana-2.1', providerType: 'gaorui', label: 'x' }
   assert.equal(registry.localizeSpec(spec, 'en').desc, en['model.gaorui.nano-banana-2.1.desc'])
   assert.equal(registry.localizeSpec({ ...spec, id: 'mine:unknown', desc: 'own' }, 'en').desc, 'own')
+  assert.equal(registry.localizeSpec({ ...spec, custom: true }, 'en').desc, undefined, 'a custom model that shares a name borrows no description')
 })
 
 test('no Chinese text in the server code outside the zh-CN catalog, the seed content and comments', () => {

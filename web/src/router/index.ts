@@ -44,7 +44,7 @@ router.beforeEach((to) => {
   const app = useAppStore()
   // 没通过口令时由 App.vue 整页换成口令页，这里不做跳转；分享页任何人都能看
   if (to.meta.public || !app.authed || !app.bootstrap) return true
-  // 还没有任何模型接入：先带去引导页。设置页本身不拦，否则没法手动配置
+  // 还没有添加任何服务商：先带去引导页。设置页本身不拦，否则没法手动配置
   if (!app.hasProvider && !setupSkipped() && to.name !== 'setup' && to.name !== 'settings') {
     return { name: 'setup' }
   }

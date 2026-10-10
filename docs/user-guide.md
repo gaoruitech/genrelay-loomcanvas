@@ -10,7 +10,7 @@ The canvas is a workspace you can pan and extend without limit. You place source
 
 ## Before you start
 
-Generation nodes need a model. Connect a provider under **Settings → Providers** first; see [Getting started](getting-started.md). Without one, generation nodes show "No models available yet".
+Generation nodes need a model. Add a provider under **Settings → Providers** first; see [Getting started](getting-started.md). Without one, generation nodes show "No models available yet".
 
 ## The interface
 
@@ -56,7 +56,7 @@ Add a node by right-clicking the empty canvas or with the **+** button on the to
 
 The image and video generation and edit nodes share one layout: result frame, reference strip, prompt box, model dropdown, parameters dropdown, brand kit row and Run button. Aspect ratio, resolution, duration and count are all in the parameters dropdown, which shows only what the selected model supports.
 
-Which models a node offers, and what each can do, depends on your providers; see [Providers](providers.md).
+Which models a node offers, and what each can do, depends on the providers you added and on the custom models you added to them; see [Providers](providers.md).
 
 ### Output
 

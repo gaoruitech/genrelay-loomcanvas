@@ -96,9 +96,29 @@ export function modelsLoaded(): boolean {
   return loaded.value
 }
 
+/**
+ * 模型下拉里每一行右侧的标签。模型自己带标签的用它的；否则，当清单里不止一家服务商时
+ * 标上服务商实例的名字 —— 不同服务商会有同名的模型（比如两家都有 Nano Banana 2.1），
+ * 只看名字分不出是哪一家的。
+ */
+const multiProvider = computed(() => new Set(specs.value.map(s => s.providerId)).size > 1)
+export function modelTag(spec: ModelSpec): string | undefined {
+  return spec.tag || (multiProvider.value ? spec.providerName || undefined : undefined)
+}
+
 /** 对话类模型（大语言模型节点、视频分析节点用） */
 export function listChatModels(): ModelSpec[] {
   return specs.value.filter(s => s.kind === 'chat')
+}
+
+/**
+ * 这个对话模型读不读图片。纯文本模型（acceptsImage 为假）不能收图：节点据此关掉图片
+ * 输入口并提示，执行器据此不带图提交 —— 后端对带图的纯文本模型请求是直接拒绝的。
+ * 清单里找不到的模型按「读」处理，交给后端去判。
+ */
+export function chatReadsImages(modelId: string): boolean {
+  const spec = specs.value.find(s => s.id === modelId && s.kind === 'chat')
+  return spec ? spec.acceptsImage === true && (Number(spec.maxReferenceImages) || 0) > 0 : true
 }
 
 /** 能读视频的对话类模型（视频分析节点用）：不是每个对话模型都收视频，后端对不收的会直接拒绝 */
@@ -291,7 +311,7 @@ function toFlat(a: ModelAdapter): FlatModelOption {
     label: a.label,
     modelId: a.id,
     desc: localizedModelDesc(a.id, a.spec.desc),
-    tag: a.spec.tag,
+    tag: modelTag(a.spec),
     icon: a.outputType === 'video' ? ICON_FILM : ICON_IMG,
   }
 }

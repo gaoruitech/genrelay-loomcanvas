@@ -1,9 +1,11 @@
 'use strict'
 
 /**
- * Provider for the 高睿 public API (default https://gaorui.cc).
+ * Vendor: 高瑞 (default https://gaorui.cc). The built-in vendor; its API is
+ * our own and not bound to anyone's standard.
  *
- * Three protocol families, selected per model by `_protocol` in the catalog:
+ * Supported models are listed in catalog/gaorui.json. Three protocol
+ * families, selected per model by `_protocol` there:
  *
  *  nano-banana (images, asynchronous)
  *    POST /v1/nano-banana            header  Authorization: <key>   (no "Bearer")
@@ -18,21 +20,53 @@
  *    GET  /v1/videos/{id}/content    authenticated stream, used when no direct link is returned
  *
  *  chat
- *    POST /v1/chat/completions       OpenAI-compatible; models discovered via GET /v1/models
+ *    POST /v1/chat/completions       OpenAI format
+ *      A video to read goes in as an `image_url` content part holding a
+ *      public URL, placed right after the text part:
+ *        content: [ { type: 'text', text }, { type: 'image_url', image_url: { url: <video URL> } }, ...images ]
+ *      That is what the main site sends in production (model
+ *      gemini-3.5-flash-c). A `video_url` part is dropped by the relay without
+ *      an error, and the model then answers without having seen the video.
+ *      Not yet run from here against the real API.
+ *
+ * A custom model (one the user added by hand) is a chat model, or an image
+ * model sent through the nano-banana task API. A custom video model is not
+ * possible: every video model has its own request body, written out below.
  */
-const catalog = require('./catalog/gaorui.json')
+const { loadCatalog } = require('./catalog')
 const { request, ProviderError, trimBase } = require('./http')
 const { msg } = require('../i18n')
-const { chatCompletion, listModelIds, chatSpec, bearer } = require('./openaiShared')
+const { chatCompletion, listModelIds, bearer } = require('./openaiShared')
 
 const DEFAULT_BASE_URL = 'https://gaorui.cc'
 
+const catalog = loadCatalog('gaorui')
 const byId = new Map(catalog.map((m) => [m.id, m]))
 
-// Ids from /v1/models that are media models, not chat models. The list
-// endpoint does not say what a model does, so this is a name heuristic;
-// anything it gets wrong can be switched off in the model settings.
-const NOT_CHAT = /nano-banana|banana|image|imagen|dall-e|flux|midjourney|stable-diffusion|sdxl|video|veo|sora|omni|grok-imagine|seedance|kling|wan\d|hailuo|runway|luma|pika|tts|whisper|audio|speech|embedding|embed|rerank|moderation|suno|music/i
+const RATIOS = ['auto', '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '16:9', '9:16', '21:9']
+
+/** What a custom model gets. */
+const CUSTOM = {
+  // Same parameters as the catalog's nano-banana models.
+  image: {
+    acceptsImage: true,
+    acceptsVideo: false,
+    videoEdit: false,
+    maxReferenceImages: 8,
+    options: { aspectRatios: RATIOS, resolutions: ['1K', '2K', '4K'] },
+    defaults: { aspectRatio: 'auto', resolution: '1K', count: 1 },
+  },
+  chat: {
+    acceptsImage: true,
+    // A video goes in as an `image_url` part (see the header). Whether a
+    // given model actually reads it is the upstream's call.
+    acceptsVideo: true,
+    videoEdit: false,
+    maxReferenceImages: 8,
+    options: {},
+    defaults: {},
+  },
+}
 
 function root(cfg) {
   return trimBase(cfg.baseUrl || DEFAULT_BASE_URL).replace(/\/v1$/, '')
@@ -289,39 +323,28 @@ async function pollVideo(cfg, run) {
 
 function protocolOf(run) {
   const entry = byId.get(run.model)
-  if (!entry) throw new ProviderError('provider.model_not_supported', { model: run.model })
-  return entry._protocol
+  if (entry) return entry._protocol
+  // Not in the catalog: a custom model. Only images have a generic protocol.
+  if (run.kind === 'image') return 'nano-banana'
+  throw new ProviderError('provider.model_not_supported', { model: run.model })
 }
 
 module.exports = {
   type: 'gaorui',
-  label: 'Gaorui API',
-  fields: [
-    { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE_URL },
-  ],
+  label: 'Gaorui',
+  // Listed first and marked as the recommended choice.
+  recommended: true,
+  keyUrl: DEFAULT_BASE_URL,
   defaultBaseUrl: DEFAULT_BASE_URL,
-
-  /** Catalog models plus chat models discovered from GET /v1/models. */
-  async listModels(cfg, { signal } = {}) {
-    const specs = catalog.map((m) => ({ ...m }))
-    if (!cfg.apiKey) return specs
-    try {
-      const ids = await listModelIds({ ...cfg, baseUrl: root(cfg) }, { signal })
-      for (const id of ids) {
-        if (byId.has(id) || NOT_CHAT.test(id)) continue
-        specs.push(chatSpec(id))
-      }
-    } catch {
-      // Discovery is best effort: the catalog models work without it.
-    }
-    return specs
-  },
+  catalog,
+  customKinds: ['image', 'chat'],
+  customSpec: (kind) => CUSTOM[kind],
 
   async test(cfg, { signal } = {}) {
     requireKey(cfg)
-    const ids = await listModelIds({ ...cfg, baseUrl: root(cfg) }, { signal })
-    return { ok: true, modelCount: ids.length }
+    // Proves the address and the key; the list itself is not used.
+    await listModelIds({ ...cfg, baseUrl: root(cfg) }, { signal })
+    return { ok: true }
   },
 
   async submit(cfg, run) {
@@ -338,9 +361,9 @@ module.exports = {
 
   async chat(cfg, req) {
     requireKey(cfg)
-    return chatCompletion({ ...cfg, baseUrl: root(cfg) }, req)
+    return chatCompletion({ ...cfg, baseUrl: root(cfg) }, req, { videoAsImageUrl: true })
   },
 
   // Exposed for unit tests.
-  _internals: { readVideoTask, VIDEO_BODY, NOT_CHAT },
+  _internals: { readVideoTask, VIDEO_BODY },
 }

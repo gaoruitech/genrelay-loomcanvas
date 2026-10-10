@@ -200,8 +200,9 @@ test('security review findings stay fixed', async (t) => {
 
   let providerId = ''
   await t.test('provider keys: not echoed back from an upstream error, and a changed SECRET_KEY is a clear, recoverable error', async () => {
-    const created = await data('POST', '/api/admin/providers', { type: 'openai-compatible', name: 'Echo', baseUrl: upstream.baseUrl, apiKey: API_KEY, models: 'chat-small' })
+    const created = await data('POST', '/api/admin/providers', { type: 'openai', name: 'Echo', baseUrl: upstream.baseUrl, apiKey: API_KEY })
     providerId = created.id
+    await data('POST', `/api/admin/providers/${providerId}/models`, { model: 'chat-small', kind: 'chat' })
     upstream.state.rejectKeys = true
     const tested = await data('POST', `/api/admin/providers/${providerId}/test`)
     upstream.state.rejectKeys = false
@@ -214,10 +215,9 @@ test('security review findings stay fixed', async (t) => {
     const providers = mongoose.connection.collection('providers')
     const original = (await providers.findOne({})).apiKeyEnc
     await providers.updateOne({}, { $set: { apiKeyEnc: encrypt(API_KEY, 'a-different-secret-key-0123456789') } })
-    require('../src/providers').invalidate()
     assert.equal((await call('GET', '/api/admin/providers')).status, 200)
     assert.equal((await call('GET', '/api/models')).status, 200)
-    const run = await call('POST', '/api/llm/tasks', { model: 'openai-compatible:chat-small', prompt: 'hi' })
+    const run = await call('POST', '/api/llm/tasks', { model: 'openai:chat-small', prompt: 'hi' })
     assert.deepEqual([run.status, run.body.code], [400, 'provider.key_undecryptable'])
     assert.equal((await data('POST', `/api/admin/providers/${providerId}/test`)).ok, false)
     await data('PUT', `/api/admin/providers/${providerId}`, { apiKey: API_KEY })
@@ -227,22 +227,30 @@ test('security review findings stay fixed', async (t) => {
 
   await t.test('a video is refused by a chat model that cannot take one, not silently dropped', async () => {
     const video = 'https://media.example/clip.mp4'
-    await data('POST', '/api/admin/providers', { type: 'gemini', name: 'G', baseUrl: upstream.baseUrl, apiKey: API_KEY, models: 'gemini-chat, nano-banana-x' })
+    const g = await data('POST', '/api/admin/providers', { type: 'gemini', name: 'G', baseUrl: upstream.baseUrl, apiKey: API_KEY })
+    await data('POST', `/api/admin/providers/${g.id}/models`, { model: 'gemini-chat', kind: 'chat' })
+    // The kind is what was chosen, whatever the name looks like.
+    await data('POST', `/api/admin/providers/${g.id}/models`, { model: 'nano-banana-image-x', kind: 'chat' })
+    const r = await data('POST', '/api/admin/providers', { type: 'gaorui', name: 'R', baseUrl: upstream.baseUrl, apiKey: API_KEY })
+    await data('POST', `/api/admin/providers/${r.id}/models`, { model: 'chat-small', kind: 'chat' })
     const models = await data('GET', '/api/models')
     const flags = Object.fromEntries(models.map((m) => [m.id, [m.kind, m.acceptsVideo]]))
     assert.deepEqual(flags['gemini:gemini-chat'], ['chat', false])
-    assert.deepEqual(flags['gemini:nano-banana-x'], ['image', false], 'an image model by name, as the field help says')
-    assert.deepEqual(flags['openai-compatible:chat-small'], ['chat', true])
-    const refused = await call('POST', '/api/llm/tasks', { model: 'gemini:gemini-chat', prompt: 'what happens?', videoUrl: video })
-    assert.deepEqual([refused.status, refused.body.code], [400, 'model.no_video_input'])
-    const accepted = await data('POST', '/api/llm/tasks', { model: 'openai-compatible:chat-small', prompt: 'what happens?', videoUrl: video })
+    assert.deepEqual(flags['gemini:nano-banana-image-x'], ['chat', false])
+    assert.deepEqual(flags['openai:chat-small'], ['chat', false], 'the official OpenAI API takes no video')
+    assert.deepEqual(flags['gaorui:chat-small'], ['chat', true])
+    for (const model of ['gemini:gemini-chat', 'openai:chat-small']) {
+      const refused = await call('POST', '/api/llm/tasks', { model, prompt: 'what happens?', videoUrl: video })
+      assert.deepEqual([refused.status, refused.body.code], [400, 'model.no_video_input'], model)
+    }
+    const accepted = await data('POST', '/api/llm/tasks', { model: 'gaorui:chat-small', prompt: 'what happens?', videoUrl: video })
     await data('POST', `/api/runs/${accepted.taskId}/cancel`)
   })
 
   await t.test('unfinished runs are capped', async () => {
     runnerModule.limits.unfinishedRuns = 2
     try {
-      const body = { model: 'openai-compatible:chat-small', prompt: 'never answered' }
+      const body = { model: 'openai:chat-small', prompt: 'never answered' }
       const ids = [(await data('POST', '/api/llm/tasks', body)).taskId, (await data('POST', '/api/llm/tasks', body)).taskId]
       const third = await call('POST', '/api/llm/tasks', body)
       assert.deepEqual([third.status, third.body.code], [429, 'run.queue_full'])

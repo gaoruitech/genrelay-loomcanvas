@@ -19,6 +19,7 @@ const { LOCAL_USER, RUN_KINDS, RUN_STATUS } = require('../constants')
 const router = express.Router()
 
 const MAX_PROVIDERS = 50
+const MAX_CUSTOM_MODELS = 100
 const TEST_TIMEOUT_MS = 20 * 1000
 
 /* ------------------------------------------------------------ providers */
@@ -27,15 +28,14 @@ const TEST_TIMEOUT_MS = 20 * 1000
 function serializeProvider(doc) {
   const plugin = registry.getType(doc.type)
   return {
-    // Type-specific fields at the top level too, the way the form posts them.
-    ...(doc.options || {}),
     id: String(doc._id),
     type: doc.type,
     name: doc.name,
     slug: doc.slug,
-    // Empty in the database means "the type's default".
+    // Empty in the database means "the vendor's official address".
     baseUrl: doc.baseUrl || (plugin && plugin.defaultBaseUrl) || '',
-    options: doc.options || {},
+    customBaseUrl: !!doc.baseUrl && !!plugin && doc.baseUrl !== plugin.defaultBaseUrl,
+    customModels: (doc.customModels || []).map((m) => ({ model: m.id, kind: m.kind, label: m.label || '' })),
     enabled: doc.enabled !== false,
     sort: doc.sort || 0,
     hasKey: !!doc.hasKey,
@@ -62,24 +62,6 @@ function parseApiKey(v) {
   return key
 }
 
-/**
- * Type-specific non-secret fields. They may arrive at the top level of the
- * body (as the form posts them) or nested under `options`.
- */
-function parseOptions(plugin, body) {
-  const nested = isPlainObject(body.options) ? body.options : {}
-  const out = {}
-  for (const f of plugin.fields) {
-    if (f.secret || f.key === 'baseUrl' || f.key === 'apiKey') continue
-    const v = body[f.key] !== undefined ? body[f.key] : nested[f.key]
-    if (v === undefined) continue
-    if (typeof v !== 'string') throw badRequest('validation.string', { field: f.key })
-    if (v.length > 5000) throw badRequest('validation.too_long', { field: f.key })
-    out[f.key] = v.trim()
-  }
-  return out
-}
-
 async function uniqueSlug(wanted) {
   const base = wanted.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'provider'
   for (let i = 1; i <= MAX_PROVIDERS + 1; i++) {
@@ -89,9 +71,9 @@ async function uniqueSlug(wanted) {
   throw new ApiError(409, 'provider.slug_exhausted')
 }
 
-/** GET /api/admin/provider-types */
-router.get('/provider-types', wrap(async (req, res) => {
-  ok(res, registry.listTypes(req.locale))
+/** GET /api/admin/vendors - every vendor with the models it supports */
+router.get('/vendors', wrap(async (req, res) => {
+  ok(res, registry.listVendors(req.locale))
 }))
 
 /** GET /api/admin/providers */
@@ -100,7 +82,7 @@ router.get('/providers', wrap(async (_req, res) => {
   ok(res, list.map(serializeProvider))
 }))
 
-/** POST /api/admin/providers { type, name, baseUrl?, apiKey, enabled, ...type fields } */
+/** POST /api/admin/providers { type, apiKey, name?, baseUrl?, enabled? } - `type` is the vendor id */
 router.post('/providers', wrap(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   const plugin = registry.getType(body.type)
@@ -111,22 +93,18 @@ router.post('/providers', wrap(async (req, res) => {
   const name = text(body.name, 60) || registry.typeLabel(plugin, req.locale)
   const baseUrl = parseBaseUrl(body.baseUrl)
   const apiKey = body.apiKey === undefined || body.apiKey === null ? '' : parseApiKey(body.apiKey)
-  for (const f of plugin.fields) {
-    if (!f.required) continue
-    if (f.key === 'apiKey' && !apiKey) throw badRequest('provider.api_key_required')
-    if (f.key === 'baseUrl' && !baseUrl && !plugin.defaultBaseUrl) throw badRequest('provider.base_url_required')
-  }
+  if (!apiKey) throw badRequest('provider.api_key_required')
   const slugSource = typeof body.slug === 'string' && body.slug.trim() ? body.slug : plugin.type
   const doc = await Provider.create({
     userId: LOCAL_USER,
     type: plugin.type,
     name,
     slug: await uniqueSlug(slugSource),
-    baseUrl,
-    apiKeyEnc: apiKey ? encrypt(apiKey, getConfig().secretKey) : '',
-    hasKey: !!apiKey,
+    // The official address is stored as "none", so it follows the vendor module.
+    baseUrl: baseUrl === plugin.defaultBaseUrl ? '' : baseUrl,
+    apiKeyEnc: encrypt(apiKey, getConfig().secretKey),
+    hasKey: true,
     keyTail: keyTail(apiKey),
-    options: parseOptions(plugin, body),
     enabled: body.enabled !== false,
     sort: Number.isFinite(Number(body.sort)) ? Number(body.sort) : 0,
   })
@@ -141,6 +119,8 @@ router.put('/providers/:id', wrap(async (req, res) => {
   if (!doc) throw notFound('provider.not_found')
   const plugin = registry.getType(doc.type)
   if (!plugin) throw badRequest('provider.type_gone')
+  // Model ids, prices and canvases hang off the vendor; it is fixed at creation.
+  if (body.type !== undefined && body.type !== doc.type) throw badRequest('provider.vendor_fixed')
 
   if (body.name !== undefined) {
     const name = text(body.name, 60)
@@ -149,9 +129,7 @@ router.put('/providers/:id', wrap(async (req, res) => {
   }
   if (body.baseUrl !== undefined) {
     const baseUrl = parseBaseUrl(body.baseUrl)
-    const needsBase = plugin.fields.some((f) => f.key === 'baseUrl' && f.required)
-    if (!baseUrl && needsBase && !plugin.defaultBaseUrl) throw badRequest('provider.base_url_required')
-    doc.baseUrl = baseUrl
+    doc.baseUrl = baseUrl === plugin.defaultBaseUrl ? '' : baseUrl
   }
   if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
     const apiKey = parseApiKey(body.apiKey)
@@ -165,13 +143,7 @@ router.put('/providers/:id', wrap(async (req, res) => {
   }
   if (body.enabled !== undefined) doc.enabled = body.enabled !== false
   if (body.sort !== undefined && Number.isFinite(Number(body.sort))) doc.sort = Number(body.sort)
-  const options = parseOptions(plugin, body)
-  if (Object.keys(options).length) {
-    doc.options = { ...(doc.options || {}), ...options }
-    doc.markModified('options')
-  }
   await doc.save()
-  registry.invalidate(doc._id)
   ok(res, serializeProvider(doc.toObject()))
 }))
 
@@ -181,11 +153,10 @@ router.delete('/providers/:id', wrap(async (req, res) => {
   const doc = await Provider.findOneAndDelete({ _id: req.params.id, userId: LOCAL_USER }).lean()
   if (!doc) throw notFound('provider.not_found')
   await ModelOverride.deleteMany({ modelId: { $regex: `^${doc.slug}:` } })
-  registry.invalidate(doc._id)
   ok(res, { id: String(doc._id) })
 }))
 
-/** POST /api/admin/providers/:id/test -> { ok, message, modelCount? } */
+/** POST /api/admin/providers/:id/test -> { ok, message } */
 router.post('/providers/:id/test', wrap(async (req, res) => {
   requireObjectId(req.params.id)
   const doc = await Provider.findOne({ _id: req.params.id, userId: LOCAL_USER }).select('+apiKeyEnc').lean()
@@ -194,15 +165,78 @@ router.post('/providers/:id/test', wrap(async (req, res) => {
   if (!plugin) return ok(res, { ok: false, message: t(req.locale, 'provider.type_gone') })
   try {
     const out = await plugin.test(registry.configFor(doc), { signal: AbortSignal.timeout(TEST_TIMEOUT_MS) })
-    registry.invalidate(doc._id)
     const message = out.message ? render(req.locale, out.message) : t(req.locale, out.ok !== false ? 'provider.test_ok' : 'provider.test_failed')
-    ok(res, { ok: out.ok !== false, message, ...(Number.isInteger(out.modelCount) ? { modelCount: out.modelCount } : {}) })
+    ok(res, { ok: out.ok !== false, message })
   } catch (err) {
     // A failed test is a normal answer, not a server error.
     const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError')
     const reason = timedOut ? null : messageOf(err)
     ok(res, { ok: false, message: reason ? render(req.locale, reason) : t(req.locale, timedOut ? 'provider.test_timeout' : 'provider.test_failed') })
   }
+}))
+
+/* -------------------------------------------------------- custom models */
+
+/*
+ * A custom model is one the vendor's catalog does not list. The user states
+ * its upstream name and its kind; the kind is never worked out from the name.
+ * What parameters it gets is fixed per vendor and kind (customSpec()).
+ */
+
+async function providerForCustom(id) {
+  requireObjectId(id)
+  const doc = await Provider.findOne({ _id: id, userId: LOCAL_USER })
+  if (!doc) throw notFound('provider.not_found')
+  const plugin = registry.getType(doc.type)
+  if (!plugin) throw badRequest('provider.type_gone')
+  return { doc, plugin }
+}
+
+/** POST /api/admin/providers/:id/models { model, kind, label? } */
+router.post('/providers/:id/models', wrap(async (req, res) => {
+  const { doc, plugin } = await providerForCustom(req.params.id)
+  const body = isPlainObject(req.body) ? req.body : {}
+  const entry = registry.checkCustomModel(plugin, { id: body.model, kind: body.kind, label: body.label })
+  if (doc.customModels.some((m) => m.id === entry.id)) throw badRequest('provider.custom_exists', { model: entry.id })
+  if (doc.customModels.length >= MAX_CUSTOM_MODELS) throw badRequest('provider.custom_max', { max: MAX_CUSTOM_MODELS })
+  doc.customModels.push(entry)
+  await doc.save()
+  ok(res, serializeProvider(doc.toObject()))
+}))
+
+/**
+ * PUT /api/admin/providers/:id/models/:model { kind?, label? }
+ * The name is the model's identity (canvases and prices refer to it), so it
+ * cannot be edited: delete the entry and add the right one instead.
+ */
+router.put('/providers/:id/models/:model(*)', wrap(async (req, res) => {
+  const { doc, plugin } = await providerForCustom(req.params.id)
+  const body = isPlainObject(req.body) ? req.body : {}
+  const current = doc.customModels.find((m) => m.id === req.params.model)
+  if (!current) throw notFound('provider.custom_not_found')
+  if (body.model !== undefined && body.model !== current.id) throw badRequest('provider.custom_name_fixed')
+  const entry = registry.checkCustomModel(plugin, {
+    id: current.id,
+    kind: body.kind === undefined ? current.kind : body.kind,
+    label: body.label === undefined ? current.label : body.label,
+  })
+  current.kind = entry.kind
+  current.label = entry.label
+  await doc.save()
+  // A name typed into the model list earlier would otherwise hide this one.
+  if (body.label !== undefined) await ModelOverride.updateOne({ modelId: `${doc.slug}:${current.id}` }, { $unset: { label: '' } })
+  ok(res, serializeProvider(doc.toObject()))
+}))
+
+/** DELETE /api/admin/providers/:id/models/:model - also drops its override (enabled, order, price) */
+router.delete('/providers/:id/models/:model(*)', wrap(async (req, res) => {
+  const { doc } = await providerForCustom(req.params.id)
+  const before = doc.customModels.length
+  doc.customModels = doc.customModels.filter((m) => m.id !== req.params.model)
+  if (doc.customModels.length === before) throw notFound('provider.custom_not_found')
+  await doc.save()
+  await ModelOverride.deleteOne({ modelId: `${doc.slug}:${req.params.model}` })
+  ok(res, serializeProvider(doc.toObject()))
 }))
 
 /* --------------------------------------------------------------- models */
@@ -267,7 +301,7 @@ router.put('/models/:modelId(*)', wrap(async (req, res) => {
   }
   if (body.defaults !== undefined) put('defaults', cleanDefaults(body.defaults))
   if (body.pricing !== undefined) {
-    // pricing: null here means "back to what the provider declared".
+    // pricing: null removes the price (catalogs declare none, so the cost becomes unknown).
     try { put('pricing', normalizePricing(body.pricing)) } catch (err) {
       if (!err.i18n) throw err
       throw badRequest(err.i18n)

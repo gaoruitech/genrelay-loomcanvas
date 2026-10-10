@@ -4,9 +4,9 @@
 
 This page takes you from an empty machine to your first generated image.
 
-LoomCanvas does not include any models. You connect an upstream API with your own key, and the canvas calls it for you.
+LoomCanvas does not include any models. You add a provider with your own API key, and the canvas calls its models for you.
 
-> Status: early development. The built-in providers are covered by tests against a fake upstream; they have not yet been exercised against the real services as part of this project. If a request shape turns out to be wrong, please open an issue.
+> Status: early development. The built-in providers (Gaorui, OpenAI, Google Gemini) are covered by tests against a fake upstream; they have not yet been exercised against the real services as part of this project. If a request shape turns out to be wrong, please open an issue.
 
 ## 1. Prerequisites
 
@@ -14,7 +14,7 @@ LoomCanvas does not include any models. You connect an upstream API with your ow
 | --- | --- |
 | Docker with Compose v2 (`docker compose`) | The Compose file starts LoomCanvas and MongoDB 7. |
 | Git | To fetch the source. The image is built locally. |
-| An API key for a model provider | See step 4. |
+| An API key from Gaorui, OpenAI or Google Gemini | See step 4. |
 
 To run without Docker, see [Deployment](deployment.md#running-without-docker).
 
@@ -62,17 +62,21 @@ Open <http://localhost:3000>. If you changed `PORT`, use that port; from another
 
 ![Setup page](images/01-setup.png)
 
-## 4. Connect a provider
+## 4. Add a provider
 
-On the setup page, pick a provider type, fill in the form and click **Test and save**. The provider is saved, a connection test runs, and you are taken to your canvases. If the test fails, the provider is not kept and the error is shown.
+On the setup page, pick a provider, enter your API key and click **Test and save**. The provider is saved, a connection test runs, and you are taken to your canvases. If the test fails, the provider is not kept and the error is shown.
 
-| Type | What to enter | Notes |
+The form lists the **Models supported by this provider**. That list ships with LoomCanvas; it is not read from the upstream.
+
+| Provider | What to enter | Notes |
 | --- | --- | --- |
-| Gaorui API (recommended) | API key | One key for the built-in image and video models plus chat models. Get a key at <https://gaorui.cc>. The base URL is filled in by default. |
-| OpenAI-compatible | Base URL, API key | For OpenAI itself, relays and self-hosted gateways. Chat and text-to-image only. |
-| Google Gemini | API key | Image generation and editing, and chat. |
+| Gaorui (recommended) | API key | One key for image, video and chat models. Get a key at <https://gaorui.cc>. |
+| OpenAI | API key | Through the official OpenAI API. Chat, and image generation and editing. No video. |
+| Google Gemini | API key | Through the official Gemini API. Image generation and editing, and chat. No video. |
 
-You can also click **Skip for now** and add a provider later under **Settings → Providers**. Details of each type are in [Providers](providers.md).
+Each provider uses its official address by default. To use another one, open **Advanced** and change **Base URL**; whatever answers there must speak exactly the same API as the official one.
+
+You can also click **Skip for now** and add a provider later under **Settings → Providers**. A model that is not in a provider's list can be added afterwards as a custom model. Details are in [Providers](providers.md).
 
 ## 5. Create a canvas from a template
 

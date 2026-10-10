@@ -1,9 +1,14 @@
 'use strict'
 
 /**
- * Provider for the Google Gemini API (or a proxy that speaks the same format).
+ * Vendor: Google Gemini, through its official API
+ * (default https://generativelanguage.googleapis.com).
  *
  *  POST {base}/v1beta/models/{model}:generateContent    header x-goog-api-key
+ *
+ * Google now documents the Interactions API first ("the new standard") and
+ * says generateContent "remains fully supported"; this module uses
+ * generateContent.
  *
  *  image generation / editing
  *    { contents: [{ role: 'user', parts: [{ text }, { inlineData: { mimeType, data } }...] }],
@@ -17,13 +22,15 @@
  *
  * Reference images are always sent inline as base64, so they work from local
  * storage without a public address.
+ *
+ * Supported models are listed in catalog/gemini.json.
  */
-const { request, ProviderError, trimBase, parseModelList } = require('./http')
+const { request, ProviderError, trimBase } = require('./http')
+const { loadCatalog } = require('./catalog')
 const { LONG_CALL_MS } = require('./openaiShared')
 const { msg } = require('../i18n')
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
-const DEFAULT_MODELS = 'gemini-2.5-flash-image'
 const RATIOS = ['auto', '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
 
 function base(cfg) {
@@ -38,28 +45,20 @@ function requireKey(cfg) {
   if (!cfg.apiKey) throw new ProviderError('provider.api_key_missing')
 }
 
-/** Image models by name: "…-image", "imagen-…", and the "nano-banana" aliases. */
-const isImageModel = (id) => /image|banana/i.test(id)
-
-function imageSpec(id) {
-  return {
-    id,
-    label: id,
-    kind: 'image',
+/**
+ * What a custom model gets. No resolution option: which sizes a model takes
+ * differs per model, so a custom one is left at the model's own default.
+ */
+const CUSTOM = {
+  image: {
     acceptsImage: true,
     acceptsVideo: false,
     videoEdit: false,
     maxReferenceImages: 8,
     options: { aspectRatios: RATIOS },
     defaults: { aspectRatio: 'auto', count: 1 },
-  }
-}
-
-function chatSpec(id) {
-  return {
-    id,
-    label: id,
-    kind: 'chat',
+  },
+  chat: {
     acceptsImage: true,
     // chat() sends text and images only; a video is refused, not dropped.
     acceptsVideo: false,
@@ -67,25 +66,19 @@ function chatSpec(id) {
     maxReferenceImages: 8,
     options: {},
     defaults: {},
-  }
+  },
 }
 
-async function discover(cfg, signal) {
+/** GET {base}/v1beta/models: only to prove that the address and the key work. */
+async function ping(cfg, signal) {
   const data = await request({
     url: `${base(cfg)}/v1beta/models`,
     headers: headers(cfg),
-    params: { pageSize: 200 },
+    params: { pageSize: 1 },
     signal,
     timeoutMs: 15000,
   })
-  const ids = []
-  for (const m of (data && Array.isArray(data.models) ? data.models : [])) {
-    const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : []
-    if (!methods.includes('generateContent')) continue
-    const id = String(m.name || '').replace(/^models\//, '')
-    if (id) ids.push(id)
-  }
-  return ids
+  if (!data || !Array.isArray(data.models)) throw new ProviderError('upstream.bad_model_list')
 }
 
 const IMAGE_URL_IN_TEXT = /https?:\/\/[^\s)"'<>]+/g
@@ -146,7 +139,8 @@ async function generate(cfg, model, body, signal) {
 async function userParts(req) {
   const parts = []
   if (req.prompt) parts.push({ text: req.prompt })
-  for (const url of (req.imageUrls || []).slice(0, 8)) {
+  const max = (req.spec && req.spec.maxReferenceImages) || 8
+  for (const url of (req.imageUrls || []).slice(0, max)) {
     const { mime, data } = await req.media.toBase64(url)
     parts.push({ inlineData: { mimeType: mime, data } })
   }
@@ -156,27 +150,16 @@ async function userParts(req) {
 module.exports = {
   type: 'gemini',
   label: 'Google Gemini',
-  fields: [
-    { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE_URL },
-    { key: 'models', label: 'Models', type: 'textarea', placeholder: DEFAULT_MODELS, help: 'Comma-separated. Leave empty to detect the available models; names containing "image" or "banana" are treated as image models, the rest as chat models.' },
-  ],
   defaultBaseUrl: DEFAULT_BASE_URL,
+  catalog: loadCatalog('gemini'),
+  customKinds: ['image', 'chat'],
+  customSpec: (kind) => CUSTOM[kind],
   sync: true,
-
-  async listModels(cfg, { signal } = {}) {
-    let ids = parseModelList(cfg.models)
-    if (!ids.length) {
-      if (!cfg.apiKey) return parseModelList(DEFAULT_MODELS).map(imageSpec)
-      ids = await discover(cfg, signal)
-    }
-    return ids.map((id) => (isImageModel(id) ? imageSpec(id) : chatSpec(id)))
-  },
 
   async test(cfg, { signal } = {}) {
     requireKey(cfg)
-    const ids = await discover(cfg, signal)
-    return { ok: true, modelCount: ids.length }
+    await ping(cfg, signal)
+    return { ok: true }
   },
 
   async submit(cfg, run) {

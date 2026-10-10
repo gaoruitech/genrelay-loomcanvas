@@ -30,6 +30,12 @@ async function main() {
   if (storage.secretUnreadable) {
     console.error('[storage] the saved S3 secret cannot be decrypted (was SECRET_KEY changed?). Enter it again under Settings > Storage.')
   }
+  // Providers saved by an older version are brought to the vendor model once.
+  const upgraded = await require('./services/providerMigration').migrateProviders()
+  if (upgraded.providers) console.log(`[providers] brought ${upgraded.providers} stored provider(s) up to date, ${upgraded.customModels} custom model(s) carried over`)
+  // A custom model the vendor's catalog now lists itself is served from the catalog.
+  const shadowed = await require('./services/providerMigration').dropShadowedCustomModels()
+  if (shadowed) console.log(`[providers] ${shadowed} custom model(s) are now in their vendor's catalog; the custom entries were removed, settings for them are kept`)
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
   const { getRunner } = require('./runner')

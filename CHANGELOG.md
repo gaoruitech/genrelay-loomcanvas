@@ -25,7 +25,7 @@ First version. Nothing has been tagged or released yet; interfaces may still cha
 **Server**
 
 - Node.js + Express + MongoDB backend, single user.
-- Provider plugins with a registry and per-model overrides. Built in: Gaorui API (image and video catalog plus discovered chat models), OpenAI-compatible (chat, text-to-image), Google Gemini (image, chat).
+- Vendors with a registry and per-model overrides. Built in: Gaorui (image and video models; chat models as custom models for now), OpenAI (chat, image generation and editing) and Google Gemini (image, chat). See **Providers** below.
 - In-process run queue with bounded concurrency, hard deadlines for every step, retries only when a resubmission is safe, cancellation, and recovery of unfinished runs after a restart.
 - Results copied into your own storage with content-type sniffing and WebP thumbnails. Storage: the local disk, or one S3-compatible driver for AWS S3, Cloudflare R2, Aliyun OSS, MinIO and similar services (see **Storage** below).
 - Cost estimates from operator-maintained price tables, "cost unknown" when no price applies, usage summaries by day and by model, usage records with clean-up.
@@ -35,6 +35,39 @@ First version. Nothing has been tagged or released yet; interfaces may still cha
 - Server messages in Chinese and English, selected per request; stable error codes.
 - Canvas documents carry a `schemaVersion` and are migrated on read.
 - Admin settings for site name, logo, default theme and language, concurrency, timeouts, retries and result retention.
+
+**Providers**
+
+Added
+
+- Vendors with explicit model catalogs. A provider is now a vendor (Gaorui, OpenAI or Google Gemini) plus your API key. The models each vendor supports are written down in `server/src/providers/catalog/<vendor>.json`, in `image`, `video` and `chat` sections; the section is the kind. Gaorui is listed first and marked as recommended.
+- Custom models: under Settings → Models a model outside the vendor's catalog can be added to a provider by its upstream name, with a kind chosen by hand (image or chat) and an optional display name. Up to 100 per provider. Custom video models are refused for all three vendors.
+- The OpenAI vendor goes through the official OpenAI API: `/chat/completions`, `/images/generations`, and `/images/edits` (multipart) when reference images are connected, so OpenAI image models now take reference images.
+- Admin API: `GET /api/admin/vendors`; `POST`, `PUT` and `DELETE /api/admin/providers/:id/models[/:model]` for custom models. Provider objects carry `customBaseUrl` and `customModels`; ModelSpec objects carry `custom`.
+- Video analysis through Gaorui with a catalog model: `gemini-3.5-flash-c` accepts a video and is offered in the Video analysis node. A Gaorui provider sends the video as an `image_url` content part holding its public URL, right after the text part (a `video_url` part is dropped by the Gaorui relay without an error). This follows what the Gaorui main site does in production and has not been run from LoomCanvas against the real Gaorui API.
+- Token prices with separate input and output rates can be entered and edited under Settings → Models (two fields), and the model list shows them as "Input … / output … · per 1M tokens". Before, such a price could only be set through the API and was listed as 0.00.
+- Automatic migration of stored providers at start-up, once per provider: `openai-compatible` becomes `openai` with the same slug, so model ids on canvases, prices and usage keep working; models typed into the old fields, and models that were in use where the old code fetched the list from the upstream, are carried over as custom models. A Gaorui provider still called by the old default name ("Gaorui API" / 「高瑞 API」) is renamed to "Gaorui" / 「高瑞」; any other name is left alone. Keys, addresses, the enabled flag, order and model overrides are not touched. See [docs/providers.md](docs/providers.md#upgrading-from-the-previous-version).
+
+Changed
+
+- Vendors with explicit catalogs replace provider types and name-based guessing. Nothing about a model is inferred from its name any more, and no model list is fetched from the upstream. **Test connection** still calls the upstream's model-list endpoint, only to prove the address and the key; it no longer reports a model count.
+- Every vendor defaults to its official base URL (`https://gaorui.cc`, `https://api.openai.com/v1`, `https://generativelanguage.googleapis.com`). Another address can be set under **Advanced** in the provider dialog; it must speak exactly the same official API. The vendor of a provider cannot be changed after it is added.
+- The API key is required when adding a provider of any vendor.
+- The Settings tab **Providers** is named 「服务商」 in Chinese, and the vendor is called 「高瑞」 / "Gaorui".
+- The Chinese brand spelling is corrected to 「高瑞」 throughout the interface, the server messages and the documentation; a stored provider whose default name carried the old spelling is renamed by the migration.
+- OpenAI chat models no longer accept a video: the official API has no video part. Video analysis is available with `gemini-3.5-flash-c` and with custom chat models of a Gaorui provider; custom Gaorui chat models now send the video as an `image_url` part as well, no longer as `video_url`.
+- The Gaorui catalog lists five chat models: `deepseek-v4-pro`, `gpt-5.5` and `glm-5.3` (text only), `gpt-6-astra` (reads images) and `gemini-3.5-flash-c` (reads images and video). Chat models are no longer discovered from the upstream; one that is not listed can be added as a custom model.
+- A text-only chat model is never sent an image: `POST /api/llm/tasks` with `imageUrls` for one is refused (`model.no_image_input`), and the Language model node greys out its image input, takes no new image connection and says that connected images are not sent.
+- The OpenAI catalog lists `gpt-image-2` next to the two GPT Image 2.5 models, and fifteen chat models from GPT-6 down to GPT-4o Mini; the Gemini catalog lists `gemini-3.1-flash-image`, `gemini-3.6-flash` and `gemini-3-flash-preview` as well. Each catalog holds every current model its vendor serves through the endpoints LoomCanvas calls; what is left out and why is in [Providers](docs/providers.md).
+- A custom model whose name a catalog lists is served from the catalog under the same model id (enabled state, order, name and price are kept); the custom entry is removed at start-up.
+- On a narrow screen the Settings tab strip scrolls sideways inside itself and keeps the current tab in view, instead of widening the page.
+
+Removed (**breaking**)
+
+- The provider type `openai-compatible` and the free-text model fields of the provider form (stored providers are migrated, see above).
+- `GET /api/admin/provider-types`, replaced by `GET /api/admin/vendors`. `POST /api/admin/providers` no longer takes model fields, provider objects no longer have `options`, and `POST /api/admin/providers/:id/test` no longer returns `modelCount`.
+- The `fields` and `listModels` members of the provider plugin contract. A vendor module now exports `catalog`, `customKinds` and `customSpec`; see [docs/writing-a-provider.md](docs/writing-a-provider.md).
+- The five-minute model list cache.
 
 **Storage**
 
@@ -74,7 +107,7 @@ Removed (**breaking**)
 
 **Known limitations**
 
-- The built-in providers have not been exercised against their real upstream services as part of this project.
+- The built-in providers have not been exercised against their real upstream services as part of this project. That includes the OpenAI `/images/edits` path and the model names in the OpenAI and Gemini catalogs, which have only been sent to a local fake upstream.
 - The S3 storage driver is verified against MinIO. It has not been run against AWS S3, Cloudflare R2 or Aliyun OSS; their settings follow each vendor's S3-compatibility documentation.
 - Switching storage does not move existing files, and there is no migration tool.
 - No multi-user support, no content moderation, no private file URLs.
@@ -94,16 +127,49 @@ Removed (**breaking**)
 **服务端**
 
 - Node.js + Express + MongoDB，单用户。
-- 插件式的模型接入，带注册表和按模型的覆盖项。内置：高睿 API（图片、视频模型清单，加上自动发现的对话模型）、OpenAI 兼容接口（对话、文生图）、Google Gemini（图片、对话）。
+- 服务商，带注册表和按模型的覆盖项。内置：高瑞（图片、视频模型；对话模型暂时作为自定义模型添加）、OpenAI（对话，图片生成与编辑）、Google Gemini（图片、对话）。见下面的「服务商」。
 - 进程内任务队列：并发有上限，每一步都有硬性时限，只在可以安全重新提交时才重试，支持取消，重启后接着处理未完成的运行。
 - 结果转存到自己的存储，按内容识别类型，生成 WebP 缩略图。存储：本地磁盘，或者一个 S3 兼容驱动，对接 AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等服务（见下面的「存储」）。
 - 按部署者维护的价格表预估成本，没有适用价格时显示「成本未知」；按天、按模型的用量汇总，用量明细及其清理。
 - 可选的计费钩子（`BILLING_HOOK`），在每次运行前后调用。
-- 模型接入的 API Key 用 `SECRET_KEY` 以 AES-256-GCM 加密保存；可选的共用访问口令，登录有限流。
+- 服务商的 API Key 用 `SECRET_KEY` 以 AES-256-GCM 加密保存；可选的共用访问口令，登录有限流。
 - 凡是用户或上游给出的地址，都经过带 SSRF 防护的下载器；上传文件按内容判断类型；安全响应头，包括 Content-Security-Policy。
 - 服务端提示有中英文，按请求选择语言；错误带稳定的标识。
 - 画布文档带 `schemaVersion`，读取时迁移。
 - 管理设置：站点名称、Logo、默认主题和语言、并发数、超时、重试次数、结果保留天数。
+
+**服务商**
+
+新增
+
+- 服务商和明确写出的模型清单。添加的服务商现在是一家服务商（高瑞、OpenAI 或 Google Gemini）加上你的 API Key。每家支持的模型写在 `server/src/providers/catalog/<服务商标识>.json` 里，分 `image`、`video`、`chat` 三段，写在哪一段就是哪种类型。高瑞排在第一位并带「推荐」标记。
+- 自定义模型：在「设置 → 模型」里，可以按上游的模型名给某个服务商添加清单以外的模型，类型（图片或对话）由你手动选择，显示名称可选。每个服务商最多 100 个。三家服务商都不能添加自定义视频模型。
+- OpenAI 服务商走 OpenAI 官方接口：`/chat/completions`、`/images/generations`，接了参考图时走 `/images/edits`（multipart）。OpenAI 的图片模型因此可以带参考图了。
+- 管理接口：`GET /api/admin/vendors`；管理自定义模型的 `POST`、`PUT`、`DELETE /api/admin/providers/:id/models[/:model]`。服务商对象带 `customBaseUrl` 和 `customModels`；ModelSpec 带 `custom`。
+- 用高瑞清单里的模型做视频分析：`gemini-3.5-flash-c` 可以输入视频，会出现在视频分析节点里。高瑞服务商把视频放在 `image_url` 内容片段里发送，值是视频的公网地址，紧跟在文字片段后面（高瑞的中转会把 `video_url` 片段丢掉而不报错）。这是照高瑞主站生产环境的做法写的，还没有从 LoomCanvas 对着真实的高瑞接口跑过。
+- 按 token 计价、输入和输出分开的价格，可以在「设置 → 模型」里填写和修改（两个输入框），模型列表里显示成「输入 … / 输出 … · 每百万 token」。之前这种价格只能通过接口设置，列表里显示成 0.00。
+- 启动时自动升级已保存的服务商，每个只升级一次：`openai-compatible` 变成 `openai`，标识（slug）不变，所以画布、价格和用量里的模型标识照常可用；填在旧字段里的模型，以及旧版本向上游读取列表时实际用过的模型，都转成自定义模型带过来。名称还是旧默认名「高瑞 API」（"Gaorui API"）的高瑞服务商改名为「高瑞」（"Gaorui"），其他名称不动。API Key、接口地址、是否启用、排序和模型覆盖项不动。见 [docs/providers.zh-CN.md](docs/providers.zh-CN.md#从上一个版本升级)。
+
+变更
+
+- 用「服务商 + 明确的模型清单」取代原来的「类型」和按名字猜测。不再根据模型的名字推断任何东西，也不再向上游读取模型列表。「测试连接」仍然调用上游的模型列表接口，但只用来证明地址和 Key 可用，不再报告模型数量。
+- 每家服务商默认用它的官方接口地址（`https://gaorui.cc`、`https://api.openai.com/v1`、`https://generativelanguage.googleapis.com`）。别的地址可以在服务商对话框的「高级」里填写，对方必须使用完全相同的官方接口。服务商添加后不能更换。
+- 添加任何一家服务商都必须填 API Key。
+- 设置页的标签页改叫「服务商」，这一家服务商叫「高瑞」/ "Gaorui"。
+- 品牌的中文写法统一更正为「高瑞」，界面、服务端提示和文档都已改过；已保存的服务商如果默认名称里带着旧写法，升级时会一并改正。
+- OpenAI 的对话模型不再接受视频：官方接口没有视频这种内容片段。视频分析可以用高瑞服务商下的 `gemini-3.5-flash-c` 和自定义对话模型；高瑞的自定义对话模型现在同样用 `image_url` 片段发送视频，不再用 `video_url`。
+- 高瑞的清单里有五个对话模型：`deepseek-v4-pro`、`gpt-5.5`、`glm-5.3`（纯文本），`gpt-6-astra`（可读图片），`gemini-3.5-flash-c`（可读图片和视频）。对话模型不再从上游发现；清单里没有的可以作为自定义模型添加。
+- 纯文本对话模型不会收到图片：对它调用 `POST /api/llm/tasks` 并带 `imageUrls` 会被拒绝（`model.no_image_input`）；大语言模型节点会把图片输入口变灰、不再接受新的图片连线，并写明已连接的图片不会发送。
+- OpenAI 的清单在两个 GPT Image 2.5 模型之外列出了 `gpt-image-2`，以及从 GPT-6 到 GPT-4o Mini 的十五个对话模型；Gemini 的清单增加了 `gemini-3.1-flash-image`、`gemini-3.6-flash`、`gemini-3-flash-preview`。每份清单里是这家服务商通过 LoomCanvas 所调用的接口提供的全部现行模型；哪些没有列入、为什么，见[服务商](docs/providers.zh-CN.md)。
+- 自定义模型的名字如果已在清单里，就以清单里的为准，模型标识不变（启用状态、排序、名称和价格都保留）；那条自定义记录在服务端启动时删除。
+- 窄屏上设置页的标签条在自己里面横向滚动，并让当前标签保持可见，不再把整个页面撑宽。
+
+移除（**不兼容**）
+
+- `openai-compatible` 这个类型，以及服务商表单里自由填写的模型字段（已保存的服务商会自动升级，见上）。
+- `GET /api/admin/provider-types`，由 `GET /api/admin/vendors` 取代。`POST /api/admin/providers` 不再接受模型字段，服务商对象不再有 `options`，`POST /api/admin/providers/:id/test` 不再返回 `modelCount`。
+- 插件接口里的 `fields` 和 `listModels`。服务商模块现在导出 `catalog`、`customKinds`、`customSpec`，见 [docs/writing-a-provider.zh-CN.md](docs/writing-a-provider.zh-CN.md)。
+- 五分钟的模型列表缓存。
 
 **存储**
 
@@ -136,14 +202,14 @@ Removed (**breaking**)
 **打包与项目**
 
 - Dockerfile（非 root 运行，带健康检查）和包含 MongoDB 7 的 Docker Compose 文件。
-- 测试覆盖执行器、模型接入（对着假上游）、计价、加密、SSRF 防护、存储 key 与存储层、图片工具、画布迁移、语言文件，以及端到端的接口测试和安全测试。
+- 测试覆盖执行器、服务商模块（对着假上游）、计价、加密、SSRF 防护、存储 key 与存储层、图片工具、画布迁移、语言文件，以及端到端的接口测试和安全测试。
 - 仓库级检查：版本号、依赖协议、界面文案；CI 工作流。
 - AGPL-3.0 协议与单独的商业授权、贡献者协议、商标政策、第三方声明。
 - `docs/` 下的中英文文档。
 
 **已知的局限**
 
-- 内置的模型接入在本项目里还没有对着真实的上游服务运行过。
+- 内置的服务商在本项目里还没有对着真实的上游服务运行过。带参考图时走的 OpenAI `/images/edits`，以及 OpenAI、Gemini 两份模型清单里的模型名，也都只发给过本地的假上游。
 - S3 存储驱动是对着 MinIO 验证的，没有对着 AWS S3、Cloudflare R2、阿里云 OSS 跑过；它们的配法依据的是各家的 S3 兼容文档。
 - 切换存储不会移动已有的文件，也没有迁移工具。
 - 不支持多用户，没有内容审核，没有私有的文件地址。

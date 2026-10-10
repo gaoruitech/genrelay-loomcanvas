@@ -106,7 +106,7 @@ export default {
     imgModeFrames: '首尾帧',
     imgModeMulti: '多图参考',
     none: '还没有可用的模型',
-    noneHint: '去设置里连接一个模型接入，或启用模型。',
+    noneHint: '去设置里添加一个服务商，或启用模型。',
     goSettings: '去设置',
   },
 

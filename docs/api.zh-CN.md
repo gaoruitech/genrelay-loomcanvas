@@ -44,13 +44,13 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/models` | 已启用的模型，可带 `?kind=image\|video\|chat`。对话模型的 `acceptsVideo` 表示能不能输入视频。 |
+| GET | `/api/models` | 已启用的模型，可带 `?kind=image\|video\|chat`。每个模型带 `custom`：`true` 是用户手动添加的自定义模型，`false` 是服务商清单里的模型。对话模型的 `acceptsVideo` 表示能不能输入视频（高瑞清单里的 `gemini-3.5-flash-c` 和高瑞的自定义对话模型是 `true`，其余都是 `false`；视频怎么发见[服务商](providers.zh-CN.md#哪个节点用哪类模型)），`acceptsImage` 表示能不能读图片（`false` 是纯文本模型）。 |
 | POST | `/api/runs/estimate` | 预估一次运行的成本。 |
 | POST | `/api/runs` | 发起图片或视频运行 → `{ runId }`。未完成的运行已有 500 个时返回 429（`run.queue_full`）。 |
 | GET | `/api/runs/:id` | 查询一次运行。 |
 | POST | `/api/runs/status` | `{ ids }` 批量查询，最多 100 个。 |
 | POST | `/api/runs/:id/cancel` | 取消排队中或进行中的运行。 |
-| POST | `/api/llm/tasks` | 发起对话运行 → `{ taskId }`。带 `videoUrl` 而模型没有 `acceptsVideo` 时返回 400（`model.no_video_input`）；未完成的运行已有 500 个时同样返回 429。 |
+| POST | `/api/llm/tasks` | 发起对话运行 → `{ taskId }`。带 `videoUrl` 而模型没有 `acceptsVideo` 时返回 400（`model.no_video_input`）；带 `imageUrls` 而模型是纯文本模型（没有 `acceptsImage`）时返回 400（`model.no_image_input`）；未完成的运行已有 500 个时同样返回 429。 |
 | GET | `/api/llm/tasks/:id` | 查询对话运行。 |
 
 ### 画布
@@ -117,13 +117,16 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/provider-types` | 接入类型及其表单字段。 |
-| GET | `/api/admin/providers` | 接入列表。 |
-| POST | `/api/admin/providers` | 新增接入。 |
-| PUT | `/api/admin/providers/:id` | 修改接入。 |
-| DELETE | `/api/admin/providers/:id` | 删除接入。 |
-| POST | `/api/admin/providers/:id/test` | 连通性测试。 |
-| GET | `/api/admin/models` | 全部模型（含停用的）及其覆盖项。 |
+| GET | `/api/admin/vendors` | 全部服务商及各自支持的模型。每家：`type`、`label`、`recommended`、`keyUrl`、`defaultBaseUrl`、`models[]`（清单里的模型：`model`、`label`、`kind`、`desc?`、`acceptsImage`、`acceptsVideo`、`videoEdit`、`custom: false`、`maxReferenceImages`、`options`、`defaults`）、`customKinds`（可以添加哪些类型的自定义模型）、`customDefaults`（每种类型的自定义模型能用的参数）。上一个版本的 `GET /api/admin/provider-types` 已经没有了（404）。 |
+| GET | `/api/admin/providers` | 已添加的服务商列表。每个带 `customBaseUrl`（接口地址是否不是官方地址）和 `customModels: [{ model, kind, label }]`；不再有 `options`，也不再把模型字段平铺在顶层。 |
+| POST | `/api/admin/providers` | 添加服务商：`{ type, apiKey, name?, baseUrl?, enabled? }`。`type` 是服务商标识（`gaorui`、`openai`、`gemini`），`apiKey` 必填（`provider.api_key_required`）；不带 `baseUrl` 表示用官方地址。请求里不再有模型字段。 |
+| PUT | `/api/admin/providers/:id` | 修改服务商。服务商添加后不能更换：带上不同的 `type` 返回 400（`provider.vendor_fixed`）。 |
+| DELETE | `/api/admin/providers/:id` | 删除服务商，连同其模型的覆盖项。 |
+| POST | `/api/admin/providers/:id/test` | 连通性测试 → `{ ok, message }`，不再返回 `modelCount`。它调用上游的模型列表接口，只用来证明地址和 Key 可用。 |
+| POST | `/api/admin/providers/:id/models` | 添加自定义模型：`{ model, kind, label? }` → 服务商对象。 |
+| PUT | `/api/admin/providers/:id/models/:model` | 修改自定义模型的类型或显示名称：`{ kind?, label? }` → 服务商对象。模型名不能改。`:model` 要做 URL 编码。 |
+| DELETE | `/api/admin/providers/:id/models/:model` | 删除自定义模型及其覆盖项 → 服务商对象。 |
+| GET | `/api/admin/models` | 全部模型（含停用的和自定义的）及其覆盖项。 |
 | PUT | `/api/admin/models/:modelId` | 修改模型的启用状态、名称、排序、默认参数、价格。`modelId` 要做 URL 编码。 |
 | GET | `/api/admin/settings` | 读取站点设置。 |
 | PUT | `/api/admin/settings` | 修改站点设置。不认识的键返回 400（`settings.unknown_key`）。 |
@@ -135,5 +138,27 @@
 | DELETE | `/api/admin/usage/records` | `?before=<YYYY-MM-DD 或 ISO 时间>` → `{ deleted }`。删除这一刻之前创建、已结束（成功、失败、已取消）的用量记录；只写日期表示这一天 UTC 零点之前。排队中、运行中的不动，文件不删。缺参数或日期不对返回 400（`validation.required` / `validation.bad_date`）。 |
 
 管理接口没有单独的管理员角色：能登录的人都能调用。
+
+添加一个服务商，再给它加一个自定义模型：
+
+```bash
+curl -X POST http://localhost:3000/api/admin/providers \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"openai","apiKey":"sk-…"}'
+
+curl -X POST http://localhost:3000/api/admin/providers/<上一步返回的 id>/models \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"some-chat-model","kind":"chat","label":"我的对话模型"}'
+```
+
+自定义模型的规则和错误码：
+
+- `model` 是上游的模型名：只能用字母、数字和 `. _ - : / @`，最长 120 个字符。缺了返回 `provider.custom_name_required`，格式不对返回 `provider.custom_bad_name`。
+- `kind` 必填，没有默认值（`provider.custom_kind_required`），而且必须在这家服务商的 `customKinds` 里（`provider.custom_kind_unsupported`）。内置三家都只能是 `image` 或 `chat`，`video` 会被拒绝。
+- 不能和服务商清单里的模型重名（`provider.custom_in_catalog`），同一个服务商下不能重复（`provider.custom_exists`），每个服务商最多 100 个（`provider.custom_max`）。
+- 修改时带了不同的 `model` 返回 `provider.custom_name_fixed`；修改或删除一个不存在的自定义模型返回 404（`provider.custom_not_found`）。
+- 以上除注明的以外都是 400。三个接口都返回更新后的服务商对象。添加后，这个模型以 `<标识>:<模型名>` 出现在 `GET /api/models` 里，`custom` 为 `true`，参数取自 `customDefaults[kind]`。
+
+`GET /api/admin/vendors` 的完整返回示例、服务商对象的每个字段，逐项列在 [api.md](api.md#vendors)。
 
 存储接口的请求和返回逐项列在 [api.md](api.md#storage)；各个字段的含义、各家服务的配法见[存储](storage.zh-CN.md)。

@@ -177,17 +177,22 @@ test('LoomCanvas API end to end', async (t) => {
     // Updating other fields with a blank key keeps the stored key.
     const updated = await data('PUT', `/api/admin/providers/${providerId}`, { name: 'Fake upstream', apiKey: '' })
     assert.deepEqual([updated.name, updated.hasKey, updated.keyTail], ['Fake upstream', true, '3456'])
-    assert.deepEqual(await data('POST', `/api/admin/providers/${providerId}/test`), { ok: true, message: zh['provider.test_ok'], modelCount: 2 })
+    assert.deepEqual(await data('POST', `/api/admin/providers/${providerId}/test`), { ok: true, message: zh['provider.test_ok'] })
     assert.equal((await call('GET', '/api/app/bootstrap')).body.data.hasProvider, true)
   })
 
-  await t.test('models: catalog + discovered chat model, overrides, estimate', async () => {
+  await t.test('models: catalog + a custom chat model, overrides, estimate', async () => {
+    // The upstream's /v1/models names "chat-small"; that alone creates nothing.
+    const GAORUI_CHAT = ['gaorui:deepseek-v4-pro', 'gaorui:gpt-5.5', 'gaorui:glm-5.3', 'gaorui:gpt-6-astra', 'gaorui:gemini-3.5-flash-c']
+    assert.deepEqual((await data('GET', '/api/models?kind=chat')).map((m) => m.id), GAORUI_CHAT, 'the catalog chat models, and nothing from the upstream list')
+    const withCustom = await data('POST', `/api/admin/providers/${providerId}/models`, { model: 'chat-small', kind: 'chat' })
+    assert.deepEqual(withCustom.customModels, [{ model: 'chat-small', kind: 'chat', label: '' }])
     const models = await data('GET', '/api/models')
     const ids = models.map((m) => m.id)
     assert.ok(ids.includes('gaorui:nano-banana-2.1') && ids.includes('gaorui:chat-small'))
     assert.equal(models.find((m) => m.id === 'gaorui:chat-small').kind, 'chat')
     assert.deepEqual(models.find((m) => m.id === 'gaorui:omni-flash').options.imgModes, ['multi', 'frames'])
-    assert.equal((await data('GET', '/api/models?kind=chat')).length, 1)
+    assert.deepEqual((await data('GET', '/api/models?kind=chat')).map((m) => m.id), [...GAORUI_CHAT, 'gaorui:chat-small'])
 
     assert.deepEqual(await data('POST', '/api/runs/estimate', { model: 'gaorui:nano-banana-2.1', params: { resolution: '2K' }, count: 2 }), { unitCost: 0, totalCost: 0, currency: '', unknown: true })
     assert.equal((await data('POST', '/api/runs/estimate', { model: 'gaorui:chat-small', count: 1 })).unknown, true)
@@ -579,7 +584,7 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal((await said({ 'Accept-Language': 'zh-CN' })).message, bad(zh))
     assert.equal((await call('POST', '/api/auth/login', { password: 'nope' }, { auth: false })).body.message, en['auth.wrong_password'])
     await data('PUT', '/api/admin/settings', { defaultLocale: 'zh-CN' })
-    const types = await call('GET', '/api/admin/provider-types', undefined, { headers: { 'X-Locale': 'en' } })
+    const types = await call('GET', '/api/admin/vendors', undefined, { headers: { 'X-Locale': 'en' } })
     assert.equal(types.body.data.find((p) => p.type === 'gaorui').label, en['provider.gaorui.label'])
     await data('DELETE', `/api/admin/providers/${providerId}`)
     assert.deepEqual(await data('GET', '/api/models'), [])

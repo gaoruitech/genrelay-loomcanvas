@@ -2,7 +2,7 @@ import { ref, computed, watch, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
-  getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels, listVideoChatModels,
+  getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels, listVideoChatModels, chatReadsImages,
   type AdapterPollResult,
 } from '@/utils/canvasModels'
 import { llmApi, runsApi, unwrap, platformExportApi, canvasToolApi } from '@/utils/api'
@@ -696,7 +696,8 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
-      const refImageUrls = await collectRefImages(inputs.imageUrls)
+      // 纯文本模型不带图（节点上已提示）
+      const refImageUrls = chatReadsImages(model) ? await collectRefImages(inputs.imageUrls) : []
       const submitRes = await llmApi.create({ model, prompt: promptText, imageUrls: refImageUrls, videoUrl })
       if (submitRes.data.result !== 0) throw new Error(submitRes.data.message || t('executor.submitFailed'))
       const taskId = submitRes.data.data?.taskId
@@ -736,7 +737,8 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
-      const refImageUrls = await collectRefImages(inputs.imageUrls)
+      // 纯文本模型不带图：节点上已经说明连着的图片不会发送，这里照着做
+      const refImageUrls = chatReadsImages(model) ? await collectRefImages(inputs.imageUrls) : []
       const submitRes = await llmApi.create({
         model,
         prompt: promptText,

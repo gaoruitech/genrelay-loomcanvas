@@ -10,3 +10,13 @@
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0 20px;
 }
 .section-title { font-size: 13.5px; font-weight: 600; color: var(--t-strong); margin: 22px 0 10px; }
+
+/* 模型类型徽标：图片 / 视频 / 对话各一种颜色，「模型」页和「支持的模型」清单共用 */
+.kind-badge {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; flex: none;
+  border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap;
+  background: var(--n-4); color: var(--t-strong);
+}
+.kind-badge.image { background: var(--chip-bg); color: var(--chip-fg); }
+.kind-badge.video { background: var(--warning-dim); color: var(--warning); }
+.kind-badge.chat { background: var(--success-dim); color: var(--success); }

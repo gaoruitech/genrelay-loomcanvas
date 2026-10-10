@@ -18,15 +18,30 @@
             <label for="pr-unit">{{ t('settings.pricing.unit') }}</label>
             <LcSelect id="pr-unit" v-model="unit" :options="unitOptions" :disabled="saving" />
           </div>
-          <div class="lc-field">
+          <div v-if="isToken" class="lc-field">
+            <label for="pr-token-mode">{{ t('settings.pricing.tokenMode') }}</label>
+            <LcSelect id="pr-token-mode" v-model="tokenMode" :options="tokenModeOptions" :disabled="saving" />
+          </div>
+          <div v-else class="lc-field">
             <label for="pr-by">{{ t('settings.pricing.by') }}</label>
             <LcSelect id="pr-by" v-model="by" :options="byOptions" :disabled="saving" @change="onByChange" />
           </div>
         </div>
 
-        <div v-if="!by" class="lc-field">
-          <label>{{ t('settings.pricing.price') }}</label>
-          <input v-model="price" class="lc-input" type="number" min="0" step="any" :disabled="saving" />
+        <div v-if="isToken && tokenMode === 'split'" class="token-grid">
+          <div class="lc-field">
+            <label for="pr-input">{{ t('settings.pricing.inputPrice') }}</label>
+            <input id="pr-input" v-model="inputPrice" class="lc-input" type="number" min="0" step="any" :disabled="saving" />
+          </div>
+          <div class="lc-field">
+            <label for="pr-output">{{ t('settings.pricing.outputPrice') }}</label>
+            <input id="pr-output" v-model="outputPrice" class="lc-input" type="number" min="0" step="any" :disabled="saving" />
+          </div>
+        </div>
+
+        <div v-else-if="isToken || !by" class="lc-field">
+          <label for="pr-price">{{ t('settings.pricing.price') }}</label>
+          <input id="pr-price" v-model="price" class="lc-input" type="number" min="0" step="any" :disabled="saving" />
         </div>
 
         <template v-else>
@@ -59,6 +74,12 @@
 /**
  * 单个模型的价格覆盖项编辑器。
  * 价格只用于在画布上显示预估成本、统计用量，不影响实际向上游的计费。
+ *
+ * 按 token 计价有两种存法，后端两种都认（runner/pricing.js 的 tokenCost）：
+ *   统一单价   { unit: 'per_1m_tokens', price }
+ *   输入输出分开 { unit: 'per_1m_tokens', table: { input, output } }
+ * 这里两种都能显示、都能改；打开一个分开计价的价格再保存，不会被压成一个数。
+ * 按 token 计价没有「随分辨率 / 时长变化」这回事，所以那个下拉换成「输入和输出」。
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -94,8 +115,21 @@ const currency = ref(init?.currency || 'CNY')
 const unit = ref<ModelPricing['unit']>(init?.unit || defaultUnit())
 const by = ref<NonNullable<ModelPricing['by']>>(init?.by || '')
 const price = ref<number | string>(init?.price ?? '')
+
+// ---- 按 token 计价 ----
+const isToken = computed(() => unit.value === 'per_1m_tokens')
+const initToken = init?.unit === 'per_1m_tokens' ? init : null
+// 已有价格：照它原来的存法；新填的：分开计价（上游的对话模型大多输入输出不同价）
+const tokenMode = ref<'same' | 'split'>(initToken && !initToken.table ? 'same' : 'split')
+const tokenModeOptions = computed<{ value: 'same' | 'split'; label: string }[]>(() => [
+  { value: 'split', label: t('settings.pricing.tokenSplit') },
+  { value: 'same', label: t('settings.pricing.tokenSame') },
+])
+const inputPrice = ref<number | string>(initToken?.table?.input ?? '')
+const outputPrice = ref<number | string>(initToken?.table?.output ?? '')
+// input / output 是 token 价格的两个键，不是价格表的档位
 const rows = ref<{ key: string; price: number | string }[]>(
-  Object.entries(init?.table || {}).map(([key, v]) => ({ key, price: v })),
+  initToken ? [] : Object.entries(init?.table || {}).map(([key, v]) => ({ key, price: v })),
 )
 const error = ref('')
 
@@ -132,7 +166,16 @@ function submit() {
     error.value = t('settings.pricing.errCurrency')
     return
   }
-  if (!by.value) {
+  const valid = (v: number | string) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0
+  if (isToken.value && tokenMode.value === 'split') {
+    if (!valid(inputPrice.value) || !valid(outputPrice.value)) {
+      error.value = t('settings.pricing.errToken')
+      return
+    }
+    emit('save', { currency: cur, unit: unit.value, table: { input: Number(inputPrice.value), output: Number(outputPrice.value) } })
+    return
+  }
+  if (isToken.value || !by.value) {
     const p = Number(price.value)
     if (price.value === '' || !Number.isFinite(p) || p < 0) {
       error.value = t('settings.pricing.errPrice')
@@ -162,12 +205,13 @@ function submit() {
 <style scoped>
 .hint { font-size: 12.5px; color: var(--t-dim); line-height: 1.6; margin-bottom: 16px; }
 .grid { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 0 12px; }
+.token-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .rows-title { margin-bottom: 8px; }
 .row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
 .err { margin-top: 12px; }
 .clear { margin-right: auto; }
 
 @media (max-width: 520px) {
-  .grid { grid-template-columns: 1fr; }
+  .grid, .token-grid { grid-template-columns: 1fr; }
 }
 </style>

@@ -21,13 +21,19 @@ Check in this order:
 
 1. **Settings → Providers**: is there a provider, and is it enabled? Click **Test connection**.
 2. **Settings → Models**: are the models enabled?
-3. Is the node the right kind? A Video edit node only lists video-edit models. An OpenAI-compatible or Gemini provider offers no video models at all.
-4. For an OpenAI-compatible provider whose `/v1/models` is missing or lists odd names, type the model names into the **Chat models** and **Image models** fields instead of relying on detection.
-5. If the upstream was unreachable when the list was first requested, the list stays empty for up to five minutes. Saving or testing the provider refreshes it.
+3. Is the node the right kind? A Video edit node only lists video-edit models. OpenAI and Gemini providers offer no video models at all.
+4. Language model node: it lists every enabled chat model. A Gaorui provider has five (three text only, two that read images); a chat model that is not in a provider's list can be added as a custom model under **Settings → Models**. With a text-only model selected, the node's image input is greyed out and connected images are not sent.
+5. Video analysis node: it lists only chat models that accept a video. At present those are `gemini-3.5-flash-c` of a Gaorui provider and custom chat models of a Gaorui provider. OpenAI and Gemini chat models are never listed there.
+
+The list does not depend on the upstream being reachable: it is the provider's own model list plus your custom models.
 
 ### A model I need is missing, or a wrong one is listed
 
-Model lists come from the provider: a fixed catalog for Gaorui image and video models, name-based detection for everything discovered from an upstream list. Detection can be wrong. Disable what should not be there under **Settings → Models**; for OpenAI-compatible and Gemini providers, list the models you want by name in the provider form.
+Each provider has a fixed list of supported models that ships with LoomCanvas. Nothing is read from the upstream's model list and nothing is guessed from a model's name.
+
+- Missing: go to **Settings → Models**, find the provider and click **Add custom model**. Enter the model name exactly as the upstream expects it and choose its type (Image or Chat). Custom video models cannot be added.
+- Not wanted: disable it under **Settings → Models**.
+- After upgrading from the previous version, a custom model may have the wrong type or a model you used may be missing; see [Upgrading from the previous version](providers.md#upgrading-from-the-previous-version).
 
 ### Running a node again: is it billed again?
 
@@ -130,7 +136,7 @@ New runs are refused while 500 are queued or in flight. Wait for some to finish.
 
 The server stopped (a restart, an upgrade, a crash, out of memory, a forced kill) after the request for that run had been sent and before an upstream task id came back. It is not sent again, because the upstream may already have created, and billed, the task. Check your upstream's records and run the node again if needed.
 
-With providers that return the result in the same request (OpenAI-compatible images, Gemini) and with Language model and Video analysis nodes there never is a task id, so any such run that is in flight when the server stops ends this way.
+With providers that return the result in the same request (OpenAI images, Gemini) and with Language model and Video analysis nodes there never is a task id, so any such run that is in flight when the server stops ends this way.
 
 ### "Run all" does nothing
 
@@ -192,9 +198,9 @@ Generated files are kept forever by default. Options:
 
 No. There is one shared password and one set of data. See [Security](security.md#access-password).
 
-### My upstream is not one of the three provider types
+### My upstream is not one of the three providers
 
-If it speaks the OpenAI chat or image API, use the OpenAI-compatible type. Otherwise a provider is one file: [Writing a provider](writing-a-provider.md).
+If it is a proxy or relay that speaks exactly the official OpenAI or Gemini API, add an OpenAI or Google Gemini provider and change **Base URL** under **Advanced**; add its models as custom models if they are not in the list. LoomCanvas does not adapt to third-party private formats. A different vendor needs a vendor module and a model list: [Writing a provider](writing-a-provider.md).
 
 ### Have the providers been tested against the real services?
 

@@ -1,0 +1,109 @@
+{
+  "image": [
+    {
+      "id": "gemini-nano-banana-2.1",
+      "label": "Nano Banana 2.1",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 14,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 }
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "label": "Gemini 3 Pro Image",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 6,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 }
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "label": "Gemini 3.1 Flash Image",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 14,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"],
+        "resolutions": ["1K", "2K", "4K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 }
+    },
+    {
+      "id": "gemini-3.1-flash-lite-image",
+      "label": "Gemini 3.1 Flash Lite Image",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 14,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+        "resolutions": ["1K"]
+      },
+      "defaults": { "aspectRatio": "auto", "resolution": "1K", "count": 1 }
+    }
+  ],
+  "video": [],
+  "chat": [
+    {
+      "id": "gemini-3.8-flash",
+      "label": "Gemini 3.8 Flash",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "label": "Gemini 3.6 Flash",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "label": "Gemini 3.5 Flash-Lite",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "label": "Gemini 3.1 Pro (preview)",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash (preview)",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    }
+  ]
+}

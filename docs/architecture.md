@@ -16,14 +16,14 @@ loomcanvas/
 │  │  ├─ constants.js
 │  │  ├─ routes/            HTTP 接口
 │  │  ├─ models/            Mongoose 模型
-│  │  ├─ providers/         模型接入（插件）
+│  │  ├─ providers/         服务商（每家一个模块加一份模型清单）
 │  │  │  ├─ index.js        注册表
-│  │  │  ├─ gaorui.js / openaiCompatible.js / gemini.js
-│  │  │  └─ catalog/*.json  各接入的模型声明
+│  │  │  ├─ gaorui.js / openai.js / gemini.js
+│  │  │  └─ catalog/        index.js（清单的格式与校验）、gaorui.json / openai.json / gemini.json（各家的模型清单）
 │  │  ├─ runner/            任务执行器（排队、轮询、转存、记账）
 │  │  ├─ storage/           存储层：本地磁盘与 S3 兼容对象存储（index 门面、local、s3、schema、probe、keys）
 │  │  ├─ billing/           计费钩子（默认空实现）
-│  │  ├─ services/          设置、存储设置（storageSettings.js）、素材读取、图片工具、内置内容、结果清理
+│  │  ├─ services/          设置、存储设置（storageSettings.js）、素材读取、图片工具、内置内容、结果清理、服务商数据的一次性升级（providerMigration.js）
 │  │  ├─ middleware/        登录、语言、错误处理、安全响应头
 │  │  ├─ i18n/              服务端给用户看的文字：zh-CN.js、en.js
 │  │  └─ utils/
@@ -32,7 +32,7 @@ loomcanvas/
 │  └─ src/
 │     ├─ views/             CanvasList / Canvas / CanvasShareView / Settings / Setup / NotFound
 │     ├─ components/canvas/ 画布节点与对话框
-│     ├─ components/settings/ 设置页的各个标签页：模型接入、模型、存储、限制、外观、用量
+│     ├─ components/settings/ 设置页的各个标签页：服务商、模型、存储、限制、外观、用量
 │     ├─ composables/       执行器、批量、历史等
 │     ├─ utils/             api.ts、canvasModels.ts 等
 │     └─ locales/           zh-CN.ts、en.ts、modules/*.ts
@@ -70,14 +70,15 @@ loomcanvas/
 
 ```jsonc
 {
-  "id": "gaorui:nano-banana-2.1",      // <接入实例标识>:<模型标识>，全局唯一
-  "providerId": "…",                    // 接入实例的数据库 id
-  "providerName": "高睿 API",            // 接入实例的名称
-  "providerType": "gaorui",             // 接入类型
+  "id": "gaorui:nano-banana-2.1",      // <服务商实例标识>:<上游模型名>，全局唯一
+  "providerId": "…",                    // 服务商实例的数据库 id
+  "providerName": "高瑞",                // 服务商实例的名称
+  "providerType": "gaorui",             // 服务商标识：gaorui | openai | gemini
   "label": "Nano Banana 2.1",
-  "desc": "新版图片模型",                // 可选，下拉副标题
+  "desc": "新版图片模型",                // 可选，下拉副标题；只有清单里的模型有
   "tag": "推荐",                         // 可选
-  "kind": "image",                      // image | video | chat
+  "kind": "image",                      // image | video | chat；清单里的模型取自所在的段，自定义模型由用户指定
+  "custom": false,                      // true 表示用户手动添加的自定义模型，false 表示服务商清单里的模型
   "acceptsImage": true,
   "acceptsVideo": false,                // 能否输入视频；对话模型见 4.3
   "videoEdit": false,                   // 是否出现在「视频编辑」节点
@@ -90,7 +91,7 @@ loomcanvas/
     "imgModes": ["multi","frames"]      // 可选：multi 多图参考 / frames 首尾帧
   },
   "defaults": { "aspectRatio": "1:1", "resolution": "1K", "count": 1 },
-  "pricing": {                          // 可选；没有就显示「成本未知」
+  "pricing": {                          // 可选，来自管理端的覆盖项；没有就显示「成本未知」
     "currency": "CNY",
     "unit": "per_image",                // per_image | per_video | per_second | per_1m_tokens
     "by": "resolution",                 // 可选：resolution | duration | resolution_duration
@@ -99,11 +100,13 @@ loomcanvas/
 }
 ```
 
+模型列表不向上游读取，也不根据名字推断：一个服务商实例的模型 = 这家服务商的模型清单（`server/src/providers/catalog/<服务商标识>.json`，分 `image`、`video`、`chat` 三段，写在哪一段就是哪种类型）+ 这个实例的 `customModels`，再套上管理端的覆盖项。这个列表每次由注册表同步算出，没有缓存，也没有需要刷新的东西。
+
 ### 4.2 接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/models` | 返回所有已启用接入下已启用的模型 `ModelSpec[]`，可带 `?kind=image` |
+| GET | `/api/models` | 返回所有已启用的服务商下已启用的模型 `ModelSpec[]`，可带 `?kind=image` |
 | POST | `/api/runs/estimate` | `{ model, params, count }` → `{ unitCost, totalCost, currency, unknown }` |
 | POST | `/api/runs` | 见下 → `{ runId }`。排队中和进行中的运行合计已有 500 个时返回 429（`run.queue_full`） |
 | GET | `/api/runs/:id` | → `Run` |
@@ -149,7 +152,8 @@ Run：
 | POST | `/api/llm/tasks` | `{ model, prompt, systemPrompt?, imageUrls?, videoUrl? }` → `{ taskId }` |
 | GET | `/api/llm/tasks/:id` | → `{ status, text, error, errorCode, cost }`，status 同 Run |
 
-- 对话模型的 `acceptsVideo` 是有意义的：OpenAI 兼容接口和高睿 API 的对话模型为 `true`（视频以 `video_url` 内容片段发送），Gemini 的对话模型为 `false`。
+- 对话模型的 `acceptsVideo` 是有意义的：OpenAI 和 Gemini 的对话模型（清单里的和自定义的）都是 `false`，官方接口没有视频这种内容片段，模块收到视频会拒绝；高瑞清单里的 `gemini-3.5-flash-c` 和高瑞的自定义对话模型为 `true`，清单里另外四个是 `false`，所以现在能做视频分析的是这两类。高瑞模块把视频放在 `image_url` 内容片段里发送（公网地址，紧跟在文字片段后面）：中转会把 `video_url` 片段丢掉而不报错。这是照高瑞主站生产环境的做法写的，还没有从 LoomCanvas 对着真实的高瑞接口跑过。`openaiShared.js` 的 `chatCompletion()` 默认拒绝视频，只有调用方传了 `videoAsImageUrl` 才这样发。
+- 对话模型的 `acceptsImage` 同样有意义：为 `false` 的是纯文本模型（高瑞清单里的 `deepseek-v4-pro`、`gpt-5.5`、`glm-5.3`）。`POST /api/llm/tasks` 带 `imageUrls` 而模型没有 `acceptsImage` 时返回 400（`model.no_image_input`）。大语言模型节点选了纯文本模型时，图片输入口变灰、不接新连线，已连着的图片不发送并在节点上写明。
 - `POST /api/llm/tasks` 带 `videoUrl` 而模型没有 `acceptsVideo` 时返回 400（`model.no_video_input`）。视频分析节点只列出 `acceptsVideo` 的对话模型。
 - 未完成运行的 500 个上限对 `POST /api/llm/tasks` 同样适用（429，`run.queue_full`）。
 
@@ -157,10 +161,13 @@ Run：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/provider-types` | 可选的接入类型及其表单字段 |
-| GET/POST | `/api/admin/providers` | 列表 / 新增接入实例 `{ type, name, baseUrl?, apiKey, enabled }` |
-| PUT/DELETE | `/api/admin/providers/:id` | 修改 / 删除 |
-| POST | `/api/admin/providers/:id/test` | 连通性测试 → `{ ok, message, modelCount? }` |
+| GET | `/api/admin/vendors` | 全部服务商，每家：`{ type, label, recommended, keyUrl, defaultBaseUrl, models[], customKinds, customDefaults }`。`models[]` 是这家清单里的模型（`model, label, kind, desc?, acceptsImage, acceptsVideo, videoEdit, custom: false, maxReferenceImages, options, defaults`）；`customKinds` 是可以添加的自定义模型类型；`customDefaults` 按类型给出自定义模型能用的参数 |
+| GET/POST | `/api/admin/providers` | 列表 / 新增服务商实例 `{ type, apiKey, name?, baseUrl?, enabled? }`。`type` 是服务商标识，`apiKey` 必填；请求里不再有任何模型字段 |
+| PUT/DELETE | `/api/admin/providers/:id` | 修改 / 删除。服务商添加后不能更换：带上不同的 `type` 返回 400（`provider.vendor_fixed`）。删除时连同它的模型覆盖项一起删 |
+| POST | `/api/admin/providers/:id/test` | 连通性测试 → `{ ok, message }`。调用上游的模型列表接口，只用来证明地址和 Key 可用，返回的列表不使用 |
+| POST | `/api/admin/providers/:id/models` | 添加自定义模型 `{ model, kind, label? }` → 服务商实例 |
+| PUT | `/api/admin/providers/:id/models/:model` | 修改自定义模型 `{ kind?, label? }` → 服务商实例。模型名不能改（`provider.custom_name_fixed`）。`:model` 要做 URL 编码 |
+| DELETE | `/api/admin/providers/:id/models/:model` | 删除自定义模型及其覆盖项 → 服务商实例 |
 | GET | `/api/admin/models` | 所有模型（含未启用）及其覆盖项 |
 | PUT | `/api/admin/models/:modelId` | `{ enabled?, label?, sort?, defaults?, pricing? }` |
 | GET/PUT | `/api/admin/settings` | 站点名称、Logo、默认主题和语言、并发数、超时、重试次数、结果保留天数 |
@@ -189,10 +196,10 @@ Run：
 - 未完成的运行（`queued`、`running`、`archiving`）最多 500 个，超出时提交接口返回 429（`run.queue_full`）。
 - 每一步都有总时长上限：提交 60 秒（`submitTimeoutSec`），轮询总时长按模型类型（图片 10 分钟 `imageTimeoutMinutes`、视频 30 分钟 `videoTimeoutMinutes`），对话 5 分钟（`chatTimeoutSec`），结果下载 5 分钟（`downloadTimeoutSec`）。这些都是设置项，括号里是键名。超时一律判失败，不允许无限等待。
 - 结果文件下载后转存到存储层（当前使用的后端：本地磁盘或 S3 兼容的桶），图片生成缩略图。
-- 任何请求都不会向上游发两次。进程收到退出信号时，手上的运行只有在两种情况下放回 `queued`：已经有外部任务号（下次启动继续轮询，不重新提交），或者还什么都没发出去。请求已经发出、还没有外部任务号的运行以 `run.interrupted` 判失败，不会再发一次；同步型接入（OpenAI 兼容接口的图片、Gemini）的每一次运行和每一次对话都属于这种情况。
+- 任何请求都不会向上游发两次。进程收到退出信号时，手上的运行只有在两种情况下放回 `queued`：已经有外部任务号（下次启动继续轮询，不重新提交），或者还什么都没发出去。请求已经发出、还没有外部任务号的运行以 `run.interrupted` 判失败，不会再发一次；同步型服务商（OpenAI 的图片、Gemini）的每一次运行和每一次对话都属于这种情况。
 - 运行存储的约定：`recover()` 返回 `{ queued, interrupted }`。`queued` 是要入队的运行 id（按创建时间从早到晚），`interrupted` 是上一个进程留下的、卡在中途又没有外部任务号的运行，由执行器判失败。
 - 被 `beforeRun` 放行、最后没有成功的运行都会调用 `billing.onFailed`，包括上面因中断而失败的。启动时处理 `interrupted` 的顺序是先调钩子、再更新记录，中间再崩溃会在下一次启动时重复调用，所以这一处是「至少一次」，钩子应按 `ctx.runId` 做到幂等。
-- 传给接入插件的 `media` 工具与每一次调用的中止信号绑定：取消、超时、进程退出时，参考素材的加载一并停下。
+- 传给服务商模块的 `media` 工具与每一次调用的中止信号绑定：取消、超时、进程退出时，参考素材的加载一并停下。
 
 ## 8. 计费钩子
 
@@ -205,24 +212,54 @@ module.exports = {
 }
 ```
 
-## 9. 模型接入的写法
+## 9. 服务商模块的写法
+
+一家服务商 = `server/src/providers/<服务商标识>.js` 一个模块 + `server/src/providers/catalog/<服务商标识>.json` 一份模型清单。
 
 ```js
 module.exports = {
-  type: 'gaorui',
-  label: 'Gaorui API',                  // 自带的名字；语言文件里有 provider.gaorui.label 时用语言文件的
-  fields: [ { key: 'apiKey', label: 'API Key', secret: true, required: true } ],
-  defaultBaseUrl: 'https://gaorui.cc',
-  sync: false,                          // submit 直接给出结果的同步型接入设为 true
-  async listModels(cfg) { /* 返回 ModelSpec[]（不含 providerId 和前缀，由注册表补） */ },
-  async test(cfg) { /* 连通性测试 → { ok, modelCount? }；失败就抛错 */ },
+  type: 'gaorui',                       // 服务商标识
+  label: 'Gaorui',                      // 自带的名字；语言文件里有 provider.gaorui.label 时用语言文件的
+  recommended: true,                    // 可选：排第一的内置服务商带「推荐」标记
+  keyUrl: 'https://gaorui.cc',          // 可选：表单里「获取 API Key」的链接
+  defaultBaseUrl: 'https://gaorui.cc',  // 官方地址
+  catalog: loadCatalog('gaorui'),       // 模型清单，加载时校验，写坏了启动就报错
+  customKinds: ['image', 'chat'],       // 用户可以手动添加哪些类型的自定义模型
+  customSpec: (kind) => CUSTOM[kind],   // 这种类型的自定义模型能用什么（能力、参数、默认值）
+  sync: false,                          // submit 直接给出结果的同步型服务商设为 true
+  async test(cfg) { /* 连通性测试 → { ok }；失败就抛错 */ },
   async submit(cfg, run) { /* → { externalId } 或 { outputs }（同步接口直接给结果） */ },
   async poll(cfg, run) { /* → { status, progress, outputs?, error? }；error 填上游的原话 */ },
   async chat(cfg, req) { /* 对话类 → { text, usage?: { inputTokens, outputTokens } } */ },
 }
 ```
 
-五个函数都必须存在（用不到的也要写出来并在里面抛错），否则注册时报错。完整说明见 [writing-a-provider.zh-CN.md](writing-a-provider.zh-CN.md)，计费钩子见 [billing-hook.zh-CN.md](billing-hook.zh-CN.md)。
+- `customSpec`、`test`、`submit`、`poll`、`chat` 五个函数都必须存在（用不到的也要写出来并在里面抛错），`catalog` 和 `customKinds` 必须是数组，否则注册时报错。模块没有表单字段（`fields`），也没有列模型的函数：每家的表单都是 API Key、名称，加上「高级」里的接口地址。
+- `cfg` 只有 `{ baseUrl, apiKey }`。`baseUrl` 是实例保存的地址，没保存时是 `defaultBaseUrl`。
+- 清单文件是 `{ "image": [...], "video": [...], "chat": [...] }`，三段都必须有，没有就写 `[]`。条目的字段：`id`（上游模型名，原样发送）、`label`、`acceptsImage`、`maxReferenceImages`、`acceptsVideo`、`videoEdit`、`options`、`defaults`，以及只给模块自己用、不对外返回的 `_` 开头的私有字段（如 `_protocol`）。条目里不写 `kind`、说明文字和价格。
+- 高瑞的接口是我们自己的，可以不标准；其他服务商的模块只走那家的官方接口。接口地址可以改成别的（代理或中转），但对方必须使用完全相同的官方接口，不为第三方的私有格式做适配。
+- 内置三家：`gaorui`（默认 `https://gaorui.cc`）、`openai`（默认 `https://api.openai.com/v1`；对话走 `/chat/completions`，图片没有参考图时走 `/images/generations`、有参考图时走 `/images/edits`）、`gemini`（默认 `https://generativelanguage.googleapis.com`；`/v1beta/models/{model}:generateContent`）。三家的 `customKinds` 都是 `['image', 'chat']`，都不能添加自定义视频模型。
+
+服务商实例（`providers` 集合里的一条）：
+
+```jsonc
+{
+  "userId": "local",
+  "type": "gaorui",              // 服务商标识，添加后不能改
+  "name": "高瑞",
+  "slug": "gaorui",              // 模型标识的前缀，创建后不变
+  "baseUrl": "",                 // 空表示用服务商的官方地址；官方地址本身不入库
+  "apiKeyEnc": "…",              // 密文，普通查询不带出来
+  "hasKey": true, "keyTail": "3456",
+  "customModels": [ { "id": "some-chat-model", "kind": "chat", "label": "" } ],  // 清单以外的模型；最多 100 个；kind 由用户指定
+  "schemaVersion": 3,            // 当前的数据形状；由 services/providerMigration.js 写入
+  "enabled": true, "sort": 0
+}
+```
+
+旧版本里的 `options`（自由填写的模型字段）已经没有了。启动时 `migrateProviders()` 把 `schemaVersion` 不是 3 的记录各升级一次：`openai-compatible` 改成 `openai`（`slug` 不变）、旧字段里的模型转成 `customModels`、去掉 `options`、把还叫旧默认名「高瑞 API」的高瑞服务商改名为「高瑞」；已经是 2 的记录只做最后这一步改名；每一条规则写在 `services/providerMigration.js` 开头的注释里，面向用户的说明见 [providers.zh-CN.md](providers.zh-CN.md#从上一个版本升级)。
+
+完整说明见 [writing-a-provider.zh-CN.md](writing-a-provider.zh-CN.md)，计费钩子见 [billing-hook.zh-CN.md](billing-hook.zh-CN.md)。
 
 ## 10. 补充约定（联调后确定）
 
@@ -234,7 +271,7 @@ module.exports = {
 - 前端每个"数量"单位提交一次 `POST /api/runs`；一次运行的 `outputs[]` 全部使用。
 - `POST /api/runs/estimate` 也会对对话模型调用（只有 `{ model, count }`），返回必须带 `currency`，未知时 `unknown: true`。
 - 价格表的键：`by: "resolution"` 用分辨率，`by: "duration"` 用秒数字符串，`by: "resolution_duration"` 用 `"<分辨率>:<秒>"`，例如 `720p:5`。
-- 同步型接入（`submit` 直接给出结果）受生成总时长限制，不受 60 秒提交限制。
+- 同步型服务商（`submit` 直接给出结果）受生成总时长限制，不受 60 秒提交限制。
 - 提交失败只在"上游确定没收到"时重试（连接被拒、域名解析失败、429、503）；超时和连接重置不重试，避免重复产生计费任务。
 - 进程崩溃后，停在 `running` 且没有外部任务号的运行以 `run.interrupted` 判失败，不重新提交。进程正常退出（收到退出信号）时，请求已经发出而没有外部任务号的运行同样以 `run.interrupted` 判失败；只有还什么都没发出去的才回到 `queued`，由下一个进程提交（见第 7 节）。
 - 上游错误信息里如果带着这次请求的凭据，展示和入库之前先换成 `***`。
@@ -259,7 +296,7 @@ module.exports = {
 - 以上都拿不到公网地址时，参考图以 base64 形式发给上游；必须是地址的输入（如参考视频）以 `media.needs_public_url` 报错。
 - 预签名地址只用于那一次上游请求，不进画布、分享和运行记录。上游如果在错误信息里把它带了回来，`X-Amz-*` 查询参数的值在入库和展示之前换成 `***`。
 - S3 驱动对各家的处理：`forcePathStyle` 由配置明确给出（MinIO 为 true；AWS、R2、OSS 为 false）；始终设置 `requestChecksumCalculation: 'WHEN_REQUIRED'` 和 `responseChecksumValidation: 'WHEN_REQUIRED'`；没有配置 `acl` 就不发 ACL 头；对象写入时带 `Content-Type` 和 `Cache-Control: public, max-age=31536000, immutable`。`STORAGE_DRIVER=oss` 已移除，启动时报配置错误并提示改用 `s3`。
-- S3 的 Endpoint 和公开访问地址由部署者填写，不经过 SSRF 防护（与接入的接口地址同理）；用户给出的地址的防护不变。
+- S3 的 Endpoint 和公开访问地址由部署者填写，不经过 SSRF 防护（与服务商的接口地址同理）；用户给出的地址的防护不变。
 
 **画布**
 
@@ -269,7 +306,7 @@ module.exports = {
 - `POST /api/workflow/download` `{ url, filename }` 代理下载跨域文件；`POST /api/workflow/:id/download-zip` `{ urls? }`，不带 `urls` 表示整张画布。
 - 模板和画布里的连线必须带 `sourceHandle` / `targetHandle`（`text-out`、`text-in`、`image-out`、`image-in`、`image-last-in`、`video-out`、`video-in`）。
 - 视频生成节点的提示词里，指代首帧 / 尾帧的 `@` 存的是固定写法 `@first_frame` / `@last_frame`，与界面语言无关；文本框里显示成当前语言的名字（`@首帧`、`@First_frame`），提交给模型前再换成自然语言。老画布里存的 `@首帧` / `@尾帧` 照样认。
-- 后端内置内容（接入类型及其表单字段、内置模板、内置模型的一句话说明、切片和多平台导出的各项名字）各自带稳定标识（接入 `type`、字段 `key`、模板 `key`、模型标识、导出项 `key`）。除内置模板外，接口按请求的语言给出这些名字（见下面「服务端文字的语言」）；前端仍按标识在自己的语言文件里取当前语言的写法（这样切换语言不用重新请求），语言文件里没有的才显示接口给的。内置模板是入库的内容，接口给的是入库时的原文。
+- 后端内置内容（服务商、内置模板、清单里模型的一句话说明、切片和多平台导出的各项名字）各自带稳定标识（服务商 `type`、模板 `key`、模型标识、导出项 `key`）。除内置模板外，接口按请求的语言给出这些名字（见下面「服务端文字的语言」）；前端仍按标识在自己的语言文件里取当前语言的写法（这样切换语言不用重新请求），语言文件里没有的才显示接口给的。内置模板是入库的内容，接口给的是入库时的原文。
 
 **服务端文字的语言**
 
@@ -277,8 +314,8 @@ module.exports = {
 - 一次请求用哪种语言，按顺序取第一个认得的：请求头 `X-Locale`（前端每个请求都带当前界面语言，`zh-CN` 或 `en`）→ `Accept-Language` → 设置里的 `defaultLocale` → `zh-CN`。
 - 出错的返回是 `{ result, message, code, data: null }`：`message` 是按上面的语言渲染好的句子，`code` 是这条信息的键（稳定，可以拿来做分支；没有对应条目的原样文字 `code` 为空串）。成功的返回 `message` 一般是固定的 `ok`，个别需要提示的（如「运行已结束」）同样按语言给出。
 - 会存下来以后再看的错误不存成一句话：运行记录存 `errorCode` + `errorParams`，读的时候按读的人的语言渲染成 `error`；`error` 字段里另存一份 `zh-CN` 的文字，只在没有 `errorCode`（这套机制之前写下的记录）或键已经不存在时才显示。
-- 上游接口自己说的话不翻译，原样放进我们的句子里（「上游生成失败：<原话>」/ "Generation failed at the upstream: <原话>"）。计费钩子给的拒绝原因、第三方接入插件抛出的 `userFacing` 错误也是原样显示。接入插件的 `poll` 返回 `{ status: 'failed', error }` 时，`error` 填上游的原话（字符串）或一条信息 `{ code, params }`。
-- 按请求语言给出的不只是错误：接入类型和表单字段的名字（`provider.<type>.label`、`provider.<type>.field.<key>.label|help`、各类型共用的 `provider.field.<key>.label`；语言文件里没有的用插件自带的）、内置模型的一句话说明（`model.<接入类型>.<模型标识>.desc`）、多平台导出各项的名字（`export.<key>`）、切片各格的名字、连通性测试的结果、后端起的默认名字（未命名画布、副本）。
+- 上游接口自己说的话不翻译，原样放进我们的句子里（「上游生成失败：<原话>」/ "Generation failed at the upstream: <原话>"）。计费钩子给的拒绝原因、第三方服务商模块抛出的 `userFacing` 错误也是原样显示。服务商模块的 `poll` 返回 `{ status: 'failed', error }` 时，`error` 填上游的原话（字符串）或一条信息 `{ code, params }`。
+- 按请求语言给出的不只是错误：服务商的名字（`provider.<服务商标识>.label`；语言文件里没有的用模块自带的）、清单里模型的一句话说明（`model.<服务商标识>.<模型名>.desc`；内置三家清单里的每个模型在两个语言文件里都必须有，自定义模型没有）、多平台导出各项的名字（`export.<key>`）、切片各格的名字、连通性测试的结果、后端起的默认名字（未命名画布、副本）。
 - 不走语言文件的：内置模板和文本模板（`services/seed.js`，首次启动时入库的内容）、服务端日志（英文）、打包下载里的文件名、以及上面说的上游原话。
 - `server/test/i18n.test.js` 把这几条当测试守着：两个语言文件的键和占位符一致；代码里用到的键都存在、语言文件里没有用不到的键；`server/src` 里除 `i18n/zh-CN.js`、`services/seed.js` 和注释外没有中文。
 
@@ -286,7 +323,7 @@ module.exports = {
 
 - `POST /api/canvas-share/publish` `{ workflowId, title?, description?, expiresInDays? }` → `{ id, token, updated, expiresAt }`。`expiresInDays: 0` 表示永不过期；不带这个字段时，新链接永不过期，对同一张画布再次发布则沿用原来的有效期（原来的已经过期就清掉）。
 - `GET /api/canvas-share/:token` 公开只读；不存在、已过期、已撤销统一返回 404。它和 `POST /api/canvas-share/:token/copy` 只认链接里的 token，数据库 id 不行，登录与否都一样。
-- 快照里不带运行状态、运行号和任务号、失败详情和成本：发布时去掉，公开读取时再去一遍，复制出来的画布里也没有。去掉的节点字段是 `status`、`progress`、`validationError`、`validationStamp`、`errorMsg`、`taskId`、`taskIds`、`runId`、`runPending`、`generatedCount`、`cost`、`estimatedCost`，以及 `results[]` 每一项里的 `cost`、`taskId`、`runId`。模型标识（含接入标识前缀）和提示词保留。
+- 快照里不带运行状态、运行号和任务号、失败详情和成本：发布时去掉，公开读取时再去一遍，复制出来的画布里也没有。去掉的节点字段是 `status`、`progress`、`validationError`、`validationStamp`、`errorMsg`、`taskId`、`taskIds`、`runId`、`runPending`、`generatedCount`、`cost`、`estimatedCost`，以及 `results[]` 每一项里的 `cost`、`taskId`、`runId`。模型标识（含服务商实例的标识前缀）和提示词保留。
 - `GET /api/canvas-share/mine` 保留已撤销和已过期的链接；`DELETE /api/canvas-share/:id` 第一次撤销，对已撤销的再删一次才从列表移除；撤销后的 token 不复用。
 
 **设置与用量**
@@ -294,7 +331,8 @@ module.exports = {
 - 存储不在 `GET/PUT /api/admin/settings` 里：它有自己的三个接口（第 5 节的 `/api/admin/storage`），存在 `settings` 集合里键为 `storage` 的一条记录中，密钥加密。把 `storage` 当作设置键提交会得到 `settings.unknown_key`。
 - `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultTheme`、`defaultLocale`、`concurrency`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。各项的默认值和范围见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
 - `GET /api/admin/usage` → `{ groupBy, timezone, totals, items: [{ key, label?, runs, succeeded, failed, canceled, amount, currency, unknownCount, costs }] }`，`totals` 与 `items` 的每一项形状相同。可带 `tz`（IANA 时区名，默认 `UTC`）决定按天分组时一天的起止。
-- 接入的新增和修改：字段直接放在请求体顶层；修改时不带密钥表示保持不变，`baseUrl: ''` 表示恢复默认地址。
+- 服务商的新增和修改：字段直接放在请求体顶层；新增时 `apiKey` 必填；修改时不带密钥表示保持不变，`baseUrl: ''` 表示恢复官方地址。返回的服务商对象带 `customBaseUrl`（地址是否不是官方地址）和 `customModels: [{ model, kind, label }]`，不再把各种选项字段平铺在顶层。
+- 自定义模型的规则由后端强制：模型名必填，只能用字母、数字和 `. _ - : / @`，最长 120 个字符；类型必填、没有默认值，而且必须在这家服务商的 `customKinds` 里；不能和清单里的模型重名；同一个实例里不能重复；每个实例最多 100 个。对应的错误码是 `provider.custom_name_required`、`custom_bad_name`、`custom_kind_required`、`custom_kind_unsupported`、`custom_in_catalog`、`custom_exists`、`custom_max`，以及 `custom_not_found`（404）和 `custom_name_fixed`。
 - 只有真正的登录失败才返回 401（前端收到 401 会清除登录状态）。
 
 **安全响应头**

@@ -72,9 +72,9 @@ src/
   index.js        boot and shutdown        app.js      Express wiring
   config.js       environment              constants.js
   routes/         HTTP endpoints           models/     Mongoose models
-  providers/      model provider plugins   runner/     run queue, polling, transfer, pricing
+  providers/      vendor modules, catalogs runner/     run queue, polling, transfer, pricing
   storage/        local disk + S3 buckets  billing/    billing hook (no-op by default)
-  services/       settings, storage settings, media, image tools, seed, retention
+  services/       settings, storage settings, media, image tools, seed, retention, provider migration
   middleware/     auth, errors, headers    utils/      crypto, safeFetch, validation
 ```
 
@@ -83,22 +83,22 @@ src/
 The full guide, with a worked example and tests, is
 [`../docs/writing-a-provider.md`](../docs/writing-a-provider.md). In short:
 
-A provider is one file in `src/providers/` exporting this shape, registered in `src/providers/index.js`:
+A vendor is two files: a module in `src/providers/`, registered in `src/providers/index.js`, and a catalog
+`src/providers/catalog/<type>.json` that states the models the vendor supports. Built in: `gaorui`, `openai`, `gemini`.
 
 ```js
+const { loadCatalog } = require('./catalog')
+
 module.exports = {
-  type: 'my-provider',                    // lowercase, stable
-  label: 'My Provider',
-  defaultBaseUrl: 'https://api.example.com',
-  fields: [                               // drives the settings form
-    { key: 'apiKey', label: 'API Key', secret: true, required: true },
-    { key: 'baseUrl', label: 'Base URL' },
-  ],
+  type: 'my-vendor',                      // lowercase, stable: the vendor id
+  label: 'My Vendor',
+  defaultBaseUrl: 'https://api.example.com',  // the vendor's official address
+  catalog: loadCatalog('my-vendor'),      // catalog/my-vendor.json, validated at load
+  customKinds: ['image', 'chat'],         // kinds a user may add by hand as custom models
+  customSpec: (kind) => CUSTOM[kind],     // what a custom model of that kind gets
   sync: false,                            // true when submit() returns the finished result
 
-  // -> ModelSpec[] without `providerId` and without the "<slug>:" id prefix
-  async listModels(cfg, { signal }) {},
-  // -> { ok, message, modelCount? }; throw to report a failure
+  // -> { ok, message? }; throw to report a failure
   async test(cfg, { signal }) {},
   // -> { externalId } for an async task, or { outputs } when the result is ready
   async submit(cfg, run) {},
@@ -109,11 +109,19 @@ module.exports = {
 }
 ```
 
-All five functions must exist; one your upstream has no use for should throw.
+`customSpec`, `test`, `submit`, `poll` and `chat` must exist; one your upstream has no use for should throw.
 
-- `cfg` is `{ baseUrl, apiKey, ...other fields }`, with the key already decrypted. Never log it.
+- The catalog is `{ "image": [...], "video": [...], "chat": [...] }`, all three sections present. The section an
+  entry sits in is its kind. Nothing about a model is inferred from its name, and no model list is fetched from
+  the upstream. The format and the validator are in `providers/catalog/index.js`.
+- Every catalog model needs a `model.<type>.<model>.desc` message in both `i18n/en.js` and `i18n/zh-CN.js`.
+  Catalogs carry no prices: a missing price shows as "cost unknown" and is set per model in the settings page.
+- A vendor other than Gaorui goes through its official API only. Another base URL is allowed as long as what
+  answers there speaks exactly that API.
+- `cfg` is `{ baseUrl, apiKey }`, with the key already decrypted. Never log it.
 - `run` is `{ kind, model, prompt, imageUrls, videoUrls, params, externalId, spec, signal, media }`.
-  `model` is the upstream model id. Pass `signal` to every request so deadlines and cancellation work.
+  `model` is the upstream model name. `spec.maxReferenceImages` is the model's reference image limit.
+  Pass `signal` to every request so deadlines and cancellation work.
 - `run.media` converts canvas URLs into something the upstream can read:
   `toRef(url)` (public URL, or data URI as fallback), `toBase64(url)`, `toPublicUrl(url)` (throws if there is none).
   The URL may be a presigned storage URL: use it for the upstream request only, never log or keep it.
@@ -121,8 +129,9 @@ All five functions must exist; one your upstream has no use for should throw.
   The runner downloads it into storage; do not store anything yourself.
 - Use `request()` from `providers/http.js`. It turns failures into errors with a user-facing message and the
   `transient` / `safeToResubmit` flags the runner uses to decide what may be retried.
-- Declare models in `providers/catalog/<type>.json` when the list is fixed. Leave `pricing` out unless you are
-  sure of it: a missing price shows as "cost unknown" and can be set per model in the settings page.
+
+Providers saved by the previous version (provider types, free-text model fields) are converted once at start-up by
+`services/providerMigration.js`; its header comment states every rule.
 
 ## Billing hook
 
@@ -141,4 +150,4 @@ Unit tests need nothing. The end-to-end tests need a MongoDB: set `TEST_MONGODB_
 `mongodb-memory-server` is used (it downloads a MongoDB binary on first run), and those tests are skipped if neither works.
 The storage tests against a real S3 API (`test/storage.live.test.js`) are skipped unless `TEST_S3_ENDPOINT` and the
 related variables are set; see [`../docs/development.md`](../docs/development.md#live-s3-tests).
-No test calls a real model API: providers are tested against a fake upstream.
+No test calls a real model API: vendor modules are tested against a fake upstream.

@@ -1,0 +1,196 @@
+{
+  "image": [
+    {
+      "id": "gpt-image-2.5-sunburst",
+      "label": "GPT Image 2.5 Sunburst",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 16,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "3:2", "2:3"],
+        "counts": [1, 2, 3, 4]
+      },
+      "defaults": { "aspectRatio": "auto", "count": 1 }
+    },
+    {
+      "id": "gpt-image-2.5-flare",
+      "label": "GPT Image 2.5 Flare",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 16,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "3:2", "2:3"],
+        "counts": [1, 2, 3, 4]
+      },
+      "defaults": { "aspectRatio": "auto", "count": 1 }
+    },
+    {
+      "id": "gpt-image-2",
+      "label": "GPT Image 2",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 16,
+      "options": {
+        "aspectRatios": ["auto", "1:1", "3:2", "2:3"],
+        "counts": [1, 2, 3, 4]
+      },
+      "defaults": { "aspectRatio": "auto", "count": 1 }
+    }
+  ],
+  "video": [],
+  "chat": [
+    {
+      "id": "gpt-6-astra",
+      "label": "GPT-6 Astra",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "label": "GPT-6.1 Sol",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-6-sol",
+      "label": "GPT-6 Sol",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-6-luna",
+      "label": "GPT-6 Luna",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.5",
+      "label": "GPT-5.5",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.4",
+      "label": "GPT-5.4",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "label": "GPT-5.4 Mini",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-5.2",
+      "label": "GPT-5.2",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-4.1",
+      "label": "GPT-4.1",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "label": "GPT-4.1 Mini",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-4o",
+      "label": "GPT-4o",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    },
+    {
+      "id": "gpt-4o-mini",
+      "label": "GPT-4o Mini",
+      "acceptsImage": true,
+      "acceptsVideo": false,
+      "videoEdit": false,
+      "maxReferenceImages": 8,
+      "options": {},
+      "defaults": {}
+    }
+  ]
+}

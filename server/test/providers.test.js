@@ -9,9 +9,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('http')
 const gaorui = require('../src/providers/gaorui')
-const openai = require('../src/providers/openaiCompatible')
+const openai = require('../src/providers/openai')
 const gemini = require('../src/providers/gemini')
-const { parseModelList, openaiBase } = require('../src/providers/http')
+const { openaiBase } = require('../src/providers/http')
+const { parseModelList } = require('../src/services/providerMigration')
 
 /** Fake upstream: records every request, answers from a route table. */
 async function fakeUpstream(routes) {
@@ -99,7 +100,7 @@ test('gaorui nano-banana: upstream errors become user-facing errors', async (t) 
   await assert.rejects(gaorui.submit(cfg, run('x')), (e) => e.userFacing && e.i18n.code === 'upstream.submit_failed_detail' && e.i18n.params.detail === '余额不足')
   await assert.rejects(gaorui.submit(cfg, run('unauthorized')), (e) => e.userFacing && e.status === 401 && !e.safeToResubmit && !e.message.includes('sk-'))
   await assert.rejects(gaorui.submit({ baseUrl: up.baseUrl, apiKey: '' }, run('x')), (e) => e.i18n.code === 'provider.api_key_missing')
-  await assert.rejects(gaorui.submit(cfg, { ...run('x'), model: 'not-in-catalog' }), (e) => e.i18n.code === 'provider.model_not_supported')
+  await assert.rejects(gaorui.submit(cfg, { ...run('x'), kind: 'video', model: 'not-in-catalog' }), (e) => e.i18n.code === 'provider.model_not_supported')
 })
 
 test('gaorui: connection refused is transient and safe to resubmit', async () => {
@@ -187,28 +188,80 @@ test('gaorui videos: both response shapes are understood', async (t) => {
   assert.deepEqual(await gaorui.poll(cfg, req), { status: 'failed', error: 'bad prompt' })
 })
 
-test('gaorui listModels: catalog plus chat models discovered from /v1/models', async (t) => {
+test('gaorui: the model list call only proves the key; a custom image model uses the nano-banana task API', async (t) => {
   const up = await fakeUpstream({
-    'GET /v1/models': () => ({ body: { data: [{ id: 'gpt-4o-mini' }, { id: 'claude-sonnet' }, { id: 'nano-banana-2' }, { id: 'veo3.1-fast' }, { id: 'text-embedding-3' }] } }),
+    'GET /v1/models': () => ({ body: { data: [{ id: 'gpt-4o-mini' }, { id: 'some-image-model' }, { id: 'veo3.1-fast' }] } }),
+    'POST /v1/nano-banana': () => ({ body: { code: 0, data: { id: 'task-c' } } }),
   })
   t.after(up.close)
-  const specs = await gaorui.listModels({ baseUrl: up.baseUrl, apiKey: 'k' })
+  const cfg = { baseUrl: up.baseUrl, apiKey: 'k' }
+  assert.deepEqual(await gaorui.test(cfg), { ok: true }, 'no model count: the upstream list creates nothing')
   assert.equal(up.calls[0].headers.authorization, 'Bearer k')
-  const chat = specs.filter((s) => s.kind === 'chat').map((s) => s.id)
-  assert.deepEqual(chat, ['gpt-4o-mini', 'claude-sonnet'])
-  for (const id of ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1', 'nano-banana-2-lite']) {
-    assert.equal(specs.filter((s) => s.id === id && s.kind === 'image').length, 1, id)
-  }
-  assert.deepEqual(await gaorui.test({ baseUrl: up.baseUrl, apiKey: 'k' }), { ok: true, modelCount: 5 })
-  // Without a key, or with the upstream down, the catalog still lists.
-  assert.ok((await gaorui.listModels({ baseUrl: up.baseUrl, apiKey: '' })).every((s) => s.kind !== 'chat'))
-  assert.ok((await gaorui.listModels({ baseUrl: 'http://127.0.0.1:9', apiKey: 'k' })).length >= 4)
+  assert.equal(gaorui.listModels, undefined, 'a vendor has a catalog, not a discovery call')
+  // The chat models are stated in the catalog too; what the upstream lists ("gpt-4o-mini") adds nothing.
+  assert.deepEqual(gaorui.catalog.filter((m) => m.kind === 'chat').map((m) => [m.id, m.acceptsImage, m.acceptsVideo]), [
+    ['deepseek-v4-pro', false, false], ['gpt-5.5', false, false], ['glm-5.3', false, false], ['gpt-6-astra', true, false], ['gemini-3.5-flash-c', true, true],
+  ])
+
+  // Not in the catalog = a custom model. The kind comes with the run, not from the name.
+  const custom = { model: 'my-video-chat-thing', prompt: 'a cat', imageUrls: [], params: {}, media, signal }
+  assert.deepEqual(await gaorui.submit(cfg, { ...custom, kind: 'image' }), { externalId: 'task-c' })
+  assert.equal(up.calls.at(-1).body.model, 'my-video-chat-thing')
+  await assert.rejects(gaorui.submit(cfg, { ...custom, kind: 'video' }), (e) => e.i18n.code === 'provider.model_not_supported')
+  assert.deepEqual(gaorui.customKinds, ['image', 'chat'])
 })
 
-test('openai-compatible: chat with vision parts, images as url and b64_json', async (t) => {
+test('gaorui chat: a video goes in as an image_url part with a public URL, after the text and before the images', async (t) => {
+  const up = await fakeUpstream({ 'POST /v1/chat/completions': () => ({ body: { choices: [{ message: { content: 'seen' } }] } }) })
+  t.after(up.close)
+  const cfg = { baseUrl: `${up.baseUrl}/v1`, apiKey: 'sk-g' }
+  const req = { model: 'gemini-3.5-flash-c', prompt: 'what happens?', imageUrls: [], media, signal }
+
+  // What the main site sends in production: [text, image_url(video)].
+  assert.equal((await gaorui.chat(cfg, { ...req, videoUrl: '/files/clip.mp4' })).text, 'seen')
+  assert.equal(up.calls[0].path, '/v1/chat/completions')
+  assert.equal(up.calls[0].headers.authorization, 'Bearer sk-g')
+  assert.deepEqual(up.calls[0].body, {
+    model: 'gemini-3.5-flash-c',
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: 'what happens?' },
+      { type: 'image_url', image_url: { url: 'public(/files/clip.mp4)' } },
+    ] }],
+    stream: false,
+  })
+  // With reference images: the video stays right after the text, images follow.
+  await gaorui.chat(cfg, { ...req, model: 'my-custom-chat', systemPrompt: 'be brief', videoUrl: '/files/clip.mp4', imageUrls: ['/files/a.png', '/files/b.png'] })
+  assert.deepEqual(up.calls[1].body.messages, [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: [
+      { type: 'text', text: 'what happens?' },
+      { type: 'image_url', image_url: { url: 'public(/files/clip.mp4)' } },
+      { type: 'image_url', image_url: { url: 'ref(/files/a.png)' } },
+      { type: 'image_url', image_url: { url: 'ref(/files/b.png)' } },
+    ] },
+  ])
+  // No video_url part anywhere: the relay drops it without an error.
+  assert.equal(JSON.stringify(up.calls.map((c) => c.body)).includes('video_url'), false)
+  // No prompt: the video is the only part.
+  await gaorui.chat(cfg, { ...req, prompt: '', videoUrl: '/files/clip.mp4' })
+  assert.deepEqual(up.calls[2].body.messages[0].content, [{ type: 'image_url', image_url: { url: 'public(/files/clip.mp4)' } }])
+
+  // A video that has no public address is refused before anything is sent.
+  const local = { ...media, async toPublicUrl() { const e = new Error('needs a public URL'); e.code = 'media.needs_public_url'; throw e } }
+  await assert.rejects(gaorui.chat(cfg, { ...req, videoUrl: '/files/clip.mp4', media: local }), (e) => e.code === 'media.needs_public_url')
+  assert.equal(up.calls.length, 3)
+
+  // The shared helper itself refuses a video unless the vendor says how its upstream takes one.
+  const { chatCompletion } = require('../src/providers/openaiShared')
+  await assert.rejects(chatCompletion(cfg, { ...req, videoUrl: '/files/clip.mp4' }), (e) => e.i18n.code === 'model.no_video_input')
+  assert.equal(up.calls.length, 3)
+})
+
+test('openai: chat with vision parts, images as url and b64_json, reference images through /images/edits', async (t) => {
   const up = await fakeUpstream({
     'POST /v1/chat/completions': () => ({ body: { choices: [{ message: { content: 'hello there' } }], usage: { prompt_tokens: 12, completion_tokens: 3 } } }),
     'POST /v1/images/generations': (c) => ({ body: { data: c.body.model === 'b64' ? [{ b64_json: 'QUJD' }] : [{ url: 'https://img.example/1.png' }, { url: 'https://img.example/2.png' }] } }),
+    'POST /v1/images/edits': () => ({ body: { data: [{ b64_json: 'RURJVA==' }] } }),
     'GET /v1/models': () => ({ body: { data: [{ id: 'gpt-4o' }, { id: 'gpt-image-1' }, { id: 'text-embedding-3-small' }] } }),
   })
   t.after(up.close)
@@ -236,11 +289,30 @@ test('openai-compatible: chat with vision parts, images as url and b64_json', as
   assert.deepEqual(b64.outputs, [{ type: 'image', b64: 'QUJD' }])
   assert.equal('size' in up.calls[3].body, false)
 
-  // Explicit model lists win over discovery.
-  const listed = await openai.listModels({ ...cfg, models: 'gpt-4o, my-llm', imageModels: 'gpt-image-1' })
-  assert.deepEqual(listed.map((s) => [s.id, s.kind]), [['gpt-image-1', 'image'], ['gpt-4o', 'chat'], ['my-llm', 'chat']])
-  const discovered = await openai.listModels(cfg)
-  assert.deepEqual(discovered.map((s) => [s.id, s.kind]), [['gpt-4o', 'chat'], ['gpt-image-1', 'image']])
+  // Reference images: the official edit endpoint, multipart, one image[] part per picture.
+  const edited = await openai.submit(cfg, {
+    kind: 'image', model: 'gpt-image-1', prompt: 'make it night', imageUrls: ['a.png', 'b.png', 'c.png'],
+    params: { aspectRatio: '1:1', count: 1 }, spec: { maxReferenceImages: 2 }, media, signal,
+  })
+  assert.deepEqual(edited.outputs, [{ type: 'image', b64: 'RURJVA==' }])
+  const edit = up.calls[4]
+  assert.equal(edit.path, '/v1/images/edits')
+  assert.match(edit.headers['content-type'], /^multipart\/form-data; boundary=/)
+  assert.equal(edit.headers.authorization, 'Bearer sk-o')
+  assert.equal(edit.body.split('name="image[]"').length - 1, 2, 'capped at the model limit')
+  for (const [name, value] of [['model', 'gpt-image-1'], ['prompt', 'make it night'], ['n', '1'], ['size', '1024x1024']]) {
+    assert.match(edit.body, new RegExp(`name="${name}"\\r\\n\\r\\n${value}\\r\\n`), name)
+  }
+  assert.ok(edit.body.includes('filename="image-1.png"') && edit.body.includes('Content-Type: image/png'))
+
+  // Official API only: no video part is ever sent.
+  await assert.rejects(openai.chat(cfg, { model: 'gpt-4o', prompt: 'watch', videoUrl: 'https://v.example/a.mp4', imageUrls: [], media, signal }), (e) => e.i18n.code === 'model.no_video_input')
+
+  // The list endpoint proves the key and nothing else.
+  assert.deepEqual(await openai.test(cfg), { ok: true })
+  assert.equal(openai.listModels, undefined)
+  assert.equal(openai.defaultBaseUrl, 'https://api.openai.com/v1')
+  assert.deepEqual(openai.customKinds, ['image', 'chat'], 'no video through the official API here')
   assert.equal(openai.sync, true)
 })
 
@@ -282,11 +354,14 @@ test('gemini: request shape and every accepted result form', async (t) => {
   await gemini.submit(cfg, { ...run, imageUrls: [], params: { aspectRatio: 'auto' } })
   assert.deepEqual(up.calls.at(-1).body.generationConfig, { responseModalities: ['TEXT', 'IMAGE'] })
 
-  const specs = await gemini.listModels({ ...cfg, models: 'gemini-2.5-flash-image, gemini-2.5-pro' })
-  assert.deepEqual(specs.map((s) => [s.id, s.kind]), [['gemini-2.5-flash-image', 'image'], ['gemini-2.5-pro', 'chat']])
+  // The number of reference images sent follows the model's declared limit.
+  await gemini.submit(cfg, { ...run, imageUrls: ['1', '2', '3', '4'], spec: { maxReferenceImages: 3 } })
+  assert.equal(up.calls.at(-1).body.contents[0].parts.length, 1 + 3)
+  assert.equal(gemini.listModels, undefined)
+  assert.deepEqual(gemini.customKinds, ['image', 'chat'])
 })
 
-test('helpers: model list parsing and base URL normalisation', () => {
+test('helpers: the old free-text model list (migration only) and base URL normalisation', () => {
   assert.deepEqual(parseModelList(' a, b\nc，d ;a  '), ['a', 'b', 'c', 'd'])
   assert.deepEqual(parseModelList('ok-model, bad model!, <script>'), ['ok-model', 'bad', 'model!'].filter((x) => /^[\w.:/@-]+$/.test(x)))
   assert.deepEqual(parseModelList(''), [])

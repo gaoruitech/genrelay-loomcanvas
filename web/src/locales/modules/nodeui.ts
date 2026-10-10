@@ -15,6 +15,8 @@ export default {
       systemPromptPlaceholder: '给模型设定角色、语气或输出格式，留空则不使用',
       result: '生成结果',
       imageIn: '参考图输入（可选，最多 5 张）',
+      imageInOff: '当前模型是纯文本模型，不读图片',
+      imagesIgnored: '当前模型是纯文本模型，已连接的 {n} 张图片不会发送给它',
       textIn: '提示词输入',
     },
     analysis: {
@@ -85,6 +87,8 @@ export default {
       systemPromptPlaceholder: 'Set a role, tone or output format for the model. Leave empty to skip.',
       result: 'Result',
       imageIn: 'Reference images (optional, up to 5)',
+      imageInOff: 'The selected model is text only and does not read images',
+      imagesIgnored: 'The selected model is text only: the {n} connected image(s) will not be sent to it',
       textIn: 'Prompt input',
     },
     analysis: {

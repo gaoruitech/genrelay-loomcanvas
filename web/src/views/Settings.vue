@@ -3,7 +3,7 @@
     <div class="settings-inner">
       <h1 class="page-title">{{ t('settings.title') }}</h1>
 
-      <div class="tabs" role="tablist">
+      <div ref="tabsEl" class="tabs" role="tablist">
         <button
           v-for="tab in TABS"
           :key="tab"
@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -39,7 +39,7 @@ import LimitsTab from '@/components/settings/LimitsTab.vue'
 import AppearanceTab from '@/components/settings/AppearanceTab.vue'
 import UsageTab from '@/components/settings/UsageTab.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
@@ -56,24 +56,49 @@ const active = computed<TabKey>(() => {
 function select(tab: TabKey) {
   if (tab !== active.value) router.replace({ query: { ...route.query, tab } })
 }
+
+// 窄屏上标签条放不下（英文尤其）：它在自己里面横向滚动，页面不跟着变宽。
+// 当前标签始终滚到看得见的地方 —— 包括直接用 ?tab= 打开靠后的那几页、以及切换语言之后。
+const tabsEl = ref<HTMLElement | null>(null)
+function revealActive(smooth: boolean) {
+  const strip = tabsEl.value
+  const tab = strip?.querySelector<HTMLElement>('.tab.active')
+  if (!strip || !tab) return
+  const pad = 16
+  const left = tab.offsetLeft - pad
+  const right = tab.offsetLeft + tab.offsetWidth + pad
+  let to = strip.scrollLeft
+  if (left < strip.scrollLeft) to = left
+  else if (right > strip.scrollLeft + strip.clientWidth) to = right - strip.clientWidth
+  to = Math.max(0, to)
+  if (to !== strip.scrollLeft) strip.scrollTo({ left: to, behavior: smooth ? 'smooth' : 'auto' })
+}
+onMounted(() => revealActive(false))
+watch(active, () => nextTick(() => revealActive(true)))
+watch(locale, () => nextTick(() => revealActive(false)))
 </script>
 
 <style scoped>
 .settings-page { height: 100%; overflow-y: auto; }
-.settings-inner { max-width: 1040px; margin: 0 auto; padding: 28px 24px 60px; }
+.settings-inner { max-width: 1040px; margin: 0 auto; padding: 28px 24px 60px; min-width: 0; }
 .page-title { font-size: 22px; font-weight: 700; color: var(--t-max); margin-bottom: 18px; }
 .tabs {
-  display: flex; gap: 4px; margin-bottom: 24px; padding-bottom: 0;
-  border-bottom: 1px solid var(--n-5); overflow-x: auto;
+  position: relative; display: flex; gap: 4px; margin-bottom: 24px; padding-bottom: 0;
+  border-bottom: 1px solid var(--n-5);
+  /* 放不下时在标签条自己里面横向滚动；纵向不滚（否则当前标签的下划线会带出一条竖向滚动条） */
+  min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
-  position: relative; padding: 10px 14px; border: 0; background: transparent;
+  position: relative; flex: none; padding: 10px 14px; border: 0; background: transparent;
   color: var(--t-dim); font: inherit; font-size: 13.5px; white-space: nowrap; cursor: pointer;
 }
 .tab:hover { color: var(--t-max); }
 .tab.active { color: var(--accent-text); font-weight: 600; }
 .tab.active::after {
-  content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px;
   background: var(--accent-text); border-radius: 2px;
 }
 .version { margin-top: 36px; font-size: 12px; color: var(--t-dim); }

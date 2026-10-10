@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type {
   ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest,
-  LlmTask, ProviderType, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings,
+  LlmTask, Vendor, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings,
   UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult,
 } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
@@ -117,7 +117,7 @@ export const llmApi = {
 // ====================== 管理（设置页） ======================
 
 export const adminApi = {
-  providerTypes: () => api.get<ApiResponse<ProviderType[]>>('/admin/provider-types'),
+  vendors: () => api.get<ApiResponse<Vendor[]>>('/admin/vendors'),
   providers: () => api.get<ApiResponse<ProviderInstance[]>>('/admin/providers'),
   createProvider: (data: Record<string, any>) =>
     api.post<ApiResponse<ProviderInstance>>('/admin/providers', data),
@@ -127,6 +127,14 @@ export const adminApi = {
     api.delete<ApiResponse>(`/admin/providers/${encodeURIComponent(id)}`),
   testProvider: (id: string) =>
     api.post<ApiResponse<ProviderTestResult>>(`/admin/providers/${encodeURIComponent(id)}/test`),
+
+  // 自定义模型挂在服务商实例下面；模型名里可能有 : 和 /，要整体编码
+  addCustomModel: (providerId: string, data: { model: string; kind: ModelKind; label?: string }) =>
+    api.post<ApiResponse<ProviderInstance>>(`/admin/providers/${encodeURIComponent(providerId)}/models`, data),
+  updateCustomModel: (providerId: string, model: string, data: { kind?: ModelKind; label?: string }) =>
+    api.put<ApiResponse<ProviderInstance>>(`/admin/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(model)}`, data),
+  removeCustomModel: (providerId: string, model: string) =>
+    api.delete<ApiResponse<ProviderInstance>>(`/admin/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(model)}`),
 
   models: () => api.get<ApiResponse<AdminModel[]>>('/admin/models'),
   updateModel: (
