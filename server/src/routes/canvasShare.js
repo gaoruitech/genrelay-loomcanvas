@@ -237,6 +237,9 @@ router.post('/:token/copy', requireAuth, wrap(async (req, res) => {
     edges: structuredClone(Array.isArray(snap.edges) ? snap.edges : []),
     viewport: snap.viewport || { x: 0, y: 0, zoom: 1 },
     settings: snap.settings && typeof snap.settings === 'object' ? structuredClone(snap.settings) : {},
+    // A snapshot carries no brand kit, and the copy does not pick up the copier's default
+    // one either: it starts out as what was shared.
+    brandKitId: '',
     schemaVersion: CURRENT_SCHEMA_VERSION,
     // Positions from before the redesign: the editor checks them once when the copy is opened.
     legacyLayout: snap.layoutVersion !== 2 && nodes.length > 1,

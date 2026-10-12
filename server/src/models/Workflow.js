@@ -14,6 +14,10 @@ const workflowSchema = new mongoose.Schema({
   // not yet checked them against the current node sizes (see utils/workflowSchema.js).
   legacyLayout: { type: Boolean, default: false },
 
+  // The brand kit of this canvas ('' = none): every generation node uses it unless the node
+  // carries its own `data.brandKitOverride` (a kit id, or 'none').
+  brandKitId: { type: String, default: '', maxlength: 24 },
+
   nodes: { type: [Mixed], default: [] },
   edges: { type: [Mixed], default: [] },
   viewport: {

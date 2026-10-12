@@ -126,10 +126,10 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/workflow/list` | 自己的画布列表，最近的 200 张。 |
-| POST | `/api/workflow` | 新建。 |
+| POST | `/api/workflow` | 新建。不带 `brandKitId` 时套用这个账号的默认品牌包（有的话）；传 `""` 表示不套用。 |
 | GET | `/api/workflow/:id` | 读取。 |
-| PUT | `/api/workflow/:id` | 保存，只改请求里带的字段。 |
-| POST | `/api/workflow/:id/duplicate` | 复制。 |
+| PUT | `/api/workflow/:id` | 保存，只改请求里带的字段。`brandKitId` 是这张画布的品牌包：`""` 或一个品牌包 id，别的值返回 400（`validation.invalid`）。某个节点不跟随画布时，例外存在节点的 `data.brandKitOverride`（品牌包 id，或 `"none"` 表示不套用）。 |
+| POST | `/api/workflow/:id/duplicate` | 复制。品牌包和节点上的例外一并保留。 |
 | DELETE | `/api/workflow/:id` | 删除（软删除）。 |
 | POST | `/api/workflow/download` | 代理下载一个素材文件。 |
 | POST | `/api/workflow/:id/download-zip` | 把画布里的素材打包下载。最多 100 个文件，单个最大 1 GiB，总大小最大 4 GiB；放不下的换成 `NN-<类型>-skipped.txt`。 |
@@ -150,10 +150,12 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/brand-kits` | 列表。每个账号最多 50 个。 |
+| GET | `/api/brand-kits` | 列表。每个账号最多 50 个。每项带 `usedBy`：有几张自己的画布在用它（作为画布的品牌包，或某个节点的例外）。 |
 | POST | `/api/brand-kits` | 新建。 |
 | PUT | `/api/brand-kits/:id` | 修改。 |
-| DELETE | `/api/brand-kits/:id` | 删除（软删除）。 |
+| DELETE | `/api/brand-kits/:id` | 删除（软删除）。指向它的画布和节点原样留着，之后运行时不再套用。 |
+
+品牌包由编辑器套用，不由服务端套用：生成节点运行时，浏览器把 `promptPrefix` 加在提示词最前面，把 `negativePrompt` 以「不要出现：…」加在末尾，把 `refImages` 排在节点自己的参考图后面（不超过模型上限），再把拼好的提示词和图片交给 `/api/runs`。分享快照不带品牌包：画布的 `brandKitId` 不进快照，节点的 `brandKitOverride` 在发布、公开读取和复制时都会去掉，复制出来的画布从不套用开始。
 
 ### 资产
 

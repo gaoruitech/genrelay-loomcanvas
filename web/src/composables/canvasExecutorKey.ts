@@ -1,6 +1,7 @@
 import type { InjectionKey, Ref } from 'vue'
 import type { ImageRef } from '@/composables/canvasImageRefs'
 import type { RunOptions } from '@/composables/useCanvasExecutor'
+import type { BrandKit, BrandKitEffect } from '@/composables/useBrandKits'
 
 export interface CanvasExecutorApi {
   running: Ref<boolean>
@@ -13,6 +14,8 @@ export interface CanvasExecutorApi {
   cancelNode: (nodeId: string) => Promise<void>
   /** 该节点当前会送出去的图，按最终顺序。缩略图条和 @ 候选都读它 */
   collectImageRefs: (nodeId: string) => ImageRef[]
+  /** 该节点现在运行的话，品牌包会往请求里加什么（与真正发出去的同一份推导）；不套用返回 null */
+  brandKitEffect: (nodeId: string) => { kit: BrandKit; effect: BrandKitEffect } | null
   resumeIncompleteTasks: () => void
 }
 

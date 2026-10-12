@@ -282,7 +282,7 @@ test('LoomCanvas API end to end', async (t) => {
     const node = { id: 'i1', type: 'image', position: { x: 0, y: 0 }, data: { imageUrl: uploaded.url, status: 'done' } }
     const created = await data('POST', '/api/workflow', { name: '画布', nodes: [node], edges: [], settings: { bg: { color: '#111', pattern: 'dots' } } })
     workflowId = created.id
-    assert.deepEqual([created.thumbnail, created.thumbnailType, created.schemaVersion, created.legacyLayout], [uploaded.url, 'image', 2, false])
+    assert.deepEqual([created.thumbnail, created.thumbnailType, created.schemaVersion, created.legacyLayout], [uploaded.url, 'image', 3, false])
 
     const renamed = await data('PUT', `/api/workflow/${workflowId}`, { name: '新名字' })
     assert.equal(renamed.name, '新名字')
@@ -345,12 +345,12 @@ test('LoomCanvas API end to end', async (t) => {
     ])
     for (const id of [ids.v1, ids.v0]) {
       const read = await data('GET', `/api/workflow/${id}`)
-      assert.deepEqual([read.schemaVersion, read.legacyLayout, read.nodes], [2, true, three])
+      assert.deepEqual([read.schemaVersion, read.legacyLayout, read.nodes], [3, true, three])
       const row = await workflows.findOne({ _id: id })
-      assert.deepEqual([row.schemaVersion, row.legacyLayout, row.updatedAt.getTime()], [2, true, stamp.getTime()], 'stored, without passing for an edit')
+      assert.deepEqual([row.schemaVersion, row.legacyLayout, row.updatedAt.getTime()], [3, true, stamp.getTime()], 'stored, without passing for an edit')
     }
     const lone = await data('GET', `/api/workflow/${ids.single}`)
-    assert.deepEqual([lone.schemaVersion, lone.legacyLayout], [2, false], 'one node cannot overlap anything')
+    assert.deepEqual([lone.schemaVersion, lone.legacyLayout], [3, false], 'one node cannot overlap anything')
 
     // The flag survives everything except the editor saying it has looked.
     assert.equal((await data('PUT', `/api/workflow/${ids.v1}`, { name: 'Renamed' })).legacyLayout, true)
@@ -648,6 +648,71 @@ test('LoomCanvas API end to end', async (t) => {
     assert.deepEqual(kits.filter((k) => k.isDefault).map((k) => k.id), [kit2.id], 'only one default')
     await data('DELETE', `/api/brand-kits/${kit.id}`)
     assert.equal((await call('PUT', `/api/brand-kits/${kit.id}`, { name: 'x' })).status, 404)
+
+    // A brand kit is chosen per canvas. A new canvas starts with the default kit unless told otherwise.
+    const gen = (id, d = {}) => ({ id, type: 'image-gen', position: { x: 0, y: 0 }, data: { prompt: 'p', ...d } })
+    const kit3 = await data('POST', '/api/brand-kits', { name: 'Kit3' })
+    const withDefault = await data('POST', '/api/workflow', { name: 'K', nodes: [gen('a'), gen('b', { brandKitOverride: kit3.id }), gen('c', { brandKitOverride: 'none' })] })
+    assert.equal(withDefault.brandKitId, kit2.id)
+    assert.equal((await data('POST', '/api/workflow', { name: 'K0', brandKitId: '' })).brandKitId, '')
+    assert.equal((await data('PUT', `/api/workflow/${withDefault.id}`, { name: 'K renamed' })).brandKitId, kit2.id, 'a save that does not mention the kit leaves it')
+    assert.equal((await data('PUT', `/api/workflow/${withDefault.id}`, { brandKitId: kit3.id })).brandKitId, kit3.id)
+    for (const bad of ['nope', 5, null, { id: kit3.id }, kit3.id + '0']) {
+      assert.deepEqual(await call('PUT', `/api/workflow/${withDefault.id}`, { brandKitId: bad }).then((r) => [r.status, r.body.code]), [400, 'validation.invalid'], JSON.stringify(bad))
+    }
+    const kitCopy = await data('POST', `/api/workflow/${withDefault.id}/duplicate`)
+    assert.deepEqual([kitCopy.brandKitId, kitCopy.nodes.map((n) => n.data.brandKitOverride)], [kit3.id, [undefined, kit3.id, 'none']], 'a copy keeps the kit and the exceptions')
+    // In how many canvases a kit is in use: as the canvas's kit or as a node's exception, once per canvas.
+    const usage = Object.fromEntries((await data('GET', '/api/brand-kits')).map((k) => [k.id, k.usedBy]))
+    assert.deepEqual([usage[kit3.id], usage[kit2.id]], [2, 0])
+    assert.equal('usedBy' in (await data('PUT', `/api/brand-kits/${kit3.id}`, { name: 'Kit3' })), false)
+
+    // A share link carries no brand kit: neither the canvas's nor a node's exception. The copy starts without one.
+    const kitShare = await data('POST', '/api/canvas-share/publish', { workflowId: withDefault.id })
+    const kitView = (await call('GET', `/api/canvas-share/${kitShare.token}`, undefined, { auth: false })).body.data
+    assert.equal(JSON.stringify(kitView).includes(kit3.id) || 'brandKitId' in kitView, false)
+    assert.deepEqual(kitView.nodes.map((n) => 'brandKitOverride' in n.data), [false, false, false])
+    const fromShare = await data('GET', `/api/workflow/${(await data('POST', `/api/canvas-share/${kitShare.token}/copy`)).workflowId}`)
+    assert.deepEqual([fromShare.brandKitId, fromShare.nodes.map((n) => 'brandKitOverride' in n.data)], ['', [false, false, false]])
+
+    // Canvases stored in the earlier shape (each node with its own data.brandKitId).
+    const workflows = mongoose.connection.collection('workflows')
+    const { ObjectId } = mongoose.Types
+    const stamp = new Date('2026-02-01T00:00:00Z')
+    const owner = (await workflows.findOne({ _id: new ObjectId(withDefault.id) })).userId
+    const old = { userId: owner, edges: [], isDeleted: false, schemaVersion: 2, legacyLayout: false, createdAt: stamp, updatedAt: stamp }
+    const ids = { same: new ObjectId(), mixed: new ObjectId(), none: new ObjectId(), startup: new ObjectId() }
+    const text = { id: 't', type: 'text', position: { x: 0, y: 0 }, data: { text: 'x', brandKitId: 'stray' } }
+    await workflows.insertMany([
+      { ...old, _id: ids.same, name: 'same', nodes: [gen('a', { brandKitId: kit3.id }), gen('b', { brandKitId: kit3.id }), text] },
+      { ...old, _id: ids.mixed, name: 'mixed', nodes: [gen('a', { brandKitId: kit3.id }), gen('b', { brandKitId: kit2.id }), gen('c', { brandKitId: '' }), gen('d')] },
+      { ...old, _id: ids.none, name: 'none', nodes: [gen('a', { brandKitId: '' }), gen('b')] },
+      { ...old, _id: ids.startup, name: 'startup', nodes: [gen('a', { brandKitId: kit2.id })] },
+    ])
+    const kitsOf = (wf) => [wf.schemaVersion, wf.brandKitId, wf.nodes.map((n) => n.data.brandKitOverride), wf.nodes.some((n) => 'brandKitId' in n.data)]
+    assert.deepEqual(kitsOf(await data('GET', `/api/workflow/${ids.same}`)), [3, kit3.id, [undefined, undefined, undefined], false], 'one kit everywhere becomes the canvas kit')
+    assert.deepEqual(kitsOf(await data('GET', `/api/workflow/${ids.mixed}`)), [3, '', [kit3.id, kit2.id, undefined, undefined], false], 'a mix stays per node')
+    assert.deepEqual(kitsOf(await data('GET', `/api/workflow/${ids.none}`)), [3, '', [undefined, undefined], false])
+    const stored = await workflows.findOne({ _id: ids.same })
+    assert.deepEqual([stored.schemaVersion, stored.brandKitId, stored.updatedAt.getTime()], [3, kit3.id, stamp.getTime()], 'stored, without passing for an edit')
+    assert.deepEqual(kitsOf(await data('GET', `/api/workflow/${ids.mixed}`)), [3, '', [kit3.id, kit2.id, undefined, undefined], false], 'reading again changes nothing')
+    // The start-up pass does the same for canvases nobody has opened, once.
+    const { migrateStoredWorkflows } = require('../src/routes/workflow')
+    const unversioned = new ObjectId()
+    await workflows.insertOne({ userId: owner, name: 'unversioned', edges: [], isDeleted: true, createdAt: stamp, updatedAt: stamp, _id: unversioned, nodes: [gen('a', { brandKitId: kit3.id }), gen('b', { brandKitId: kit3.id })] })
+    assert.equal(await migrateStoredWorkflows(), 2, 'also one without a version, also a deleted one')
+    const fromZero = await workflows.findOne({ _id: unversioned })
+    assert.deepEqual([fromZero.schemaVersion, fromZero.brandKitId, fromZero.legacyLayout, fromZero.updatedAt.getTime()], [3, kit3.id, true, stamp.getTime()])
+    assert.equal(await migrateStoredWorkflows(), 0)
+    const atStart = await workflows.findOne({ _id: ids.startup })
+    assert.deepEqual([atStart.schemaVersion, atStart.brandKitId, 'brandKitId' in atStart.nodes[0].data, atStart.updatedAt.getTime()], [3, kit2.id, false, stamp.getTime()])
+    // A tab left open across the upgrade still writes the old node field: saving an unread old canvas
+    // folds it first, and what the tab sends becomes the node's own exception.
+    await workflows.updateOne({ _id: ids.startup }, { $set: { schemaVersion: 2, brandKitId: '', nodes: [gen('a', { brandKitId: kit2.id })] } })
+    const stale = await data('PUT', `/api/workflow/${ids.startup}`, { nodes: [gen('a', { brandKitId: kit3.id }), gen('b', { brandKitId: '' })] })
+    assert.deepEqual(kitsOf(stale), [3, kit2.id, [kit3.id, 'none'], false])
+    const staleSame = await data('PUT', `/api/workflow/${ids.startup}`, { nodes: [gen('a', { brandKitId: kit2.id })] })
+    assert.deepEqual(kitsOf(staleSame), [3, kit2.id, [undefined], false], 'the same kit as the canvas is not an exception')
 
     const asset = await data('POST', '/api/user-asset', { kind: 'brand', nodeType: 'IMAGE', name: 'logo', mediaUrl: uploaded.url })
     assert.deepEqual([asset._id, asset.width, asset.height, asset.aspectRatio], [asset.id, 1024, 768, '4:3'])

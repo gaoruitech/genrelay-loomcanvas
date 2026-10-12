@@ -259,9 +259,9 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 
 每张存下来的画布都带 `schemaVersion`。当前版本号和迁移步骤在 `server/src/utils/workflowSchema.js`。
 
-- `CURRENT_SCHEMA_VERSION` 是 `1`。
+- `CURRENT_SCHEMA_VERSION` 是 `3`。版本 2 给按旧节点尺寸排的画布打了标记；版本 3 把品牌包从每个生成节点（`data.brandKitId`）挪到了画布上（`brandKitId`，不跟随画布的节点带 `data.brandKitOverride`）。
 - `MIGRATIONS[n]` 是一个纯函数：接收版本 `n` 的画布，返回版本 `n + 1` 的画布。没有版本号的画布按 `0` 处理。
-- 迁移是按需进行的：`GET /api/workflow/:id`（以及复制、打包下载）读到旧画布时逐级升级并写回。没有批量任务。
+- 读到就升级：`GET /api/workflow/:id`（以及复制、打包下载、保存节点）读到旧画布时逐级升级并写回，不更新 `updatedAt`。另外启动时 `migrateStoredWorkflows()` 把所有还是旧形状的画布过一遍，这样往文档里面看的查询只需要认一种形状。所以迁移必须不依赖编辑器就能跑。
 - 版本比服务端认识的**更新**的画布原样返回，不会降级。
 - 保存节点时会写上当前版本号，因为客户端写的总是当前的形状。
 

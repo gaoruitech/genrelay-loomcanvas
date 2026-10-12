@@ -160,7 +160,7 @@ The other things you configure in the app are not settings keys and are not part
 | --- | --- | --- |
 | Canvas appearance: background colour, pattern, density | One canvas; travels with its share links | The canvas document (`settings`) |
 | Node model and parameters (aspect ratio, resolution, duration, count) | One node | The canvas document |
-| Brand kit attached to a node | One node | The canvas document (the kit itself is shared across the canvases of that account) |
+| Brand kit of a canvas, and a node's exception to it | One canvas / one node | The canvas document (the kit itself is shared across the canvases of that account) |
 | Language (简体中文 / English) | One browser | `localStorage` (`loomcanvas-locale`) |
 
 A browser's own language wins over the site default. There is no theme to choose: the interface has one dark theme.

@@ -232,7 +232,7 @@ Run：
 - `/api/canvas-share`：分享链接（新增过期时间与撤销）。
 - `/api/canvas-asset`、`/api/user-asset`：素材库。
 - `/api/canvas`：模板、文本模板、工具节点（切片、拼图、水印、改尺寸）、多平台导出。
-- `/api/brand-kits`：品牌包。
+- `/api/brand-kits`：品牌包。列表里每项带 `usedBy`（有几张画布在用）。
 
 不搬：合规体检、短视频链接解析、去水印、反推提示词（由 4.3 的对话接口替代）、积分预估（由 4.1 的预估接口替代）。
 
@@ -353,7 +353,9 @@ module.exports = {
 **画布**
 
 - `PUT /api/workflow/:id` 只带 `{ name }` 时只改名；保存 `settings.bg`；返回 `updatedAt`。只带 `viewport`（和 / 或 `legacyLayout`）的保存不更新 `updatedAt`：平移、缩放不算改动。编辑器据此把视口单独、悄悄地存（停手约 1.2 秒后一次），不置「未保存」；内容的自动保存照旧，指纹里不含视口。
-- 画布文档在 `schemaVersion` 2。2 是随改版来的：生成类节点高了一倍左右，按旧尺寸排的画布会有节点叠在一起。节点的真实尺寸只有浏览器知道，所以服务端的迁移（`utils/workflowSchema.js` 的 1→2）不动位置，只在节点多于一个时给文档打上 `legacyLayout: true`；读取时迁移并落库（不更新 `updatedAt`）。编辑器打开带这个标记的画布时查一次：先把全部节点框进视野（开着「只渲染视野内」，视野外的节点量不到尺寸；实在量不到的按节点类型估），按实测尺寸判断散节点有没有真的重叠（12 像素以内的贴边不算），有才调用和工具条同一个的自动整理、记一笔撤销历史并提示，没有就一个位置都不动、视口还原；然后用 `PUT { legacyLayout: false }`（整理过的话连同新位置）把标记清掉。标记只能由客户端清成 `false`，不能设成 `true`；新建的画布没有标记；复制带标记的画布，副本也带。所以每张老画布只查一次，改版后保存的画布永远不会被动。
+- 画布文档在 `schemaVersion` 3。3 把品牌包从「每个节点各选」改成「按画布选」：画布文档多了 `brandKitId`（空串 = 不套用），生成类节点（`image-gen` / `image-edit` / `video-gen` / `video-edit`）只在不跟随画布时带 `data.brandKitOverride`（品牌包 id，或 `'none'` 表示这个节点不套用），原来节点上的 `data.brandKitId` 没有了。迁移（`utils/workflowSchema.js` 的 2→3，纯函数、幂等）：所有生成节点用的是同一个品牌包 → 它成为画布的品牌包，节点跟随；其余情况（都没用，或混用）→ 画布不套用，原来有品牌包的节点各自保留成例外。两种情况下每个节点套用的都还是原来那一个。读取时迁移并落库（不更新 `updatedAt`），另外启动时 `routes/workflow.js` 的 `migrateStoredWorkflows()` 把还没迁的画布全部过一遍，这样「有几张画布在用这个品牌包」之类往文档里面看的查询只需要认一种形状。升级时还开着的旧页面仍会往节点上写 `brandKitId`：`PUT` 先把文档迁到当前版本，再把请求里的这个字段转成节点的例外（`normalizeNodeKits`），不会原样存下去。
+- 品牌包是前端套用的：执行器 `useCanvasExecutor.ts` 的 `composeGenRequest` 先按 `resolveNodeKit`（节点有例外听节点的，否则跟画布；查不到就当没有）定下品牌包，再用 `useBrandKits.ts` 的 `composeBrandKit` 把前缀、「不要出现：…」和参考图拼进这次请求。节点提示词面板里的「会加什么」预览（`executor.brandKitEffect`）走的是同一个函数，所以预览和实际发出去的一致。新建画布（`POST /api/workflow`）不带 `brandKitId` 时由服务端填上这个账号的默认品牌包；复制画布保留 `brandKitId` 和节点例外；分享快照两样都不带（`cleanNodes` 去掉 `brandKitOverride`），从快照复制出来的画布 `brandKitId` 为空；模板里的节点不带品牌包，放进哪张画布就跟哪张；把另一张画布加载进当前画布时，两边品牌包不同就把原来「跟随画布」的节点钉成例外。
+- 版本 2 是随改版来的：生成类节点高了一倍左右，按旧尺寸排的画布会有节点叠在一起。节点的真实尺寸只有浏览器知道，所以服务端的迁移（`utils/workflowSchema.js` 的 1→2）不动位置，只在节点多于一个时给文档打上 `legacyLayout: true`；读取时迁移并落库（不更新 `updatedAt`）。编辑器打开带这个标记的画布时查一次：先把全部节点框进视野（开着「只渲染视野内」，视野外的节点量不到尺寸；实在量不到的按节点类型估），按实测尺寸判断散节点有没有真的重叠（12 像素以内的贴边不算），有才调用和工具条同一个的自动整理、记一笔撤销历史并提示，没有就一个位置都不动、视口还原；然后用 `PUT { legacyLayout: false }`（整理过的话连同新位置）把标记清掉。标记只能由客户端清成 `false`，不能设成 `true`；新建的画布没有标记；复制带标记的画布，副本也带。所以每张老画布只查一次，改版后保存的画布永远不会被动。
 - 自动整理覆盖画布上的全部散节点（组和组内节点保持原样），不只是视野里的：尺寸取实测值，没渲染过的节点按类型估（`web/src/composables/useAutoLayout.ts` 的 `ESTIMATED_SIZE`）。内置模板的位置按同一组尺寸排（`services/seed.js`，`SEED_VERSION` 3），`server/test/seed.test.js` 守着它们不重叠；改了节点尺寸要同时改这三处。
 - `POST /api/workflow/:id/duplicate` 和 `POST /api/canvas-share/:token/copy` 可带 `{ name }` 指定新画布的名字（前端按界面语言起名）；不带时后端用默认名。
 - 打包下载（`download-zip`）里的文件名是 `<序号>-<节点类型>.<扩展名>`，例如 `02-image-edit.png`，与界面语言无关。上限：100 个文件，单个 1 GiB，总大小 4 GiB；放不下的换成 `<序号>-<节点类型>-skipped.txt`。

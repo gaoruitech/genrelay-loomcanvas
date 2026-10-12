@@ -255,6 +255,8 @@ export interface WorkflowDetail extends WorkflowSummary {
   settings?: Record<string, any>
   /** 节点位置还是改版前排的、编辑器还没查过有没有重叠；查过一次后永远是 false */
   legacyLayout?: boolean
+  /** 这张画布套用的品牌包 id；空串 = 不套用。节点自己的例外在 data.brandKitOverride */
+  brandKitId?: string
 }
 
 export const workflowApi = {
@@ -267,7 +269,7 @@ export const workflowApi = {
   create: (data: { name: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any }) =>
     api.post<ApiResponse<WorkflowDetail>>('/workflow', data),
 
-  update: (id: string, data: { name?: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any; legacyLayout?: false }) =>
+  update: (id: string, data: { name?: string; nodes?: any[]; edges?: any[]; viewport?: any; settings?: any; brandKitId?: string; legacyLayout?: false }) =>
     api.put<ApiResponse<WorkflowDetail>>(`/workflow/${id}`, data),
 
   /**
@@ -404,7 +406,7 @@ export const canvasToolApi = {
     api.post<ApiResponse>('/canvas/tool/fit', { imageUrl, ...opts }),
 }
 
-// 品牌包：一组可复用的出图方向，挂在生成节点上（见 composables/useBrandKits）
+// 品牌包：一组可复用的出图设定，按画布选（见 composables/useBrandKits）
 export const brandKitApi = {
   list: () => api.get<ApiResponse>('/brand-kits'),
   create: (data: any) => api.post<ApiResponse>('/brand-kits', data),

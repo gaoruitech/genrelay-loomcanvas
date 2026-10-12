@@ -24,6 +24,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/canvases', name: 'canvas-list', component: () => import('@/views/CanvasList.vue'), meta: { nav: 'canvases' } },
   { path: '/canvas/:id', name: 'canvas', component: () => import('@/views/Canvas.vue'), meta: { nav: 'canvases', shell: 'mini' } },
   { path: '/assets', name: 'assets', component: () => import('@/views/Assets.vue'), meta: { nav: 'assets' } },
+  // 素材库的第二个页签：品牌包（建、改、删都在这里；给哪张画布用是在画布顶栏上选的）
+  { path: '/assets/brand-kits', name: 'brand-kits', component: () => import('@/views/BrandKits.vue'), meta: { nav: 'assets' } },
   { path: '/models', name: 'models', component: () => import('@/views/Models.vue'), meta: { nav: 'models' } },
   { path: '/history', name: 'history', component: () => import('@/views/History.vue'), meta: { nav: 'history' } },
   // 一次只看一个分区，分区写在地址里：/settings/account、/settings/storage……不带分区的由守卫补上

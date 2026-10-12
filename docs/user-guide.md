@@ -20,7 +20,7 @@ After signing in, every page has the same frame: a top bar with the site name, t
 | --- | --- |
 | **Workbench** | The start page: your recent canvases, the canvas templates, recent generations, this month's usage, the queue and your providers. |
 | **Canvases** | All your canvases: create, rename, duplicate, download, delete. Opening one takes you to the editor. |
-| **Assets** | Your uploaded and saved images and videos. |
+| **Assets** | Your uploaded and saved images and videos, and, on a second tab, your [brand kits](#brand-kits). |
 | **Models** | Providers, their models and the prices you enter. See [Providers](providers.md). |
 | **History** | Every run, with totals, filters and CSV export. See [History](#history). |
 | **Settings** | Interface language, your account and your sign-in sessions. The super admin also sees Storage, Run limits, the site's name, logo and default language, Site (registration) and Users. See [Configuration](configuration.md#admin-settings). |
@@ -35,9 +35,9 @@ In the editor the sidebar shrinks to icons, to leave the width to the canvas.
 
 | Area | What is there |
 | --- | --- |
-| Top left | Back to your canvases, the canvas name (click it to rename) and the save status. Click the status to save at once. |
+| Top left | Back to your canvases, the canvas name (click it to rename), the save status (click it to save at once) and the [brand kit](#brand-kits) this canvas uses. |
 | Top right | **Share** and **More ⋯**. |
-| Left palette | **+** lists every node. The buttons below it are one per category: text, image, video, chat / analysis, output and tools. The last button opens the asset library, the canvas templates, brand kits and your share links. |
+| Left palette | **+** lists every node. The buttons below it are one per category: text, image, video, chat / analysis, output and tools. The last button opens the asset library, the canvas templates and your share links. |
 | Bottom toolbar | Zoom out / in, reset to 100%, fit to screen, undo / redo, **Tidy up**, **Run all**. |
 | Bottom left | Minimap. Drag or scroll it to jump around. |
 | Queue button | A round floating button, in the bottom-right corner by default. While something runs it shows a progress ring and the number of unfinished nodes; a badge counts what has finished since you last looked, in red when something failed or could not start. Click it for the list: the nodes of this canvas that are running, queued or finished since you opened it. Click a row to jump to its node. Drag the button anywhere on the canvas (it snaps to the left or right edge and the browser remembers the spot); double-click it, or use **Reset** in the list, to send it back. On a phone it sits above the bottom toolbar. |
@@ -75,7 +75,7 @@ Add a node by right-clicking the empty canvas or with the **+** button on the le
 | Video analysis | Sends a video to a chat model and outputs text you can pass downstream. Only chat models that accept video input are listed. |
 | Language model | Writes text from a prompt: analysis, copy, plans. |
 
-The image and video generation and edit nodes share one layout: result frame, reference strip, prompt box, model dropdown, parameters dropdown, brand kit row and Run button. Aspect ratio, resolution, duration and count are all in the parameters dropdown, which shows only what the selected model supports.
+The image and video generation and edit nodes share one layout: result frame, reference strip, prompt box, model dropdown, parameters dropdown and Run button. Aspect ratio, resolution, duration and count are all in the parameters dropdown, which shows only what the selected model supports.
 
 Which models a node offers, and what each can do, depends on the providers you added and on the custom models you added to them; see [Providers](providers.md).
 
@@ -173,13 +173,49 @@ Days are the calendar days of your browser's time zone: "today" is your local da
 
 ## Brand kits
 
-A brand kit saves a creative direction rather than finished work: fixed reference images, a prompt prefix and negative terms. Attach it to generation nodes and every run starts from the same place.
+A brand kit is a fixed set of generation settings: up to 5 reference images, a piece of text that always goes in front of the prompt (the prompt prefix), and a list of things to leave out. You choose one **per canvas**, and every Image generation, Image edit, Video generation and Video edit node on that canvas adds it on each run. Other nodes (language model, video analysis, tools) ignore it.
 
-- Choose a kit in the brand kit row of Image generation, Image edit, Video generation and Video edit nodes. **Manage** opens the dialog to create, edit and delete kits.
-- A kit has a name, up to 5 fixed reference images, a prompt prefix and negative terms. It can be applied to new nodes automatically. You can keep up to 50 kits.
-- Images wired into the node come first. The kit's reference images only fill the slots the model has left.
-- Negative terms are appended to the prompt as "Do not include: …". This is prompt text, not an API parameter, so a model may ignore it.
-- Deleting a kit sets the nodes that used it back to no brand kit. The canvas is not otherwise affected.
+**What a run adds**
+
+- The prompt prefix goes in front of the node's prompt, on a line of its own.
+- The list of things to leave out is added at the end of the prompt as "Do not include: …". This is a sentence in the prompt, not an API parameter, so a model may ignore it.
+- The kit's reference images are sent after the node's own. Images wired into the node always come first and are never pushed out; the kit's images only fill the slots the model has left.
+
+**What it does not do**
+
+- It does not change the model, aspect ratio, resolution, duration or count, and the estimated cost stays the same.
+- A video node in first/last-frame mode gets the text only, because that mode sends exactly the two frames. A model that takes no reference images also gets the text only.
+- A kit has no logo or colour fields. Put a logo in the reference images, and colours or style in the prompt prefix.
+- A kit is looked up when a node runs. Edit a kit and every later run uses the new content; results you already have do not change.
+
+**Choosing a kit for a canvas**
+
+The brand kit button sits at the top left of the canvas, next to the canvas name and the save status. It shows the kit this canvas uses, or "No brand kit". Click it for a short explanation, the list of your kits (each with its reference images and a summary of what it holds) and **None**. The choice applies to the whole canvas and is saved with it. **Manage brand kits** goes to Assets › Brand kits; **New brand kit** and the pencil next to a kit open the editor in a dialog, so you stay on the canvas.
+
+**Seeing what will be sent**
+
+Click a node's prompt to open its prompt panel. Below the prompt box a line says "Brand kit applied: <name>". Click it to see exactly what the next run adds: the text in front of the prompt, the line at the end, and the reference images that will be sent, together with any that will not be sent and why (the model's limit, first/last-frame mode, or a model without reference images). After a run, the task details show the prompt that was actually sent.
+
+**An exception for one node**
+
+Right-click a generation node, or use "This node" in its prompt panel, and choose **Follow canvas** (the default), **No kit for this node**, or another kit for this node only. A node with an exception shows a small icon next to its title; hover it to see which exception it is. Nothing is added to the node's body.
+
+**Managing kits**
+
+Assets › Brand kits (`/assets/brand-kits`) lists your kits as cards with their reference images, a summary, the prefix and the "do not include" list, and in how many canvases each is in use. From there you create, edit, duplicate and delete kits and choose the **default for new canvases**: canvases you create afterwards start with that kit, and existing canvases are not affected. You can keep up to 50 kits.
+
+Deleting a kit does not change your canvases: canvases and nodes that used it simply run without a kit from then on, and the results you already have stay.
+
+**Copies, share links and templates**
+
+- Duplicating one of your canvases keeps its kit and the exceptions on its nodes.
+- A share link carries no brand kit. Viewers see the prompt that was actually sent (in the task details), not the kit; a copy made from a share link starts without a kit.
+- Templates carry no kit: nodes added from a template follow the canvas they are added to.
+- Loading another of your canvases into the current one keeps what each loaded node used: if the two canvases have different kits, the loaded nodes get an exception.
+
+**Canvases from an earlier version**
+
+Earlier versions chose the kit on every node. Such canvases are converted automatically: when every generation node used the same kit it becomes the canvas's kit; otherwise the canvas has no kit and each node that had one keeps it as an exception. Either way each node runs with the kit it ran with before.
 
 ## Templates
 

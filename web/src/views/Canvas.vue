@@ -232,6 +232,16 @@
       <button class="ed-save lc-st" :class="saveState.cls" :disabled="saving" :title="t('canvas.save.saveNow')" @click="handleSave">
         <span>{{ saveState.text }}</span>
       </button>
+      <!-- 这张画布套用的品牌包：整张画布一处选，所有生成节点跟着用 -->
+      <CanvasBrandKitChip
+        v-if="!loading"
+        v-model="canvasKitId"
+        :kits="brandKits.kits.value"
+        :loaded="brandKits.loaded.value"
+        :exceptions="kitExceptionCount"
+        @edit="openKitEditor"
+        @create="openKitEditor(null)"
+      />
     </div>
 
     <!-- 左侧：节点面板。+ 是全部节点，下面按类别分，最底下是素材库 -->
@@ -434,6 +444,18 @@
         </button>
         <hr />
       </template>
+      <!-- 生成节点：让这一个节点不跟随画布的品牌包 -->
+      <template v-if="contextKitOptions">
+        <div class="ed-sub">{{ t('brandKit.node.menuTitle') }}</div>
+        <button
+          v-for="o in contextKitOptions" :key="o.value" class="lc-menu-item ctx-kit" :class="{ active: o.on }"
+          role="menuitemradio" :aria-checked="o.on" :data-kit="o.value" @click="setKitFromContext(o.value)"
+        >
+          <LcIcon v-if="o.on" name="check" size="s" /><span v-else class="ctx-kit-gap" />
+          <span class="ctx-kit-l">{{ o.label }}</span>
+        </button>
+        <hr />
+      </template>
       <!-- 多选普通节点后右键：把它们圈成一组 -->
       <template v-if="!contextIsFrame && selectedLoose >= 2">
         <button class="lc-menu-item" role="menuitem" @click="groupFromContext">
@@ -613,11 +635,13 @@
       </div>
     </div>
 
-    <BrandKitDialog
-      :open="brandKitOpen"
-      :kits="brandKits.kits.value"
-      @close="brandKitOpen = false"
-      @changed="brandKits.load(true)"
+    <!-- 在画布里新建 / 编辑品牌包：和素材库「品牌包」页是同一个表单，不用离开画布 -->
+    <BrandKitEditorDialog
+      :open="kitEditor.open"
+      :kit="kitEditor.kit"
+      @close="kitEditor.open = false"
+      @saved="onKitSaved"
+      @removed="onKitRemoved"
     />
 
     <BatchRunDialog :batch="batch" />
@@ -687,9 +711,10 @@ import {
 import { useAutoLayout, LAYOUT_CONFIRM_THRESHOLD, type AlignMode, type DistributeAxis } from '@/composables/useAutoLayout'
 import { useCanvasHistory } from '@/composables/useCanvasHistory'
 import { useCanvasBatch } from '@/composables/useCanvasBatch'
-import { useBrandKits } from '@/composables/useBrandKits'
+import { useBrandKits, resolveNodeKit, KIT_NONE, BRAND_KIT_NODE_TYPES, type BrandKit } from '@/composables/useBrandKits'
 import { CANVAS_BRAND_KIT_KEY } from '@/composables/canvasBrandKitKey'
-import BrandKitDialog from '@/components/canvas/BrandKitDialog.vue'
+import CanvasBrandKitChip from '@/components/canvas/CanvasBrandKitChip.vue'
+import BrandKitEditorDialog from '@/components/brandkit/BrandKitEditorDialog.vue'
 import PlatformExportNode from '@/components/canvas/PlatformExportNode.vue'
 import SliceNode from '@/components/canvas/SliceNode.vue'
 import CollageNode from '@/components/canvas/CollageNode.vue'
@@ -786,18 +811,49 @@ const {
 } = useVueFlow()
 
 /* ==================== 品牌包 ==================== */
-// 画布挂载时拉一次放内存；节点上只存 id，执行时查回来。
-// 查不到就当没挂 —— 见 useBrandKits.getBrandKit 的说明。
+// 品牌包按画布选：canvasKitId 跟着画布文档存（顶栏那颗 chip 改的就是它），这张画布上的
+// 生成节点都用它；节点只在例外时自己存一个 brandKitOverride。列表在画布挂载时拉一次放内存，
+// 存的都是 id，运行时查回来 —— 查不到（被删了）就当没有，见 resolveNodeKit。
 const brandKits = useBrandKits()
-const brandKitOpen = ref(false)
+const canvasKitId = ref('')
+const resolveKit = (nodeData: any) => resolveNodeKit(brandKits.kits.value, canvasKitId.value, nodeData)
+/** 改一个节点的例外：'' = 跟随画布（把字段删掉，而不是存一个空串） */
+function setNodeKitOverride(nodeId: string, value: string) {
+  const n = nodes.value.find((x) => x.id === nodeId)
+  if (!n || (n.data?.brandKitOverride || '') === value) return
+  hist.record()
+  const { brandKitOverride: _drop, ...rest } = n.data || {}
+  updateNode(nodeId, { data: value ? { ...rest, brandKitOverride: value } : rest })
+}
 provide(CANVAS_BRAND_KIT_KEY, {
   list: brandKits.kits,
-  open: () => { brandKitOpen.value = true },
+  canvasKitId,
+  resolve: resolveKit,
+  setNodeOverride: setNodeKitOverride,
 })
+/** 有几个生成节点没跟随画布 */
+const kitExceptionCount = computed(() =>
+  nodes.value.filter((n) => BRAND_KIT_NODE_TYPES.includes(n.type as string) && n.data?.brandKitOverride).length)
+
+// 新建 / 编辑品牌包的弹窗（kit 为 null = 新建）
+const kitEditor = ref<{ open: boolean; kit: BrandKit | null }>({ open: false, kit: null })
+function openKitEditor(kit: BrandKit | null) {
+  kitEditor.value = { open: true, kit }
+}
+async function onKitSaved(kit: BrandKit, created: boolean) {
+  kitEditor.value.open = false
+  await brandKits.load(true)
+  // 在这张画布里新建的，多半就是要给这张画布用
+  if (created) canvasKitId.value = kit.id
+}
+function onKitRemoved() {
+  kitEditor.value.open = false
+  void brandKits.load(true)
+}
 
 const executor = useCanvasExecutor({
   nodes, edges, updateNodeData,
-  getBrandKit: brandKits.getBrandKit,
+  getNodeBrandKit: (nodeData) => resolveKit(nodeData).kit,
   getWorkflowId: () => currentId.value,
   persist: () => doSave(true),
   confirmRerun,
@@ -1011,7 +1067,6 @@ const frameMenuItem = computed<CanvasMenuItem>(() => {
 const libraryMenuItems = computed<CanvasMenuItem[]>(() => [
   { key: 'library', label: t('canvas.rail.library'), lc: 'folder', run: openLibrary },
   { key: 'templates', label: t('canvas.rail.templates'), lc: 'layout', run: openTemplates },
-  { key: 'brand-kit', label: t('canvas.menu.brandKit'), lc: 'star', run: () => { brandKitOpen.value = true } },
   { key: 'my-shares', label: t('canvas.rail.myShares'), lc: 'share', run: goToMyShares },
 ])
 
@@ -1271,6 +1326,29 @@ function runFlyItem(item: CanvasMenuItem) {
 
 // 右键菜单
 const contextMenu = ref({ open: false, x: 0, y: 0, nodeId: '' })
+
+/**
+ * 右键一个生成节点时的「品牌包」几项：跟随画布 / 此节点不套用 / 单独用某一个。
+ * 一个品牌包都没有、节点也没有例外时不出这一组。
+ */
+const contextKitOptions = computed<{ value: string; label: string; on: boolean }[] | null>(() => {
+  const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
+  if (!n || !BRAND_KIT_NODE_TYPES.includes(n.type as string)) return null
+  const kits = brandKits.kits.value
+  const own = (n.data?.brandKitOverride as string) || ''
+  if (!kits.length && !own) return null
+  const canvasKit = kits.find((k) => k.id === canvasKitId.value)
+  return [
+    { value: '', label: canvasKit ? t('brandKit.node.followWith', { name: canvasKit.name }) : t('brandKit.node.followNone') },
+    { value: KIT_NONE, label: t('brandKit.node.off') },
+    ...kits.map((k) => ({ value: k.id, label: t('brandKit.node.useKit', { name: k.name }) })),
+  ].map((o) => ({ ...o, on: o.value === own }))
+})
+function setKitFromContext(value: string) {
+  const id = contextMenu.value.nodeId
+  closeContextMenu()
+  if (id) setNodeKitOverride(id, value)
+}
 
 // 画布空白处右键：添加节点菜单（与左侧「添加节点」浮层同一份数据）
 const addMenu = ref({ open: false, x: 0, y: 0, flowX: 0, flowY: 0 })
@@ -1930,6 +2008,8 @@ function buildContent() {
     edges: edges.value.map(edgeForSave),
     // 画布外观。后端 PUT 是显式白名单透传，那边不加对应的一行这里存了也白存
     settings: { bg: bgSettings.value },
+    // 这张画布套用的品牌包；空串 = 不套用
+    brandKitId: canvasKitId.value,
   }
 }
 
@@ -1981,12 +2061,7 @@ function defaultModelFor(kind: string): string | null {
 function nodeDefaults(kind: NodeKind): Record<string, any> {
   const base = JSON.parse(JSON.stringify(NODE_DEFAULTS[kind] || {}))
   const model = defaultModelFor(kind)
-  if (model !== null) {
-    base.model = model
-    // 勾了「新建节点时自动套用」的品牌包：能挂品牌包的正是这几种生成节点
-    const kit = brandKits.defaultKit.value
-    if (kit) base.brandKitId = kit.id
-  }
+  if (model !== null) base.model = model
   return base
 }
 
@@ -1995,7 +2070,9 @@ function nodeDefaults(kind: NodeKind): Record<string, any> {
  * （没连那个接入、或者模型被停用了），认不出来就换成当前的默认模型。
  */
 function templateNodeData(kind: NodeKind, raw: any): Record<string, any> {
-  const data = { ...nodeDefaults(kind), ...(raw || {}) }
+  // 模板不带品牌包：放进哪张画布就跟哪张画布的
+  const { brandKitOverride: _kit, brandKitId: _oldKit, ...own } = raw || {}
+  const data = { ...nodeDefaults(kind), ...own }
   const fallback = defaultModelFor(kind)
   if (fallback !== null && (!data.model || !isModelSupported(data.model))) data.model = fallback
   return data
@@ -2546,6 +2623,7 @@ watch([nodes, edges], scheduleAutoSave, { deep: true })
 watch(viewport, scheduleViewportSave)
 watch(workflowName, scheduleAutoSave)
 watch(bgSettings, scheduleAutoSave, { deep: true })
+watch(canvasKitId, scheduleAutoSave)
 
 // ============ 项目切换 / 加载其他画布 ============
 const projList = ref<any[]>([])
@@ -2595,10 +2673,15 @@ async function loadOtherCanvasInto(id: string) {
     const roots = srcNodes.filter((n: any) => !(n.parentNode && idMap.has(n.parentNode)))
     const baseX = origin.x - Math.min(...roots.map((n: any) => n.position?.x || 0))
     const baseY = origin.y - Math.min(...roots.map((n: any) => n.position?.y || 0))
+    // 那张画布套用的品牌包跟这张不一样时，原来「跟随画布」的生成节点在这里钉成各自的例外，
+    // 这样搬过来之后每个节点套用的还是原来那一个。
+    const srcKit = typeof w.brandKitId === 'string' ? w.brandKitId : ''
+    const pinKit = srcKit !== canvasKitId.value ? (srcKit || KIT_NONE) : ''
     const newNodes = srcNodes.map((n: any) => {
       const isChild = !!n.parentNode && idMap.has(n.parentNode)
       const data: any = JSON.parse(JSON.stringify(stripNodeData(n.data)))
       delete data.taskId; delete data.taskIds; delete data.runPending
+      if (pinKit && BRAND_KIT_NODE_TYPES.includes(n.type) && !data.brandKitOverride) data.brandKitOverride = pinKit
       const nn: any = {
         id: idMap.get(n.id)!,
         type: n.type,
@@ -3019,6 +3102,7 @@ async function loadWorkflow(id: string) {
       edges.value = (w.edges || []).map((e: any) => ({ ...e, type: 'glow' }))
       // 老画布没有 settings，normalizeCanvasBg 会兜底到默认底色 = 改动前的行为
       bgSettings.value = normalizeCanvasBg((w as any).settings?.bg)
+      canvasKitId.value = w.brandKitId || ''
       const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
       fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
       legacyLayoutPending = !!w.legacyLayout && nodes.value.length > 1
@@ -3179,7 +3263,7 @@ function tdesignDialogVisible(): boolean {
 function anyOverlayOpen(): boolean {
   return batchOpen.value || editorState.value.open || lightbox.value.open
     || detailModal.value.open || libraryOpen.value || templateDialogOpen.value
-    || shareOpen.value || batch.open.value || pickerBusy.value || brandKitOpen.value
+    || shareOpen.value || batch.open.value || pickerBusy.value || kitEditor.value.open
     || tdesignDialogVisible()
 }
 
@@ -3579,6 +3663,11 @@ onBeforeUnmount(() => {
 .ctx-menu .lc-menu-item.danger { color: var(--err-soft); }
 .ctx-menu .lc-menu-item.danger .lc-ic { color: var(--err-soft); }
 .ctx-menu .lc-menu-item.danger:hover { background: rgba(255, 107, 139, .12); }
+/* 品牌包那几项是单选：选中的前面打勾，没选中的留出同样宽的空位 */
+.ctx-menu .ed-sub { padding-top: 4px; }
+.ctx-menu .ctx-kit.active .lc-ic { color: var(--cyan); }
+.ctx-kit-gap { width: 14px; flex: none; }
+.ctx-kit-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 两列排布：节点类型有十几种，一列一屏放不下。
    固定宽度是必要的 —— 不定宽的话「改尺寸 / 压缩」这种长标签会把整个菜单撑开。 */
 .ed-menu { position: fixed; z-index: 2000; width: 344px; max-width: calc(100vw - 16px); }

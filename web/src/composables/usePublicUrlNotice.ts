@@ -41,12 +41,14 @@ export function usePublicUrlNotice(
   nodeId: string,
   adapter: ComputedRef<ModelAdapter | null>,
   imageRefs: ComputedRef<{ url: string }[]>,
+  /** 不是连线连进来、但运行时也会一起发出去的图（品牌包的参考图） */
+  extraImages?: () => string[],
 ): ComputedRef<string> {
   const { edges } = useVueFlow()
   const connected = (kind: 'image' | 'video') =>
     edges.value.some(e => e.target === nodeId && String(e.sourceHandle || '').split('-')[0] === kind)
   return computed(() => publicUrlProblem(adapter.value, {
-    imageUrls: imageRefs.value.map(r => r.url),
+    imageUrls: [...imageRefs.value.map(r => r.url), ...(extraImages?.() || [])],
     imagePending: !imageRefs.value.length && connected('image'),
     videoPending: connected('video'),
   }))

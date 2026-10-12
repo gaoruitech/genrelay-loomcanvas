@@ -73,9 +73,11 @@ function collectNodeMedia(node) {
 }
 
 // What must not travel with a published or copied canvas: run-time / task
-// state (incl. the ids of the runs behind a node), failure details, and what
-// the owner's runs cost.
+// state (incl. the ids of the runs behind a node), failure details, what the
+// owner's runs cost, and which of the owner's brand kits a node points at (a
+// kit belongs to one account; its id means nothing to anyone else).
 const PRIVATE_FIELDS = new Set([
+  'brandKitOverride', 'brandKitId',
   'status', 'progress', 'validationError', 'validationStamp', 'errorMsg', 'errorRunId',
   'taskId', 'taskIds', 'runId', 'runPending', 'generatedCount',
   'cost', 'estimatedCost',

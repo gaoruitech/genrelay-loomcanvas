@@ -5,14 +5,15 @@ const mongoose = require('mongoose')
 const MAX_REF_IMAGES = 5
 
 /**
- * Brand kit: a reusable "direction" attached to generation nodes - fixed
- * reference images, a prompt prefix, a negative prompt and default
- * ratio/model - so every image starts from the same place.
+ * Brand kit: a reusable "direction" - fixed reference images, a prompt prefix and
+ * negative terms - chosen per canvas (Workflow.brandKitId) and added to every
+ * generation run of that canvas by the editor. `isDefault` marks the kit a new
+ * canvas starts with.
  */
 const brandKitSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 40 },
-  // Media URLs only, never inline base64 (kits are referenced from many nodes).
+  // Media URLs only, never inline base64.
   refImages: {
     type: [String],
     default: [],
@@ -22,6 +23,7 @@ const brandKitSchema = new mongoose.Schema({
   promptPrefix: { type: String, default: '', maxlength: 1000 },
   // Appended to the prompt as text; most image APIs have no negative-prompt parameter.
   negativePrompt: { type: String, default: '', maxlength: 500 },
+  // Stored and returned by the API; the editor neither sets nor applies these two.
   defaultRatio: { type: String, default: '', maxlength: 20 },
   defaultModel: { type: String, default: '', maxlength: 200 },
   isDefault: { type: Boolean, default: false },

@@ -15,6 +15,7 @@ import history from './modules/history'
 import assetsPage from './modules/assetsPage'
 import account from './modules/account'
 import queue from './modules/queue'
+import brandKit from './modules/brandKit'
 
 export default {
   common: {
@@ -246,6 +247,7 @@ export default {
   modelsPage: modelsPage.en,
   history: history.en,
   assetsPage: assetsPage.en,
+  brandKit: brandKit.en,
   account: account.en,
   queue: queue.en,
 }

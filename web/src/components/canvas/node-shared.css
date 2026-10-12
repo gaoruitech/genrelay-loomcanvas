@@ -285,20 +285,8 @@ button.cv-well:hover { border-color: var(--line-3); }
 .cv-kv > span:first-child { flex: none; white-space: nowrap; }
 .cv-kv b { font-weight: 500; color: var(--text); white-space: nowrap; }
 .cv-kv .cv-unk { color: var(--text-3); white-space: nowrap; }
-.cv-kv .cv-kv-val { min-width: 0; display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .cv-hint { font-size: 11px; color: var(--text-3); line-height: 1.5; }
 .cv-hint.warn { color: var(--warn); }
-.cv-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--cyan-soft);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.cv-link:hover { text-decoration: underline; }
 
 /* 表单行（工具节点 / 分享页）：标签 + 控件 */
 .cv-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

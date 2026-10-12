@@ -10,7 +10,7 @@ import { uploadDataUrl } from '@/utils/canvasUpload'
 import { sumCosts } from '@/utils/cost'
 import { t } from '@/locales'
 import type { Cost, LlmTask } from '@/types'
-import { applyBrandKitPrompt, applyBrandKitImages, type BrandKit } from '@/composables/useBrandKits'
+import { composeBrandKit, type BrandKit, type BrandKitEffect } from '@/composables/useBrandKits'
 import { recordGroupResult } from '@/composables/platformExportGroups'
 import { publicUrlProblem } from '@/composables/usePublicUrlNotice'
 import {
@@ -118,10 +118,10 @@ interface ExecutorOptions {
   edges: Ref<Edge[]>
   updateNodeData: (id: string, patch: Record<string, any>) => void
   /**
-   * 按 id 取品牌包。可选 —— 不传（或返回 null）时执行器完全不走套用逻辑，
-   * 行为与加这个功能之前一致。
+   * 这个节点这次运行套用哪个品牌包（跟随画布，或节点自己的例外）。
+   * 可选 —— 不传（或返回 null）时提示词和参考图原样发出去。
    */
-  getBrandKit?: (id?: string | null) => BrandKit | null
+  getNodeBrandKit?: (nodeData: any) => BrandKit | null
   /** 当前画布 id，提交运行时带上用于用量归属 */
   getWorkflowId?: () => string | null | undefined
   /**
@@ -145,7 +145,7 @@ export interface RunOptions {
 // 同时真正在执行(submit/poll)的节点上限。多条生成并发时用它兜底，避免一次打出过多请求触发上游限流。
 export const MAX_CONCURRENT = 10
 
-export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
+export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
   // ============ 并发调度状态 ============
   // 多条生成可同时进行：不再用单一全局锁，改为「按依赖就绪即执行 + 并发上限」的 DAG 调度。
   // inflight：节点 → 正在跑的 Promise。既做「同一节点只跑一次」的去重（防共享上游被重复触发重复计费），
@@ -395,9 +395,49 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
       if (!inputs.videoUrl) return t('executor.needVideo')
     }
     // 参考素材只能按公网地址交给上游、而实例没有公网地址：后端反正会拒绝，这里先拦下并说清楚
-    const unreachable = publicUrlProblem(getAdapter(modelId), { imageUrls: inputs.imageUrls, videoUrl: inputs.videoUrl })
+    // 品牌包的参考图同样按地址交给上游，所以看的是加上它们之后真正会发出去的那一组
+    const unreachable = publicUrlProblem(getAdapter(modelId), { imageUrls: composeGenRequest(node, inputs).imageUrls, videoUrl: inputs.videoUrl })
     if (unreachable) return unreachable
     return null
+  }
+
+  // ============ 这次会发出去什么 ============
+
+  /**
+   * 一个生成节点这次运行真正发出去的提示词和参考图。
+   *
+   * 提示词：连进来的文本优先，回退到节点上写的；@图1 / @产品 翻成模型读得懂的话
+   * （「第 1 张参考图（产品）」），卡片上仍显示带 @ 的原文。
+   *
+   * 品牌包：没有就原样返回。有的话怎么加只有 composeBrandKit 一处实现，
+   * 节点上「会加什么」的预览（brandKitEffect）走的也是这个函数 —— 预览和实际发出去的不会两样。
+   * 首尾帧模式只加文字不加图，判据取或：节点声明的模式，以及「有没有把线连到尾帧口上」——
+   * 后者是执行器一贯采用的硬证据（用户连线的意图比默认值可靠）。
+   */
+  function composeGenRequest(node: Node, inputs: CollectedInputs): { prompt: string; imageUrls: string[]; kit: BrandKit | null; effect: BrandKitEffect | null } {
+    const raw = inputs.text
+      || (node.type === 'image-edit' ? node.data?.instruction : node.data?.prompt)
+      || ''
+    const prompt = resolveMentions(raw, collectImageRefs(node.id))
+    const kit = getNodeBrandKit ? getNodeBrandKit(node.data) : null
+    if (!kit) return { prompt, imageUrls: inputs.imageUrls, kit: null, effect: null }
+    const framesMode = isFramesModeData(node.data)
+      || edges.value.some(e => e.target === node.id && isLastFrameHandle(e.targetHandle as string))
+    const effect = composeBrandKit(kit, {
+      prompt,
+      imageUrls: inputs.imageUrls,
+      maxRefs: getAdapter((node.data?.model as string) || '')?.options.maxReferenceImages || 0,
+      framesMode,
+    })
+    return { prompt: effect.prompt, imageUrls: effect.imageUrls, kit, effect }
+  }
+
+  /** 这个节点现在运行的话，品牌包会往请求里加什么；不套用品牌包返回 null */
+  function brandKitEffect(nodeId: string): { kit: BrandKit; effect: BrandKitEffect } | null {
+    const node = findNode(nodeId)
+    if (!node || !GEN_TYPES.has(node.type as string)) return null
+    const req = composeGenRequest(node, collectInputs(nodeId))
+    return req.kit && req.effect ? { kit: req.kit, effect: req.effect } : null
   }
 
   // ============ 单节点执行 ============
@@ -443,45 +483,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     const modelId = node.data!.model as string
     const adapter = getAdapter(modelId)!  // validated above
 
-    // 提示词：连接的优先，回退到内嵌
-    let prompt = inputs.text
-      || (node.type === 'image-edit' ? node.data?.instruction : node.data?.prompt)
-      || ''
-
-    /**
-     * @图1 / @产品 翻成模型读得懂的话（「第 1 张参考图（产品）」）。
-     * 卡片上仍显示带 @ 的原文，落库的 lastPrompt 存翻译后的 —— 那才是真发出去的。
-     */
-    prompt = resolveMentions(prompt, collectImageRefs(nodeId))
-
-    /**
-     * 品牌包。节点没挂就 getBrandKit 返回 null，整段跳过 ——
-     * 此时 prompt 与 inputs.imageUrls 与加这个功能之前逐字节相同。
-     *
-     * 查不到也当没挂：品牌包被删了、或这张画布是从分享链接复制来的，
-     * 都该安静退化成不套用，不能让画布跑不动。
-     */
-    const brandKit = getBrandKit ? getBrandKit(node.data?.brandKitId) : null
-    if (brandKit) {
-      prompt = applyBrandKitPrompt(brandKit, prompt)
-      /**
-       * 首尾帧模式下只贡献提示词，不并入参考图。
-       *
-       * 那条路送出去的必须正好是 [首帧, 尾帧] 两张：
-       *   两帧都连了 → 多塞一张会把尾帧挤掉，而且是静默的（见 collectInputs）
-       *   只连了首帧 → 品牌包的第一张会被当成尾帧，片子从商品渐变成模特，更难发现
-       *
-       * 两个判据取或：节点声明的模式，以及「有没有把线连到尾帧口上」——
-       * 后者是执行器一贯采用的硬证据（用户连线的意图比默认值可靠）。
-       */
-      const framesMode = isFramesModeData(node.data)
-        || edges.value.some(e => e.target === nodeId && isLastFrameHandle(e.targetHandle as string))
-      if (!framesMode) {
-        inputs.imageUrls = applyBrandKitImages(
-          brandKit, inputs.imageUrls, adapter.options.maxReferenceImages,
-        )
-      }
-    }
+    // 提示词和参考图：节点自己的，加上品牌包的（见 composeGenRequest）。
+    // 落库的 lastPrompt 存的是这里拼好的 —— 那才是真发出去的。
+    const request = composeGenRequest(node, inputs)
+    const prompt = request.prompt
+    inputs.imageUrls = request.imageUrls
 
     updateNodeData(nodeId, {
       status: 'running',
@@ -1521,6 +1527,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getBrandKit, g
     resumeIncompleteTasks,
     refreshRunErrors,
     collectImageRefs,
+    brandKitEffect,
     // 批量运行要在换完素材后立刻作废下游：内部那个 stale watcher 是 200ms
     // 去抖的，等它的话 runAll 会认为下游「已有产物」而整轮跳过
     markDownstreamStale,

@@ -8,9 +8,10 @@ const { Transform } = require('stream')
 const express = require('express')
 const archiver = require('archiver')
 const Workflow = require('../models/Workflow')
+const BrandKit = require('../models/BrandKit')
 const { pickThumbnail, collectNodeMedia } = require('../services/canvasGraph')
 const { openStream } = require('../services/media')
-const { migrateWorkflow, CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
+const { migrateWorkflow, normalizeNodeKits, isKitRef, CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, isPlainObject, isMediaUrl } = require('../utils/validate')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
@@ -34,6 +35,7 @@ function serialize(doc) {
     edges: doc.edges || [],
     viewport: doc.viewport || DEFAULT_VIEWPORT,
     settings: doc.settings || {},
+    brandKitId: doc.brandKitId || '',
     thumbnail: doc.thumbnail || '',
     thumbnailType: doc.thumbnailType || '',
     schemaVersion: doc.schemaVersion || CURRENT_SCHEMA_VERSION,
@@ -75,6 +77,12 @@ function parseBody(body) {
     if (!isPlainObject(body.settings)) throw badRequest('validation.object', { field: 'settings' })
     out.settings = body.settings
   }
+  // The canvas's brand kit: '' or a kit id. Whose kit it is is not checked here - a kit is
+  // only ever looked up among the caller's own, so an id from elsewhere means "no kit".
+  if (body.brandKitId !== undefined) {
+    if (!isKitRef(body.brandKitId)) throw badRequest('validation.invalid', { field: 'brandKitId' })
+    out.brandKitId = body.brandKitId
+  }
   // The editor's "I have checked this old layout" - the flag can be cleared, never set, from outside.
   if (body.legacyLayout !== undefined) {
     if (body.legacyLayout !== false) throw badRequest('validation.invalid', { field: 'legacyLayout' })
@@ -96,6 +104,7 @@ async function loadWorkflow(userId, id) {
     await Workflow.updateOne({ _id: raw._id, userId }, {
       $set: {
         nodes: doc.nodes, edges: doc.edges, viewport: doc.viewport, settings: doc.settings,
+        brandKitId: doc.brandKitId || '',
         schemaVersion: doc.schemaVersion, legacyLayout: !!doc.legacyLayout,
       },
     }, { timestamps: false })
@@ -163,13 +172,20 @@ router.post('/download', wrap(async (req, res) => {
 router.post('/', wrap(async (req, res) => {
   const { legacyLayout: _ignored, ...data } = parseBody(req.body || {})
   const nodes = data.nodes || []
+  // A new canvas starts with the account's default brand kit unless the caller says otherwise.
+  let brandKitId = data.brandKitId
+  if (brandKitId === undefined) {
+    const dft = await BrandKit.findOne({ userId: req.userId, isDeleted: false, isDefault: true }, { _id: 1 }).lean()
+    brandKitId = dft ? String(dft._id) : ''
+  }
   const doc = await Workflow.create({
     userId: req.userId,
     name: data.name || defaultName(req),
-    nodes,
+    nodes: normalizeNodeKits(nodes, brandKitId),
     edges: data.edges || [],
     viewport: data.viewport || DEFAULT_VIEWPORT,
     settings: data.settings || {},
+    brandKitId,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     ...pickThumbnail(nodes),
   })
@@ -198,6 +214,13 @@ router.put('/:id', wrap(async (req, res) => {
   // Panning and zooming are not edits: a save of nothing but the viewport leaves updatedAt alone,
   // so looking at a canvas does not move it to the top of "recently edited".
   const viewportOnly = Object.keys(set).length > 0 && Object.keys(set).every((k) => k === 'viewport' || k === 'legacyLayout')
+  // Writing nodes stamps the document as current, so an older one is brought up to date
+  // first: otherwise its nodes' kits would never be folded into the canvas's. Nodes that
+  // arrive in the earlier shape are folded against the kit the canvas will have.
+  if (data.nodes) {
+    const current = await loadWorkflow(req.userId, req.params.id)
+    set.nodes = normalizeNodeKits(data.nodes, data.brandKitId !== undefined ? data.brandKitId : current.brandKitId)
+  }
   const doc = await Workflow.findOneAndUpdate(
     { _id: req.params.id, userId: req.userId, isDeleted: false },
     { $set: set },
@@ -221,6 +244,7 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
     edges: src.edges || [],
     viewport: src.viewport || DEFAULT_VIEWPORT,
     settings: src.settings || {},
+    brandKitId: src.brandKitId || '',
     schemaVersion: CURRENT_SCHEMA_VERSION,
     // A copy of a canvas whose old layout has not been checked yet has the same old layout.
     legacyLayout: !!src.legacyLayout,
@@ -353,5 +377,31 @@ router.post('/:id/download-zip', wrap(async (req, res) => {
   }
 }))
 
+/**
+ * Bring every stored canvas up to the current schema at start-up, so that queries which
+ * look inside the documents (which canvases use a brand kit) see one shape. Reading a
+ * canvas still upgrades it too; this only makes sure none is left behind.
+ */
+async function migrateStoredWorkflows() {
+  let migrated = 0
+  const stale = { $or: [{ schemaVersion: { $lt: CURRENT_SCHEMA_VERSION } }, { schemaVersion: { $exists: false } }] }
+  for await (const raw of Workflow.find(stale).lean().cursor()) {
+    const { doc, changed } = migrateWorkflow(raw)
+    if (!changed) continue
+    // Guarded by the version it was read at: a canvas saved in the meantime is left alone.
+    const readAt = raw.schemaVersion === undefined ? { $exists: false } : raw.schemaVersion
+    const res = await Workflow.updateOne({ _id: raw._id, schemaVersion: readAt }, {
+      $set: {
+        nodes: doc.nodes, edges: doc.edges, viewport: doc.viewport, settings: doc.settings,
+        brandKitId: doc.brandKitId || '',
+        schemaVersion: doc.schemaVersion, legacyLayout: !!doc.legacyLayout,
+      },
+    }, { timestamps: false })
+    migrated += res.modifiedCount || 0
+  }
+  return migrated
+}
+
 module.exports = router
 module.exports.limits = limits
+module.exports.migrateStoredWorkflows = migrateStoredWorkflows

@@ -1,8 +1,9 @@
 'use strict'
 
-/** /api/brand-kits - reusable generation directions attached to nodes. Private to the account. */
+/** /api/brand-kits - reusable generation directions chosen per canvas. Private to the account. */
 const express = require('express')
 const BrandKit = require('../models/BrandKit')
+const Workflow = require('../models/Workflow')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { requireObjectId, isMediaUrl } = require('../utils/validate')
 
@@ -11,7 +12,7 @@ const router = express.Router()
 const MAX_KITS = 50
 const { MAX_REF_IMAGES } = BrandKit
 
-function toDTO(k) {
+function toDTO(k, usedBy) {
   return {
     id: String(k._id),
     name: k.name,
@@ -24,6 +25,8 @@ function toDTO(k) {
     shared: false,
     mine: true,
     updatedAt: k.updatedAt,
+    // In how many of the account's canvases it is in use (list only).
+    ...(usedBy === undefined ? {} : { usedBy }),
   }
 }
 
@@ -37,7 +40,7 @@ function pickPayload(body) {
   if (typeof body.defaultModel === 'string') out.defaultModel = body.defaultModel.slice(0, 200)
   if (typeof body.isDefault === 'boolean') out.isDefault = body.isDefault
   if (Array.isArray(body.refImages)) {
-    // URLs only: inline base64 would be copied into every node that uses the kit.
+    // URLs only, never inline base64.
     out.refImages = body.refImages.filter(isMediaUrl).slice(0, MAX_REF_IMAGES)
   }
   return out
@@ -58,9 +61,28 @@ async function findKit(req) {
   return kit
 }
 
+/**
+ * kit id -> number of the account's canvases that use it, as the canvas's kit or as one
+ * node's own exception. A canvas counts once per kit.
+ */
+async function usageByKit(userId, ids) {
+  const counts = new Map()
+  if (!ids.length) return counts
+  const rows = await Workflow.find(
+    { userId, isDeleted: false, $or: [{ brandKitId: { $in: ids } }, { 'nodes.data.brandKitOverride': { $in: ids } }] },
+    { brandKitId: 1, 'nodes.data.brandKitOverride': 1 }
+  ).lean()
+  for (const wf of rows) {
+    const used = new Set([wf.brandKitId, ...(wf.nodes || []).map((n) => n && n.data && n.data.brandKitOverride)])
+    for (const id of used) if (typeof id === 'string' && id) counts.set(id, (counts.get(id) || 0) + 1)
+  }
+  return counts
+}
+
 router.get('/', wrap(async (req, res) => {
   const rows = await BrandKit.find({ userId: req.userId, isDeleted: false }).sort({ updatedAt: -1 }).limit(MAX_KITS * 2).lean()
-  ok(res, rows.map(toDTO))
+  const usage = await usageByKit(req.userId, rows.map((k) => String(k._id)))
+  ok(res, rows.map((k) => toDTO(k, usage.get(String(k._id)) || 0)))
 }))
 
 router.post('/', wrap(async (req, res) => {
@@ -85,8 +107,8 @@ router.put('/:id', wrap(async (req, res) => {
 }))
 
 /**
- * Soft delete: nodes store the kit id, and a node pointing at a kit that the
- * list no longer returns simply falls back to "no kit".
+ * Soft delete: canvases and nodes store the kit id, and one pointing at a kit that the
+ * list no longer returns simply runs without a kit.
  */
 router.delete('/:id', wrap(async (req, res) => {
   const kit = await findKit(req)

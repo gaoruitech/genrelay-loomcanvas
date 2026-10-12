@@ -52,6 +52,9 @@ async function main() {
   if (accountState.adopted) {
     console.log(`[auth] the data from before accounts now belongs to "${accountState.admin.username}": ${JSON.stringify(accountState.adopted)}`)
   }
+  // Canvases written by an older version are brought to the current document shape.
+  const canvases = await require('./routes/workflow').migrateStoredWorkflows()
+  if (canvases) console.log(`[canvas] brought ${canvases} stored canvas(es) up to the current document version`)
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
   const { getRunner } = require('./runner')

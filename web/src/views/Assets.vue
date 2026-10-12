@@ -16,6 +16,8 @@
         <input ref="fileInput" class="as-file" type="file" accept="image/*,video/*" multiple tabindex="-1" @change="onFileInput" />
       </div>
 
+      <AssetsTabs current="assets" />
+
       <div class="lc-fbar as-fbar">
         <div class="lc-seg" role="group" :aria-label="t('assetsPage.filter.kind')">
           <button type="button" :class="{ on: kind === '' }" @click="kind = ''">
@@ -205,6 +207,7 @@ import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
+import AssetsTabs from '@/components/AssetsTabs.vue'
 import MediaLightbox from '@/components/canvas/MediaLightbox.vue'
 import { filesApi, userAssetApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { assertImageFile, assertVideoFile } from '@/utils/canvasUpload'
@@ -627,7 +630,7 @@ onBeforeUnmount(() => {
 .as-upload-btn { height: 40px; padding: 0 20px; }
 .as-file { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 
-.as-fbar { margin-top: 24px; }
+.as-fbar { margin-top: 16px; }
 .as-fbar .lc-seg .n { font: 500 11px var(--f-mono); color: var(--text-3); }
 .as-fbar .lc-seg .on .n { color: var(--cyan-soft); }
 .as-sel { width: 136px; flex: none; }
@@ -723,7 +726,6 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) { .as-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) {
   .as-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .as-fbar { margin-top: 20px; }
   .as-sel, .as-sel.wide { flex: 1 1 130px; width: auto; min-width: 0; }
   .as-upload-btn { width: 100%; }
   .as-selbar { padding: 10px 12px; }

@@ -261,9 +261,9 @@ Text from an upstream is never translated; pass it as a parameter (`{detail}`). 
 
 Every stored canvas carries `schemaVersion`. The current value and the migrations are in `server/src/utils/workflowSchema.js`.
 
-- `CURRENT_SCHEMA_VERSION` is `1`.
+- `CURRENT_SCHEMA_VERSION` is `3`. Version 2 flagged canvases laid out for the old node sizes; version 3 moved the brand kit from each generation node (`data.brandKitId`) to the canvas (`brandKitId`, with `data.brandKitOverride` on a node that differs).
 - `MIGRATIONS[n]` is a pure function that takes a canvas at version `n` and returns it at version `n + 1`. Canvases without a version count as `0`.
-- Migration is lazy: `GET /api/workflow/:id` (and duplicate, zip export) upgrades an old canvas step by step and writes it back. There is no batch job.
+- Reading upgrades: `GET /api/workflow/:id` (and duplicate, zip export, and a save of nodes) brings an old canvas up to date step by step and writes it back without touching `updatedAt`. In addition `migrateStoredWorkflows()` runs once at start-up and does the same for every canvas still in an older shape, so queries that look inside the documents see a single shape. A migration must therefore be safe to run without the editor.
 - A canvas from a **newer** version than the server knows is returned untouched, not downgraded.
 - Saving nodes stamps the current version, because the client always writes the current shape.
 

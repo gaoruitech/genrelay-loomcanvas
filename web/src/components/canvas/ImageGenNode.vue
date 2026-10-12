@@ -9,6 +9,7 @@
     <div class="cv-head">
       <LcIcon name="image" />
       <span class="cv-title">{{ t('nodes.title.imageGen') }}</span>
+      <NodeBrandKit mark :node-id="id" :data="data" />
       <span v-if="statusLabel" class="cv-tag" :class="statusClass">{{ statusLabel }}</span>
     </div>
 
@@ -42,16 +43,6 @@
           v-model:aspect-ratio="aspectRatio"
           v-model:count="count"
         />
-      </div>
-      <div v-if="brandKitCtx" class="cv-kv nodrag" @click.stop @mousedown.stop>
-        <span>{{ t('gen.node.brandKit') }}</span>
-        <span class="cv-kv-val">
-          <ChipSelect label="" v-model="brandKitId" :options="brandKitOptions" />
-          <button class="cv-link" :title="t('gen.brandKit.manage')" @click.stop="brandKitCtx.open()">{{ t('common.manage') }}</button>
-        </span>
-      </div>
-      <div v-if="brandKitCtx && brandKitRefCount" class="cv-hint">
-        {{ t('gen.brandKit.refCount', { used: brandKitRefCount, max: brandKitMaxRefs }) }}
       </div>
 
       <!-- 画面：按比例出框；成品悬停出「放大看详情」 -->
@@ -145,6 +136,7 @@
           </span>
         </div>
       </div>
+      <NodeBrandKit :node-id="id" :data="data" />
     </div>
 
     <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" />
@@ -211,7 +203,7 @@ import ImageParamsChip from './ImageParamsChip.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 
-import { CANVAS_BRAND_KIT_KEY } from '@/composables/canvasBrandKitKey'
+import NodeBrandKit from '@/components/canvas/NodeBrandKit.vue'
 import NodeResultHistory from './NodeResultHistory.vue'
 
 const props = defineProps<{
@@ -236,8 +228,8 @@ const props = defineProps<{
     // 历次运行的产物，新的在最前；resultIndex 指向当前展示的是第几版
     results?: any[]
     resultIndex?: number
-    // 挂在这个节点上的品牌包 id；空 = 不套用
-    brandKitId?: string
+    /** 只在这个节点不跟随画布的品牌包时才有：品牌包 id，或 'none' = 此节点不套用 */
+    brandKitOverride?: string
     validationError?: string
     validationStamp?: number
     /** 输入图的顺序（存 ref key），用户在缩略图条上拖出来的 */
@@ -262,30 +254,6 @@ const adapter = computed(() => getAdapter(currentModel.value))
 watch(fallbackModel, (id) => {
   if (id && !props.data.model) updateNodeData(props.id, { model: id })
 }, { immediate: true })
-
-/**
- * 品牌包。分享页那种只读画布没有这个 provide，inject 得到 undefined，
- * 下面的选择器整块不渲染 —— 不用另外判断只读态。
- */
-const brandKitCtx = inject(CANVAS_BRAND_KIT_KEY, undefined)
-const brandKitList = computed(() => brandKitCtx?.list.value || [])
-const brandKitId = computed<string>({
-  // 挂着的品牌包已经被删了就显示「不套用」（执行器同样会当没挂），而不是露出一串 id
-  get: () => {
-    const id = props.data.brandKitId || ''
-    return brandKitList.value.some((k: any) => k.id === id) ? id : ''
-  },
-  set: (v) => updateNodeData(props.id, { brandKitId: v }),
-})
-const brandKitRefCount = computed(() => {
-  const k = brandKitList.value.find((x: any) => x.id === brandKitId.value)
-  return k ? (k.refImages || []).length : 0
-})
-const brandKitMaxRefs = computed(() => adapter.value?.options.maxReferenceImages || 1)
-const brandKitOptions = computed(() => [
-  { value: '', label: t('gen.brandKit.none') },
-  ...brandKitList.value.map((k: any) => ({ value: k.id, label: k.name })),
-])
 
 // 模型下拉：每个模型平铺一项
 const modelKey = computed<string>({
@@ -381,7 +349,8 @@ const panelOpen = ref(false)
  */
 const imageRefs = computed(() => executor?.collectImageRefs(props.id) || [])
 // 参考素材只能按公网地址交给上游、而实例没有公网地址：运行之前就说明
-const publicUrlNotice = usePublicUrlNotice(props.id, adapter, imageRefs)
+// 品牌包的参考图也是按地址交给上游的，一并算进去
+const publicUrlNotice = usePublicUrlNotice(props.id, adapter, imageRefs, () => executor?.brandKitEffect(props.id)?.effect.addedImages || [])
 const refsReorderable = computed(() => true)
 
 const mention = useMentionInput({

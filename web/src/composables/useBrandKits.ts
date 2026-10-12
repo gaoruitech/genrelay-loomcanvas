@@ -1,14 +1,17 @@
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { brandKitApi } from '@/utils/api'
 import { t } from '@/locales'
 
 /**
- * 品牌包的加载与查找。
+ * 品牌包：加载、解析「这个节点用哪一个」、以及运行时到底往请求里加了什么。
  *
- * 画布挂载时拉一次列表放内存，节点上只存 brandKitId，执行时按 id 查回来。
- * 不把整份品牌包快照进节点，是为了改了品牌包之后画布上所有节点跟着变 ——
- * 这正是它存在的意义。代价是通过分享链接复制走的画布在别的实例里查不到这个 id，
- * 于是自动退化成「不套用」，画布照跑不误（见 getBrandKit 的兜底）。
+ * 品牌包按「画布」选（画布文档上的 brandKitId），节点只在跟画布不一样时才存东西
+ * （data.brandKitOverride：一个品牌包 id，或 KIT_NONE 表示这个节点不套用）。
+ * 存的都是 id，运行时按 id 查回来 —— 改了品牌包，之后每一次运行都用新的。
+ * 查不到（被删了）就当没有，画布照跑不误。
+ *
+ * 这里的 composeBrandKit 是唯一一处「怎么加」的实现：执行器用它拼真正发出去的内容，
+ * 节点上的预览用它显示「会加什么」。两边各写一份的话，预览迟早和实际发出去的对不上。
  */
 
 export interface BrandKit {
@@ -17,18 +20,45 @@ export interface BrandKit {
   refImages: string[]
   promptPrefix: string
   negativePrompt: string
-  defaultRatio: string
-  defaultModel: string
   isDefault: boolean
+  /** 有几张画布在用它（只有列表接口带） */
+  usedBy?: number
   updatedAt?: string
+}
+
+/** 节点的 brandKitOverride 取这个值 = 这个节点不套用品牌包 */
+export const KIT_NONE = 'none'
+
+/** 能套用品牌包的节点类型，与执行器里的生成类节点一致 */
+export const BRAND_KIT_NODE_TYPES = ['image-gen', 'image-edit', 'video-gen', 'video-edit']
+
+/** 每个品牌包最多几张参考图（后端同一个上限） */
+export const BRAND_KIT_MAX_REFS = 5
+
+export interface NodeKitChoice {
+  /** 实际会套用的品牌包；null = 这次运行不套用 */
+  kit: BrandKit | null
+  /** 是节点自己定的（例外），还是跟着画布 */
+  own: boolean
+  /** 节点自己定的那个品牌包已经不存在了（被删了），于是不套用 */
+  missing: boolean
+}
+
+/** 一个节点实际用哪个品牌包：节点自己有例外就听节点的，否则跟画布 */
+export function resolveNodeKit(kits: BrandKit[], canvasKitId: string, nodeData: any): NodeKitChoice {
+  const find = (id: string) => kits.find((k) => k.id === id) || null
+  const override = typeof nodeData?.brandKitOverride === 'string' ? nodeData.brandKitOverride : ''
+  if (!override) return { kit: canvasKitId ? find(canvasKitId) : null, own: false, missing: false }
+  if (override === KIT_NONE) return { kit: null, own: true, missing: false }
+  const kit = find(override)
+  return { kit, own: true, missing: !kit }
 }
 
 export function useBrandKits() {
   const kits = ref<BrandKit[]>([])
   const loading = ref(false)
   const loaded = ref(false)
-
-  const defaultKit = computed(() => kits.value.find((k) => k.isDefault) || null)
+  const failed = ref(false)
 
   async function load(force = false) {
     if (loading.value) return
@@ -37,81 +67,87 @@ export function useBrandKits() {
     try {
       const res = await brandKitApi.list()
       if (res.data.result === 0) {
-        kits.value = res.data.data || []
+        // 「新画布默认」的那个排最前，其余按接口给的顺序（最近改过的在前）
+        const list: BrandKit[] = res.data.data || []
+        kits.value = [...list.filter((k) => k.isDefault), ...list.filter((k) => !k.isDefault)]
         loaded.value = true
+        failed.value = false
+      } else {
+        failed.value = true
       }
     } catch {
-      // 拉不到就当没有品牌包 —— 这个功能不该拦住画布正常使用
+      // 拉不到就当没有品牌包 —— 这个功能不该拦住画布正常使用；管理页自己看 failed 给重试
+      failed.value = true
     } finally {
       loading.value = false
     }
   }
 
-  /**
-   * 按 id 取。查不到返回 null，调用方据此完全跳过套用。
-   *
-   * 查不到是正常情况而不是错误：品牌包被删了、或者这张画布是从分享链接
-   * 复制来的、里面的 id 不在本实例。这两种情况都该安静退化，不该报错。
-   */
-  function getBrandKit(id?: string | null): BrandKit | null {
-    if (!id) return null
-    return kits.value.find((k) => k.id === id) || null
-  }
+  return { kits, loading, loaded, failed, load }
+}
 
-  return { kits, loading, loaded, defaultKit, load, getBrandKit }
+/** 一句话说清这个品牌包里有什么（卡片、选择器共用） */
+export function brandKitSummary(kit: BrandKit): string {
+  const parts: string[] = []
+  const refs = (kit.refImages || []).filter(Boolean).length
+  if (refs) parts.push(t('brandKit.summary.refs', { n: refs }))
+  if ((kit.promptPrefix || '').trim()) parts.push(t('brandKit.summary.prefix'))
+  if ((kit.negativePrompt || '').trim()) parts.push(t('brandKit.summary.negative'))
+  return parts.length ? parts.join(' · ') : t('brandKit.summary.empty')
+}
+
+export interface BrandKitEffect {
+  /** 套用之后真正发出去的提示词 */
+  prompt: string
+  /** 套用之后真正发出去的参考图，按顺序 */
+  imageUrls: string[]
+  /** 加在提示词最前面的那段话；没有就是空串 */
+  prefix: string
+  /** 加在提示词末尾的那一整行（含「不要出现：」）；没有就是空串 */
+  suffix: string
+  /** 这次会一起发出去的品牌包参考图 */
+  addedImages: string[]
+  /** 这次不会发出去的品牌包参考图 */
+  skippedImages: string[]
+  /** 没发出去的原因：首尾帧模式 / 模型不接收参考图 / 模型的参考图名额满了 */
+  skipReason: '' | 'frames' | 'noRefs' | 'full'
 }
 
 /**
- * 把品牌包的提示词部分拼进本次提示词。
+ * 把品牌包套到一次运行上。
  *
- * 负向词是以「不要出现：」的形式（前缀跟界面语言走）附在末尾的 —— 现有几家图片模型的接口都没有
- * 独立的 negative_prompt 参数，这是提示词工程不是接口能力，模型听不听是另一回事。
- * 界面上不要把它说成「负向提示词（生效）」。
+ * 文字：前缀放最前，「不要出现：…」放最后。后者只是提示词里的一句话 ——
+ * 现有几家模型的接口都没有独立的 negative_prompt 参数，模型听不听是另一回事。
+ * 那句话的开头跟着运行那一刻的界面语言走。
+ *
+ * 图片：节点自己连进来的图一张不动、排在前面，品牌包的图只填模型剩下的名额。
+ * 节点上连的那张才是这次要处理的主体（商品图），品牌包只是风格上下文；
+ * 反过来的话，带 5 张图的品牌包会把刚连上的商品图挤掉，而且不报错。
+ * 首尾帧模式不加图：那条路送出去的必须正好是 [首帧, 尾帧]，多一张就会顶掉尾帧或被当成尾帧。
+ *
+ * @param maxRefs 该模型的参考图上限；0 = 这个模型不接收参考图
  */
-export function applyBrandKitPrompt(kit: BrandKit, prompt: string): string {
-  const parts: string[] = []
+export function composeBrandKit(
+  kit: BrandKit,
+  input: { prompt: string; imageUrls: string[]; maxRefs: number; framesMode?: boolean },
+): BrandKitEffect {
   const prefix = (kit.promptPrefix || '').trim()
   const neg = (kit.negativePrompt || '').trim()
-  if (prefix) parts.push(prefix)
-  if (prompt) parts.push(prompt)
-  if (neg) parts.push(t('library.brandKit.negativePrefix') + neg)
-  return parts.join('\n')
-}
+  const suffix = neg ? t('brandKit.negativeLead') + neg : ''
+  const prompt = [prefix, input.prompt, suffix].filter(Boolean).join('\n')
 
-/**
- * 把品牌包的固定参考图并进本次的图片输入。
- *
- * 顺序上「节点自己连进来的图」优先，品牌包的图填剩余名额 ——
- * 节点上连的那张才是这次要处理的主体（商品图），品牌包只是风格上下文。
- * 反过来的话，一个带 5 张参考图的品牌包会把用户刚连上的商品图整个挤掉，
- * 而且不报错，用户只会觉得「出的图跟我给的商品没关系」。
- *
- * @param max 该模型的参考图上限（adapter.options.maxReferenceImages）
- */
-export function applyBrandKitImages(kit: BrandKit, imageUrls: string[], max: number): string[] {
-  const refs = (kit.refImages || []).filter(Boolean)
-  if (!refs.length) return imageUrls
-  const cap = Math.max(1, Number(max) || 1)
+  const own = input.imageUrls
+  const refs = [...new Set((kit.refImages || []).filter(Boolean))].filter((u) => !own.includes(u))
+  const cap = Math.max(0, Number(input.maxRefs) || 0)
+  let free = 0
+  let skipReason: BrandKitEffect['skipReason'] = ''
+  if (input.framesMode) skipReason = 'frames'
+  else if (!cap) skipReason = 'noRefs'
+  else free = Math.max(0, cap - new Set(own).size)
+  const addedImages = refs.slice(0, free)
+  const skippedImages = refs.slice(free)
+  if (!skippedImages.length) skipReason = ''
+  else if (!skipReason) skipReason = 'full'
 
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const u of [...imageUrls, ...refs]) {
-    if (!u || seen.has(u)) continue
-    seen.add(u)
-    out.push(u)
-    if (out.length >= cap) break
-  }
-  return out
-}
-
-/**
- * 这个品牌包在该模型下实际能占几张参考图 —— 给界面显示「还能加几张」用。
- * 与 applyBrandKitImages 的口径必须一致：节点已连 n 张时，品牌包只能占剩下的。
- */
-export function brandKitImageSlots(kit: BrandKit | null, usedByNode: number, max: number): number {
-  if (!kit) return 0
-  const refs = (kit.refImages || []).filter(Boolean).length
-  if (!refs) return 0
-  const cap = Math.max(1, Number(max) || 1)
-  return Math.max(0, Math.min(refs, cap - usedByNode))
+  return { prompt, imageUrls: [...own, ...addedImages], prefix, suffix, addedImages, skippedImages, skipReason }
 }

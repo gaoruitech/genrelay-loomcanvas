@@ -488,24 +488,25 @@ Base path `/api/workflow`. A canvas ("workflow"):
   "edges": [ { "id": "e1", "source": "n1", "sourceHandle": "text-out", "target": "n2", "targetHandle": "text-in" } ],
   "viewport": { "x": 0, "y": 0, "zoom": 1 },
   "settings": { },
+  "brandKitId": "",
   "thumbnail": "",
   "thumbnailType": "",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "legacyLayout": false,
   "createdAt": "…",
   "updatedAt": "…"
 }
 ```
 
-`legacyLayout` is `true` while the node positions date from before `schemaVersion` 2 and the editor has not yet checked them against the current node sizes: the server sets it when it migrates such a canvas (more than one node) on read, a copy of a flagged canvas carries it, and the editor clears it after its one-time check (see below). The shape of `nodes[].data` and of `settings` belongs to the frontend; the server stores them as given. Limits: 500 nodes, 2000 edges, name up to 80 characters. Every endpoint here works on the caller's own canvases.
+`legacyLayout` is `true` while the node positions date from before `schemaVersion` 2 and the editor has not yet checked them against the current node sizes: the server sets it when it migrates such a canvas (more than one node) on read, a copy of a flagged canvas carries it, and the editor clears it after its one-time check (see below). `brandKitId` is the brand kit of the canvas (`""` for none): the editor adds it to every run of the canvas's generation nodes, except for a node whose `data.brandKitOverride` holds another kit id or `"none"` (see [Brand kits](#brand-kits)). The shape of `nodes[].data` and of `settings` belongs to the frontend; the server stores them as given. Limits: 500 nodes, 2000 edges, name up to 80 characters. Every endpoint here works on the caller's own canvases.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/workflow/list` | | Array of `{ id, name, thumbnail, thumbnailType, createdAt, updatedAt }`, newest first, at most 200. |
-| POST | `/api/workflow` | `{ name?, nodes?, edges?, viewport?, settings? }` | The new canvas. |
+| POST | `/api/workflow` | `{ name?, nodes?, edges?, viewport?, settings?, brandKitId? }` | The new canvas. Without `brandKitId` it starts with the account's default brand kit, if there is one; send `""` for none. |
 | GET | `/api/workflow/:id` | | The canvas, migrated to the current `schemaVersion` if needed. |
-| PUT | `/api/workflow/:id` | Any of `name`, `nodes`, `edges`, `viewport`, `settings`, `legacyLayout` | The canvas. Only the fields sent are changed; the last write wins. A save that carries nothing but `viewport` and/or `legacyLayout` leaves `updatedAt` alone: panning and zooming are not edits. `legacyLayout` can only be sent as `false` (anything else is 400 `validation.invalid`); it is ignored on `POST`. |
-| POST | `/api/workflow/:id/duplicate` | `{ name? }` | The copy. Media is shared by reference, not copied. |
+| PUT | `/api/workflow/:id` | Any of `name`, `nodes`, `edges`, `viewport`, `settings`, `brandKitId`, `legacyLayout` | The canvas. Only the fields sent are changed; the last write wins. `brandKitId` must be `""` or a 24-character kit id (anything else is 400 `validation.invalid`); whose kit it is is not checked, because a kit is only ever looked up among the caller's own and any other id simply means no kit. A save that carries nothing but `viewport` and/or `legacyLayout` leaves `updatedAt` alone: panning and zooming are not edits. `legacyLayout` can only be sent as `false` (anything else is 400 `validation.invalid`); it is ignored on `POST`. |
+| POST | `/api/workflow/:id/duplicate` | `{ name? }` | The copy, with the same `brandKitId` and node exceptions. Media is shared by reference, not copied. |
 | DELETE | `/api/workflow/:id` | | `{ id }`. Soft delete. |
 | POST | `/api/workflow/download` | `{ url, filename? }` | The file as an attachment. Download proxy for media the browser cannot fetch itself. Only media comes back out. |
 | POST | `/api/workflow/:id/download-zip` | `{ urls?: string[] }` | A zip of the canvas media. `urls` narrows the selection to URLs that are on the canvas; without it, everything. Entries are named `<nn>-<node type>.<ext>`. At most 100 items, 1 GiB per item and 4 GiB in total. A file that cannot be fetched is replaced by `<nn>-<node type>-failed.txt`, one that would take the archive over its total size by `<nn>-<node type>-skipped.txt`. |
@@ -537,15 +538,17 @@ Out-of-range numbers are clamped, not rejected. Errors (400): `media.*` (the sou
 Base path `/api/brand-kits`. A kit:
 
 ```json
-{ "id": "…", "name": "Summer studio", "refImages": ["/files/…"], "promptPrefix": "", "negativePrompt": "", "defaultRatio": "", "defaultModel": "", "isDefault": false, "shared": false, "mine": true, "updatedAt": "…" }
+{ "id": "…", "name": "Summer studio", "refImages": ["/files/…"], "promptPrefix": "", "negativePrompt": "", "defaultRatio": "", "defaultModel": "", "isDefault": false, "shared": false, "mine": true, "updatedAt": "…", "usedBy": 2 }
 ```
+
+A kit is applied by the editor, not by the server: when a generation node runs, the browser puts `promptPrefix` in front of the prompt, adds `negativePrompt` at the end as a "Do not include: …" line, and appends `refImages` after the node's own reference images up to the model's limit. `/api/runs` receives the finished prompt and image list and knows nothing about kits. Which kit a node uses is stored on the canvas: `brandKitId` on the canvas document, and `data.brandKitOverride` (a kit id, or `"none"`) on a node that differs. `isDefault` marks the kit a new canvas starts with. `defaultRatio` and `defaultModel` are stored and returned but not used by the editor.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `/api/brand-kits` | | Array of kits. |
+| GET | `/api/brand-kits` | | Array of kits. Each carries `usedBy`: the number of the caller's canvases that use it, as the canvas's kit or as a node's exception (the other endpoints do not return it). |
 | POST | `/api/brand-kits` | `{ name, refImages?, promptPrefix?, negativePrompt?, defaultRatio?, defaultModel?, isDefault? }` | The kit. |
 | PUT | `/api/brand-kits/:id` | Any of the fields above | The kit. |
-| DELETE | `/api/brand-kits/:id` | | `{ id }`. Soft delete. |
+| DELETE | `/api/brand-kits/:id` | | `{ id }`. Soft delete. Canvases and nodes that point at it are left as they are and run without a kit. |
 
 Limits: 50 kits per account; `name` 40 characters; `promptPrefix` 1000; `negativePrompt` 500; 5 reference images (URLs only). Setting `isDefault` clears it on the others.
 
@@ -607,8 +610,9 @@ Behaviour:
 - **Copying** needs a session, and the copy belongs to the account that made it. The snapshot keeps the model ids of the account that published it; in the copy they are looked up among the copier's own providers, and a model is simply not available when the copier has no provider with that slug.
 - `:id` in `PUT`, `revoke` and `DELETE` is the database id from `publish` or `mine`; a link of another account answers `404` (`share.not_found`). The public read and `copy` accept only the link token: a database id in its place answers `404`, signed in or not.
 - **Model names.** A viewer has none of the publisher's providers, so each node that names a model also carries `data.modelLabel`: the display name the publisher sees, written by the server when the link is published (a value sent by the client is replaced). A snapshot published before this is given the names when it is read, from the publisher's current models. A model the publisher no longer has gets no `modelLabel`; the share page then shows a neutral "Model not listed" and never the model id. A copy does not keep `modelLabel`.
+- **Brand kits.** A snapshot carries no brand kit: the canvas's `brandKitId` is not part of it, and `brandKitOverride` is removed from every node (on publish, on every public read, and from copies). What a kit added to a run is visible only where it already is, in the prompt that was sent (`data.lastPrompt`). A copy is created with `brandKitId: ""`.
 - **Layout.** A snapshot records which node sizes its positions were made for (`layoutVersion`, not returned). A copy of a snapshot from before the redesign, or of a canvas still waiting for its layout check, is created with `legacyLayout: true`.
-- **What a snapshot leaves out.** Run-time state, run ids, failure details and costs are removed from every node when the link is published, again on every public read, and from copies: `status`, `progress`, `validationError`, `validationStamp`, `errorMsg`, `taskId`, `taskIds`, `runId`, `runPending`, `generatedCount`, `cost`, `estimatedCost`, and `cost` / `taskId` / `runId` inside each entry of `results[]`. Prompts and model ids (with the provider's slug prefix) stay.
+- **What a snapshot leaves out.** Run-time state, run ids, failure details and costs are removed from every node when the link is published, again on every public read, and from copies: `status`, `progress`, `validationError`, `validationStamp`, `errorMsg`, `taskId`, `taskIds`, `runId`, `runPending`, `generatedCount`, `cost`, `estimatedCost`, `brandKitOverride`, and `cost` / `taskId` / `runId` inside each entry of `results[]`. Prompts and model ids (with the provider's slug prefix) stay.
 - Run-time state (status, progress, task and run ids, error text) and costs are stripped from the nodes in a snapshot, and again when a snapshot is read publicly.
 
 Errors: `canvas.not_found`, `share.not_found`, `share.gone` (404); `share.empty_canvas`, `share.max` (500 links per account), `share.title_required`, `share.expires_in_past`, `validation.range`, `validation.bad_date` (400).
