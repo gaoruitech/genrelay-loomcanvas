@@ -2,7 +2,7 @@
   <span class="cp-wrap" ref="rootRef">
     <span class="cp-trigger" @click.stop="toggle"><slot /></span>
 
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="open" class="cp-pop" :style="popStyle" @click.stop>
         <p class="cp-text">{{ text }}</p>
         <p v-if="hint" class="cp-hint">{{ hint }}</p>
@@ -16,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import { frameOf } from '@/utils/frame'
 /**
  * 就地确认小气泡。
  *
@@ -52,16 +53,19 @@ const POP_W = 232
 function place() {
   const el = rootRef.value
   if (!el) return
-  const r = el.getBoundingClientRect()
+  // 气泡是 fixed 的：坐标相对「画框」（utils/frame.ts）
+  const fr = frameOf(el)
+  const raw = el.getBoundingClientRect()
+  const r = { top: raw.top - fr.y, bottom: raw.bottom - fr.y, right: raw.right - fr.x }
   // 默认弹在按钮上方；上面装不下就翻到下面
   const spaceAbove = r.top
   const below = spaceAbove < 150
   // 右对齐按钮，但不许超出视口
   let left = r.right - POP_W
-  left = Math.max(10, Math.min(left, window.innerWidth - POP_W - 10))
+  left = Math.max(10, Math.min(left, fr.w - POP_W - 10))
   popStyle.value = below
     ? { left: `${left}px`, top: `${r.bottom + 8}px` }
-    : { left: `${left}px`, bottom: `${window.innerHeight - r.top + 8}px` }
+    : { left: `${left}px`, bottom: `${fr.h - r.top + 8}px` }
 }
 
 async function toggle() {
@@ -98,7 +102,7 @@ onBeforeUnmount(() => {
 
 /* 确认气泡：和下拉菜单同一种玻璃面板 */
 .cp-pop {
-  position: fixed; z-index: 3400; width: 240px; max-width: calc(100vw - 16px);
+  position: fixed; z-index: 3400; width: 240px; max-width: calc(calc(100 * var(--lc-vw)) - 16px);
   background: var(--pop); border: 1px solid var(--line-2); border-radius: 12px;
   padding: 12px 12px 10px; box-shadow: var(--sh-1);
 }

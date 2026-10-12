@@ -56,7 +56,7 @@
 /** 运行限制（仅超级管理员）：并发与排队、各种超时、重试与保留，分三张卡片；改完点底下那条里的「保存」。 */
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { apiErrorMessage } from '@/utils/api'
 import { useAdminSettings } from '@/composables/useAdminSettings'
 import SettingsSection from './SettingsSection.vue'

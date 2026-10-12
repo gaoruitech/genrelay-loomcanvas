@@ -7,10 +7,10 @@
       </div>
       <span class="lc-sp" />
       <div class="cl-actions">
-        <button class="lc-btn" @click="openLibrary('mine')">
+        <button v-if="$feat.share" class="lc-btn" @click="openLibrary('mine')">
           <LcIcon name="share" /><span>{{ t('views.list.shareLinks') }}</span>
         </button>
-        <button class="lc-btn" @click="openLibrary('canvas-template')">
+        <button v-if="$feat.templates" class="lc-btn" @click="openLibrary('canvas-template')">
           <LcIcon name="layout" /><span>{{ t('views.list.templates') }}</span>
         </button>
         <button class="lc-btn primary cl-new" @click="openCreateDialog">
@@ -132,7 +132,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { workflowApi, apiErrorMessage, type WorkflowSummary } from '@/utils/api'
 import LibraryDialog from '@/components/canvas/LibraryDialog.vue'
 import ListSkeleton from '@/components/ListSkeleton.vue'

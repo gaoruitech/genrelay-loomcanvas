@@ -1,6 +1,6 @@
 <template>
   <!-- TDesign 组件（日期选择、确认弹窗）的内置文案跟随界面语言 -->
-  <t-config-provider :global-config="TDESIGN_LOCALES[app.locale]">
+  <t-config-provider :global-config="tdConfig">
     <!-- 连不上服务端 -->
     <div v-if="!app.bootstrap" class="app-center">
       <div class="app-notice lc-glass">
@@ -13,7 +13,8 @@
     </div>
 
     <!-- 落地页 / 登录 / 注册 / 分享只读页 / 引导页 / 设置新密码：自己占满整屏 -->
-    <router-view v-else-if="route.meta.public || route.meta.shell === 'none'" />
+    <!-- 集成方不要外壳（shell: 'none'）：每一页都只出内容，导航由宿主页面提供 -->
+    <router-view v-else-if="route.meta.public || route.meta.shell === 'none' || embed.shell === 'none'" />
 
     <AppShell v-else>
       <router-view />
@@ -22,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -30,11 +31,31 @@ import { loadModels } from '@/utils/canvasModels'
 import { TDESIGN_LOCALES } from '@/locales/tdesign'
 import AppShell from '@/components/AppShell.vue'
 import LcIcon from '@/components/LcIcon.vue'
+import { useEmbed } from '@/embed/context'
+import { pageOfRoute } from '@/embed/options'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
+const embed = useEmbed()
+
+// 嵌进别人的页面时，TDesign 的弹层（日期选择的日历等）也得挂在本产品自己的根元素里面
+const tdConfig = computed(() => (
+  embed.embedded && embed.portal !== 'body'
+    ? { ...TDESIGN_LOCALES[app.locale], attach: () => embed.portal as HTMLElement }
+    : TDESIGN_LOCALES[app.locale]
+))
+
+// 每次导航之后告诉宿主（embed/app.ts 把它接到 route 事件和 onNavigate 上）；独立应用里是个空函数
+function announceRoute(to: typeof route) {
+  const params: Record<string, string> = {}
+  for (const [k, v] of Object.entries(to.params)) params[k] = Array.isArray(v) ? v.join('/') : String(v ?? '')
+  embed.emit('route', { name: pageOfRoute(to.name) || String(to.name || ''), path: to.fullPath, params })
+}
+router.afterEach((to, _from, failure) => { if (!failure) announceRoute(to as typeof route) })
+// 不碰地址栏的那种路由（memory）在挂载之前就走完了第一次导航，上面那个钩子赶不上
+onMounted(() => { if (route.matched.length) announceRoute(route) })
 
 const retrying = ref(false)
 async function retry() {
@@ -54,6 +75,8 @@ async function retry() {
 // 登录状态变了（登录成功、退出、令牌失效被接口打回 401）：
 // 模型清单是按账号的要重取；人在需要登录的页面上就送去登录页，并记下回来的地址。
 watch(() => app.authed, (authed) => {
+  // 宿主管登录：没有「去登录页」这回事（401 交给宿主的 onAuthRequired）
+  if (embed.hostAuth) return
   if (authed) {
     // 还在用临时密码时接口只放行改密码，模型清单等改完再取
     if (!app.mustChangePassword) loadModels().catch(() => undefined)

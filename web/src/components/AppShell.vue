@@ -1,10 +1,11 @@
 <template>
   <div class="shell" :class="{ mini, immersive: hidden }">
     <header v-if="!hidden" class="shell-top">
-      <LcLogo to="/app" />
-      <span class="tagline">{{ t('shell.tagline') }}</span>
+      <LcLogo v-if="embed.brand !== false" to="/app" />
+      <span v-if="embed.brand === undefined" class="tagline">{{ t('shell.tagline') }}</span>
       <span class="lc-sp" />
       <LcSelect
+        v-if="embed.features.localeSwitch"
         class="lang"
         size="sm"
         auto-width
@@ -13,8 +14,8 @@
         :aria-label="t('shell.language')"
         @update:model-value="app.setLocale"
       />
-      <ThemeSwitch />
-      <div ref="userEl" class="user-wrap">
+      <ThemeSwitch v-if="embed.features.themeSwitch" />
+      <div v-if="embed.features.account" ref="userEl" class="user-wrap">
         <button class="user" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
           <span class="avatar" aria-hidden="true">{{ initial }}</span>
           <span class="who">
@@ -31,7 +32,7 @@
           <router-link class="lc-menu-item" role="menuitem" :to="{ name: 'settings', params: { section: 'account' } }" @click="menuOpen = false">
             <LcIcon name="shield" size="s" />{{ t('shell.account') }}
           </router-link>
-          <a class="lc-menu-item" role="menuitem" :href="LINKS.docs" target="_blank" rel="noopener" @click="menuOpen = false">
+          <a v-if="embed.features.externalLinks" class="lc-menu-item" role="menuitem" :href="LINKS.docs" target="_blank" rel="noopener" @click="menuOpen = false">
             <LcIcon name="book" size="s" />{{ t('shell.docs') }}
           </a>
           <button class="lc-menu-item danger" role="menuitem" @click="logout">
@@ -39,11 +40,17 @@
           </button>
         </div>
       </div>
+      <!-- 宿主管登录：只显示是谁，没有菜单（退出、账号设置都是宿主的事） -->
+      <div v-else-if="app.user?.username" class="user host-user">
+        <img v-if="app.avatarUrl" class="avatar" :src="app.avatarUrl" alt="" />
+        <span v-else class="avatar" aria-hidden="true">{{ initial }}</span>
+        <span class="who"><b>{{ app.user.username }}</b></span>
+      </div>
     </header>
 
     <nav v-if="!hidden" class="shell-side" :aria-label="t('shell.navLabel')">
-      <template v-for="(n, i) in NAV" :key="n.key">
-        <hr v-if="i === 1" />
+      <template v-for="(n, i) in nav" :key="n.key">
+        <hr v-if="i === 1 && nav[0].key === 'home'" />
         <router-link
           :to="n.to"
           class="nav"
@@ -54,7 +61,7 @@
           <LcIcon :name="n.icon" /><span>{{ t('shell.nav.' + n.key) }}</span>
         </router-link>
       </template>
-      <div class="side-foot">
+      <div v-if="embed.features.externalLinks" class="side-foot">
         <b>{{ t('shell.selfHosted') }}</b>
         <span v-if="app.bootstrap?.version">{{ t('shell.version', { v: app.bootstrap.version }) }}</span>
         <span class="links">
@@ -81,10 +88,13 @@ import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import LcLogo from '@/components/LcLogo.vue'
 import ThemeSwitch from '@/components/ThemeSwitch.vue'
+import { useEmbed } from '@/embed/context'
+import { isPageAllowed } from '@/embed/options'
 
 const { t } = useI18n()
 const route = useRoute()
 const app = useAppStore()
+const embed = useEmbed()
 
 const NAV = [
   { key: 'home', to: '/app', icon: 'home' },
@@ -94,6 +104,10 @@ const NAV = [
   { key: 'history', to: '/history', icon: 'history' },
   { key: 'settings', to: '/settings', icon: 'settings' },
 ] as const
+
+/** 侧栏里只列集成方开放的页面（独立应用里是全部） */
+const NAV_PAGE = { home: 'home', canvases: 'canvases', assets: 'assets', models: 'models', history: 'history', settings: 'settings' } as const
+const nav = computed(() => NAV.filter((n) => isPageAllowed(embed.pages, NAV_PAGE[n.key])))
 
 /** 画布编辑器里侧栏收成图标栏，把宽度让给画布 */
 const mini = computed(() => route.meta.shell === 'mini')

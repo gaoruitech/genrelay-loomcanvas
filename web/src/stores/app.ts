@@ -6,17 +6,47 @@ import { normalizeLocale, savedLocale, setLocale as applyLocale, currentLocale }
 import type { BootstrapInfo, LocaleCode, User, UserPrefs } from '@/types'
 import { normalizeNodeLayout, type NodeLayout } from '@/composables/nodeLayout'
 import { themePref, setThemePref, normalizeTheme, themePending, setThemePending, type ThemePref } from '@/composables/useTheme'
+import { useEmbed } from '@/embed/context'
+import { runtime } from '@/embed/runtime'
 
 /**
  * 应用级状态：启动信息、当前账号、语言、主题。
  */
 export const useAppStore = defineStore('app', () => {
+  /** 这一次挂载的方式：独立应用 / 整站嵌入 / 只嵌编辑器（见 embed/context.ts） */
+  const embed = useEmbed()
+  /** 宿主自己管登录（整站嵌入时给了 getAuth），或者只嵌了编辑器：本产品的账号、登录页、令牌都不出场 */
+  const hostAuth = embed.hostAuth || embed.mode === 'editor'
+
   const bootstrap = ref<BootstrapInfo | null>(null)
   const bootstrapError = ref('')
-  const token = ref(getToken())
+  const token = ref(hostAuth ? '' : getToken())
 
-  const user = computed<User | null>(() => bootstrap.value?.user || null)
-  const authed = computed(() => !!user.value)
+  /**
+   * 宿主管登录、后端又不认识这个人（没有账号可存偏好）时，界面偏好只记在这一次挂载里。
+   * 后端认识（宿主把自己的用户映射成了本产品的账号）就照常存到账号上。
+   */
+  const localPrefs = ref<UserPrefs>({ nodeLayout: embed.defaultNodeLayout })
+  const hostUser = ref(embed.hostUser)
+  function setHostUser(u: typeof embed.hostUser) { hostUser.value = u }
+
+  const user = computed<User | null>(() => {
+    const real = bootstrap.value?.user || null
+    if (!hostAuth) return real
+    const h = hostUser.value
+    return {
+      id: h?.id || real?.id || 'host',
+      username: h?.name || real?.username || '',
+      email: h?.email ?? real?.email ?? '',
+      role: h?.role || real?.role || 'user',
+      mustChangePassword: false,
+      prefs: real?.prefs || localPrefs.value,
+      createdAt: real?.createdAt || '',
+    }
+  })
+  /** 宿主给的头像（没有就显示名字的首字母） */
+  const avatarUrl = computed(() => (hostAuth ? hostUser.value?.avatarUrl || '' : ''))
+  const authed = computed(() => hostAuth || !!user.value)
   const isOwner = computed(() => user.value?.role === 'owner')
   /** 超级管理员是服务端启动时自动建好的，注册出来的都是普通用户；开不开放注册由超级管理员定 */
   const registrationOpen = computed(() => !!bootstrap.value?.auth?.registrationOpen)
@@ -28,8 +58,8 @@ export const useAppStore = defineStore('app', () => {
    */
   const signInPassword = ref('')
   const hasProvider = computed(() => !!bootstrap.value?.hasProvider)
-  const siteName = computed(() => bootstrap.value?.site?.name || 'LoomCanvas')
-  const logoUrl = computed(() => bootstrap.value?.site?.logoUrl || '')
+  const siteName = computed(() => (embed.brand && embed.brand.name) || bootstrap.value?.site?.name || 'LoomCanvas')
+  const logoUrl = computed(() => (embed.brand ? embed.brand.logoUrl || '' : bootstrap.value?.site?.logoUrl || ''))
 
   // ---- 语言 ----
   const locale = ref<LocaleCode>(currentLocale())
@@ -51,10 +81,12 @@ export const useAppStore = defineStore('app', () => {
       syncTheme(info.user, keepLocalTheme)
       // 用户自己没选过语言，才跟站点默认值走
       const siteLocale = normalizeLocale(info.site?.defaultLocale)
-      if (!savedLocale() && siteLocale) setLocale(siteLocale, false)
-      document.title = info.site?.name || 'LoomCanvas'
+      if (!savedLocale() && siteLocale && !embed.localeControlled) setLocale(siteLocale, false)
+      // 标题栏是宿主页面的：嵌进别人的页面时不碰
+      if (!embed.embedded) document.title = info.site?.name || 'LoomCanvas'
     } catch (err: any) {
       bootstrapError.value = err?.response?.data?.message || err?.message || 'bootstrap failed'
+      embed.emit('error', { scope: 'bootstrap', message: bootstrapError.value, cause: err })
     }
   }
 
@@ -127,21 +159,33 @@ export const useAppStore = defineStore('app', () => {
 
   // ---- 界面偏好（跟着账号存在服务端） ----
   /** 画布上生成节点用哪种布局；没登录（分享页）时是默认的 a */
-  const nodeLayout = computed<NodeLayout>(() => normalizeNodeLayout(user.value?.prefs?.nodeLayout))
+  const nodeLayout = computed<NodeLayout>(() => (embed.editor ? embed.editor.nodeLayout.value : normalizeNodeLayout(user.value?.prefs?.nodeLayout ?? embed.defaultNodeLayout)))
 
   /**
    * 改一项偏好：先改本地（选了就生效，不等请求），再存到服务端；没存上就改回去并把错误抛给调用方。
    */
   async function setPrefs(patch: UserPrefs) {
-    const before = user.value
+    // 只嵌编辑器：布局是宿主给的选项，这里改的就是那一个；没有账号可存
+    if (embed.editor) {
+      if (patch.nodeLayout) embed.editor.nodeLayout.value = patch.nodeLayout
+      return
+    }
+    // 宿主管登录、后端不认识这个人：只记在这一次挂载里
+    if (hostAuth && !bootstrap.value?.user) {
+      localPrefs.value = { ...localPrefs.value, ...patch }
+      return
+    }
+    const before = bootstrap.value?.user
     if (!before) return
     setUser({ ...before, prefs: { ...before.prefs, ...patch } })
     try {
       const out = unwrap(await authApi.updatePrefs(patch))
       // 只接偏好这一项：请求在路上时账号的别的字段可能已经变了（改了名字、被要求改密码）
-      if (user.value && out?.user?.prefs) setUser({ ...user.value, prefs: out.user.prefs })
+      const cur = bootstrap.value?.user
+      if (cur && out?.user?.prefs) setUser({ ...cur, prefs: out.user.prefs })
     } catch (err) {
-      if (user.value) setUser({ ...user.value, prefs: before.prefs })
+      const cur = bootstrap.value?.user
+      if (cur) setUser({ ...cur, prefs: before.prefs })
       throw err
     }
   }
@@ -163,7 +207,8 @@ export const useAppStore = defineStore('app', () => {
    *   以本机的为准并存到账号上。没存上（比如还在用临时密码，接口只放行改密码）就留着记号，下次再存。
    */
   function syncTheme(u: User | null | undefined, keepLocal: boolean) {
-    if (!u) return
+    // 主题由宿主定（挂载时给了 theme，之后用 setTheme 改）：不拿账号上的那一份去盖它
+    if (!u || embed.themeControlled) return
     const mine = normalizeTheme(u.prefs?.theme)
     const local = themePref.value
     if (keepLocal || themePending()) {
@@ -186,7 +231,8 @@ export const useAppStore = defineStore('app', () => {
     if (v === before) return
     setThemePref(v)
     // 没登录：先记在这台浏览器上，并留个记号，登录之后存到那个账号上
-    if (!user.value) { setThemePending(true); return }
+    if (embed.themeControlled || embed.editor) return
+    if (!bootstrap.value?.user) { if (!hostAuth) setThemePending(true); return }
     try {
       await setPrefs({ theme: v })
       setThemePending(false)
@@ -197,7 +243,8 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // 任意接口返回 401：令牌失效。这里只清状态，跳去登录页由 App.vue 看着 authed 做。
-  setUnauthorizedHandler(dropSession)
+  // （宿主管登录时 401 不到这里：utils/api.ts 直接交给宿主的 onAuthRequired）
+  if (!runtime.getAuth) setUnauthorizedHandler(dropSession)
   // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被超级管理员重置了）。
   // 这里只改状态，跳去「设置新密码」由 App.vue 看着 mustChangePassword 做。
   setPasswordChangeHandler(() => {
@@ -211,7 +258,7 @@ export const useAppStore = defineStore('app', () => {
   function toggleImmersive() { immersive.value = !immersive.value }
 
   return {
-    bootstrap, bootstrapError, token, user, authed, isOwner, registrationOpen,
+    bootstrap, bootstrapError, token, user, authed, isOwner, registrationOpen, hostAuth, avatarUrl, setHostUser,
     mustChangePassword, signInPassword, replaceTemporaryPassword,
     hasProvider, siteName, logoUrl,
     locale, setLocale,

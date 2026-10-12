@@ -46,7 +46,7 @@
 /** 站点（仅超级管理员）：是否开放注册。开关拨一下就保存，没有单独的「保存」。 */
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { ownerApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'

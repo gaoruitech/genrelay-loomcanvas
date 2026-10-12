@@ -126,6 +126,17 @@ Removed (**breaking**)
 - The `oss` storage driver, the `ali-oss` package and every `OSS_*` variable. `STORAGE_DRIVER=oss` now stops the server at startup with a message that says what to set. To migrate, use `STORAGE_DRIVER=s3` with `S3_ENDPOINT=https://oss-<region>.aliyuncs.com`, `S3_REGION=oss-<region>`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (formerly `OSS_ACCESS_KEY_SECRET`) and path-style off, or configure it under Settings → Storage. See [docs/storage.md](docs/storage.md#migrating-from-storage_driveross).
 - The `EXTRA_NPM_PACKAGES` build argument of the Docker image.
 
+**Integration**
+
+- LoomCanvas can be built into another product. Two entry points, built with `npm run build:lib` in `web/` into `web/dist-lib` (ES modules, one stylesheet per entry, type declarations; Vue as a peer dependency, plus `standalone/` variants with Vue inside). Nothing is published to npm. Guide: [docs/integration.md](docs/integration.md); runnable host pages in [`examples/`](examples/README.md).
+- `loomcanvas-web/app`, `mountLoomCanvas(el, options)`: the whole application inside an element of a host page. The host can supply its own authentication (`getAuth`, `onAuthRequired`, `user`), drop LoomCanvas' top bar and sidebar (`shell: 'none'`), restrict the pages (`pages`), switch features off (`features`), choose how navigation maps to the address bar (`routerMode`: memory, hash, history), control theme and language, override texts and the brand, and prefix storage keys. Handle: `navigate`, `setTheme`, `setLocale`, `on`, `unmount`. Events: `ready`, `route`, `canvas:saved`, `run:started`, `run:finished`, `run:failed`, `result`, `error`.
+- `loomcanvas-web/editor`, `mountEditor(el, options)`, the Vue component `<LoomCanvasEditor>` and the custom element `<loom-canvas-editor>`: only the canvas editor, with no list, shell or account. It reaches a backend only through an adapter the host supplies (`EditorAdapter`); `createHttpAdapter` implements it for the stock server and `createMemoryAdapter` needs no server. A canvas is loaded by id through the adapter or passed in as a document; `readOnly`, node layout, feature switches, node types. Handle: `getDocument`, `setDocument`, `setCanvasId`, `save`, `fitView`, `runAll`, `runNode`, `addNode`, `undo`, `redo` and the setters. Events as above plus `change`, `saved`, `selection`.
+- The canvas document format is a public contract: typed (`CanvasDocument`), versioned (`schemaVersion` 3, the number the server uses) and migrated on load by `migrateDocument`, which is exported and has no dependencies.
+- When embedded, LoomCanvas stays inside its mount root: every style rule is confined to it, tokens and theme attributes are set on it, popups attach to a layer inside it and are positioned relative to it, responsive layouts follow its size, and keyboard shortcuts act only on events that belong to it. Nothing is written to `<html>`, `<body>`, `<head>` or `document.title`. The limits of same-document embedding are listed in the guide.
+- The stand-alone app is built from the same entries and behaves as before. Internally: the editor's backend calls go through the adapter (`web/src/utils/canvasBackend.ts`), the router and the app start-up are factories, styles are scoped to `.lc-root` (`<html>` carries that class), and the three self-hosted fonts moved to their own stylesheet.
+- No server change. `CORS_ORIGIN` already covers a front end on another origin, and `/files` is readable cross-origin.
+- Tests in `web/` (Vitest, `npm test`): a snapshot guard over the public surface, option and router-guard handling, the adapter contract run against both adapters (the HTTP one against the real server when `TEST_MONGODB_URI` is set), the document migrations checked against the server's, and the style-scoping plugin.
+
 **Packaging and project**
 
 - Dockerfile (non-root, health check) and Docker Compose file with MongoDB 7.
@@ -283,6 +294,17 @@ Removed (**breaking**)
 
 - `oss` 存储驱动、`ali-oss` 这个包和所有 `OSS_*` 变量。`STORAGE_DRIVER=oss` 现在会让服务端在启动时退出，并提示应该改设什么。迁移办法：改用 `STORAGE_DRIVER=s3`，设 `S3_ENDPOINT=https://oss-<地域>.aliyuncs.com`、`S3_REGION=oss-<地域>`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`（原来的 `OSS_ACCESS_KEY_SECRET`），不要打开路径风格；或者在「设置 → 存储」里配置。见 [docs/storage.zh-CN.md](docs/storage.zh-CN.md#从-storage_driveross-迁移)。
 - Docker 镜像的构建参数 `EXTRA_NPM_PACKAGES`。
+
+**集成**
+
+- LoomCanvas 可以集成进别的产品。两个入口，在 `web/` 里执行 `npm run build:lib` 构建到 `web/dist-lib`（ES 模块、每个入口一份样式表、类型声明；Vue 是对等依赖，另有把 Vue 打在里面的 `standalone/` 版本）。不发布到 npm。文档：[docs/integration.zh-CN.md](docs/integration.zh-CN.md)；可以直接运行的宿主页面在 [`examples/`](examples/README.zh-CN.md)。
+- `loomcanvas-web/app`，`mountLoomCanvas(el, options)`：把整个应用挂进宿主页面的一个元素里。宿主可以用自己的认证（`getAuth`、`onAuthRequired`、`user`），不要 LoomCanvas 的顶栏和侧栏（`shell: 'none'`），只开放一部分页面（`pages`），关掉功能（`features`），选择导航怎么反映到地址栏（`routerMode`：memory、hash、history），控制主题和语言，覆盖文案和品牌，给存储键加前缀。句柄：`navigate`、`setTheme`、`setLocale`、`on`、`unmount`。事件：`ready`、`route`、`canvas:saved`、`run:started`、`run:finished`、`run:failed`、`result`、`error`。
+- `loomcanvas-web/editor`，`mountEditor(el, options)`、Vue 组件 `<LoomCanvasEditor>` 和自定义元素 `<loom-canvas-editor>`：只有画布编辑器，没有列表、外壳和账号。它只通过宿主提供的适配器（`EditorAdapter`）接触后端；`createHttpAdapter` 是对着原装服务端的实现，`createMemoryAdapter` 不需要服务端。画布可以按 id 经适配器加载，也可以直接传入文档；支持 `readOnly`、节点布局、功能开关、节点类型。句柄：`getDocument`、`setDocument`、`setCanvasId`、`save`、`fitView`、`runAll`、`runNode`、`addNode`、`undo`、`redo` 和几个设置方法。事件除上面那些外还有 `change`、`saved`、`selection`。
+- 画布文档格式是对外的约定：有类型（`CanvasDocument`），有版本（`schemaVersion` 3，和服务端用的是同一个数），加载时由 `migrateDocument` 升级；这个函数对外导出，没有任何依赖。
+- 嵌入时 LoomCanvas 不越出自己的挂载根：每条样式规则都限制在它之内，设计令牌和主题属性写在它上面，弹层挂在它里面的一层上并相对它定位，响应式布局跟着它的尺寸走，键盘快捷键只处理属于它的按键。不往 `<html>`、`<body>`、`<head>` 和 `document.title` 写任何东西。同文档嵌入做不到的地方在文档里逐条列出。
+- 独立应用由同样的入口构建，行为和以前一样。内部的变化：编辑器对后端的调用都经过适配器（`web/src/utils/canvasBackend.ts`），路由和应用启动改成了工厂，样式的作用域是 `.lc-root`（`<html>` 上带这个类），三款自托管字体拆到了单独的样式表里。
+- 服务端没有改动。`CORS_ORIGIN` 本来就支持前端在另一个源上，`/files` 本来就允许跨源读取。
+- `web/` 里新增测试（Vitest，`npm test`）：对外接口的快照守卫、选项与路由守卫的处理、对两个适配器都跑一遍的适配器约定（HTTP 适配器在设了 `TEST_MONGODB_URI` 时对着真实服务端跑）、与服务端逐项对照的文档迁移、样式作用域插件。
 
 **打包与项目**
 

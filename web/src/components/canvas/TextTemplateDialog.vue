@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div v-if="modelValue" class="lc-mask lc-sheet tt-mask" @click.self="close">
       <div class="lc-dialog tt-dialog">
         <div class="lc-dialog-head">
@@ -62,7 +62,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
-import { canvasTextTemplateApi } from '@/utils/api'
+import { canvasTextTemplateApi } from '@/utils/canvasBackend'
 
 export interface TextTplItem { id: string; title: string; content: string; category: string; lang?: string }
 
@@ -141,7 +141,7 @@ watch(() => props.modelValue, (open) => {
 
 <style scoped>
 .tt-mask { z-index: 9000; }
-.tt-dialog { width: min(1120px, 100%); height: min(760px, calc(100vh - 40px)); }
+.tt-dialog { width: min(1120px, 100%); height: min(760px, calc(calc(100 * var(--lc-vh)) - 40px)); }
 .tt-tools { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 20px 0; }
 .tt-search { flex: 1; max-width: 320px; }
 
@@ -194,7 +194,7 @@ watch(() => props.modelValue, (open) => {
   opacity: 0; transition: opacity .18s;
 }
 @media (max-width: 600px) {
-  .tt-dialog { height: 92vh; height: 92dvh; }
+  .tt-dialog { height: calc(92 * var(--lc-vh)); height: calc(92 * var(--lc-dvh)); }
   .tt-tools { padding: 12px 16px 0; }
   .tt-search { max-width: none; }
   .tt-catbar { padding: 12px 16px; flex-wrap: nowrap; overflow-x: auto; }

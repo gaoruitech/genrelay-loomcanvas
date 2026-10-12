@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": false,
+    "rootDir": "src",
+    "outDir": "dist-lib/types"
+  },
+  "include": ["src/embed/app.ts", "src/embed/editor.ts", "src/**/*.d.ts"],
+  "references": []
+}

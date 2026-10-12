@@ -28,7 +28,7 @@
           {{ t('tools.watermark.uploadLogo') }}
           <input type="file" accept="image/*" style="display:none" @change="onPick" />
         </label>
-        <button v-if="picker" class="cv-mark-btn" @click="pickFromLibrary">{{ t('tools.watermark.pickFromLibrary') }}</button>
+        <button v-if="picker && $feat.assetLibrary" class="cv-mark-btn" @click="pickFromLibrary">{{ t('tools.watermark.pickFromLibrary') }}</button>
       </div>
 
       <div class="cv-row">
@@ -89,7 +89,7 @@ import { computed, inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import LcIcon from '@/components/LcIcon.vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { uploadCanvasImage } from '@/utils/canvasUpload'

@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div
       v-if="open"
       class="lc-mask lc-sheet td-mask"
@@ -14,8 +14,8 @@
 
         <div class="lc-dialog-body td-body">
           <div v-if="previewUrl" class="td-preview">
-            <video v-if="isVideo" :src="previewUrl" controls playsinline class="td-media"></video>
-            <img v-else :src="previewUrl" class="td-media" alt="" />
+            <video v-if="isVideo" :src="$src(previewUrl)" controls playsinline class="td-media"></video>
+            <img v-else :src="$src(previewUrl)" class="td-media" alt="" />
             <button class="lc-btn sm td-dl" @click="onDownload"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
           </div>
           <div class="td-row">
@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
 import { getAdapter } from '@/utils/canvasModels'

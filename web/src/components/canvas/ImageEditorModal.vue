@@ -34,7 +34,7 @@
             :style="{ width: frameSize.w + 'px', height: frameSize.h + 'px' }"
           >
             <canvas ref="canvasRef" class="ie-canvas" />
-            <img v-if="comparing" :src="url" class="ie-compare" alt="" />
+            <img v-if="comparing" :src="$src(url)" class="ie-compare" alt="" />
 
             <div
               v-if="tool === 'crop' && !comparing"
@@ -155,7 +155,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import {
@@ -527,7 +527,7 @@ function requestClose() {
 
 <style scoped>
 .ie-mask { z-index: 3200; }
-.ie-modal { width: min(1080px, 100%); height: min(84vh, 780px); overflow: hidden; }
+.ie-modal { width: min(1080px, 100%); height: min(calc(84 * var(--lc-vh)), 780px); overflow: hidden; }
 .ie-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .ie-size { font: 400 12px var(--f-mono); color: var(--text-3); white-space: nowrap; }
 
@@ -632,7 +632,7 @@ function requestClose() {
   .ie-params { border-left: 0; border-top: 1px solid var(--line); padding: 12px 16px; }
 }
 @media (max-width: 600px) {
-  .ie-modal { height: 94vh; height: 94dvh; }
+  .ie-modal { height: calc(94 * var(--lc-vh)); height: calc(94 * var(--lc-dvh)); }
   .ie-foot { padding: 10px 16px; gap: 8px; }
   .ie-cost, .ie-spacer { display: none; }
   .ie-foot .lc-btn { flex: 1; padding: 0 8px; font-size: 13px; }

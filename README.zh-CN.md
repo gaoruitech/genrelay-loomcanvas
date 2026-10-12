@@ -68,6 +68,7 @@ docker compose up -d
 | [安全](docs/security.zh-CN.md) | 部署加固与局限 |
 | [常见问题](docs/faq.zh-CN.md) | 常见问题 |
 | [开发](docs/development.zh-CN.md) | 参与开发 |
+| [集成](docs/integration.zh-CN.md) | 把 LoomCanvas 集成进自己的产品：整站嵌入，或只嵌编辑器 |
 | [编写服务商模块](docs/writing-a-provider.zh-CN.md) | 添加别的服务商 |
 | [计费钩子](docs/billing-hook.zh-CN.md) | 计量与限额 |
 | [HTTP 接口](docs/api.zh-CN.md) | 接口索引 |

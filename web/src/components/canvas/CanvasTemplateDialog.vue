@@ -33,10 +33,10 @@
 
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
-import { canvasTemplateApi, apiErrorMessage } from '@/utils/api'
+import { canvasTemplateApi, apiErrorMessage } from '@/utils/canvasBackend'
 import { ensureHttps } from '@/utils/mediaUrl'
 
 const { t } = useI18n()
@@ -107,7 +107,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <style scoped>
 .tpl-mask { z-index: 9000; }
-.tpl-dialog { width: min(1200px, 100%); height: min(780px, calc(100vh - 40px)); }
+.tpl-dialog { width: min(1200px, 100%); height: min(780px, calc(calc(100 * var(--lc-vh)) - 40px)); }
 .tpl-body { flex: 1; min-height: 0; padding: 20px; overflow-y: auto; }
 
 .tpl-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
@@ -144,7 +144,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 .tpl-empty svg { width: 40px; height: 40px; color: rgb(var(--c-film) / .4); }
 @media (max-width: 600px) {
-  .tpl-dialog { height: 92vh; height: 92dvh; }
+  .tpl-dialog { height: calc(92 * var(--lc-vh)); height: calc(92 * var(--lc-dvh)); }
   .tpl-body { padding: 16px; }
   .tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }

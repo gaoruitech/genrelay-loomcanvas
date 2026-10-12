@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div
       v-if="open && items.length"
       class="cv-mention nodrag nowheel"

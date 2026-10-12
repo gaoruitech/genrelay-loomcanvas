@@ -17,7 +17,7 @@
     </button>
 
     <!-- Teleport 到 body 上、用 fixed 定位 —— 避免被其他 vue-flow 节点的堆叠上下文盖住 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div
         v-if="open"
         ref="menuEl"
@@ -160,7 +160,7 @@ function select(v: string | number) {
 
 /* Teleport 到 body 后的菜单 —— position/top/left/z-index 都由内联 menuStyle 提供；
    面板与菜单项的基础外观在 base.css 的 .lc-menu / .lc-menu-item，与表单下拉共用 */
-.chip-menu { min-width: 150px; max-height: 62vh; max-width: calc(100vw - 16px); }
+.chip-menu { min-width: 150px; max-height: calc(62 * var(--lc-vh)); max-width: calc(calc(100 * var(--lc-vw)) - 16px); }
 .chip-item { white-space: nowrap; }
 
 /* 富行：图标 + 标题 + 描述 + 标签（模型下拉） */

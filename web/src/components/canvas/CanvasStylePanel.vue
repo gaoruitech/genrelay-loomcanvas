@@ -148,8 +148,8 @@ function reset() {
   position: fixed;
   z-index: 60;
   width: 272px;
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 24px);
+  max-width: calc(calc(100 * var(--lc-vw)) - 24px);
+  max-height: calc(calc(100 * var(--lc-vh)) - 24px);
   overflow-y: auto;
   padding: 14px;
   background: rgb(var(--c-glass) / .94);

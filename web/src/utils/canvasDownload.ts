@@ -1,6 +1,7 @@
-import { MessagePlugin } from 'tdesign-vue-next'
-import { workflowApi } from '@/utils/api'
+import { MessagePlugin } from '@/utils/feedback'
+import { workflowApi } from '@/utils/canvasBackend'
 import { t } from '@/locales'
+import { mediaSrc } from '@/utils/mediaUrl'
 
 function guessExt(url: string, fallback: string): string {
   // 去掉查询串,再取最后一个扩展名
@@ -22,9 +23,12 @@ function isSameOrigin(url: string): boolean {
  * 这种情况同样退回后端代理，由服务端从存储里读。
  */
 export async function fetchMediaBlob(url: string, filename = 'file'): Promise<Blob> {
-  if (isSameOrigin(url)) {
+  // 浏览器这头按「能加载的地址」拉；交给后端代理的仍是文档里的原地址
+  const src = mediaSrc(url)
+  // 嵌入时文件服务多半在另一个域名上：原装后端的 /files 开着跨域读取，先直接试一次
+  if (isSameOrigin(src) || src !== url) {
     let resp: Response | null = null
-    try { resp = await fetch(url) } catch { /* 被跨域跳转拦下，走后端代理 */ }
+    try { resp = await fetch(src) } catch { /* 被跨域跳转拦下，走后端代理 */ }
     if (resp) {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       return await resp.blob()

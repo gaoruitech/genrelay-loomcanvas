@@ -1,0 +1,8 @@
+/* lc-scope: off */
+/* 只有独立应用（main.ts）引这个文件：这里的规则是冲着整个文档去的，不能跟着嵌入用的包发出去。
+   文件头那行注释让 scopeToRoot 插件跳过它。 */
+html, body, #app { height: 100%; width: 100%; }
+html { -webkit-text-size-adjust: 100%; }
+
+/* 换主题时的整页交叉淡入（composables/useTheme.ts 里的 View Transitions 那条路） */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: ease; }

@@ -34,17 +34,17 @@
       </div>
 
       <!-- 文本素材：打开素材弹窗，选中即覆盖文本 -->
-      <button class="cv-pick-btn nodrag" @click.stop="dialogOpen = true" @mousedown.stop>
+      <button v-if="$feat.templates" class="cv-pick-btn nodrag" @click.stop="dialogOpen = true" @mousedown.stop>
         <LcIcon name="book" size="s" />
         {{ t('nodeui.text.templates') }}
       </button>
     </div>
 
-    <TextTemplateDialog v-model="dialogOpen" @pick="onPick" />
+    <TextTemplateDialog v-if="$feat.templates" v-model="dialogOpen" @pick="onPick" />
     <Handle id="text-out" type="source" :position="Position.Right" class="h-text h-top" />
 
     <!-- 放大编辑浮层：teleport 到 body 居中 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div
         v-if="expanded"
         class="cv-prompt-popover expanded nodrag nowheel"

@@ -36,7 +36,7 @@
         <span class="plus-label">{{ t('common.upload') }}</span>
       </label>
 
-      <button class="cell add-cell pick-cell" :title="t('nodes.action.pickFromLibrary')" @click.stop="pickFromLibrary">
+      <button v-if="$feat.assetLibrary" class="cell add-cell pick-cell" :title="t('nodes.action.pickFromLibrary')" @click.stop="pickFromLibrary">
         <LcIcon name="folder" />
         <span class="plus-label">{{ t('nodeui.collection.library') }}</span>
       </button>
@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import { CANVAS_PICKER_KEY } from '@/composables/canvasPickerKey'
 import { uploadCanvasImage } from '@/utils/canvasUpload'

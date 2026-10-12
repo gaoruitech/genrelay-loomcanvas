@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Vue host with &lt;LoomCanvasEditor&gt; (HTTP adapter)</title>
+  <link rel="stylesheet" href="/lib/editor.css" />
+  <link rel="stylesheet" href="/lib/fonts.css" />
+
+  <!-- `loomcanvas-web/editor` leaves Vue to the host (peer dependency): host and editor share ONE Vue.
+       A bundler resolves it from your node_modules; a page without a bundler maps it like this. -->
+  <script type="importmap">
+    { "imports": { "vue": "/vendor/vue/vue.esm-browser.prod.js", "loomcanvas-web/editor": "/lib/editor.js" } }
+  </script>
+  <style>
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f3f5f9; color: #1c2333; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: #fff; border-bottom: 1px solid #d9dee8; }
+    .bar b { margin-right: 12px; }
+    .bar input, .bar select, .bar button { font: inherit; padding: 4px 8px; }
+    .stage { display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 16px; }
+    .box { height: 680px; border: 1px solid #b9c2d3; background: #fff; }
+    .stage.narrow { grid-template-columns: 480px 300px; }
+    .stage.narrow .box { height: 620px; }
+    .side { font: 12px/1.5 Consolas, monospace; background: #fff; border: 1px solid #d9dee8; padding: 10px; height: 660px; overflow: auto; white-space: pre-wrap; }
+    .sign { padding: 24px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

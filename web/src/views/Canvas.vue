@@ -1,9 +1,9 @@
 <template>
-  <div ref="edRef" class="ed" :class="{ 'sheet-open': !!fly, 'insp-open': inspectorInset > 0, 'has-hint': noModels }" :data-node-layout="nodeLayout">
+  <div ref="edRef" class="ed" :class="{ 'sheet-open': !!fly, 'insp-open': inspectorInset > 0, 'has-hint': noModels, 'read-only': readOnly, 'no-title': !feat.titleBar }" :data-node-layout="nodeLayout">
     <!-- 素材库 / 我的分享 / 模板 / 教程 -->
-    <LibraryDialog v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
-    <CanvasTemplateDialog v-model="templateDialogOpen" @apply="applyTemplate" />
-    <CanvasGuide v-model="guideOpen" :section="guideSection" :empty="!loading && nodes.length === 0" @open-templates="openTemplates" />
+    <LibraryDialog v-if="libraryMenuItems.length" v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
+    <CanvasTemplateDialog v-if="feat.templates" v-model="templateDialogOpen" @apply="applyTemplate" />
+    <CanvasGuide v-if="feat.guide" v-model="guideOpen" :section="guideSection" :empty="!loading && nodes.length === 0" @open-templates="openTemplates" />
 
     <!-- 创建分享链接弹窗：先填表，创建成功后同一个弹窗里换成链接 + 复制 -->
     <div v-if="shareOpen" class="lc-mask" @click.self="closeShareDialog">
@@ -16,12 +16,12 @@
           <div class="lc-dialog-body">
             <p class="lc-help share-tip">{{ t('canvas.share.tip') }}</p>
             <div class="lc-field">
-              <label for="share-title">{{ t('canvas.share.titleLabel') }}</label>
-              <input id="share-title" v-model="shareForm.title" class="lc-input" maxlength="80" :placeholder="t('canvas.share.titlePlaceholder')" />
+              <label :for="uid + '-share-title'">{{ t('canvas.share.titleLabel') }}</label>
+              <input :id="uid + '-share-title'" v-model="shareForm.title" class="lc-input" maxlength="80" :placeholder="t('canvas.share.titlePlaceholder')" />
             </div>
             <div class="lc-field">
-              <label for="share-desc">{{ t('canvas.share.descLabel') }}</label>
-              <textarea id="share-desc" v-model="shareForm.description" class="lc-textarea" maxlength="500" rows="3" :placeholder="t('canvas.share.descPlaceholder')"></textarea>
+              <label :for="uid + '-share-desc'">{{ t('canvas.share.descLabel') }}</label>
+              <textarea :id="uid + '-share-desc'" v-model="shareForm.description" class="lc-textarea" maxlength="500" rows="3" :placeholder="t('canvas.share.descPlaceholder')"></textarea>
             </div>
             <div class="lc-field share-last">
               <span class="lc-label">{{ t('canvas.share.expiryLabel') }}</span>
@@ -46,9 +46,9 @@
         <template v-else>
           <div class="lc-dialog-body">
             <div class="lc-field share-last">
-              <label for="share-link">{{ t('canvas.share.linkLabel') }}</label>
+              <label :for="uid + '-share-link'">{{ t('canvas.share.linkLabel') }}</label>
               <div class="share-link-row">
-                <input id="share-link" class="lc-input lc-mono" readonly :value="shareResult.link" @focus="selectAllText" />
+                <input :id="uid + '-share-link'" class="lc-input lc-mono" readonly :value="shareResult.link" @focus="selectAllText" />
                 <button class="lc-btn primary quiet" @click="copyShareLink"><LcIcon name="copy" size="s" />{{ t('common.copy') }}</button>
               </div>
               <p class="lc-help">
@@ -65,7 +65,7 @@
     </div>
 
     <!-- 加载其他画布到当前 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="importPickerOpen" class="lc-mask" @click.self="importPickerOpen = false">
         <div class="lc-dialog proj-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.project.importTitle')">
           <div class="lc-dialog-head">
@@ -115,6 +115,9 @@
         :min-zoom="MIN_ZOOM"
         :max-zoom="MAX_ZOOM"
         :delete-key-code="null"
+        :nodes-draggable="!readOnly"
+        :nodes-connectable="!readOnly"
+        :elements-selectable="!readOnly"
         :selection-mode="SelectionMode.Partial"
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
         @connect="onConnect"
@@ -141,6 +144,7 @@
           </template>
         </Background>
         <MiniMap
+          v-if="feat.minimap"
           position="bottom-left"
           pannable
           zoomable
@@ -165,7 +169,7 @@
           <linearGradient
             v-for="(g, i) in alignGuides"
             :key="'vf-guide-grad-' + i"
-            :id="'vf-guide-' + i"
+            :id="uid + '-guide-' + i"
             gradientUnits="userSpaceOnUse"
             :x1="g.type === 'v' ? g.pos : g.a"
             :y1="g.type === 'v' ? g.a : g.pos"
@@ -184,7 +188,7 @@
             :y1="g.type === 'v' ? g.a : g.pos"
             :x2="g.type === 'v' ? g.pos : g.b"
             :y2="g.type === 'v' ? g.b : g.pos"
-            :stroke="`url(#vf-guide-${i})`"
+            :stroke="`url(#${uid}-guide-${i})`"
             :stroke-dasharray="g.center ? '5 5' : undefined"
             :opacity="g.opacity"
           />
@@ -216,26 +220,27 @@
     <!-- ============ 悬浮玻璃块 ============ -->
 
     <!-- 左上：返回 + 画布名（就地改名）+ 保存状态 -->
-    <div class="fl ed-title">
-      <button class="lc-tb" :title="t('canvas.topbar.backToList')" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
+    <div v-if="feat.titleBar" class="fl ed-title">
+      <button v-if="canGoBack" class="lc-tb" :title="t('canvas.topbar.backToList')" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
         <LcIcon name="chev" class="flip" />
       </button>
       <label class="ed-name" :title="t('canvas.topbar.rename')">
         <span class="ed-name-mirror" aria-hidden="true">{{ workflowName || t('canvas.untitled') }}</span>
         <input
           v-model="workflowName"
+          :readonly="readOnly"
           maxlength="80"
           :placeholder="t('canvas.untitled')"
           :aria-label="t('canvas.topbar.rename')"
           @keydown.enter="($event.target as HTMLInputElement).blur()"
         />
       </label>
-      <button class="ed-save lc-st" :class="saveState.cls" :disabled="saving" :title="t('canvas.save.saveNow')" @click="handleSave">
+      <button v-if="!readOnly" class="ed-save lc-st" :class="saveState.cls" :disabled="saving" :title="t('canvas.save.saveNow')" @click="handleSave">
         <span>{{ saveState.text }}</span>
       </button>
       <!-- 这张画布套用的品牌包：整张画布一处选，所有生成节点跟着用 -->
       <CanvasBrandKitChip
-        v-if="!loading"
+        v-if="!loading && feat.brandKit && !readOnly"
         v-model="canvasKitId"
         :kits="brandKits.kits.value"
         :loaded="brandKits.loaded.value"
@@ -249,6 +254,7 @@
          默认竖排在左边；抓着把手（或面板空白处）可以拖到任何地方，把手旁边的开关切横排 / 竖排。
          手机上是标题块下面固定的一横条，不能拖。 -->
     <div
+      v-if="feat.palette && !readOnly"
       ref="palRef"
       class="fl ed-pal"
       :class="[palOrient, { phone: palPhone, ready: palReady, drag: palDragging }]"
@@ -307,8 +313,9 @@
         :data-pal="c.key"
         @click="onPalClick(c)"
       ><LcIcon :name="c.icon" /></button>
-      <hr />
+      <hr v-if="libraryMenuItems.length" />
       <button
+        v-if="libraryMenuItems.length"
         class="lc-tb"
         :class="{ on: fly === 'lib' }"
         :title="t('canvas.pal.library')"
@@ -320,6 +327,7 @@
       <hr />
       <!-- 分享 + 更多：原来在右上角，现在跟着面板走 -->
       <button
+        v-if="feat.share"
         class="lc-tb"
         :disabled="saving || publishing"
         :title="t('canvas.topbar.share')"
@@ -339,7 +347,7 @@
       ><LcIcon name="more" /></button>
       <!-- 沉浸式里没有外壳导航：留一颗看得见的退出钮 -->
       <button
-        v-if="appStore.immersive"
+        v-if="appStore.immersive && feat.immersive"
         class="lc-tb"
         :title="t('canvas.menu.exitImmersive')"
         :aria-label="t('canvas.menu.exitImmersive')"
@@ -419,7 +427,7 @@
     <div v-if="noModels" class="ed-hint lc-alert warn">
       <LcIcon name="warn" size="s" />
       <span><b>{{ t('models.none') }}</b> {{ t('canvas.hint.noModels') }}</span>
-      <router-link to="/models">{{ t('canvas.hint.goModels') }}</router-link>
+      <router-link v-if="feat.modelManagement && !host" to="/models">{{ t('canvas.hint.goModels') }}</router-link>
     </div>
 
     <!-- 底部中间：缩放 / 撤销重做 / 自动整理 / 运行全部 -->
@@ -428,6 +436,7 @@
       <button class="ed-zoom" :title="t('canvas.tools.zoomReset')" @click="zoomTo(1, { duration: 200 })">{{ zoomPct }}%</button>
       <button class="lc-tb" :disabled="zoomPct >= MAX_ZOOM * 100" :title="t('canvas.tools.zoomIn')" :aria-label="t('canvas.tools.zoomIn')" @click="zoomIn()"><LcIcon name="zin" /></button>
       <button class="lc-tb" :title="t('canvas.tools.fit')" :aria-label="t('canvas.tools.fit')" @click="fitFree({ duration: 200 })"><LcIcon name="fit" /></button>
+      <template v-if="!readOnly">
       <hr />
       <!-- 撤销 / 重做：快捷键之外还是要给可见入口，不然只有知道 Ctrl+Z 的人能用 -->
       <button class="lc-tb" :disabled="!hist.canUndo.value" :title="t('canvas.topbar.undoTip')" :aria-label="t('canvas.topbar.undo')" @click="doUndo"><LcIcon name="undo" /></button>
@@ -445,6 +454,7 @@
       >
         <LcIcon name="play" size="s" /><span>{{ executor.running.value ? t('canvas.topbar.running') : t('canvas.topbar.runAll') }}</span>
       </button>
+      </template>
     </div>
 
     <!-- 整理后的反悔入口：整理是一次性重排全部位置，没有撤销就不敢点 -->
@@ -481,6 +491,7 @@
 
     <!-- 生成队列：一颗悬浮圆钮，默认在右下角，可以拖走；点开是贴着它的清单卡片 -->
     <QueuePanel
+      v-if="feat.queue"
       :nodes="nodes"
       :right-inset="inspectorInset"
       :avoid="palAvoid"
@@ -509,11 +520,11 @@
           <LcIcon name="download" size="s" />
           {{ contextNodeInfo.mediaType === 'video' ? t('canvas.ctx.downloadVideo') : t('canvas.ctx.downloadImage') }}
         </button>
-        <button class="lc-menu-item" role="menuitem" @click="saveToAssetsFromContext">
+        <button v-if="feat.assetLibrary" class="lc-menu-item" role="menuitem" @click="saveToAssetsFromContext">
           <LcIcon name="folder" size="s" />
           {{ t('canvas.ctx.saveToAssets') }}
         </button>
-        <button v-if="contextImageUrl" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
+        <button v-if="contextImageUrl && feat.imageEditor" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
           <LcIcon name="edit" size="s" />
           {{ t('canvas.ctx.editImage') }}
         </button>
@@ -578,7 +589,7 @@
           {{ t('canvas.ctx.deleteGroup') }}
         </button>
       </template>
-      <button v-if="!contextNodeInfo && contextImageUrl" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
+      <button v-if="!contextNodeInfo && contextImageUrl && feat.imageEditor" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
         <LcIcon name="edit" size="s" />
         {{ t('canvas.ctx.editImage') }}
       </button>
@@ -597,7 +608,7 @@
       v-if="addMenu.open"
       class="ed-menu lc-menu"
       role="menu"
-      :style="{ left: addMenu.x + 'px', top: addMenu.y + 'px', maxHeight: `calc(100vh - ${addMenu.y}px - 16px)` }"
+      :style="{ left: addMenu.x + 'px', top: addMenu.y + 'px', maxHeight: `calc(calc(100 * var(--lc-vh)) - ${addMenu.y}px - 16px)` }"
       @click.stop
     >
       <!-- 导航（沉浸式 / 我的画布 / 使用教程）永远置顶 -->
@@ -676,6 +687,7 @@
 
     <!-- 画布外观面板（贴着菜单弹出） -->
     <CanvasStylePanel
+      v-if="feat.canvasStyle"
       :open="stylePanelOpen"
       :bg="bgSettings"
       :x="stylePanelPos.x"
@@ -686,6 +698,7 @@
 
     <!-- 批量下载 -->
     <BatchDownloadDialog
+      v-if="feat.batchDownload"
       :open="batchOpen"
       :nodes="nodes"
       :edges="edges"
@@ -696,6 +709,7 @@
 
     <!-- 单图编辑器（裁剪 / 旋转） -->
     <ImageEditorModal
+      v-if="feat.imageEditor"
       :open="editorState.open"
       :url="editorState.url"
       @close="closeEditor(null)"
@@ -725,6 +739,7 @@
 
     <!-- 在画布里新建 / 编辑品牌包：和素材库「品牌包」页是同一个表单，不用离开画布 -->
     <BrandKitEditorDialog
+      v-if="feat.brandKit"
       :open="kitEditor.open"
       :kit="kitEditor.kit"
       @close="kitEditor.open = false"
@@ -732,10 +747,10 @@
       @removed="onKitRemoved"
     />
 
-    <BatchRunDialog :batch="batch" />
+    <BatchRunDialog v-if="feat.batchRun" :batch="batch" />
 
     <!-- 素材选择器（挂在根，inject 调用） -->
-    <AssetPicker ref="pickerRef" />
+    <AssetPicker v-if="feat.assetLibrary" ref="pickerRef" />
 
     <!-- 全局 hover 大图预览（节点里的图片共用这一份，teleport 到 body） -->
     <ImageHoverPreview />
@@ -747,6 +762,7 @@
 </template>
 
 <script setup lang="ts">
+import { lcLocal } from '@/utils/storage'
 import { ref, computed, onMounted, onBeforeUnmount, provide, watch, markRaw, type Ref, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -757,7 +773,7 @@ import { canvasImageThumb } from '@/utils/canvasMedia'
 import { VueFlow, useVueFlow, SelectionMode, type Node, type Edge, type Connection, addEdge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
-import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
+import { MessagePlugin, DialogPlugin } from '@/utils/feedback'
 
 import TextNode from '@/components/canvas/TextNode.vue'
 import ImageNode from '@/components/canvas/ImageNode.vue'
@@ -786,10 +802,15 @@ import BatchDownloadDialog from '@/components/canvas/BatchDownloadDialog.vue'
 import BatchRunDialog from '@/components/canvas/BatchRunDialog.vue'
 import ImageEditorModal from '@/components/canvas/ImageEditorModal.vue'
 
-import { workflowApi, canvasShareApi, userAssetApi, apiErrorMessage } from '@/utils/api'
+import { workflowApi, canvasShareApi, userAssetApi, apiErrorMessage } from '@/utils/canvasBackend'
 import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { useAppStore } from '@/stores/app'
+import { useEmbed } from '@/embed/context'
+import { isPageAllowed, resolveNodeTypes } from '@/embed/options'
+import { CANVAS_SCHEMA_VERSION, type CanvasDocument } from '@/embed/document'
+import { backend, shareLinkFor } from '@/utils/canvasBackend'
+import { frameOf, ownsKeyEvent } from '@/utils/frame'
 import { useCanvasExecutor } from '@/composables/useCanvasExecutor'
 import { confirmRerun } from '@/composables/useRerunConfirm'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
@@ -804,6 +825,7 @@ import { useCanvasHistory } from '@/composables/useCanvasHistory'
 import { usePaletteDock } from '@/composables/usePaletteDock'
 import { clampNum, type Rect } from '@/utils/floatSpot'
 import { useCanvasBatch } from '@/composables/useCanvasBatch'
+import { migrateDocument } from '@/embed/document'
 import { useBrandKits, resolveNodeKit, KIT_NONE, BRAND_KIT_NODE_TYPES, type BrandKit } from '@/composables/useBrandKits'
 import { CANVAS_BRAND_KIT_KEY } from '@/composables/canvasBrandKitKey'
 import CanvasBrandKitChip from '@/components/canvas/CanvasBrandKitChip.vue'
@@ -848,6 +870,27 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const { t, locale } = useI18n()
+
+/* ==================== 这张画布是怎么挂上来的 ==================== */
+/**
+ * 三种挂法（embed/context.ts）：独立应用、整站嵌入、只嵌编辑器。
+ * 只嵌编辑器（host 不为空）时没有列表页、没有路由里的画布 id：开哪张画布、能不能改、用哪种布局都是宿主给的。
+ * feat 是这一次挂载开着的功能；关掉的功能，它的按钮、菜单项、弹窗在下面统一不出。
+ */
+const embed = useEmbed()
+const host = embed.editor
+const feat = embed.features
+const readOnly = computed(() => !!host?.readOnly.value)
+/** 同一页上可能有不止一个编辑器：DOM id、SVG 渐变 id 都带上它 */
+const uid = 'lc' + Math.random().toString(36).slice(2, 8)
+/** 现在该显示哪张画布：路由里的 id，或者宿主给的 */
+const wantedCanvasId = computed(() => (host ? host.canvasId.value : (typeof route.params.id === 'string' ? route.params.id : '')))
+/** 有没有「返回」可去：只嵌编辑器看宿主给没给 onBack；否则看画布列表页开没开放 */
+const canGoBack = computed(() => (host ? feat.backButton && !!host.onBack : isPageAllowed(embed.pages, 'canvases')))
+/** 能加哪些节点：宿主点名的那些，再去掉当前后端跑不了的（没有图片工具接口就没有工具节点） */
+const offeredKinds = computed(() => new Set<string>(host ? host.nodeTypes.value : resolveNodeTypes(undefined, embed.embedded ? backend() : null)))
+/** fixed 浮层的「画框」：独立应用里是视口，嵌入时是本产品的根元素（utils/frame.ts） */
+const frame = () => frameOf(edRef.value)
 
 // 模型清单拉回来之后，一个可用的图片 / 视频模型都没有 → 顶栏下方挂一条提示。
 // 没拉完之前不显示，免得每次进画布都闪一下。
@@ -914,7 +957,7 @@ const {
  * 三种布局选哪种是账号的偏好（设置 → 外观，或「更多」菜单里直接切），存在服务端，换浏览器也跟着走。
  * 这里只读它；节点、输入条、属性面板都从 CANVAS_NODE_UI_KEY 拿。
  */
-const nodeLayout = computed<NodeLayout>(() => normalizeNodeLayout(appStore.user?.prefs?.nodeLayout))
+const nodeLayout = computed<NodeLayout>(() => normalizeNodeLayout(appStore.nodeLayout))
 
 /** 只选中了一个节点、而且是生成节点：它就是面板要编辑的那一个。多选、没选都不出面板 */
 const soleGenNode = computed<{ id: string; kind: GenNodeKind } | null>(() => {
@@ -1016,8 +1059,38 @@ function onKitRemoved() {
   void brandKits.load(true)
 }
 
+/**
+ * 执行器改节点状态都经过这里：状态一变就告诉宿主（run:started / run:finished / run:failed / result）。
+ * 独立应用里 embed.emit 是个空函数。
+ */
+function updateNodeDataTracked(id: string, patch: Record<string, any>) {
+  const before = findNode(id)?.data?.status
+  updateNodeData(id, patch)
+  const status = patch?.status
+  if (!status || status === before) return
+  const node = findNode(id)
+  const d: any = node?.data || {}
+  const base = {
+    canvasId: currentId.value || '',
+    nodeId: id,
+    nodeType: String(node?.type || ''),
+    runIds: [...new Set([d.taskId, ...(Array.isArray(d.taskIds) ? d.taskIds : [])].filter((x) => typeof x === 'string' && x))] as string[],
+  }
+  if (status === 'running') embed.emit('run:started', base)
+  else if (status === 'error') embed.emit('run:failed', { ...base, error: String(d.errorMsg || '') })
+  else if (status === 'done') {
+    embed.emit('run:finished', base)
+    const outputs: { type: 'image' | 'video'; url: string }[] = []
+    const imgs: string[] = Array.isArray(d.imageUrls) && d.imageUrls.length ? d.imageUrls : (d.imageUrl ? [d.imageUrl] : [])
+    for (const url of imgs) if (typeof url === 'string' && url) outputs.push({ type: 'image', url })
+    if (typeof d.videoUrl === 'string' && d.videoUrl) outputs.push({ type: 'video', url: d.videoUrl })
+    const text = TEXT_TASK_TYPES.includes(base.nodeType) && typeof d.text === 'string' ? d.text : undefined
+    embed.emit('result', { canvasId: base.canvasId, nodeId: id, nodeType: base.nodeType, outputs, ...(text !== undefined ? { text } : {}) })
+  }
+}
+
 const executor = useCanvasExecutor({
-  nodes, edges, updateNodeData,
+  nodes, edges, updateNodeData: updateNodeDataTracked,
   getNodeBrandKit: (nodeData) => resolveKit(nodeData).kit,
   getWorkflowId: () => currentId.value,
   persist: () => doSave(true),
@@ -1096,8 +1169,8 @@ function openStylePanel() {
   const PANEL_W = 272
   const PANEL_H = 430
   stylePanelPos.value = {
-    x: Math.max(12, Math.min(lastMenuPos.value.x, window.innerWidth - PANEL_W - 12)),
-    y: Math.max(12, Math.min(lastMenuPos.value.y, window.innerHeight - PANEL_H - 12)),
+    x: Math.max(12, Math.min(lastMenuPos.value.x, frame().w - PANEL_W - 12)),
+    y: Math.max(12, Math.min(lastMenuPos.value.y, frame().h - PANEL_H - 12)),
   }
   stylePanelOpen.value = true
 }
@@ -1300,11 +1373,30 @@ const frameMenuItem = computed<CanvasMenuItem>(() => {
 })
 
 /** 素材库那一组入口：工具面板上那颗素材按钮、「更多」菜单共用 */
-const libraryMenuItems = computed<CanvasMenuItem[]>(() => [
+const libraryMenuItems = computed<CanvasMenuItem[]>(() => ([
   { key: 'library', label: t('canvas.rail.library'), lc: 'folder', run: openLibrary },
   { key: 'templates', label: t('canvas.rail.templates'), lc: 'layout', run: openTemplates },
   { key: 'my-shares', label: t('canvas.rail.myShares'), lc: 'share', run: goToMyShares },
-])
+] as CanvasMenuItem[]).filter((i) => (i.key === 'library' ? feat.assetLibrary : i.key === 'templates' ? feat.templates : feat.share)))
+
+/** 菜单项对应哪个功能开关；关掉的功能整项不出（没列在这里的项不受开关管） */
+const MENU_ITEM_FEATURE: Record<string, () => boolean> = {
+  immersive: () => feat.immersive,
+  list: () => canGoBack.value,
+  'switch-proj': () => feat.canvasSwitch && !host,
+  'load-proj': () => feat.canvasSwitch,
+  guide: () => feat.guide,
+  shortcuts: () => feat.guide,
+  'batch-run': () => feat.batchRun,
+  style: () => feat.canvasStyle,
+  download: () => feat.batchDownload,
+  search: () => feat.search,
+}
+function offeredMenu(groups: { title: string; items: CanvasMenuItem[] }[]) {
+  return groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => (MENU_ITEM_FEATURE[i.key] ? MENU_ITEM_FEATURE[i.key]() : !i.key.startsWith('node-layout-') || feat.nodeLayoutSwitch)) }))
+    .filter((g) => g.items.length)
+}
 
 const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
   const sel = layout.selectedCount.value
@@ -1404,12 +1496,13 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
 
   groups.push({ title: t('canvas.pal.library'), items: libraryMenuItems.value })
 
-  return groups
+  return offeredMenu(groups)
 })
 
 // 导航组（退出沉浸式 / 我的画布 / 使用教程）单独拎出来，右键菜单里永远置顶；其余画布操作按选中态排布
-const navMenuGroup = computed(() => canvasMenuGroups.value.find(g => g.items.some(i => i.key === 'immersive')) || null)
-const otherMenuGroups = computed(() => canvasMenuGroups.value.filter(g => g.items.every(i => i.key !== 'immersive')))
+const NAV_MENU_KEYS = new Set(['immersive', 'list', 'switch-proj', 'load-proj', 'guide', 'shortcuts'])
+const navMenuGroup = computed(() => canvasMenuGroups.value.find(g => g.items.some(i => NAV_MENU_KEYS.has(i.key))) || null)
+const otherMenuGroups = computed(() => canvasMenuGroups.value.filter(g => g.items.every(i => !NAV_MENU_KEYS.has(i.key))))
 
 // 工具面板上的「更多」菜单（坐标是视口的：菜单是 position: fixed）
 const moreMenu = ref({ open: false, x: -9999, y: 0, maxH: 600 })
@@ -1434,7 +1527,8 @@ function placeMore() {
   const at = popNear('more', Math.min(ADD_MENU_W, host.clientWidth - 16), el.scrollHeight + 2)
   if (!at) return
   const o = host.getBoundingClientRect()
-  moreMenu.value = { open: true, x: Math.round(o.left + at.x), y: Math.round(o.top + at.y), maxH: at.maxH }
+  const fr = frame()
+  moreMenu.value = { open: true, x: Math.round(o.left - fr.x + at.x), y: Math.round(o.top - fr.y + at.y), maxH: at.maxH }
   lastMenuPos.value = { x: moreMenu.value.x, y: moreMenu.value.y }
 }
 function closeMoreMenu() {
@@ -1527,7 +1621,9 @@ const PAL_CATS: { key: Exclude<FlyKey, '' | 'all' | 'lib'>; icon: string; kinds:
 const PAL_TITLE_KEYS = {
   text: 'canvas.pal.text', image: 'canvas.pal.image', video: 'canvas.pal.video', chat: 'canvas.pal.chat', tools: 'canvas.pal.tools',
 } as const
-const palCats = computed(() => PAL_CATS.map((c) => ({ ...c, title: t(PAL_TITLE_KEYS[c.key]) })))
+const palCats = computed(() => PAL_CATS
+  .map((c) => ({ ...c, kinds: c.kinds.filter((k) => offeredKinds.value.has(k)), title: t(PAL_TITLE_KEYS[c.key]) }))
+  .filter((c) => c.kinds.length))
 
 const fly = ref<FlyKey>('')
 const flyRef = ref<HTMLElement | null>(null)
@@ -1731,13 +1827,13 @@ const flyTitle = computed(() => {
 const flyGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
   if (fly.value === 'all') {
     return [
-      ...NODE_MENU_LAYOUT.map((g) => ({ title: t(g.titleKey), items: g.kinds.map(nodeMenuItem) })),
+      ...NODE_MENU_LAYOUT.map((g) => ({ title: t(g.titleKey), items: g.kinds.filter((k) => offeredKinds.value.has(k)).map(nodeMenuItem) })),
       { title: t('canvas.menu.groupTitle'), items: [frameMenuItem.value] },
       { title: t('canvas.pal.library'), items: libraryMenuItems.value },
-    ]
+    ].filter((g) => g.items.length)
   }
   if (fly.value === 'lib') return [{ title: '', items: libraryMenuItems.value }]
-  const cat = PAL_CATS.find((c) => c.key === fly.value)
+  const cat = palCats.value.find((c) => c.key === fly.value)
   if (!cat) return []
   const items = cat.kinds.map(nodeMenuItem)
   // 「组」不是往画布上加一个节点，而是把选中的节点圈起来 —— 归在工具里
@@ -1837,8 +1933,8 @@ const NODE_MENU_LAYOUT: { titleKey: string; kinds: NodeKind[] }[] = [
 const nodeMenuGroups = computed<{ title: string; items: NodeMenuItem[] }[]>(() =>
   NODE_MENU_LAYOUT.map((g) => ({
     title: t(g.titleKey),
-    items: g.kinds.map((kind) => ({ kind, label: nodeTypeLabel(kind), icon: NODE_MENU_ICONS[kind] || '' })),
-  })))
+    items: g.kinds.filter((k) => offeredKinds.value.has(k)).map((kind) => ({ kind, label: nodeTypeLabel(kind), icon: NODE_MENU_ICONS[kind] || '' })),
+  })).filter((g) => g.items.length))
 
 function onNodeContextMenu({ event, node }: { event: any; node: Node }) {
   event.preventDefault?.()
@@ -1852,8 +1948,10 @@ function onNodeContextMenu({ event, node }: { event: any; node: Node }) {
     if (g && !g.selected) { removeSelectedNodes(getSelectedNodes.value); addSelectedNodes([g]) }
   }
   // 夹进视口：在屏幕右边 / 底边右键时菜单别开到外面去
-  const x = Math.max(8, Math.min(event.clientX ?? event.touches?.[0]?.clientX ?? 0, window.innerWidth - 288))
-  const y = Math.max(8, Math.min(event.clientY ?? event.touches?.[0]?.clientY ?? 0, window.innerHeight - 380))
+  if (readOnly.value) return
+  const fr = frame()
+  const x = Math.max(8, Math.min((event.clientX ?? event.touches?.[0]?.clientX ?? 0) - fr.x, fr.w - 288))
+  const y = Math.max(8, Math.min((event.clientY ?? event.touches?.[0]?.clientY ?? 0) - fr.y, fr.h - 380))
   contextMenu.value = {
     open: true,
     x,
@@ -1915,7 +2013,7 @@ async function saveToAssetsFromContext() {
       mediaUrl: info.url,
       nodeType: info.mediaType === 'video' ? 'VIDEO' : 'IMAGE',
       name: t('canvas.asset.outputName'),
-      fromFlowId: String(route.params.id || '')
+      fromFlowId: currentId.value || ''
     })
     MessagePlugin.success(t('canvas.asset.saved'))
   } catch (e: any) {
@@ -1938,14 +2036,16 @@ function detailFromContext() {
 function onPaneContextMenu(event: MouseEvent) {
   event.preventDefault?.()
   closeContextMenu()
+  if (readOnly.value) return
   /**
    * 新节点落在鼠标点下的位置，用的是**没夹过**的原始坐标；
    * 菜单自己的位置才夹进视口 —— 两者混用的话，在屏幕边上右键加出来的节点
    * 会跑到离鼠标老远的地方。
    */
   const flow = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - ADD_MENU_W - 8))
-  const y = Math.max(8, Math.min(event.clientY, window.innerHeight - 360))
+  const fr = frame()
+  const x = Math.max(8, Math.min(event.clientX - fr.x, fr.w - ADD_MENU_W - 8))
+  const y = Math.max(8, Math.min(event.clientY - fr.y, fr.h - 360))
   addMenu.value = { open: true, x, y, flowX: flow.x, flowY: flow.y }
   lastMenuPos.value = { x, y }
 }
@@ -2427,6 +2527,11 @@ function edgeForSave(e: any) {
   return { id: e.id, type: e.type, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }
 }
 
+/** 整份文档（对外的格式，见 embed/document.ts）：内容加上视口和格式版本号 */
+function buildDocument(): CanvasDocument {
+  return JSON.parse(JSON.stringify({ schemaVersion: CANVAS_SCHEMA_VERSION, ...buildContent(), viewport: { ...viewport.value } }))
+}
+
 /** 画布的内容：名字、节点、连线、外观。「改没改过」只看这些 */
 function buildContent() {
   return {
@@ -2516,7 +2621,7 @@ function templateNodeData(kind: NodeKind, raw: any): Record<string, any> {
 function freeSpot(): { x: number; y: number } {
   const zoom = viewport.value.zoom || 1
   const toFlow = (sx: number, sy: number) => ({ x: (sx - viewport.value.x) / zoom, y: (sy - viewport.value.y) / zoom })
-  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  const pane = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
   // 四边让给悬浮块：顶上是标题块，底下是工具条和右下角的生成队列圆钮（两者一样高），
   // 右边是属性面板（开着的话），工具面板贴着哪条边就再让哪条边
   const W = pane?.clientWidth || 1200, H = pane?.clientHeight || 800
@@ -2647,6 +2752,7 @@ function onCanvasDrop(e: DragEvent) {
 // —— 粘贴图片 ——
 // 只在剪贴板含图片文件时接管；纯文本粘贴（如往提示词里粘）走浏览器默认，不干预。
 function onCanvasPaste(e: ClipboardEvent) {
+  if (readOnly.value || !ownsKeyEvent(e, embed.root)) return
   const items = Array.from(e.clipboardData?.items || [])
   const imgs = items
     .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
@@ -2659,7 +2765,7 @@ function onCanvasPaste(e: ClipboardEvent) {
   }
   e.preventDefault()
   // 落在当前视口中心：把画布可视区中点换算成画布坐标
-  const el = document.querySelector('.vf-wrap') as HTMLElement | null
+  const el = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
   const rect = el?.getBoundingClientRect()
   const center = rect
     ? screenToFlowCoordinate({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
@@ -2945,6 +3051,8 @@ function onNodeDragStop() {
 async function doSave(silent: boolean): Promise<boolean> {
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
   autoSaveDueBy = 0
+  // 只读：什么都不往外写（视口也不存）
+  if (readOnly.value) return false
   const content = buildContent()
   const fp = JSON.stringify(content)
   const vp = { ...viewport.value }
@@ -2962,6 +3070,7 @@ async function doSave(silent: boolean): Promise<boolean> {
       lastSavedAt.value = res.data.data.updatedAt
       lastFingerprint = fp
       savedViewportKey = viewportKey(vp)
+      embed.emit('saved', { canvasId: currentId.value, updatedAt: res.data.data.updatedAt })
       if (clearLegacy) legacyLayoutChecked = false
       dirty.value = false
       saveFailed.value = false
@@ -3008,6 +3117,8 @@ async function autoSave() {
   }
   autoSaving.value = true
   try {
+    // 先告诉宿主「内容变了」（change 事件 / onChange），再存
+    embed.emit('change', { canvasId: currentId.value || '', document: buildDocument() })
     await doSave(true)
   } finally {
     autoSaving.value = false
@@ -3015,12 +3126,14 @@ async function autoSave() {
 }
 
 function scheduleAutoSave() {
-  if (suppressAutoSave) return
+  if (suppressAutoSave || readOnly.value) return
   dirty.value = true
   const now = Date.now()
-  if (!autoSaveDueBy) autoSaveDueBy = now + AUTO_SAVE_MAX_WAIT
+  // 只嵌编辑器时停手多久算「改完了」由宿主定（changeDebounceMs）
+  const delay = host ? host.changeDebounceMs : AUTO_SAVE_DELAY
+  if (!autoSaveDueBy) autoSaveDueBy = now + Math.max(AUTO_SAVE_MAX_WAIT, delay)
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  autoSaveTimer = window.setTimeout(autoSave, Math.max(0, Math.min(AUTO_SAVE_DELAY, autoSaveDueBy - now)))
+  autoSaveTimer = window.setTimeout(autoSave, Math.max(0, Math.min(delay, autoSaveDueBy - now)))
 }
 
 /**
@@ -3031,7 +3144,7 @@ function scheduleAutoSave() {
 const VIEWPORT_SAVE_DELAY = 1200
 let viewportTimer: number | null = null
 function scheduleViewportSave() {
-  if (suppressAutoSave || !currentId.value) return
+  if (suppressAutoSave || !currentId.value || readOnly.value) return
   if (viewportTimer) clearTimeout(viewportTimer)
   viewportTimer = window.setTimeout(() => { void saveViewport() }, VIEWPORT_SAVE_DELAY)
 }
@@ -3074,6 +3187,7 @@ async function switchToCanvas(id: string) {
   projMenuOpen.value = false
   if (!id || id === currentId.value) return
   if (dirty.value) await doSave(true)
+  if (host) { host.canvasId.value = id; return }
   router.push(`/canvas/${id}`)
 }
 function openImportPicker() {
@@ -3146,7 +3260,15 @@ async function loadOtherCanvasInto(id: string) {
 }
 
 function goToList() {
+  // 只嵌编辑器：「返回」去哪儿是宿主的事
+  if (host) { host.onBack?.(); return }
   router.push('/canvases')
+}
+
+/** 画布打不开（不存在、没权限、网络错）之后去哪儿：有列表页回列表页，没有就留在原地（错误已经告诉宿主了） */
+function leaveBrokenCanvas(message: string, cause?: unknown) {
+  embed.emit('error', { scope: 'load', message, cause })
+  if (!host && isPageAllowed(embed.pages, 'canvases')) router.replace('/canvases')
 }
 
 // ============ 素材库 / 我的分享 弹窗 ============
@@ -3270,6 +3392,11 @@ const shareExpiryOptions = computed<{ value: ShareExpiry; label: string }[]>(() 
   { value: 0, label: t('canvas.share.expiryNever') },
 ])
 
+/** 分享链接的地址：按本产品的路由拼（挂在子路径下、hash 路由都对）；只嵌编辑器时没有分享页，由适配器的 share.linkFor 给 */
+function defaultShareLink(token: string): string {
+  try { return new URL(router.resolve({ name: 'share', params: { token } }).href, location.href).href }
+  catch { return `${location.origin}/share/${token}` }
+}
 function openShareDialog() {
   if (!currentId.value) {
     MessagePlugin.warning(t('canvas.share.notLoaded'))
@@ -3312,7 +3439,7 @@ async function handlePublish() {
     const data = res.data.data
     if (res.data.result === 0 && data?.token) {
       shareResult.value = {
-        link: `${location.origin}/share/${data.token}`,
+        link: shareLinkFor(data.token, defaultShareLink(data.token)),
         expiresAt: data.expiresAt || null,
       }
       MessagePlugin.success(data.updated ? t('canvas.share.updated') : t('canvas.share.created'))
@@ -3451,7 +3578,7 @@ async function checkLegacyLayout() {
  * 它被拖到别处之后不再跟着让 —— 那是用户自己挑的位置，和别的小控件一样允许节点从底下过。
  */
 function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number } = {}) {
-  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  const pane = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
   const only = opts.nodes ? new Set(opts.nodes) : null
   // 不能用 getNodes / nodeBox：开了 only-render-visible-elements 之后，getNodes 只给视野里
   // 的那几个节点 —— 照它算，「适应屏幕」永远只框得住眼下已经看得见的。这里从完整的 nodes
@@ -3505,7 +3632,25 @@ async function loadWorkflow(id: string) {
   try {
     const res = await workflowApi.detail(id)
     if (res.data.result === 0 && res.data.data) {
-      const w = res.data.data
+      applyWorkflow(res.data.data)
+      if (!readyAnnounced) { readyAnnounced = true; embed.emit('ready', { canvasId: currentId.value || id }) }
+    } else {
+      MessagePlugin.error(res.data.message || t('common.loadFailed'))
+      leaveBrokenCanvas(res.data.message || t('common.loadFailed'))
+    }
+  } catch (err: any) {
+    MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
+    leaveBrokenCanvas(apiErrorMessage(err, t('common.loadFailed')), err)
+  } finally {
+    loading.value = false
+    setTimeout(() => { suppressAutoSave = false }, 0)
+  }
+}
+let readyAnnounced = false
+
+/** 把一份画布（接口返回的，或宿主直接给的文档）铺到编辑器里 */
+function applyWorkflow(w: any) {
+    {
       // 剥离瞬时字段，避免还原出"运行中"等历史状态；
       // 但 gen 节点要根据持久化的产物/错误推导出最终展示态：
       //  - 已有产物 → status='done'
@@ -3563,21 +3708,13 @@ async function loadWorkflow(id: string) {
       hist.reset()
       // 对刷新前还在跑的 task，自动恢复轮询拉结果
       setTimeout(() => {
+        // 只读：不接着轮询，也不改节点上的东西
+        if (readOnly.value) return
         executor.resumeIncompleteTasks()
         // 存着的失败原因是当时界面语言的一句话，按现在的语言重取
         void executor.refreshRunErrors()
       }, 100)
-    } else {
-      MessagePlugin.error(res.data.message || t('common.loadFailed'))
-      router.replace('/canvases')
     }
-  } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
-    router.replace('/canvases')
-  } finally {
-    loading.value = false
-    setTimeout(() => { suppressAutoSave = false }, 0)
-  }
 }
 
 function formatTime(iso: string | null) {
@@ -3694,7 +3831,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * fixed 元素的 offsetParent 恒为 null，那样判会把「开着」误判成「没开」。
  */
 function tdesignDialogVisible(): boolean {
-  for (const el of Array.from(document.querySelectorAll('.t-dialog__ctx'))) {
+  for (const el of Array.from(embed.root.querySelectorAll('.t-dialog__ctx'))) {
     const r = (el as HTMLElement).getBoundingClientRect()
     if (r.width > 0 && r.height > 0) return true
   }
@@ -3740,12 +3877,12 @@ function deleteSelection() {
  * 窗口失焦要复位：按着 Shift 切走再回来，keyup 是收不到的。
  */
 const boxSelecting = ref(false)
-function onShiftDown(e: KeyboardEvent) { if (e.key === 'Shift') boxSelecting.value = true }
+function onShiftDown(e: KeyboardEvent) { if (e.key === 'Shift' && !readOnly.value) boxSelecting.value = true }
 function onShiftUp(e: KeyboardEvent) { if (e.key === 'Shift') boxSelecting.value = false }
 function onWindowBlur() { boxSelecting.value = false }
 
 function syncPaneWidth() {
-  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  const pane = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
   if (pane?.clientWidth) paneWidth.value = pane.clientWidth
 }
 
@@ -3757,6 +3894,7 @@ function syncPaneWidth() {
  *                     有菜单开着时不拦，先让菜单收掉。
  */
 function onCanvasKeydownCapture(e: KeyboardEvent) {
+  if (readOnly.value || !ownsKeyEvent(e, embed.root)) return
   if (isTypingTarget(e.target) || anyOverlayOpen()) return
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     const n = soleGenNode.value
@@ -3775,7 +3913,10 @@ function onCanvasKeydownCapture(e: KeyboardEvent) {
 }
 
 function onCanvasKeydown(e: KeyboardEvent) {
+  // 嵌在别人的页面里：按键不是冲着这块画布来的就不管（宿主自己的输入框、别的嵌入实例）
+  if (!ownsKeyEvent(e, embed.root)) return
   if (isTypingTarget(e.target)) return
+  if (readOnly.value) return
   if (anyOverlayOpen()) return
   const mod = e.ctrlKey || e.metaKey
   const key = (e.key || '').toLowerCase()
@@ -3823,9 +3964,39 @@ function onCanvasKeydown(e: KeyboardEvent) {
 }
 
 // 编辑器内切换项目：URL 的画布 id 变了就重新加载
-watch(() => route.params.id, (id) => {
-  if (typeof id === 'string' && id && id !== currentId.value) loadWorkflow(id)
+watch(wantedCanvasId, (id) => {
+  if (id && id !== currentId.value) loadWorkflow(id)
 })
+
+// 只读开着的时候什么都不存。关掉的那一刻如果内容和上次存的不一样（比如只读期间有一次运行跑完了），补存一次
+watch(readOnly, (ro) => {
+  if (ro) { closeMenus(); return }
+  if (currentId.value && buildFingerprint() !== lastFingerprint) scheduleAutoSave()
+})
+
+/* ==================== 给宿主的事件和方法（只嵌编辑器时） ==================== */
+// 监听的是拼出来的一个字符串：选中集合真的变了才发，不会因为数组换了个新的就重复发
+watch(() => JSON.stringify([getSelectedNodes.value.map((n: any) => n.id), getSelectedEdges.value.map((e: any) => e.id)]), (key) => {
+  const [nodeIds, edgeIds] = JSON.parse(key) as [string[], string[]]
+  embed.emit('selection', { nodeIds, edgeIds })
+})
+if (host) {
+  host.api.value = {
+    getDocument: buildDocument,
+    setDocument(doc) {
+      suppressAutoSave = true
+      try { applyWorkflow({ id: currentId.value || wantedCanvasId.value, updatedAt: lastSavedAt.value, ...migrateDocument(doc) }) }
+      finally { setTimeout(() => { suppressAutoSave = false }, 0) }
+    },
+    save: () => doSave(true),
+    fitView: () => fitFree({ duration: 200 }),
+    runAll: () => executor.runAll(),
+    runNode: (id) => executor.runSubtree(id),
+    addNode: (type, data, position) => addNode(type as NodeKind, data as Record<string, any> | undefined, position),
+    undo: doUndo,
+    redo: doRedo,
+  }
+}
 
 onMounted(async () => {
   // 默认带着外壳（顶栏 + 图标侧栏）；沉浸式从「更多」里手动进
@@ -3841,19 +4012,19 @@ onMounted(async () => {
   window.addEventListener('resize', syncPaneWidth)
   syncPaneWidth()
   // 品牌包列表：拉不到不影响画布使用（useBrandKits 内部已吞掉异常）
-  void brandKits.load()
-  const paramId = route.params.id
-  if (typeof paramId === 'string' && paramId) {
+  if (feat.brandKit) void brandKits.load()
+  const paramId = wantedCanvasId.value
+  if (paramId) {
     await loadWorkflow(paramId)
-  } else {
+  } else if (!host) {
     // 没有 id 不应该进入编辑器 —— 回列表
     router.replace('/canvases')
   }
   // 首次进画布自动弹一次使用教程（之后只能手动从「更多」打开）
   try {
-    if (localStorage.getItem('canvas_guide_autoshown') !== '1') {
+    if (feat.guide && lcLocal.getItem('canvas_guide_autoshown') !== '1') {
       guideOpen.value = true
-      localStorage.setItem('canvas_guide_autoshown', '1')
+      lcLocal.setItem('canvas_guide_autoshown', '1')
     }
   } catch { /* localStorage 不可用就算了 */ }
 })
@@ -3886,6 +4057,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 只读（只嵌编辑器时的 readOnly）：节点整个不接鼠标，画布照样能平移缩放 */
+.ed.read-only :deep(.vue-flow__node), .ed.read-only :deep(.vue-flow__edge) { pointer-events: none !important; }
+.ed.read-only :deep(.vue-flow__handle) { visibility: hidden; }
+
 /* 编辑器：画布铺满外壳给的整块区域，所有控件都是浮在上面的玻璃块。 */
 .ed {
   position: absolute;
@@ -4176,7 +4351,7 @@ onBeforeUnmount(() => {
 
 /* ---------- 菜单 ---------- */
 .lc-menu hr { height: 1px; margin: 4px 6px; }
-.ctx-menu { position: fixed; z-index: 2000; min-width: 200px; max-width: 280px; max-height: calc(100vh - 16px); }
+.ctx-menu { position: fixed; z-index: 2000; min-width: 200px; max-width: 280px; max-height: calc(calc(100 * var(--lc-vh)) - 16px); }
 .ctx-menu .lc-menu-item { width: 100%; gap: 10px; border: 0; background: none; text-align: left; }
 .ctx-menu .lc-menu-item .lc-ic { color: var(--text-3); }
 .ctx-menu .lc-menu-item:hover .lc-ic { color: var(--cyan); }
@@ -4190,7 +4365,7 @@ onBeforeUnmount(() => {
 .ctx-kit-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 两列排布：节点类型有十几种，一列一屏放不下。
    固定宽度是必要的 —— 不定宽的话「改尺寸 / 压缩」这种长标签会把整个菜单撑开。 */
-.ed-menu { position: fixed; z-index: 2000; width: 344px; max-width: calc(100vw - 16px); }
+.ed-menu { position: fixed; z-index: 2000; width: 344px; max-width: calc(calc(100 * var(--lc-vw)) - 16px); }
 .ed-menu-title { font: 600 13px/1.4 var(--f-disp); color: var(--text); padding: 6px 8px 0; }
 
 /* ---------- 节点搜索 ---------- */
@@ -4256,7 +4431,7 @@ onBeforeUnmount(() => {
   .ed-hint, .ed.insp-open .ed-hint { top: 108px; left: 8px; right: 8px; max-width: none; }
   .ed.has-hint .ed-title, .ed.has-hint.insp-open .ed-title { max-width: calc(100% - 16px); }
   .ed.sheet-open .ed-scrim { display: block; position: absolute; inset: 0; z-index: 40; background: var(--scrim); }
-  .ed-menu:not(.ed-more) { max-height: calc(100vh - 80px) !important; }
+  .ed-menu:not(.ed-more) { max-height: calc(calc(100 * var(--lc-vh)) - 80px) !important; }
 }
 /* 手机宽度（和上面同一个断点，类名由脚本按 matchMedia 加）：工具面板是标题块下面固定的一横条，
    不能拖，放不下就在自己里面横向滚动 */

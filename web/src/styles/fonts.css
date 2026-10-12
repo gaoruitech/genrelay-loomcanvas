@@ -1,0 +1,20 @@
+/* lc-scope: off */
+/* 自托管字体。@font-face 没有作用域，字体名是整个文档共用的，所以单独一个文件：
+   独立应用（main.ts）直接引；嵌入用的包把它单独打成 fonts.css，引不引、字体文件放哪儿由集成方定。 */
+/* 自托管字体（生产 CSP 是 font-src 'self'，不能用外链）。只带拉丁子集，中文落到系统字体。
+   三款都是 SIL Open Font License 1.1，文件来自 @fontsource-variable/*。 */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal; font-display: swap; font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Sora Variable';
+  font-style: normal; font-display: swap; font-weight: 100 800;
+  src: url('@fontsource-variable/sora/files/sora-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal; font-display: swap; font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+}

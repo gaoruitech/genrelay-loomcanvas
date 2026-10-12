@@ -37,7 +37,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import LcIcon from '@/components/LcIcon.vue'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { isoDate } from './historyFormat'

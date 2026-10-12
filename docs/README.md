@@ -27,6 +27,7 @@
 | Page | What it covers |
 | --- | --- |
 | [Development](development.md) | Repository layout, dev setup, scripts, adding nodes, strings and migrations, conventions. |
+| [Integration](integration.md) | Building LoomCanvas into your own product: mounting the whole app in a host page, or only the canvas editor behind an adapter you supply. Options, events, the document format, style isolation, authentication patterns, compatibility, licensing. Examples in [`examples/`](../examples/README.md). |
 | [Writing a provider](writing-a-provider.md) | The vendor module interface and the catalog file format, with a worked example and tests. |
 | [Billing hook](billing-hook.md) | Metering or limiting runs with your own module. |
 | [HTTP API](api.md) | Endpoint reference. |

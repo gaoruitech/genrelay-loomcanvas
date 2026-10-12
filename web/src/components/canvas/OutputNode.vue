@@ -35,7 +35,7 @@
         <img v-if="it.type === 'image'" :src="canvasImageThumb(it.url, 160)" alt="" />
         <template v-else>
           <img v-if="canvasVideoPoster(it.url, 240)" :src="canvasVideoPoster(it.url, 240)" alt="" />
-          <video v-else :src="it.url" muted preload="metadata" />
+          <video v-else :src="$src(it.url)" muted preload="metadata" />
           <span class="cv-cell-play">
             <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
           </span>
@@ -73,7 +73,7 @@
     </div>
 
     <!-- 查看更多：素材库式网格弹窗 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="galleryOpen" class="lc-mask lc-sheet cv-gal-mask" @click.self="galleryOpen = false" @mousedown.self.stop @wheel.stop>
         <div class="lc-dialog cv-gal-box">
           <div class="lc-dialog-head">
@@ -90,7 +90,7 @@
               <img v-if="it.type === 'image'" :src="canvasImageThumb(it.url, 240)" alt="" loading="lazy" />
               <template v-else>
                 <img v-if="canvasVideoPoster(it.url, 320)" :src="canvasVideoPoster(it.url, 320)" alt="" loading="lazy" />
-                <video v-else :src="it.url" muted preload="metadata" />
+                <video v-else :src="$src(it.url)" muted preload="metadata" />
                 <span class="cv-cell-play">
                   <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
                 </span>

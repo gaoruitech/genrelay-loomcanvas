@@ -1,5 +1,5 @@
 <template>
-  <component :is="to ? 'router-link' : 'span'" :to="to" class="lc-logo">
+  <component :is="linked ? 'router-link' : 'span'" :to="linked ? to : undefined" class="lc-logo">
     <img v-if="app.logoUrl" :src="app.logoUrl" class="lc-logo-img" alt="" />
     <svg v-else class="lc-logo-mark" viewBox="0 0 32 32" aria-hidden="true">
       <defs>
@@ -17,10 +17,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useEmbed } from '@/embed/context'
+import { isPageAllowed, pageOfRoute } from '@/embed/options'
 
-defineProps<{ to?: string; markOnly?: boolean }>()
+const props = defineProps<{ to?: string; markOnly?: boolean }>()
 const app = useAppStore()
+const router = useRouter()
+const embed = useEmbed()
+// 集成方只开放了一部分页面、Logo 指向的那一页不在里面：照样显示，只是不能点
+const linked = computed(() => !!props.to && (!embed.pages || isPageAllowed(embed.pages, pageOfRoute(router.resolve(props.to).name))))
 // 同一页可能出现两个 Logo（落地页的导航和页脚），渐变 id 不能撞
 const gid = 'lcg' + Math.random().toString(36).slice(2, 8)
 </script>

@@ -1,16 +1,16 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div v-if="open" class="ml-mask" @click.self="emit('close')" @mousedown.self.stop @wheel.stop>
       <button class="ml-close" :title="t('common.close')" @click="emit('close')"><LcIcon name="x" /></button>
       <video
         v-if="type === 'video'"
-        :src="url"
+        :src="$src(url)"
         class="ml-media"
         controls
         autoplay
         playsinline
       />
-      <img v-else :src="url" class="ml-media" alt="" />
+      <img v-else :src="$src(url)" class="ml-media" alt="" />
     </div>
   </Teleport>
 </template>

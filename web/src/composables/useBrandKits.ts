@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { brandKitApi } from '@/utils/api'
+import { brandKitApi } from '@/utils/canvasBackend'
 import { t } from '@/locales'
 
 /**

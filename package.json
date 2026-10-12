@@ -12,11 +12,13 @@
     "start": "npm --prefix server start",
     "typecheck": "npm --prefix web run typecheck",
     "test": "npm --prefix server test",
+    "test:web": "npm --prefix web test",
     "build": "npm --prefix web run build",
+    "build:lib": "npm --prefix web run build:lib",
     "i18n:check": "npm --prefix web run i18n:check",
     "versions:check": "node scripts/check-versions.mjs",
     "licenses:check": "node scripts/licenses.mjs",
     "licenses:write": "node scripts/licenses.mjs --write",
-    "check": "npm run versions:check && npm run licenses:check && npm run i18n:check && npm run test && npm run build"
+    "check": "npm run versions:check && npm run licenses:check && npm run i18n:check && npm run test && npm run test:web && npm run build"
   }
 }

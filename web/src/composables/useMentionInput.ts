@@ -1,3 +1,4 @@
+import { frameOf } from '@/utils/frame'
 import { reactive } from 'vue'
 import {
   activeMentionQuery, insertMention, type ImageRef,
@@ -41,8 +42,10 @@ export function useMentionInput(opts: {
 
   function place(target: HTMLTextAreaElement) {
     const r = target.getBoundingClientRect()
-    picker.x = r.left
-    picker.y = r.bottom + 4
+    // 候选列表是 fixed 的：坐标相对「画框」（utils/frame.ts）
+    const fr = frameOf(target)
+    picker.x = r.left - fr.x
+    picker.y = r.bottom - fr.y + 4
     picker.width = Math.max(200, r.width)
   }
 

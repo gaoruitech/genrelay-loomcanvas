@@ -1,12 +1,17 @@
 /* 全局基础样式 + 整站共用的一套件（按钮、输入、开关、标签、状态点、进度环、卡片、弹层、表格）。
    取值全部来自 design-tokens.css；页面自己的 scoped 样式只管布局，不要再造一套按钮 / 输入框。 */
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* 作用域：这里（以及全站所有样式表）的每条规则，构建时都会被限制在 .lc-root 之内
+   （vite.config.ts 里的 scopeToRoot 插件：不含 .lc-root 的选择器前面加 :where(.lc-root)，权重不变）。
+   独立应用里 .lc-root 就是 <html>；嵌进别人的页面时是挂载点里的那个根元素，宿主页面的元素一条也匹配不到。
+   下面几条重置用了 :not(lc-0):not(lc-0)：lc-0 是个不存在的标签名，这样写不改变匹配范围，
+   只是把权重从 0,0,0 / 0,0,1 抬到 0,0,2 —— 高过宿主页面里按标签写的规则（星号、button、a 之类），
+   又仍然低于本产品任何一个带类名的选择器，所以站内的层叠关系和原来一样。 */
+*:not(lc-0):not(lc-0) { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, #app { height: 100%; width: 100%; }
-html { -webkit-text-size-adjust: 100%; }
-
-body {
+.lc-root {
+  /* 视口单位都经这三个量：嵌入时换成根元素的尺寸（见下面的 .lc-embedded） */
+  --lc-vh: 1vh; --lc-vw: 1vw; --lc-dvh: 1vh;
   color: var(--text);
   font: 14px/1.6 var(--f-body);
   overflow: hidden;
@@ -21,11 +26,35 @@ body {
   background-size: 40px 40px, 40px 40px, auto, auto, auto;
   background-attachment: fixed;
 }
+@supports (height: 1dvh) { .lc-root { --lc-dvh: 1dvh; } }
 
-button, input, textarea, select { font: inherit; color: inherit; }
-button { cursor: pointer; }
-a { color: var(--cyan-soft); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* ---------- 嵌进别人的页面（embed/mount.ts 建的根元素） ----------
+   根元素铺满挂载点，自己是一个尺寸容器：
+     - contain: layout 让它成为里面所有 position: fixed 元素的包含块 —— 弹窗、菜单、灯箱、轻提示
+       都相对它定位、跟着它滚动，画不到它外面去；container-type: size 让它成为 cqw / cqh 的基准，上面三个量换成它的尺寸；
+       库构建还会给每个 @media (max-width) 配一条按这个容器宽度判断的 @container lc-root（build/scope-to-root.mjs），
+       所以挂在一块窄地方时出的是窄屏布局，不看浏览器窗口有多宽；
+     - isolation: isolate 把站内的 z-index（最高到一万）关在里面，不和宿主页面的层级打架；
+     - 会从宿主继承下来的文字属性在这里统一归位。 */
+.lc-root.lc-embedded {
+  --lc-vh: 1cqh; --lc-vw: 1cqw; --lc-dvh: 1cqh;
+  position: relative; display: block; box-sizing: border-box;
+  width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0;
+  container-type: size; container-name: lc-root; contain: layout style; isolation: isolate;
+  text-align: start; text-indent: 0; text-transform: none; text-shadow: none; white-space: normal;
+  letter-spacing: normal; word-spacing: normal; word-break: normal; overflow-wrap: normal;
+  font-style: normal; font-weight: 400; font-variant: normal; font-stretch: normal; font-size-adjust: none;
+  direction: ltr; cursor: auto; visibility: visible; tab-size: 8; list-style: none;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+.lc-root.lc-embedded > .lc-app { width: 100%; height: 100%; }
+/* Teleport 和 TDesign 弹层的去处：不占地方、不建层叠上下文，里面的东西各按各的 z-index 排 */
+.lc-root.lc-embedded > .lc-portal { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+
+button:not(lc-0), input:not(lc-0), textarea:not(lc-0), select:not(lc-0) { font: inherit; color: inherit; }
+button:not(lc-0) { cursor: pointer; }
+a:not(lc-0) { color: var(--cyan-soft); text-decoration: none; }
+a:not(lc-0):hover { text-decoration: underline; }
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 ::selection { background: rgb(var(--c-cyan) / .32); color: var(--text); }
 
@@ -42,8 +71,7 @@ a:hover { text-decoration: underline; }
 /* 换主题时的交叉淡入（composables/useTheme.ts）。
    浏览器支持 View Transitions：整页旧画面淡出、新画面淡入，渐变和阴影也一起过渡；
    不支持的：<html> 上临时挂 .theme-fade，颜色类的属性过渡一下。系统开了「减少动态效果」时两条路都不走。 */
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: ease; }
-html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
+.lc-root.theme-fade, .lc-root.theme-fade *, .lc-root.theme-fade *::before, .lc-root.theme-fade *::after {
   transition: background-color .22s ease, color .22s ease, border-color .22s ease, fill .22s ease, stroke .22s ease, box-shadow .22s ease !important;
 }
 
@@ -338,7 +366,7 @@ html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .lc-dialog {
-  width: 520px; max-width: 100%; max-height: calc(100vh - 40px);
+  width: 520px; max-width: 100%; max-height: calc(calc(100 * var(--lc-vh)) - 40px);
   display: flex; flex-direction: column;
   background: var(--grad-dialog); border: 1px solid var(--line-2); border-radius: var(--r-lg);
   box-shadow: var(--sh-2);
@@ -360,7 +388,7 @@ html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *
 @media (max-width: 600px) {
   .lc-mask.lc-sheet { padding: 0; align-items: flex-end; }
   .lc-mask.lc-sheet > .lc-dialog {
-    width: 100%; max-width: 100%; max-height: 92vh; max-height: 92dvh;
+    width: 100%; max-width: 100%; max-height: calc(92 * var(--lc-vh)); max-height: calc(92 * var(--lc-dvh));
     border-radius: var(--r-lg) var(--r-lg) 0 0; border-bottom: 0;
   }
 }
@@ -381,7 +409,7 @@ html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *
    <html> 上的 theme-mode 跟着 data-theme 一起写（theme-boot.js / useTheme.ts）：TDesign 用它自己那一套
    深色 / 浅色令牌打底，这里再把用得到的颜色接到我们的令牌上，所以下面这一段两套主题共用、不用写两遍。
    选择器带 html：按需加载的组件样式各自带一份令牌定义，排在本文件之后，同级的话后来的赢。 */
-html:root, html:root[theme-mode='dark'], html:root[theme-mode='light'] {
+.lc-root.lc-root, .lc-root.lc-root[theme-mode='dark'], .lc-root.lc-root[theme-mode='light'] {
   --td-brand-color: var(--brand);
   --td-brand-color-hover: var(--brand-hover);
   --td-brand-color-active: var(--brand-active);
@@ -423,27 +451,27 @@ html:root, html:root[theme-mode='dark'], html:root[theme-mode='light'] {
   --td-radius-extraLarge: 18px;
   --td-font-family: var(--f-body);
 }
-html .t-dialog {
+.lc-root .t-dialog {
   background: var(--grad-dialog); border: 1px solid var(--line-2);
   border-radius: var(--r-lg); box-shadow: var(--sh-2); color: var(--text-2);
 }
-html .t-dialog__header { font-family: var(--f-disp); color: var(--text); }
-html .t-dialog__body { color: var(--text-2); line-height: 1.7; }
-html .t-dialog__mask { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-html .t-button { border-radius: var(--r-sm); font-weight: 500; }
-html .t-button--variant-base.t-button--theme-primary {
+.lc-root .t-dialog__header { font-family: var(--f-disp); color: var(--text); }
+.lc-root .t-dialog__body { color: var(--text-2); line-height: 1.7; }
+.lc-root .t-dialog__mask { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.lc-root .t-button { border-radius: var(--r-sm); font-weight: 500; }
+.lc-root .t-button--variant-base.t-button--theme-primary {
   border-color: transparent; background: var(--grad-btn); color: var(--text-inv); font-weight: 600;
   box-shadow: 0 0 0 1px rgb(var(--c-btn-edge) / .5) inset;
 }
-html .t-button--variant-base.t-button--theme-primary:hover { background: var(--grad-btn-hover); }
-html .t-button--variant-base.t-button--theme-danger { border-color: transparent; background: var(--err); color: var(--text-inv); font-weight: 600; }
-html .t-button--variant-base.t-button--theme-default,
-html .t-button--variant-outline.t-button--theme-default {
+.lc-root .t-button--variant-base.t-button--theme-primary:hover { background: var(--grad-btn-hover); }
+.lc-root .t-button--variant-base.t-button--theme-danger { border-color: transparent; background: var(--err); color: var(--text-inv); font-weight: 600; }
+.lc-root .t-button--variant-base.t-button--theme-default,
+.lc-root .t-button--variant-outline.t-button--theme-default {
   background: rgb(var(--c-film) / .06); border-color: var(--line-2); color: var(--text);
 }
-html .t-button--variant-base.t-button--theme-default:hover,
-html .t-button--variant-outline.t-button--theme-default:hover { background: rgb(var(--c-film) / .14); border-color: var(--line-3); color: var(--text); }
-html .t-message {
+.lc-root .t-button--variant-base.t-button--theme-default:hover,
+.lc-root .t-button--variant-outline.t-button--theme-default:hover { background: rgb(var(--c-film) / .14); border-color: var(--line-3); color: var(--text); }
+.lc-root .t-message {
   background: var(--toast-bg); color: var(--text); border: 1px solid var(--line-2);
   border-radius: 12px; box-shadow: var(--sh-1);
 }
@@ -468,7 +496,7 @@ html .t-message {
 .lc-date-popup .t-date-picker__cell--active .t-date-picker__cell-inner { color: var(--text-inv); background: var(--grad-btn); }
 @media (max-width: 600px) {
   .lc-date-popup .t-date-range-picker__panel-content-wrapper { flex-direction: column; }
-  .lc-date-popup .t-popup__content { max-height: 56vh; overflow-y: auto; }
+  .lc-date-popup .t-popup__content { max-height: calc(56 * var(--lc-vh)); overflow-y: auto; }
 }
 
 /* 重跑确认（composables/useRerunConfirm）：弹窗挂在 body 上，样式只能写在全局 */

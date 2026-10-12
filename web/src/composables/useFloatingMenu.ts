@@ -1,3 +1,4 @@
+import { frameOf } from '@/utils/frame'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type CSSProperties, type Ref } from 'vue'
 
 /**
@@ -50,9 +51,12 @@ export function useFloatingMenu(opts: FloatingMenuOptions) {
   function updatePosition() {
     const b = opts.trigger.value
     if (!b) return
-    const rect = b.getBoundingClientRect()
-    const vw = window.innerWidth
-    const vh = window.innerHeight
+    // 菜单是 fixed 的：坐标要相对「画框」（独立应用里是视口，嵌入时是本产品的根元素，见 utils/frame.ts）
+    const fr = frameOf(b)
+    const raw = b.getBoundingClientRect()
+    const rect = { top: raw.top - fr.y, bottom: raw.bottom - fr.y, left: raw.left - fr.x, right: raw.right - fr.x, width: raw.width }
+    const vw = fr.w
+    const vh = fr.h
     // 默认放在按钮下方
     let top = rect.bottom + gap
     let left = rect.left

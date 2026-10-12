@@ -42,6 +42,7 @@
 </template>
 
 <script setup lang="ts">
+import { lcLocal } from '@/utils/storage'
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
@@ -58,8 +59,8 @@ const open = computed({
 
 const CARD_KEY = 'canvas_guide_card_dismissed'
 const cardDismissed = ref(readFlag(CARD_KEY))
-function readFlag(k: string) { try { return localStorage.getItem(k) === '1' } catch { return false } }
-function writeFlag(k: string) { try { localStorage.setItem(k, '1') } catch { /* ignore */ } }
+function readFlag(k: string) { try { return lcLocal.getItem(k) === '1' } catch { return false } }
+function writeFlag(k: string) { try { lcLocal.setItem(k, '1') } catch { /* ignore */ } }
 
 const showCard = computed(() => !!props.empty && !cardDismissed.value && !open.value)
 

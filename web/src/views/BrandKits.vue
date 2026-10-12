@@ -97,7 +97,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import LcIcon from '@/components/LcIcon.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
 import AssetsTabs from '@/components/AssetsTabs.vue'

@@ -35,7 +35,7 @@
 /** 给画布起名的小弹窗：新建和重命名共用。名字为空时自己提示，不往外抛 */
 import { ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import LcIcon from '@/components/LcIcon.vue'
 
 const props = defineProps<{

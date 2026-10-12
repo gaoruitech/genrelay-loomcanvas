@@ -79,7 +79,7 @@
     />
 
     <!-- 放大编辑：脱离面板居中，和原位那个框是同一段提示词 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="expanded" class="gf-expand nodrag nowheel" role="dialog" aria-modal="true" :aria-label="g.promptLabel" data-testid="gen-expand-editor" @click.stop @mousedown.stop @wheel.stop>
         <div class="gf-expand-h">
           <span>{{ g.title }} · {{ g.promptLabel }}</span>

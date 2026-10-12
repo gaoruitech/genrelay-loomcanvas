@@ -1,5 +1,5 @@
 import { ref, computed, nextTick, type Ref } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { t } from '@/locales'
 import { sumCosts } from '@/utils/cost'
 import type { Cost } from '@/types'

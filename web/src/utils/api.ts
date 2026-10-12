@@ -1,23 +1,65 @@
-import axios from 'axios'
+import axios, { type AxiosInstance } from 'axios'
 import type { ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest, LlmTask, Vendor, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings, UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult, User, AdminUser, AuthSession, SiteSettings, RunStatus, UserPrefs } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
 import { localizeTemplates } from '@/utils/builtinContent'
 import { currentLocale } from '@/locales'
+import { runtime } from '@/embed/runtime'
+import type { GetAuth } from '@/embed/types'
 
 export type { ApiResponse } from '@/types'
 
-const api = axios.create({
-  baseURL: '/api',
-  timeout: 320000,
-})
+export interface HttpClientOptions {
+  /** 接口的根地址，每次请求时现取（集成方可以在挂载时改） */
+  apiBase: () => string
+  /** 宿主自己的认证：每次请求时取一组请求头。给了就不再带本产品自己的登录令牌 */
+  getAuth?: () => GetAuth | null
+  /** 没有 getAuth 时带的登录令牌 */
+  getToken?: () => string
+  locale?: () => string
+  timeoutMs?: number
+  /** 401（登录、注册接口自己的不算） */
+  onUnauthorized?: () => void
+  /** 403 auth.password_change_required */
+  onPasswordChangeRequired?: () => void
+}
 
-api.interceptors.request.use((config) => {
-  const token = getToken()
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  // 后端按这个语言给出 message 和运行失败原因（见 docs/architecture.md 第 10 节）
-  config.headers['X-Locale'] = currentLocale()
-  return config
-})
+/**
+ * 建一个 axios 实例：根地址、认证头、语言头都在每次请求时现取。
+ * 独立应用和整站嵌入共用下面那一个；createHttpAdapter 给每个适配器各建一个。
+ */
+export function createHttpClient(opts: HttpClientOptions): AxiosInstance {
+  const http = axios.create({ timeout: opts.timeoutMs ?? 320000 })
+  http.interceptors.request.use(async (config) => {
+    config.baseURL = opts.apiBase()
+    const getAuth = opts.getAuth?.()
+    if (getAuth) {
+      const headers = await getAuth()
+      for (const [k, v] of Object.entries(headers || {})) if (v != null && v !== '') config.headers[k] = String(v)
+    } else {
+      const token = opts.getToken?.()
+      if (token) config.headers.Authorization = `Bearer ${token}`
+    }
+    // 后端按这个语言给出 message 和运行失败原因（见 docs/architecture.md 第 10 节）
+    config.headers['X-Locale'] = (opts.locale || currentLocale)()
+    return config
+  })
+  http.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      // 任何接口回 403 auth.password_change_required：这个账号得先换掉临时密码（比如开着页面时被超级管理员重置了）
+      if (error.response?.status === 403 && error.response?.data?.code === 'auth.password_change_required') {
+        opts.onPasswordChangeRequired?.()
+      }
+      // 登录接口自己的 401（账号或密码不对）不算「登录失效」
+      const url = String(error.config?.url || '')
+      if (error.response?.status === 401 && !url.startsWith('/auth/login') && !url.startsWith('/auth/register')) {
+        opts.onUnauthorized?.()
+      }
+      return Promise.reject(error)
+    }
+  )
+  return http
+}
 
 /** 登录失效时的回调，由 stores/app 注册 —— api 层不反向依赖 store */
 let onUnauthorized: (() => void) | null = null
@@ -31,22 +73,24 @@ export function setPasswordChangeHandler(fn: () => void) {
   onPasswordChangeRequired = fn
 }
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 任何接口回 403 auth.password_change_required：这个账号得先换掉临时密码（比如开着页面时被超级管理员重置了）
-    if (error.response?.status === 403 && error.response?.data?.code === 'auth.password_change_required') {
-      onPasswordChangeRequired?.()
+let lastAuthRequired = 0
+const api = createHttpClient({
+  apiBase: () => runtime.apiBase,
+  getAuth: () => runtime.getAuth,
+  getToken,
+  onUnauthorized: () => {
+    // 宿主管登录：没有本产品的令牌可清，交给宿主（onAuthRequired）
+    // （一页同时发出去的几个请求会一起 401：一秒之内只说一次）
+    if (runtime.getAuth) {
+      const now = Date.now()
+      if (now - lastAuthRequired > 1000) { lastAuthRequired = now; runtime.onAuthRequired?.() }
+      return
     }
-    // 登录接口自己的 401（账号或密码不对）不算「登录失效」
-    const url = String(error.config?.url || '')
-    if (error.response?.status === 401 && !url.startsWith('/auth/login') && !url.startsWith('/auth/register')) {
-      clearToken()
-      onUnauthorized?.()
-    }
-    return Promise.reject(error)
-  }
-)
+    clearToken()
+    onUnauthorized?.()
+  },
+  onPasswordChangeRequired: () => onPasswordChangeRequired?.(),
+})
 
 export default api
 
@@ -74,16 +118,16 @@ export function apiErrorData(err: any): Record<string, any> {
 
 // ====================== 基础 ======================
 
-export const appApi = {
+const makeAppApi = (api: AxiosInstance) => ({
   bootstrap: () => api.get<ApiResponse<BootstrapInfo>>('/bootstrap'),
-}
+})
 
 /** 浏览器所在的时区（IANA 名字，如 Asia/Shanghai）；取不到就不带，后端按 UTC 算 */
 export function browserTimeZone(): string | undefined {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined } catch { return undefined }
 }
 
-export const authApi = {
+const makeAuthApi = (api: AxiosInstance) => ({
   register: (data: { username: string; email: string; password: string }) =>
     api.post<ApiResponse<{ user: User; token: string }>>('/auth/register', data),
   login: (data: { account: string; password: string; remember: boolean }) =>
@@ -102,10 +146,10 @@ export const authApi = {
   revokeSession: (id: string) => api.delete<ApiResponse>(`/auth/sessions/${encodeURIComponent(id)}`),
   /** 退出除当前这个以外的全部会话 */
   revokeOtherSessions: () => api.delete<ApiResponse>('/auth/sessions'),
-}
+})
 
 /** 只有超级管理员能调（其他人 403 auth.forbidden） */
-export const ownerApi = {
+const makeOwnerApi = (api: AxiosInstance) => ({
   users: () => api.get<ApiResponse<AdminUser[]>>('/admin/users'),
   setUserDisabled: (id: string, disabled: boolean) =>
     api.patch<ApiResponse<AdminUser>>(`/admin/users/${encodeURIComponent(id)}`, { disabled }),
@@ -116,9 +160,9 @@ export const ownerApi = {
     api.post<ApiResponse<{ temporaryPassword: string }>>(`/admin/users/${encodeURIComponent(id)}/reset-password`),
   site: () => api.get<ApiResponse<SiteSettings>>('/admin/site'),
   updateSite: (data: SiteSettings) => api.put<ApiResponse<SiteSettings>>('/admin/site', data),
-}
+})
 
-export const filesApi = {
+const makeFilesApi = (api: AxiosInstance) => ({
   /** onProgress 给了就回报真实上传进度（0-100）；视频动辄上百 MB，没有进度会以为卡死了 */
   upload: (file: File | Blob, onProgress?: (pct: number) => void, filename?: string) => {
     const fd = new FormData()
@@ -133,14 +177,14 @@ export const filesApi = {
   },
   /** 让后端抓取远程地址并转存，返回站内地址 */
   fetch: (url: string) => api.post<ApiResponse<UploadedFile>>('/files/fetch', { url }),
-}
+})
 
 // ====================== 模型与运行 ======================
 
-export const modelsApi = {
+const makeModelsApi = (api: AxiosInstance) => ({
   list: (kind?: ModelKind) =>
     api.get<ApiResponse<ModelSpec[]>>('/models', { params: kind ? { kind } : undefined }),
-}
+})
 
 export interface EstimateRequest {
   model: string
@@ -148,13 +192,13 @@ export interface EstimateRequest {
   count?: number
 }
 
-export const runsApi = {
+const makeRunsApi = (api: AxiosInstance) => ({
   estimate: (data: EstimateRequest) => api.post<ApiResponse<CostEstimate>>('/runs/estimate', data),
   create: (data: RunRequest) => api.post<ApiResponse<{ runId: string }>>('/runs', data),
   get: (id: string) => api.get<ApiResponse<Run>>(`/runs/${encodeURIComponent(id)}`),
   status: (ids: string[]) => api.post<ApiResponse<Run[]>>('/runs/status', { ids }),
   cancel: (id: string) => api.post<ApiResponse>(`/runs/${encodeURIComponent(id)}/cancel`),
-}
+})
 
 export interface LlmTaskRequest {
   model: string
@@ -164,14 +208,14 @@ export interface LlmTaskRequest {
   videoUrl?: string
 }
 
-export const llmApi = {
+const makeLlmApi = (api: AxiosInstance) => ({
   create: (data: LlmTaskRequest) => api.post<ApiResponse<{ taskId: string }>>('/llm/tasks', data),
   get: (id: string) => api.get<ApiResponse<LlmTask>>(`/llm/tasks/${encodeURIComponent(id)}`),
-}
+})
 
 // ====================== 管理（设置页） ======================
 
-export const adminApi = {
+const makeAdminApi = (api: AxiosInstance) => ({
   vendors: () => api.get<ApiResponse<Vendor[]>>('/admin/vendors'),
   providers: () => api.get<ApiResponse<ProviderInstance[]>>('/admin/providers'),
   createProvider: (data: Record<string, any>) =>
@@ -232,7 +276,7 @@ export const adminApi = {
    */
   clearUsageRecords: (before: string) =>
     api.delete<ApiResponse<{ deleted: number }>>('/admin/usage/records', { params: { before, tz: browserTimeZone() } }),
-}
+})
 
 // ====================== 画布 ======================
 
@@ -257,7 +301,7 @@ export interface WorkflowDetail extends WorkflowSummary {
   brandKitId?: string
 }
 
-export const workflowApi = {
+const makeWorkflowApi = (api: AxiosInstance) => ({
   list: () =>
     api.get<ApiResponse<WorkflowSummary[]>>('/workflow/list'),
 
@@ -288,7 +332,7 @@ export const workflowApi = {
 
   remove: (id: string) =>
     api.delete<ApiResponse<{ id: string }>>(`/workflow/${id}`),
-}
+})
 
 // 分享链接
 export interface CanvasShareSummary {
@@ -315,7 +359,7 @@ export interface CanvasShareDetail extends CanvasShareSummary {
   settings?: Record<string, any>
 }
 
-export const canvasShareApi = {
+const makeCanvasShareApi = (api: AxiosInstance) => ({
   /** 只读读取，不需要登录 */
   detail: (token: string) =>
     api.get<ApiResponse<CanvasShareDetail>>(`/canvas-share/${encodeURIComponent(token)}`),
@@ -335,7 +379,7 @@ export const canvasShareApi = {
   /** 撤销分享链接 */
   remove: (id: string) =>
     api.delete<ApiResponse<{ id: string }>>(`/canvas-share/${encodeURIComponent(id)}`),
-}
+})
 
 // 素材库
 export interface CanvasAssetCategory {
@@ -357,7 +401,7 @@ export interface CanvasAssetItem {
   aspectRatio: string
 }
 
-export const canvasAssetApi = {
+const makeCanvasAssetApi = (api: AxiosInstance) => ({
   categories: () =>
     api.get<ApiResponse<CanvasAssetCategory[]>>('/canvas-asset/categories'),
 
@@ -365,35 +409,35 @@ export const canvasAssetApi = {
     api.get<ApiResponse<{ list: CanvasAssetItem[]; total: number; page: number; pageSize: number }>>(
       '/canvas-asset/list', { params }
     ),
-}
+})
 
 // 「我的资产」库
-export const userAssetApi = {
+const makeUserAssetApi = (api: AxiosInstance) => ({
   list: (params: any) => api.get<ApiResponse>('/user-asset/list', { params }),
   create: (data: any) => api.post<ApiResponse>('/user-asset', data),
   registerOutput: (data: any) => api.post<ApiResponse>('/user-asset/register-output', data),
   update: (id: string, data: any) => api.put<ApiResponse>(`/user-asset/${id}`, data),
   remove: (id: string) => api.delete<ApiResponse>(`/user-asset/${id}`),
   deleteFolder: (data: any) => api.post<ApiResponse>('/user-asset/folder/delete', data),
-}
+})
 
-export const canvasTemplateApi = {
+const makeCanvasTemplateApi = (api: AxiosInstance) => ({
   /** 内置模板的标题 / 说明 / 预填提示词换成当前界面语言的写法（见 utils/builtinContent） */
   list: async () => {
     const res = await api.get<ApiResponse>('/canvas/templates')
     if (Array.isArray(res.data?.data)) res.data.data = localizeTemplates(res.data.data)
     return res
   },
-}
+})
 
 // 多平台导出：本机像素处理（尺寸/白底净化/纯白检测），不调模型
-export const platformExportApi = {
+const makePlatformExportApi = (api: AxiosInstance) => ({
   run: (imageUrl: string, group: 'domestic' | 'overseas') =>
     api.post<ApiResponse>('/canvas/platform-export', { imageUrl, group }),
-}
+})
 
 // 画布工具节点：切片 / 拼图 / 水印 / 改尺寸。全是本机处理，不调模型
-export const canvasToolApi = {
+const makeCanvasToolApi = (api: AxiosInstance) => ({
   slice: (imageUrl: string, cols: number, rows: number) =>
     api.post<ApiResponse>('/canvas/tool/slice', { imageUrl, cols, rows }),
   collage: (imageUrls: string[], opts: Record<string, any>) =>
@@ -402,18 +446,50 @@ export const canvasToolApi = {
     api.post<ApiResponse>('/canvas/tool/watermark', { imageUrl, markUrl, ...opts }),
   fit: (imageUrl: string, opts: Record<string, any>) =>
     api.post<ApiResponse>('/canvas/tool/fit', { imageUrl, ...opts }),
-}
+})
 
 // 品牌包：一组可复用的出图设定，按画布选（见 composables/useBrandKits）
-export const brandKitApi = {
+const makeBrandKitApi = (api: AxiosInstance) => ({
   list: () => api.get<ApiResponse>('/brand-kits'),
   create: (data: any) => api.post<ApiResponse>('/brand-kits', data),
   update: (id: string, data: any) => api.put<ApiResponse>(`/brand-kits/${id}`, data),
   remove: (id: string) => api.delete<ApiResponse>(`/brand-kits/${id}`),
-}
+})
 
 // 文本素材（文本节点一键填入）。lang 默认 zh，可传 en 获取英文原版
-export const canvasTextTemplateApi = {
+const makeCanvasTextTemplateApi = (api: AxiosInstance) => ({
   list: (lang: 'zh' | 'en' = 'zh') =>
     api.get<ApiResponse>('/canvas/text-templates', { params: { lang } }),
+})
+
+
+/** 全部接口分组，绑在一个 axios 实例上。独立应用用下面那一份共享的；createHttpAdapter 给每个适配器各建一份。 */
+export function createApi(http: AxiosInstance) {
+  return {
+    appApi: makeAppApi(http),
+    authApi: makeAuthApi(http),
+    ownerApi: makeOwnerApi(http),
+    filesApi: makeFilesApi(http),
+    modelsApi: makeModelsApi(http),
+    runsApi: makeRunsApi(http),
+    llmApi: makeLlmApi(http),
+    adminApi: makeAdminApi(http),
+    workflowApi: makeWorkflowApi(http),
+    canvasShareApi: makeCanvasShareApi(http),
+    canvasAssetApi: makeCanvasAssetApi(http),
+    userAssetApi: makeUserAssetApi(http),
+    canvasTemplateApi: makeCanvasTemplateApi(http),
+    platformExportApi: makePlatformExportApi(http),
+    canvasToolApi: makeCanvasToolApi(http),
+    brandKitApi: makeBrandKitApi(http),
+    canvasTextTemplateApi: makeCanvasTextTemplateApi(http),
+  }
 }
+export type ApiGroups = ReturnType<typeof createApi>
+
+/** 独立应用和整站嵌入共用的那一份（绑在上面那个 axios 实例上） */
+export const sharedApi = createApi(api)
+
+export const {
+  appApi, authApi, ownerApi, filesApi, modelsApi, runsApi, llmApi, adminApi, workflowApi, canvasShareApi, canvasAssetApi, userAssetApi, canvasTemplateApi, platformExportApi, canvasToolApi, brandKitApi, canvasTextTemplateApi,
+} = sharedApi

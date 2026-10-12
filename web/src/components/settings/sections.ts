@@ -1,3 +1,4 @@
+import { currentEmbed } from '@/embed/context'
 /**
  * 设置页有哪些分区、怎么分组、谁能看到。路由守卫和设置页共用这一份；
  * 这里不引用分区组件，免得把设置页的代码拖进首屏。
@@ -39,7 +40,12 @@ const GROUPS: SettingsGroupDef[] = [
 ]
 
 export function settingsGroups(isOwner: boolean): SettingsGroupDef[] {
-  return GROUPS.filter(g => !g.owner || isOwner)
+  // 宿主自己管登录（嵌入时关了 features.account）：没有「账号与安全」这一分区
+  const account = currentEmbed().features.account
+  return GROUPS
+    .filter(g => !g.owner || isOwner)
+    .map(g => (account ? g : { ...g, items: g.items.filter(s => s.id !== 'account') }))
+    .filter(g => g.items.length)
 }
 
 /**

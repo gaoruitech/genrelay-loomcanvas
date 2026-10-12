@@ -407,8 +407,8 @@
   position: fixed;
   top: 50%;
   left: 50%;
-  width: min(800px, calc(100vw - 32px));
-  height: min(520px, calc(100vh - 32px));
+  width: min(800px, calc(calc(100 * var(--lc-vw)) - 32px));
+  height: min(520px, calc(calc(100 * var(--lc-vh)) - 32px));
   transform: translate(-50%, -50%);
   z-index: 10000;
   display: flex;

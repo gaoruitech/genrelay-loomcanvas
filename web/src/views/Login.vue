@@ -75,7 +75,7 @@
       <template v-else>{{ t('auth.login.closed') }}</template>
     </div>
 
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="forgotOpen" class="lc-mask" @mousedown.self="forgotOpen = false">
         <div class="lc-dialog forgot" role="dialog" aria-modal="true" aria-labelledby="forgot-title">
           <div class="lc-dialog-head">

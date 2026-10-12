@@ -1,3 +1,5 @@
+import { lcLocal, storageKey } from '@/utils/storage'
+import { runtime } from '@/embed/runtime'
 import { nextTick, readonly, ref } from 'vue'
 
 /**
@@ -29,7 +31,7 @@ export function normalizeTheme(v: unknown): ThemePref {
 /** 这台浏览器上记着的选择；没选过返回 null */
 export function savedTheme(): ThemePref | null {
   try {
-    const v = localStorage.getItem(KEY)
+    const v = lcLocal.getItem(KEY)
     return v === 'dark' || v === 'light' || v === 'system' ? v : null
   } catch { return null }
 }
@@ -40,10 +42,10 @@ export function savedTheme(): ThemePref | null {
  * 这样「刚在登录页选了浅色，一登录又变回深色」和「别人以前留在这台浏览器上的选择盖掉我账号上的」两种情况都不会发生。
  */
 export function themePending(): boolean {
-  try { return localStorage.getItem(PENDING_KEY) === '1' } catch { return false }
+  try { return lcLocal.getItem(PENDING_KEY) === '1' } catch { return false }
 }
 export function setThemePending(on: boolean) {
-  try { if (on) localStorage.setItem(PENDING_KEY, '1'); else localStorage.removeItem(PENDING_KEY) } catch { /* 存不上就算了 */ }
+  try { if (on) lcLocal.setItem(PENDING_KEY, '1'); else lcLocal.removeItem(PENDING_KEY) } catch { /* 存不上就算了 */ }
 }
 
 const media: MediaQueryList | null =
@@ -64,6 +66,11 @@ export const resolvedTheme = readonly(resolved)
 
 /** 把主题写到文档上。和 theme-boot.js 写的是同一组属性。 */
 function paint(theme: ThemeName) {
+  // 嵌进别人的页面：属性写在本产品自己的根元素上，<html> 和 <meta> 是宿主的，不碰
+  if (runtime.embedded) {
+    for (const el of runtime.roots) paintRoot(el, theme)
+    return
+  }
   const root = document.documentElement
   root.setAttribute('data-theme', theme)
   root.setAttribute('theme-mode', theme)
@@ -71,6 +78,12 @@ function paint(theme: ThemeName) {
   // 地址栏 / 状态栏的颜色跟页面底色走：直接读令牌，不在这里再写一份色值
   const bg = getComputedStyle(root).getPropertyValue('--bg-0').trim()
   if (bg) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg)
+}
+
+/** 给一个挂载根上色（嵌入时新挂上来的根用它对齐当前主题） */
+export function paintRoot(el: HTMLElement, theme: ThemeName = resolved.value) {
+  el.setAttribute('data-theme', theme)
+  el.setAttribute('theme-mode', theme)
 }
 
 const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -90,14 +103,15 @@ function show(theme: ThemeName, animate: boolean) {
   const apply = () => { paint(wanted); resolved.value = wanted }
   if (!animate || reducedMotion() || document.visibilityState !== 'visible') { apply(); return }
   const doc = document as Document & { startViewTransition?: (cb: () => unknown) => unknown }
-  if (typeof doc.startViewTransition === 'function') {
+  // View Transitions 是整个文档的：嵌入时会让宿主页面跟着闪一下，只走下面那条
+  if (!runtime.embedded && typeof doc.startViewTransition === 'function') {
     // 回调返回的 Promise 结束之后浏览器才截「新画面」：等 Vue 把跟着主题变的东西（小地图的颜色等）也画完
     try { doc.startViewTransition(() => { apply(); return nextTick() }); return } catch { /* 落到下面 */ }
   }
-  const root = document.documentElement
-  root.classList.add('theme-fade')
+  const targets = runtime.embedded ? [...runtime.roots] : [document.documentElement]
+  for (const el of targets) el.classList.add('theme-fade')
   apply()
-  window.setTimeout(() => root.classList.remove('theme-fade'), 260)
+  window.setTimeout(() => { for (const el of targets) el.classList.remove('theme-fade') }, 260)
 }
 
 export interface SetThemeOptions {
@@ -111,13 +125,30 @@ export function setThemePref(v: ThemePref, opts: SetThemeOptions = {}) {
   const next = normalizeTheme(v)
   pref.value = next
   if (opts.persist !== false) {
-    try { localStorage.setItem(KEY, next) } catch { /* 存不上（隐私模式）：这一次会话里照样生效 */ }
+    try { lcLocal.setItem(KEY, next) } catch { /* 存不上（隐私模式）：这一次会话里照样生效 */ }
   }
   show(resolve(next), opts.animate !== false)
 }
 
-// 首帧已经由 theme-boot.js 上过色；这里再写一遍是兜底（脚本被拦、或者被别的东西改过属性）
-if (typeof document !== 'undefined') paint(resolved.value)
+/**
+ * 独立应用启动时调一次：首帧已经由 theme-boot.js 上过色，这里再写一遍是兜底（脚本被拦、或者被别的东西改过属性）。
+ * 不能在模块加载时就做：这个模块也会被打进嵌入用的包里，那时 <html> 是宿主的。
+ */
+export function paintStandalone() {
+  if (typeof document !== 'undefined' && !runtime.embedded) paint(resolved.value)
+}
+
+/**
+ * 嵌入时由入口调一次：按集成方给的主题（没给就用这台浏览器上记着的）定下起始主题。
+ * 模块加载时读过一次存储，但那时还不知道集成方的键前缀。
+ */
+export function initEmbeddedTheme(theme?: ThemePref) {
+  const next = normalizeTheme(theme || savedTheme() || DEFAULT_THEME)
+  pref.value = next
+  wanted = resolve(next)
+  resolved.value = wanted
+  paint(wanted)
+}
 
 // 跟随系统：系统的深浅一变就跟着换
 media?.addEventListener?.('change', () => { if (pref.value === 'system') show(resolve('system'), true) })
@@ -125,7 +156,7 @@ media?.addEventListener?.('change', () => { if (pref.value === 'system') show(re
 // 别的标签页里换了主题：这一页跟上（storage 事件只在「别的」标签页触发）
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key !== KEY) return
+    if (e.key !== storageKey(KEY)) return
     const next = normalizeTheme(e.newValue)
     if (next === pref.value) return
     pref.value = next

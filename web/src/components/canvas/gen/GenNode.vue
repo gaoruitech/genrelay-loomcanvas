@@ -18,7 +18,7 @@
     <TaskDetailModal v-if="g.detailType && !readonly" :open="detailOpen" :type="(g.detailType as any)" :data="data" @close="detailOpen = false" />
 
     <!-- 文本类节点的放大查看：结果占大头，大语言模型另带系统提示词 -->
-    <Teleport v-if="g.isText && !readonly" to="body">
+    <Teleport v-if="g.isText && !readonly" :to="$lcPortal">
       <div v-if="textOpen" class="lc-mask lc-sheet" @click.self="textOpen = false" @wheel.stop @mousedown.stop>
         <div class="lc-dialog gn-tmodal">
           <div class="lc-dialog-head">

@@ -1,5 +1,6 @@
+import { lcSession } from '@/utils/storage'
 import { h } from 'vue'
-import { DialogPlugin } from 'tdesign-vue-next'
+import { DialogPlugin } from '@/utils/feedback'
 import { t } from '@/locales'
 
 /**
@@ -13,10 +14,10 @@ import { t } from '@/locales'
 const SKIP_KEY = 'loomcanvas-rerun-confirm-skip'
 
 function skipped(): boolean {
-  try { return sessionStorage.getItem(SKIP_KEY) === '1' } catch { return false }
+  try { return lcSession.getItem(SKIP_KEY) === '1' } catch { return false }
 }
 function rememberSkip() {
-  try { sessionStorage.setItem(SKIP_KEY, '1') } catch { /* 存不了就下次接着问 */ }
+  try { lcSession.setItem(SKIP_KEY, '1') } catch { /* 存不了就下次接着问 */ }
 }
 
 export interface RerunInfo {

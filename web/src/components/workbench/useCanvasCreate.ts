@@ -1,6 +1,6 @@
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { workflowApi, apiErrorMessage } from '@/utils/api'
 
 export interface TemplateLike {

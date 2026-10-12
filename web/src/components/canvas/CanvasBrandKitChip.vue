@@ -13,7 +13,7 @@
       </svg>
     </button>
 
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="open" ref="pop" class="lc-menu bkc-pop" role="dialog" :aria-label="t('brandKit.pop.title')" :style="menuStyle" data-testid="kit-pop" @mousedown.stop @wheel.stop>
         <div class="bkc-h">{{ t('brandKit.pop.title') }}</div>
         <p class="bkc-what">{{ t('brandKit.explain.summary') }}</p>
@@ -136,7 +136,7 @@ defineExpose({ close })
 
 <style>
 /* 面板 Teleport 到了 body，scoped 管不到 */
-.bkc-pop { width: 380px; max-width: calc(100vw - 16px); padding: 16px; }
+.bkc-pop { width: 380px; max-width: calc(calc(100 * var(--lc-vw)) - 16px); padding: 16px; }
 .bkc-pop .bkc-h { font: 600 14px/1.4 var(--f-disp); color: var(--text); }
 .bkc-pop .bkc-what { margin: 8px 0 0; font-size: 12px; line-height: 1.7; color: var(--text-2); }
 .bkc-pop .bkc-what.dim { color: var(--text-3); }

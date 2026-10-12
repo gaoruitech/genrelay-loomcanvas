@@ -1,8 +1,8 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <img
       v-if="visible && src"
-      :src="src"
+      :src="$src(src)"
       class="img-hover-preview"
       :style="{
         left: x + 'px',

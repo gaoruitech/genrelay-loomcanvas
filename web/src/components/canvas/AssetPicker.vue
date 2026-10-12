@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div v-if="open" class="lc-mask lc-sheet cp-mask" @click.self="cancel">
       <div class="lc-dialog cp-box">
         <header class="lc-dialog-head">
@@ -26,8 +26,8 @@
               @click="toggle(item)"
             >
               <div class="cp-thumb">
-                <img v-if="item.type === 'image'" :src="item.thumbnailUrl || item.fileUrl" alt="" loading="lazy" />
-                <video v-else :src="item.fileUrl" :poster="item.thumbnailUrl || undefined" muted preload="metadata" />
+                <img v-if="item.type === 'image'" :src="$src(item.thumbnailUrl || item.fileUrl)" alt="" loading="lazy" />
+                <video v-else :src="$src(item.fileUrl)" :poster="$src(item.thumbnailUrl) || undefined" muted preload="metadata" />
               </div>
               <div class="cp-prompt" :title="item.name">{{ item.name || t('library.picker.unnamed') }}</div>
               <span v-if="selected.has(item.id)" class="lc-cb on cp-check" />
@@ -63,7 +63,7 @@
  */
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { canvasAssetApi, userAssetApi } from '@/utils/api'
+import { canvasAssetApi, userAssetApi } from '@/utils/canvasBackend'
 import { registerThumb } from '@/utils/canvasMedia'
 import type { PickerItem, PickerOptions } from '@/composables/canvasPickerKey'
 
@@ -115,7 +115,7 @@ async function fetchMaterialPage(): Promise<FetchedPage> {
   })
   if (res.data.result !== 0 || !res.data.data) return { items: [], total: 0 }
   const d = res.data.data
-  const items: PickerItem[] = (d.list || []).filter(it => it.mediaUrl).map(it => ({
+  const items: PickerItem[] = (d.list || []).filter((it: any) => it.mediaUrl).map((it: any) => ({
     id: it.id,
     type: it.nodeType === 'VIDEO' ? 'video' : 'image',
     name: it.name || '',
@@ -250,7 +250,7 @@ defineExpose({ show })
 .cp-count { font-size: 13px; color: var(--text-2); }
 .cp-actions { display: flex; gap: 10px; }
 @media (max-width: 600px) {
-  .cp-box { height: 92vh; height: 92dvh; }
+  .cp-box { height: calc(92 * var(--lc-vh)); height: calc(92 * var(--lc-dvh)); }
   .cp-sub { display: none; }
   .cp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .cp-prompt { padding: 6px 8px; font-size: 11px; }

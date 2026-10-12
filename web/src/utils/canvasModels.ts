@@ -1,6 +1,6 @@
 import { localizedModelDesc } from '@/utils/builtinContent'
 import { computed, shallowRef } from 'vue'
-import { modelsApi, runsApi, unwrap } from './api'
+import { modelsApi, runsApi, unwrap } from './canvasBackend'
 import { i18n, t } from '@/locales'
 import { registerThumb } from './canvasMedia'
 import type { Cost, ModelSpec, Run } from '@/types'

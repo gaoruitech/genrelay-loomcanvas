@@ -1,11 +1,11 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import {
   getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels, listVideoChatModels, chatReadsImages,
   type AdapterPollResult,
 } from '@/utils/canvasModels'
-import { llmApi, runsApi, unwrap, platformExportApi, canvasToolApi } from '@/utils/api'
+import { llmApi, runsApi, unwrap, platformExportApi, canvasToolApi } from '@/utils/canvasBackend'
 import { uploadDataUrl } from '@/utils/canvasUpload'
 import { sumCosts } from '@/utils/cost'
 import { t } from '@/locales'

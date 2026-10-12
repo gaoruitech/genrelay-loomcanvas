@@ -300,6 +300,7 @@
 </template>
 
 <script setup lang="ts">
+import { lcLocal } from '@/utils/storage'
 /**
  * 「模型管理」页：左列是服务商，右边是选中那一家的模型。
  *
@@ -314,7 +315,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { capsSummary } from '@/utils/modelCaps'
@@ -484,7 +485,7 @@ const oneOf = <T extends string>(v: unknown, list: readonly T[], fallback: T): T
 
 function readStored(): Filters {
   let raw: any = null
-  try { raw = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') } catch { /* 读不到或不是 JSON：用默认 */ }
+  try { raw = JSON.parse(lcLocal.getItem(STORE_KEY) || 'null') } catch { /* 读不到或不是 JSON：用默认 */ }
   const f = raw && typeof raw.filters === 'object' && raw.filters ? raw.filters : {}
   return {
     kind: oneOf(f.kind, ['', ...KINDS] as const, ''),
@@ -498,7 +499,7 @@ const filters = reactive<Filters>(readStored())
 const keyword = ref('')
 
 watch(filters, () => {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ filters: { ...filters } })) } catch { /* 隐私模式下写不进去：这次打开照常用 */ }
+  try { lcLocal.setItem(STORE_KEY, JSON.stringify({ filters: { ...filters } })) } catch { /* 隐私模式下写不进去：这次打开照常用 */ }
 }, { deep: true })
 
 const statusOptions = computed<{ value: Filters['status']; label: string }[]>(() => [

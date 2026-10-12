@@ -1,7 +1,6 @@
-import { filesApi, unwrap, apiErrorMessage } from './api'
+import { filesApi, unwrap, apiErrorMessage, backendCapabilities } from './canvasBackend'
 import { registerThumb } from './canvasMedia'
 import { t } from '@/locales'
-import { useAppStore } from '@/stores/app'
 
 /**
  * 上传大小只有一个上限，在服务端（MAX_UPLOAD_MB），随启动信息下发。
@@ -9,7 +8,7 @@ import { useAppStore } from '@/stores/app'
  * 那就不预检，等服务端的 413 自己说。
  */
 function assertUploadSize(file: File | Blob): void {
-  const mb = Number(useAppStore().bootstrap?.limits?.maxUploadMb)
+  const mb = Number(backendCapabilities().maxUploadMb)
   if (!(mb > 0)) return
   if (file.size > mb * 1024 * 1024) throw new Error(t('upload.tooLarge', { mb }))
 }

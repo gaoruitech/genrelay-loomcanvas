@@ -1,5 +1,5 @@
 import { watch, type ComputedRef } from 'vue'
-import { runsApi, type EstimateRequest } from '@/utils/api'
+import { runsApi, featureOn, type EstimateRequest } from '@/utils/canvasBackend'
 import type { Cost } from '@/types'
 
 /**
@@ -22,7 +22,8 @@ export function useEstimateCost(
 
   async function doFetch() {
     timer = null
-    if ((enabled && !enabled.value) || !params.value) {
+    // 关了成本显示（或后端没有预估接口）就不问
+    if (!featureOn('cost') || (enabled && !enabled.value) || !params.value) {
       if (lastKey !== null) onCost(null)
       lastKey = null
       return

@@ -14,7 +14,7 @@
       @click="toggle"
       @keydown.esc.stop="close"
     ><LcIcon name="more" size="s" /></button>
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div v-if="open" ref="menuEl" class="lc-menu rm-menu" role="menu" :aria-label="label" :style="menuStyle" @keydown.esc.stop="close">
         <button
           v-for="it in items"
@@ -57,7 +57,7 @@ function pick(key: string) {
 
 <style scoped>
 .rm { display: inline-flex; }
-.rm-menu { min-width: 168px; max-width: calc(100vw - 16px); }
+.rm-menu { min-width: 168px; max-width: calc(calc(100 * var(--lc-vw)) - 16px); }
 .rm-item {
   width: 100%; gap: 8px; border: 0; background: none; font: inherit; font-size: 13px; text-align: left; white-space: nowrap;
 }

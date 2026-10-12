@@ -141,7 +141,7 @@
 /** 账号与安全：改用户名 / 邮箱、改密码、看和下线登录会话，各占一张卡片、各有各的按钮。每个登录的人都有。 */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { authApi, unwrap, apiErrorCode, apiErrorMessage } from '@/utils/api'
 import { describeAuthError, EMAIL_RE, PASSWORD_MAX, PASSWORD_MIN, USERNAME_RE } from '@/utils/authErrors'
 import { useAppStore } from '@/stores/app'

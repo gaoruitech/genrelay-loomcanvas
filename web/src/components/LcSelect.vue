@@ -26,7 +26,7 @@
     </button>
 
     <!-- Teleport 到 body：设置页的弹窗有自己的 overflow 与层级，菜单留在里面会被裁掉 -->
-    <Teleport to="body">
+    <Teleport :to="$lcPortal">
       <div
         v-if="open"
         :id="listId"
@@ -258,7 +258,7 @@ function onKeydown(e: KeyboardEvent) {
 .lcs.open .lcs-chevron { transform: rotate(180deg); }
 
 /* 面板外观来自 base.css 的 .lc-menu；position / top / left / 宽高限制由内联样式给出 */
-.lcs-menu { max-width: calc(100vw - 16px); max-height: min(320px, calc(100vh - 16px)); border-radius: 10px; padding: 4px; }
+.lcs-menu { max-width: calc(calc(100 * var(--lc-vw)) - 16px); max-height: min(320px, calc(calc(100 * var(--lc-vh)) - 16px)); border-radius: 10px; padding: 4px; }
 .lcs-item { gap: 10px; font-size: 13px; line-height: 1.4; border-radius: 6px; }
 .lcs-menu.sm .lcs-item { font-size: 12px; padding: 6px 8px; }
 /* 高亮跟着键盘 / 鼠标当前项走，不用 :hover：两者同时亮着会出现两条高亮 */

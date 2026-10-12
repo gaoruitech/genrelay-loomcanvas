@@ -1,4 +1,5 @@
 import { t } from '@/locales'
+import { mediaSrc } from '@/utils/mediaUrl'
 
 /**
  * 原图地址 → 缩略图地址。
@@ -38,7 +39,7 @@ export function registerThumb(url?: string | null, thumbnailUrl?: string | null)
  */
 export function canvasImageThumb(url: string | undefined | null, _box?: number): string {
   if (!url) return ''
-  return thumbs.get(url) || derivedThumb(url) || url
+  return mediaSrc(thumbs.get(url) || derivedThumb(url) || url)
 }
 
 /**
@@ -46,7 +47,7 @@ export function canvasImageThumb(url: string | undefined | null, _box?: number):
  */
 export function canvasVideoPoster(url: string | undefined | null, _box?: number): string {
   if (!url) return ''
-  return thumbs.get(url) || ''
+  return mediaSrc(thumbs.get(url) || '')
 }
 
 /** 批量下载清单里的一项 */

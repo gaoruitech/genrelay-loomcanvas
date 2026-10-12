@@ -5,6 +5,9 @@ import { TDesignResolver } from 'unplugin-vue-components/resolvers'
 import { resolve } from 'path'
 import { readFileSync } from 'fs'
 import type { Plugin } from 'vite'
+import scopeToRoot from './build/scope-to-root.mjs'
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 
 // 开发时后端不在 3000 上的话：LC_DEV_BACKEND=http://127.0.0.1:3100 npm run dev
 const BACKEND = process.env.LC_DEV_BACKEND || 'http://127.0.0.1:3000'
@@ -46,7 +49,10 @@ export default defineConfig({
       dts: false,
     }),
   ],
+  // 每一条样式规则都限制在 .lc-root 之内（独立应用里就是 <html>，嵌入时是挂载点里的根元素），见 build/scope-to-root.mjs
+  css: { postcss: { plugins: [scopeToRoot()] } },
   define: {
+    __LC_VERSION__: JSON.stringify(pkg.version),
     // vue-i18n 默认用 new Function 编译文案，会被服务端下发的 CSP（script-src 不含 'unsafe-eval'）拦掉，
     // 整个应用白屏。打开这个开关后改为解释执行编译结果，不需要 eval。
     __INTLIFY_JIT_COMPILATION__: true,

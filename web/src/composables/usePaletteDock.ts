@@ -1,3 +1,6 @@
+import { runtime } from '@/embed/runtime'
+import { frameOf } from '@/utils/frame'
+import { lcLocal } from '@/utils/storage'
 /**
  * 画布工具面板的位置与方向：可以拖到编辑区里任何地方，可以在竖排 / 横排之间切换。
  *
@@ -33,7 +36,7 @@ const FIXED = '.ed-title, .ed-tools, .ed-hint, .vue-flow__minimap'
 
 function loadPos(): PalPos | null {
   try {
-    const v = JSON.parse(localStorage.getItem(POS_KEY) || 'null')
+    const v = JSON.parse(lcLocal.getItem(POS_KEY) || 'null')
     if (!v || !Number.isFinite(v.rx) || !Number.isFinite(v.ry)) return null
     return {
       dx: v.dx === 'l' || v.dx === 'r' ? v.dx : null,
@@ -44,7 +47,7 @@ function loadPos(): PalPos | null {
   } catch { return null }
 }
 function loadOrient(): PalOrient {
-  try { return localStorage.getItem(ORIENT_KEY) === 'h' ? 'h' : 'v' } catch { return 'v' }
+  try { return lcLocal.getItem(ORIENT_KEY) === 'h' ? 'h' : 'v' } catch { return 'v' }
 }
 
 export function usePaletteDock(opts: {
@@ -73,10 +76,10 @@ export function usePaletteDock(opts: {
 
   function save() {
     try {
-      if (pos.value) localStorage.setItem(POS_KEY, JSON.stringify(pos.value))
-      else localStorage.removeItem(POS_KEY)
-      if (savedOrient.value === 'h') localStorage.setItem(ORIENT_KEY, 'h')
-      else localStorage.removeItem(ORIENT_KEY)
+      if (pos.value) lcLocal.setItem(POS_KEY, JSON.stringify(pos.value))
+      else lcLocal.removeItem(POS_KEY)
+      if (savedOrient.value === 'h') lcLocal.setItem(ORIENT_KEY, 'h')
+      else lcLocal.removeItem(ORIENT_KEY)
     } catch { /* 存不上就只在这次有效 */ }
   }
 
@@ -205,14 +208,16 @@ export function usePaletteDock(opts: {
   let ro: ResizeObserver | null = null
   let mq: MediaQueryList | null = null
   let timer: number | null = null
-  const onMq = () => { phone.value = !!mq?.matches; void nextTick(layout) }
+  // 「手机宽度」：独立应用看浏览器窗口；嵌进别人的页面时看编辑区自己有多宽（和样式里的 @container 是同一个判断）
+  const isPhone = () => (runtime.embedded ? frameOf(opts.host.value).w <= 640 : !!mq?.matches)
+  const onMq = () => { phone.value = isPhone(); void nextTick(layout) }
   onMounted(() => {
     mq = window.matchMedia('(max-width: 640px)')
-    phone.value = mq.matches
+    phone.value = isPhone()
     mq.addEventListener('change', onMq)
     void nextTick(layout)
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => layout())
+      ro = new ResizeObserver(() => { if (runtime.embedded && phone.value !== isPhone()) onMq(); else layout() })
       if (opts.host.value) ro.observe(opts.host.value)
       if (opts.el.value) ro.observe(opts.el.value)
     }

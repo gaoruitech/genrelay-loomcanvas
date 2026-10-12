@@ -120,7 +120,7 @@ function shapeStyle(v: string): CSSProperties {
 </script>
 
 <style scoped>
-.cv-pp { display: flex; flex-direction: column; gap: 8px; padding: 6px 4px; width: 276px; max-width: calc(100vw - 40px); }
+.cv-pp { display: flex; flex-direction: column; gap: 8px; padding: 6px 4px; width: 276px; max-width: calc(calc(100 * var(--lc-vw)) - 40px); }
 .cv-pp-label { font-size: 12px; color: var(--text-3); padding: 0 2px; margin-top: 2px; }
 .cv-pp-row { display: flex; gap: 6px; padding: 0 2px; }
 .cv-pp-wrap { flex-wrap: wrap; }

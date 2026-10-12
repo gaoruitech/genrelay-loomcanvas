@@ -1,3 +1,4 @@
+import { frameOf } from '@/utils/frame'
 import { ref } from 'vue'
 
 // 全局唯一的"悬停大图"状态。每张图片用 imageHoverHandlers() 拿到事件处理器，
@@ -15,9 +16,11 @@ const OFFSET = 20
 // 视口安全边距，防止贴边
 const SAFE = 8
 
+/** 正悬停着的那张图：靠它找到所在的根（一页上可能嵌了不止一个） */
+let anchor: Element | null = null
+
 function clampSize(natW: number, natH: number) {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
+  const { w: vw, h: vh } = frameOf(anchor)
   const maxW = vw * 0.9
   const maxH = vh * 0.9
   let ww = natW * 0.8
@@ -32,9 +35,13 @@ function clampSize(natW: number, natH: number) {
 }
 
 // 默认放在鼠标右下；任一方向放不下就翻到另一侧；最后再钳到视口内
-function place(mx: number, my: number) {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
+function place(cx: number, cy: number) {
+  // 预览是 fixed 的：鼠标的视口坐标换成「画框」坐标（utils/frame.ts）
+  const fr = frameOf(anchor)
+  const mx = cx - fr.x
+  const my = cy - fr.y
+  const vw = fr.w
+  const vh = fr.h
   let px = mx + OFFSET
   let py = my + OFFSET
   if (px + w.value > vw - SAFE) px = mx - OFFSET - w.value
@@ -59,6 +66,7 @@ export function imageHoverHandlers(getUrl: () => string) {
   function onEnter(e: MouseEvent) {
     const url = getUrl()
     if (!url) return
+    anchor = e.target as Element
     const cx = e.clientX
     const cy = e.clientY
     // 读 naturalWidth / naturalHeight 需要等图片加载；浏览器已缓存时几乎瞬时返回

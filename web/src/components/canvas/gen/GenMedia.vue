@@ -37,7 +37,7 @@
         <video
           ref="videoRef"
           :key="g.mediaUrl"
-          :src="g.mediaUrl"
+          :src="$src(g.mediaUrl)"
           :poster="canvasVideoPoster(g.mediaUrl, 480)"
           class="gn-img"
           muted

@@ -39,8 +39,12 @@ loomcanvas/
 │  │  ├─ utils/            api.ts, canvasModels.ts…
 │  │  ├─ locales/          zh-CN.ts, en.ts, modules/*.ts
 │  │  ├─ stores/           Pinia store (bootstrap, signed-in user, locale)
-│  │  └─ router/           routes and the sign-in guard
-│  └─ scripts/check-i18n.mjs
+│  │  ├─ router/           routes and the sign-in guard (a factory: one router per mounted app)
+│  │  └─ embed/            the two integration entries (app.ts, editor.ts), their public types, adapters and mount code
+│  ├─ build/scope-to-root.mjs   PostCSS plugin that confines every style rule to the root element
+│  ├─ test/                Vitest suites (integration API, adapters, document format, style scoping)
+│  └─ scripts/             check-i18n.mjs, check-theme.mjs, build-lib.mjs
+├─ examples/               host pages that build LoomCanvas in (see docs/integration.md)
 ├─ scripts/                repository checks (versions, licenses)
 ├─ docs/
 ├─ Dockerfile
@@ -96,9 +100,12 @@ You need Node.js 20.9 or newer and a MongoDB 7 you can reach.
 | `web/` | `npm run typecheck` | Type-check only. |
 | `web/` | `npm run i18n:check` | Check the UI strings (see [Adding UI strings](#adding-ui-strings)). |
 | `web/` | `npm run preview` | Serve the built `web/dist` locally. |
+| `web/` | `npm run build:lib` | Build the two integration entries into `web/dist-lib` (ES modules, one stylesheet per entry, type declarations). See [integration.md](integration.md). |
+| `web/` | `npm test` | Vitest: the public integration API (snapshot guard), option handling, the adapter contract, the document format, the style-scoping plugin. The HTTP-adapter suite starts the real server and runs only when `TEST_MONGODB_URI` is set. |
 | root | `npm run install:all` | `npm ci` in `server/` and `web/`. |
 | root | `npm run test`, `build`, `typecheck`, `i18n:check` | The same commands as in `server/` and `web/`, callable from the root. |
-| root | `npm run check` | Version check, license check, i18n check, server tests and web build in one go. This is what CI runs. |
+| root | `npm run test:web`, `build:lib` | The two `web/` commands above, callable from the root. |
+| root | `npm run check` | Version check, license check, i18n check, server tests, web tests and web build in one go. This is what CI runs. |
 | root | `npm run versions:check` | `server/` and `web/` must carry the same version and Node floor as the root `package.json`. |
 | root | `npm run licenses:check` | Production dependencies must be within the license allowlist and `THIRD_PARTY_NOTICES.md` must be current. Needs `npm ci` to have been run in `server/` and `web/`. |
 | root | `npm run licenses:write` | Regenerates `THIRD_PARTY_NOTICES.md`. Run it after changing dependencies. |
@@ -188,6 +195,7 @@ There is no other pipeline (none for Gitee).
 ## How the frontend talks to the backend
 
 - All calls go through one axios instance in `web/src/utils/api.ts`, with `baseURL: '/api'`. Functions are grouped by area (`workflowApi`, `adminApi`, `filesApi`…).
+- The canvas editor does not call those functions directly. Everything it needs from a backend (load and save a canvas, models, runs, uploads, tools, templates, brand kits, assets, shares) goes through `web/src/utils/canvasBackend.ts`, which forwards to the current **adapter** (`EditorAdapter` in `web/src/embed/types.ts`). In the stand-alone app the adapter is the HTTP one over the same axios instance (`web/src/embed/httpAdapterCore.ts`); a host that embeds only the editor supplies its own. When you add a backend call to the editor, add it to the adapter, not to a component. See [integration.md](integration.md).
 - In development the Vite server proxies `/api` and `/files` to `http://127.0.0.1:3000` (`web/vite.config.ts`), so the browser sees one origin and no CORS setup is needed. In production the server serves the built frontend itself (`WEB_DIST`).
 - Every request carries `X-Locale` (the current UI language) and, when signed in, `Authorization: Bearer <token>`.
 - Every response is the envelope `{ result, message, data }`; `unwrap()` returns `data` or throws. A `401` clears the token and shows the sign-in page.
@@ -195,6 +203,17 @@ There is no other pipeline (none for Gitee).
 - Types shared by the API layer are in `web/src/types/index.ts`.
 
 The contract is documented in [architecture.md](architecture.md) (Chinese, design) and [api.md](api.md) (English, reference). Change them in the same pull request as the code.
+
+## Integration entries
+
+LoomCanvas can be built into another product ([integration.md](integration.md)). The stand-alone app is a consumer of the same entries, so the rules below apply to all front-end work:
+
+- **Public API.** What `web/src/embed/app.ts` and `editor.ts` export, the types in `embed/types.ts` and `embed/document.ts`, option, event, feature and page names. `web/test/public-api.test.ts` snapshots it; when you change it on purpose, update the snapshot, both language versions of the integration guide and the changelog in the same pull request.
+- **Styles are scoped.** Every rule ends up under `.lc-root` (`<html>` in the stand-alone app, the mount root when embedded) through `web/build/scope-to-root.mjs`. Do not write rules for `html`, `body` or `#app` outside `styles/standalone.css`, and do not rely on `:root` being the document element.
+- **No viewport assumptions.** Do not use `vh` / `vw` (use `calc(N * var(--lc-vh))` / `--lc-vw`), `window.innerWidth` / `innerHeight` or raw `clientX` / `getBoundingClientRect()` values for a `position: fixed` element: go through `frameOf()` in `web/src/utils/frame.ts`. Breakpoints are written as `@media (max-width: Npx)`; the library build adds a container-query twin.
+- **Popups go to the portal.** `<Teleport :to="$lcPortal">`, never `to="body"`. Toasts and confirm dialogs come from `@/utils/feedback`, not from `tdesign-vue-next` directly.
+- **Nothing global.** Storage through `lcLocal` / `lcSession` (`web/src/utils/storage.ts`), no `document.title`, no attributes on `<html>`, window-level key handlers check `ownsKeyEvent()`, media addresses go through `ensureHttps()` / `$src()`.
+- **Features can be off.** Entry points of optional features are wrapped in `$feat.<flag>` (templates) or `useEmbed().features` (script).
 
 ## Adding a node type
 

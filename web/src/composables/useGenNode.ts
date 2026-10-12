@@ -1,7 +1,7 @@
 import { computed, inject, onBeforeUnmount, reactive, ref, watch, type ComputedRef, type InjectionKey } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
 import { usePublicUrlNotice } from '@/composables/usePublicUrlNotice'

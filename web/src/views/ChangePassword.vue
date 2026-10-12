@@ -85,7 +85,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useAppStore } from '@/stores/app'
 import { safeRedirect } from '@/router'
 import { describeAuthError, passwordStrength, PASSWORD_MIN, PASSWORD_MAX } from '@/utils/authErrors'

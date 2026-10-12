@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>LoomCanvas integration examples</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 760px; margin: 48px auto; padding: 0 20px; color: #1c2333; }
+    li { margin: 14px 0; }
+    code { background: #eef1f6; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>LoomCanvas integration examples</h1>
+  <p>Each page is a "host product" that builds LoomCanvas in. See <code>docs/integration.md</code>.</p>
+  <ol>
+    <li><a href="host-page/">host-page</a>: the whole app inside a plain HTML page, without LoomCanvas' shell, with the host's own sign-in. Needs a running LoomCanvas server.</li>
+    <li><a href="vue-editor/">vue-editor</a>: a Vue host using <code>&lt;LoomCanvasEditor&gt;</code> with the HTTP adapter. Needs a running LoomCanvas server.</li>
+    <li><a href="plain-editor/">plain-editor</a>: a framework-free host using <code>mountEditor</code> with the memory adapter. Needs no server at all.</li>
+  </ol>
+</body>
+</html>

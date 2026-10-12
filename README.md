@@ -68,6 +68,7 @@ Step by step: [Getting started](docs/getting-started.md).
 | [Security](docs/security.md) | Hardening and limits |
 | [FAQ](docs/faq.md) | Common problems |
 | [Development](docs/development.md) | Working on the code |
+| [Integration](docs/integration.md) | Building LoomCanvas into your own product: the whole app, or only the editor |
 | [Writing a provider](docs/writing-a-provider.md) | Adding another vendor |
 | [Billing hook](docs/billing-hook.md) | Metering and limits |
 | [HTTP API](docs/api.md) | Endpoint reference |

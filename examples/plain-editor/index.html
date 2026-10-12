@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Framework-free host with mountEditor (memory adapter, no server)</title>
+  <link rel="stylesheet" href="/lib/editor.css" />
+  <style>
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f6f1e7; color: #2b2118; }
+    header { padding: 12px 18px; background: #2b2118; color: #f6f1e7; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 18px; }
+    .bar button, .bar select { font: inherit; padding: 4px 8px; }
+    .row { display: flex; gap: 16px; padding: 0 18px 300px; align-items: flex-start; }
+    #editor { width: 900px; height: 560px; border: 2px solid #2b2118; flex: none; }
+    #editor.narrow { width: 440px; height: 620px; }
+    #log { flex: 1; min-width: 200px; font: 12px/1.5 Consolas, monospace; background: #fff; border: 1px solid #cfc3ad; padding: 10px; height: 540px; overflow: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header><b>Plain page</b>: no framework, no bundler, no LoomCanvas server. Runs are faked by the memory adapter.</header>
+  <div class="bar">
+    <button id="add-text">addNode('text')</button>
+    <button id="add-gen">addNode('image-gen')</button>
+    <button id="run">runAll()</button>
+    <button id="run-node">runNode('picture')</button>
+    <button id="undo">undo()</button>
+    <button id="redo">redo()</button>
+    <button id="fit">fitView()</button>
+    <button id="get">getDocument()</button>
+    <button id="set">setDocument(sample)</button>
+    <button id="readonly">readOnly: off</button>
+    <button id="narrow">narrow box</button>
+    <select id="theme"><option>dark</option><option>light</option></select>
+    <select id="locale"><option>en</option><option>zh-CN</option></select>
+    <select id="layout"><option>a</option><option>b</option><option>c</option></select>
+    <button id="remount">unmount / mount</button>
+  </div>
+  <div class="row">
+    <div id="editor"></div>
+    <div id="log"></div>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

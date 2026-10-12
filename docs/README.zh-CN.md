@@ -27,6 +27,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [开发](development.zh-CN.md) | 仓库结构、开发环境、脚本、添加节点和文案、迁移、代码约定。 |
+| [集成](integration.zh-CN.md) | 把 LoomCanvas 集成进自己的产品：把整个应用挂进宿主页面，或者只嵌画布编辑器、后端由你提供的适配器对接。选项、事件、文档格式、样式隔离、认证的接法、兼容性、协议。示例在 [`examples/`](../examples/README.zh-CN.md)。 |
 | [编写服务商模块](writing-a-provider.zh-CN.md) | 服务商模块的接口和模型清单文件的格式，附完整示例和测试。 |
 | [计费钩子](billing-hook.zh-CN.md) | 用自己的模块对运行做计量或限额。 |
 | [HTTP 接口](api.zh-CN.md) | 接口索引；逐项说明见英文版 [api.md](api.md)。 |

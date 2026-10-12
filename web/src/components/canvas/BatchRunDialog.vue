@@ -36,7 +36,7 @@
             <span>{{ t('dialogs.batch.sourcesCount', { n: batch.sources.value.length, max: MAX_BATCH_SOURCES }) }}</span>
           </div>
           <div class="br-actions">
-            <button class="lc-btn sm" :disabled="picking" @click="pickFromLibrary">{{ t('nodes.action.pickFromLibrary') }}</button>
+            <button v-if="$feat.assetLibrary" class="lc-btn sm" :disabled="picking" @click="pickFromLibrary">{{ t('nodes.action.pickFromLibrary') }}</button>
             <button class="lc-btn sm" :disabled="uploading" @click="fileInput?.click()">
               {{ uploading ? t('common.uploading') : t('dialogs.batch.uploadLocal') }}
             </button>
@@ -169,7 +169,7 @@
  */
 import { ref, computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
+import { MessagePlugin, DialogPlugin } from '@/utils/feedback'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'

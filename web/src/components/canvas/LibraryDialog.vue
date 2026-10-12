@@ -263,12 +263,13 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import {
-  canvasShareApi, canvasAssetApi, canvasTemplateApi, canvasTextTemplateApi, userAssetApi, apiErrorMessage,
+  canvasShareApi, canvasAssetApi, canvasTemplateApi, canvasTextTemplateApi, userAssetApi, apiErrorMessage, shareLinkFor,
   type CanvasShareSummary, type CanvasAssetCategory, type CanvasAssetItem,
-} from '@/utils/api'
+} from '@/utils/canvasBackend'
 import { ensureHttps } from '@/utils/mediaUrl'
+import { useEmbed } from '@/embed/context'
 import { registerThumb } from '@/utils/canvasMedia'
 import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
 
@@ -379,8 +380,15 @@ async function runPending() {
 // ===== 素材库 =====
 // 公共素材是部署方预置的（canvasassets 集合），界面上没有录入入口。
 // 一张都没有时不显示这个标签页 —— 否则资源库一打开永远是个空页。
+// 集成方关掉的功能，对应的标签页也不出：素材（公共 / 我的）、模板（画布 / 文本）、我的分享
+const feat = useEmbed().features
+const TAB_FEATURE: Record<TabKey, () => boolean> = {
+  material: () => feat.assetLibrary, 'my-asset': () => feat.assetLibrary,
+  'canvas-template': () => feat.templates, 'text-template': () => feat.templates,
+  mine: () => feat.share,
+}
 const visibleTabs = computed(() => TABS.filter((tab) =>
-  tab.key !== 'material' || !materialCatsLoaded.value || materialCats.value.length > 0))
+  TAB_FEATURE[tab.key]() && (tab.key !== 'material' || !materialCatsLoaded.value || materialCats.value.length > 0)))
 const materialCats = ref<CanvasAssetCategory[]>([])
 const materialCode = ref<string>('')
 const materialList = ref<CanvasAssetItem[]>([])
@@ -710,7 +718,8 @@ async function writeClipboard(text: string) {
 
 async function copyLink(item: CanvasShareSummary) {
   try {
-    await writeClipboard(`${location.origin}${sharePath(item)}`)
+    // 地址按路由拼（应用挂在子路径下、用 hash 路由时也对）；只嵌编辑器时由适配器的 share.linkFor 给
+    await writeClipboard(shareLinkFor(item.token, new URL(router.resolve(sharePath(item)).href, location.href).href))
     MessagePlugin.success(t('library.share.linkCopied'))
   } catch {
     MessagePlugin.error(t('common.copyFailed'))
@@ -773,7 +782,7 @@ watch(() => props.modelValue, (open) => {
 
 <style scoped>
 .lib-mask { z-index: 9000; }
-.lib-dialog { width: min(1200px, 100%); height: min(780px, calc(100vh - 40px)); overflow: hidden; }
+.lib-dialog { width: min(1200px, 100%); height: min(780px, calc(calc(100 * var(--lc-vh)) - 40px)); overflow: hidden; }
 
 .lib-header {
   flex: none; display: flex; align-items: center; gap: 12px;
@@ -885,7 +894,7 @@ watch(() => props.modelValue, (open) => {
 .confirm-text { margin: 0; font-size: 14px; line-height: 1.7; color: var(--text-2); }
 
 @media (max-width: 600px) {
-  .lib-dialog { height: 92vh; height: 92dvh; }
+  .lib-dialog { height: calc(92 * var(--lc-vh)); height: calc(92 * var(--lc-dvh)); }
   .lib-header { flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
   .lib-tabs { order: 1; flex: 1 1 0; }
   .lib-close { order: 2; margin-left: 0; }

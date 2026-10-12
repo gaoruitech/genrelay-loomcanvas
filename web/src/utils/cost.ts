@@ -1,5 +1,6 @@
 import { t, currentLocale } from '@/locales'
 import type { Cost } from '@/types'
+import { currentEmbed } from '@/embed/context'
 
 /**
  * 金额格式化。按币种走 Intl.NumberFormat，小额保留到 4 位小数 ——
@@ -23,13 +24,15 @@ export function formatMoney(amount: number, currency: string): string {
 
 /** 已发生的花费：「¥0.12」或「成本未知」；没有记录返回空串 */
 export function formatCost(cost?: Cost | null): string {
-  if (!cost) return ''
+  // 集成方关了成本显示（features.cost）：哪儿都不出金额
+  if (!cost || !currentEmbed().features.cost) return ''
   if (cost.unknown) return t('cost.unknown')
   return formatMoney(cost.amount, cost.currency)
 }
 
 /** 预估花费：「≈ ¥0.12」或「成本未知」；没有预估返回空串 */
 export function formatEstimate(cost?: Cost | null): string {
+  if (!currentEmbed().features.cost) return ''
   if (!cost) return ''
   if (cost.unknown) return t('cost.unknown')
   return t('cost.approx', { amount: formatMoney(cost.amount, cost.currency) })

@@ -42,7 +42,7 @@
         </svg>
           <span>{{ t('nodeui.image.clickUpload') }}</span>
         </label>
-        <button class="cv-pick-btn nodrag" @click.stop="pickFromLibrary" @mousedown.stop>
+        <button v-if="$feat.assetLibrary" class="cv-pick-btn nodrag" @click.stop="pickFromLibrary" @mousedown.stop>
           <LcIcon name="folder" size="s" />
           <span>{{ t('nodes.action.pickFromLibrary') }}</span>
         </button>
@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import { CANVAS_PICKER_KEY } from '@/composables/canvasPickerKey'
 import { CANVAS_IMAGE_EDITOR_KEY } from '@/composables/canvasImageEditorKey'

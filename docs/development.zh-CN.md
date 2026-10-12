@@ -39,8 +39,12 @@ loomcanvas/
 │  │  ├─ utils/            api.ts、canvasModels.ts 等
 │  │  ├─ locales/          zh-CN.ts、en.ts、modules/*.ts
 │  │  ├─ stores/           Pinia（bootstrap、当前登录的账号、语言）
-│  │  └─ router/           路由和登录守卫
-│  └─ scripts/check-i18n.mjs
+│  │  ├─ router/           路由和登录守卫（是个工厂：每挂一份应用建一个路由）
+│  │  └─ embed/            两个集成入口（app.ts、editor.ts）及其公开类型、适配器和挂载代码
+│  ├─ build/scope-to-root.mjs   把每条样式规则限制在根元素之内的 PostCSS 插件
+│  ├─ test/                Vitest 测试（集成接口、适配器、文档格式、样式作用域）
+│  └─ scripts/             check-i18n.mjs、check-theme.mjs、build-lib.mjs
+├─ examples/               把 LoomCanvas 集成进去的宿主页面示例（见 docs/integration.zh-CN.md）
 ├─ scripts/                仓库级检查（版本号、依赖协议）
 ├─ docs/
 ├─ Dockerfile
@@ -96,9 +100,12 @@ loomcanvas/
 | `web/` | `npm run typecheck` | 只做类型检查。 |
 | `web/` | `npm run i18n:check` | 检查界面文案（见[添加界面文案](#添加界面文案)）。 |
 | `web/` | `npm run preview` | 本地预览构建好的 `web/dist`。 |
+| `web/` | `npm run build:lib` | 把两个集成入口构建到 `web/dist-lib`（ES 模块、每个入口一份样式表、类型声明）。见 [integration.zh-CN.md](integration.zh-CN.md)。 |
+| `web/` | `npm test` | Vitest：对外的集成接口（快照守卫）、选项处理、适配器约定、文档格式、样式作用域插件。HTTP 适配器那一组会起真实的服务端，只有设了 `TEST_MONGODB_URI` 才跑。 |
 | 根目录 | `npm run install:all` | 在 `server/` 和 `web/` 里分别执行 `npm ci`。 |
 | 根目录 | `npm run test`、`build`、`typecheck`、`i18n:check` | 与 `server/`、`web/` 里的同名命令相同，可以在根目录直接调用。 |
-| 根目录 | `npm run check` | 一次跑完版本检查、协议检查、文案检查、后端测试和前端构建。CI 跑的就是它。 |
+| 根目录 | `npm run test:web`、`build:lib` | 上面 `web/` 里的两个命令，可以在根目录直接调用。 |
+| 根目录 | `npm run check` | 一次跑完版本检查、协议检查、文案检查、后端测试、前端测试和前端构建。CI 跑的就是它。 |
 | 根目录 | `npm run versions:check` | `server/`、`web/` 的版本号和 Node 最低版本必须与根目录 `package.json` 一致。 |
 | 根目录 | `npm run licenses:check` | 生产依赖的协议必须在允许清单内，且 `THIRD_PARTY_NOTICES.md` 是最新的。需要先在 `server/` 和 `web/` 里执行过 `npm ci`。 |
 | 根目录 | `npm run licenses:write` | 重新生成 `THIRD_PARTY_NOTICES.md`。改了依赖之后运行。 |
@@ -188,6 +195,7 @@ node --test test/storage.live.test.js
 ## 前端怎么和后端通信
 
 - 所有请求都走 `web/src/utils/api.ts` 里的同一个 axios 实例，`baseURL: '/api'`。函数按功能分组（`workflowApi`、`adminApi`、`filesApi` 等）。
+- 画布编辑器不直接调这些函数。它需要后端做的每一件事（读写画布、模型、运行、上传、工具、模板、品牌包、素材、分享）都走 `web/src/utils/canvasBackend.ts`，再转给当前的**适配器**（`web/src/embed/types.ts` 里的 `EditorAdapter`）。独立应用里的适配器就是架在同一个 axios 实例上的 HTTP 适配器（`web/src/embed/httpAdapterCore.ts`）；只嵌编辑器的宿主提供自己的。给编辑器加后端调用时，加在适配器上，不要加在组件里。见 [integration.zh-CN.md](integration.zh-CN.md)。
 - 开发时，Vite 把 `/api` 和 `/files` 代理到 `http://127.0.0.1:3000`（`web/vite.config.ts`），浏览器看到的是同一个来源，不用配跨域。生产环境由服务端直接提供构建好的前端（`WEB_DIST`）。
 - 每个请求都带 `X-Locale`（当前界面语言）；登录后还带 `Authorization: Bearer <token>`。
 - 每个返回都是 `{ result, message, data }`，`unwrap()` 取出 `data` 或抛错。收到 `401` 会清掉凭证并显示登录页。
@@ -195,6 +203,17 @@ node --test test/storage.live.test.js
 - 接口层用到的类型在 `web/src/types/index.ts`。
 
 接口约定写在 [architecture.md](architecture.md)（中文，设计）和 [api.md](api.md)（英文，逐项说明）里。改接口时在同一个合并请求里一起改。
+
+## 集成入口
+
+LoomCanvas 可以集成进别的产品（[integration.zh-CN.md](integration.zh-CN.md)）。独立应用自己也是这两个入口的使用方，所以下面这些规矩对所有前端改动都适用：
+
+- **对外接口。** `web/src/embed/app.ts` 和 `editor.ts` 导出的东西、`embed/types.ts` 和 `embed/document.ts` 里的类型、选项名、事件名、功能开关名、页面名。`web/test/public-api.test.ts` 给它拍了快照；有意改动时，在同一个合并请求里更新快照、集成文档的两个语言版本和变更记录。
+- **样式有作用域。** 每条规则最后都落在 `.lc-root` 之下（独立应用里是 `<html>`，嵌入时是挂载根），由 `web/build/scope-to-root.mjs` 处理。除了 `styles/standalone.css`，不要给 `html`、`body`、`#app` 写规则，也不要假定 `:root` 就是文档根元素。
+- **不假定视口。** 不要用 `vh` / `vw`（用 `calc(N * var(--lc-vh))` / `--lc-vw`），不要用 `window.innerWidth` / `innerHeight`，也不要把 `clientX` / `getBoundingClientRect()` 的值直接拿去摆 `position: fixed` 的元素：过一下 `web/src/utils/frame.ts` 的 `frameOf()`。断点写成 `@media (max-width: Npx)`，库构建会给它配一条容器查询。
+- **弹层挂到 portal。** 写 `<Teleport :to="$lcPortal">`，不要写 `to="body"`。轻提示和确认弹窗从 `@/utils/feedback` 引，不直接从 `tdesign-vue-next` 引。
+- **不碰全局。** 存储用 `lcLocal` / `lcSession`（`web/src/utils/storage.ts`）；不改 `document.title`，不往 `<html>` 上写属性；挂在 window 上的按键处理先问 `ownsKeyEvent()`；媒体地址过 `ensureHttps()` / `$src()`。
+- **功能可以被关掉。** 可选功能的入口用 `$feat.<开关>`（模板里）或 `useEmbed().features`（脚本里）包起来。
 
 ## 添加一种节点
 

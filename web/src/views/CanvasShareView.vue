@@ -87,7 +87,7 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 
 import ShareNode from '@/components/canvas/ShareNode.vue'
 import GenNode from '@/components/canvas/gen/GenNode.vue'

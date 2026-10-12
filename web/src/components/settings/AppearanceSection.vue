@@ -2,7 +2,7 @@
   <SettingsSection id="appearance" icon="eye" :title="t('settings.appearance.title')" :desc="app.isOwner ? t('settings.appearance.descOwner') : t('settings.appearance.desc')">
     <!-- 每个人自己的：语言存在这台浏览器里，主题和节点布局存在账号上 -->
     <SettingsCard :title="t('settings.appearance.personalTitle')" :desc="t('settings.appearance.personalDesc')">
-      <div class="srow">
+      <div v-if="$feat.localeSwitch" class="srow">
         <div id="ap-lang-lbl" class="k">{{ t('settings.appearance.language') }}</div>
         <div class="v">
           <div class="ctl lang">
@@ -19,7 +19,7 @@
         </div>
       </div>
       <!-- 主题：深色 / 浅色 / 跟随系统。跟着账号存在服务端，同时记在这台浏览器上（没登录的页面和首帧用） -->
-      <div class="srow">
+      <div v-if="$feat.themeSwitch" class="srow">
         <div id="ap-theme-lbl" class="k">{{ t('settings.appearance.theme') }}</div>
         <div class="v">
           <ThemeChooser :model-value="app.theme" labelledby="ap-theme-lbl" @update:model-value="pickTheme" />
@@ -27,7 +27,7 @@
         </div>
       </div>
       <!-- 画布上生成节点的布局：跟着账号存在服务端，点了就生效 -->
-      <div class="srow">
+      <div v-if="$feat.nodeLayoutSwitch" class="srow">
         <div id="ap-layout-lbl" class="k">{{ t('settings.appearance.nodeLayout') }}</div>
         <div class="v">
           <NodeLayoutChooser :model-value="app.nodeLayout" labelledby="ap-layout-lbl" @update:model-value="pickLayout" />
@@ -109,7 +109,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { apiErrorMessage } from '@/utils/api'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { useAdminSettings } from '@/composables/useAdminSettings'

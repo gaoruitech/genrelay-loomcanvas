@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="$lcPortal">
     <div v-if="open && form" class="lc-mask lc-sheet bke-mask" @click.self="close">
       <form class="lc-dialog bke" role="dialog" aria-modal="true" :aria-label="title" data-testid="kit-editor" @submit.prevent="save">
         <div class="lc-dialog-head">
@@ -93,10 +93,10 @@
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import LcIcon from '@/components/LcIcon.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
-import { brandKitApi, apiErrorMessage } from '@/utils/api'
+import { brandKitApi, apiErrorMessage } from '@/utils/canvasBackend'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { BRAND_KIT_MAX_REFS, type BrandKit } from '@/composables/useBrandKits'

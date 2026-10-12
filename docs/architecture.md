@@ -4,6 +4,8 @@
 
 本文是前后端共同遵守的约定。改接口先改这里。逐个接口的请求、返回和错误码另见 [api.md](api.md)（英文），文档索引见 [README.zh-CN.md](README.zh-CN.md)。
 
+前端除了独立部署，还可以集成进别的产品：整站嵌入，或只嵌画布编辑器（后端由集成方提供的适配器对接）。入口、选项、画布文档格式和兼容性承诺见 [integration.zh-CN.md](integration.zh-CN.md)；画布编辑器与后端之间的每一次调用都经过那里定义的适配器接口（`web/src/embed/types.ts` 的 `EditorAdapter`），本文第 4、6 节的接口是原装后端对这套接口的实现。
+
 ## 1. 仓库结构
 
 ```
@@ -32,6 +34,7 @@ loomcanvas/
 ├─ web/               Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  └─ src/
 │     ├─ views/             Landing / Login / Register / Workbench / CanvasList / Canvas / CanvasShareView / Assets / History / Models / Settings / Setup / NotFound
+│     ├─ embed/             集成入口：app.ts（整站嵌入）、editor.ts（只嵌编辑器）、types.ts / document.ts（对外的类型与画布文档格式）、适配器、挂载代码；独立应用的 main.ts 走的是同一份启动代码
 │     ├─ router/            路由与登录守卫：/（落地页）、/login、/register、/app（工作台）、/canvases、/canvas/:id、/assets、/models、/history、/settings、/setup、/share/:token
 │     ├─ components/AppShell.vue 登录后的外壳：顶栏 + 左侧栏（工作台 / 画布 / 素材库 / 模型管理 / 生成记录 / 设置）；编辑器里侧栏收成图标栏
 │     ├─ components/canvas/ 画布节点与对话框（gen/ 是生成节点：一份状态、三套布局外壳、输入条和属性面板）

@@ -31,7 +31,7 @@
           >
             <img v-if="thumbOf(it)" :src="thumbOf(it)" alt="" loading="lazy" />
             <!-- 视频没有登记过封面：让浏览器只取元数据，自己显示首帧 -->
-            <video v-else :src="it.url" muted playsinline preload="metadata" />
+            <video v-else :src="$src(it.url)" muted playsinline preload="metadata" />
             <span class="lc-cb bd-ck" :class="{ on: selected.has(it.url) }" />
             <span class="lc-bd bd-kind" :class="it.kind === 'video' ? 'vid' : 'img'">{{ it.kind === 'video' ? t('nodes.title.video') : t('nodes.title.image') }}</span>
             <span class="bd-cap">{{ it.label }}</span>
@@ -156,7 +156,7 @@ async function download() {
 
 <style scoped>
 .bd-mask { z-index: 3100; }
-.bd-modal { width: min(860px, 100%); max-height: min(80vh, 720px); }
+.bd-modal { width: min(860px, 100%); max-height: min(calc(80 * var(--lc-vh)), 720px); }
 .bd-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .bd-count { font: 400 12px var(--f-mono); color: var(--text-3); white-space: nowrap; }
 .bd-filters { flex: none; padding: 12px 20px 0; }
@@ -212,7 +212,7 @@ async function download() {
 .bd-info b { color: var(--text-2); font-weight: 500; font-family: var(--f-mono); font-size: 12px; word-break: break-all; }
 .bd-spacer { flex: 1; min-width: 8px; }
 @media (max-width: 600px) {
-  .bd-modal { max-height: 92vh; max-height: 92dvh; }
+  .bd-modal { max-height: calc(92 * var(--lc-vh)); max-height: calc(92 * var(--lc-dvh)); }
   .bd-filters { padding: 12px 16px 0; }
   .bd-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px 16px; }
   .bd-foot { padding: 12px 16px; }

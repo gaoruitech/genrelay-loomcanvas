@@ -1,10 +1,11 @@
 import { ref, watch, type Ref } from 'vue'
 import { resolvedTheme } from '@/composables/useTheme'
+import { currentRoot } from '@/embed/runtime'
 
 /** design token 现在的计算值（跟着当前主题）；读不到返回空串 */
 export function readToken(token: string): string {
   try {
-    return getComputedStyle(document.documentElement).getPropertyValue(token).trim()
+    return getComputedStyle(currentRoot()).getPropertyValue(token).trim()
   } catch { return '' }
 }
 

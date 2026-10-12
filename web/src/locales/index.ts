@@ -1,3 +1,5 @@
+import { lcLocal } from '@/utils/storage'
+import { runtime } from '@/embed/runtime'
 import { createI18n } from 'vue-i18n'
 import zhCN from './zh-CN'
 import en from './en'
@@ -24,7 +26,7 @@ export function normalizeLocale(v?: string | null): LocaleCode | null {
 
 /** 用户自己选过的语言；没选过返回 null，由调用方落到站点默认值 */
 export function savedLocale(): LocaleCode | null {
-  try { return normalizeLocale(localStorage.getItem(KEY)) } catch { return null }
+  try { return normalizeLocale(lcLocal.getItem(KEY)) } catch { return null }
 }
 
 export const i18n = createI18n({
@@ -47,8 +49,21 @@ export function currentLocale(): LocaleCode {
 /** persist=false 用于套用站点默认语言：不能把默认值写成「用户的选择」 */
 export function setLocale(code: LocaleCode, persist = true) {
   i18n.global.locale.value = code
-  document.documentElement.setAttribute('lang', code)
+  // 嵌进别人的页面：<html lang> 是宿主的，写在本产品自己的根元素上
+  if (runtime.embedded) { for (const el of runtime.roots) el.setAttribute('lang', code) }
+  else document.documentElement.setAttribute('lang', code)
   if (persist) {
-    try { localStorage.setItem(KEY, code) } catch { /* 隐私模式下写不进去，本次会话仍生效 */ }
+    try { lcLocal.setItem(KEY, code) } catch { /* 隐私模式下写不进去，本次会话仍生效 */ }
+  }
+}
+
+/**
+ * 集成方覆盖文案：按语言给一棵和内置文案同结构的子树，逐键盖上去（没给的键不动）。
+ */
+export function mergeMessages(overrides?: Partial<Record<LocaleCode, Record<string, unknown>>>) {
+  if (!overrides) return
+  for (const code of Object.keys(overrides) as LocaleCode[]) {
+    const tree = overrides[code]
+    if (tree && typeof tree === 'object') i18n.global.mergeLocaleMessage(code, tree as any)
   }
 }

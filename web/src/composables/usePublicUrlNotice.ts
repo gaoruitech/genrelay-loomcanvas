@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
-import { useAppStore } from '@/stores/app'
+import { backendCapabilities } from '@/utils/canvasBackend'
 import { t } from '@/locales'
 import type { ModelAdapter } from '@/utils/canvasModels'
 
@@ -22,8 +22,8 @@ export function publicUrlProblem(
 ): string {
   if (!adapter) return ''
   // 老版本后端没有这一项：不知道就不说
-  const media = useAppStore().bootstrap?.media
-  if (!media || media.upstreamByUrl) return ''
+  const known = backendCapabilities().upstreamByUrl
+  if (known === undefined || known) return ''
   if (adapter.videoEdit && (input.videoPending || (input.videoUrl && !isAbsolute(input.videoUrl)))) {
     return t('gen.publicUrl.video')
   }

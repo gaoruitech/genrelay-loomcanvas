@@ -185,8 +185,8 @@
               @click="focus(f.nodeId)"
             >
               <span class="thumb lc-thumb">
-                <img v-if="f.thumb && f.media === 'image'" :src="f.thumb" alt="" loading="lazy" />
-                <video v-else-if="f.thumb && f.media === 'video'" :src="f.thumb" muted preload="metadata" playsinline />
+                <img v-if="f.thumb && f.media === 'image'" :src="$src(f.thumb)" alt="" loading="lazy" />
+                <video v-else-if="f.thumb && f.media === 'video'" :src="$src(f.thumb)" muted preload="metadata" playsinline />
                 <LcIcon v-else :name="f.status === 'error' ? 'warn' : f.status === 'canceled' ? 'stop' : f.icon" size="s" />
               </span>
               <span class="qdone-txt">
@@ -211,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+import { lcLocal } from '@/utils/storage'
 /**
  * 生成队列：这张画布上正在跑、在排队、跑完了的节点。
  *
@@ -233,7 +234,7 @@ import { useI18n } from 'vue-i18n'
 import type { Node } from '@vue-flow/core'
 import LcIcon from '@/components/LcIcon.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
-import { runsApi, unwrap } from '@/utils/api'
+import { runsApi, unwrap } from '@/utils/canvasBackend'
 import { ensureHttps } from '@/utils/mediaUrl'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { getAdapter, listChatModels, listVideoChatModels } from '@/utils/canvasModels'
@@ -608,16 +609,16 @@ const POS_KEY = 'lc-queue-pos'
 function loadPos(): Pos | null {
   try {
     // 以前几版记过面板的开合和「清空」时间，现在都不用了，顺手清掉
-    localStorage.removeItem('lc-queue-open'); localStorage.removeItem('lc-queue-cleared')
-    const v = JSON.parse(localStorage.getItem(POS_KEY) || 'null')
+    lcLocal.removeItem('lc-queue-open'); lcLocal.removeItem('lc-queue-cleared')
+    const v = JSON.parse(lcLocal.getItem(POS_KEY) || 'null')
     if (v && (v.e === 'l' || v.e === 'r') && Number.isFinite(v.r)) return { e: v.e, r: Math.max(0, Math.min(1, Number(v.r))) }
   } catch { /* 读不到就用默认位置 */ }
   return null
 }
 function savePos() {
   try {
-    if (pos.value) localStorage.setItem(POS_KEY, JSON.stringify(pos.value))
-    else localStorage.removeItem(POS_KEY)
+    if (pos.value) lcLocal.setItem(POS_KEY, JSON.stringify(pos.value))
+    else lcLocal.removeItem(POS_KEY)
   } catch { /* 存不上就只在这次有效 */ }
 }
 

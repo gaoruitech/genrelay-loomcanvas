@@ -163,7 +163,7 @@
  */
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { ownerApi, unwrap, apiErrorCode, apiErrorMessage } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'

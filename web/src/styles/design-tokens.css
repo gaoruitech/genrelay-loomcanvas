@@ -31,23 +31,8 @@
       画布底色是用户自选的时候，这一组跟着底色的明暗走（[data-ground]），不跟主题走。
    ============================================================ */
 
-/* 自托管字体（生产 CSP 是 font-src 'self'，不能用外链）。只带拉丁子集，中文落到系统字体。
-   三款都是 SIL Open Font License 1.1，文件来自 @fontsource-variable/*。 */
-@font-face {
-  font-family: 'Inter Variable';
-  font-style: normal; font-display: swap; font-weight: 100 900;
-  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
-}
-@font-face {
-  font-family: 'Sora Variable';
-  font-style: normal; font-display: swap; font-weight: 100 800;
-  src: url('@fontsource-variable/sora/files/sora-latin-wght-normal.woff2') format('woff2-variations');
-}
-@font-face {
-  font-family: 'JetBrains Mono Variable';
-  font-style: normal; font-display: swap; font-weight: 100 800;
-  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
-}
+/* 三款自托管字体的 @font-face 在 styles/fonts.css（独立应用自己引；嵌入用的包里是单独的一个 fonts.css，
+   集成方可以引它、换成自己的字体文件地址，或者干脆不引 —— 那就落到下面字体栈里的系统字体）。 */
 
 /* .lc-theme-dark / .lc-theme-light：把某一套令牌整套套在一个子树上（设置页里三张主题预览图就是这样画的，
    所以预览永远和真实取值一致）。 */

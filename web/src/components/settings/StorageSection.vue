@@ -296,7 +296,7 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/utils/feedback'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
 import LcSelect from '@/components/LcSelect.vue'

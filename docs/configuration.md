@@ -46,7 +46,7 @@ Registration itself needs no variable: people register in the web app and get or
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `TRUST_PROXY` | empty | Set when running behind a reverse proxy so the sign-in and registration rate limits, and the session list, see the real client address. Either the number of proxies in front (`1` for one proxy, at most 10), or a comma-separated list of the addresses they connect from: IPs, CIDR ranges, or the names `loopback`, `linklocal`, `uniquelocal`. Anything else, including `true` and host names, stops the server at startup. There is no "trust everything" value: with it a client could forge `X-Forwarded-For` and get around the login rate limit. |
-| `CORS_ORIGIN` | empty | Extra browser origins allowed to call `/api`, comma separated. By default no cross-origin access is granted. Needed only when a frontend is served from another origin. |
+| `CORS_ORIGIN` | empty | Extra browser origins allowed to call `/api`, comma separated. By default no cross-origin access is granted. Needed only when a frontend is served from another origin, for example the Vite dev server or a product that embeds LoomCanvas (see [integration.md](integration.md#server-notes)). |
 | `SSRF_ALLOW_HOSTS` | empty | Host names or IPs, comma separated, that are exempt from the private-address block of the server-side downloader. For a model server on your own network that returns result links pointing at itself. See [Security](security.md#ssrf-protection). |
 | `BILLING_HOOK` | empty | Path to a billing hook module. A relative path is resolved against the directory the server is started from. See [Billing hook](billing-hook.md). |
 
