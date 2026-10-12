@@ -181,16 +181,16 @@ async function download() {
   transition: border-color .14s ease, box-shadow .14s ease;
 }
 .bd-thumb:hover { border-color: var(--line-3); }
-.bd-thumb.sel { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
+.bd-thumb.sel { border-color: rgb(var(--c-cyan) / .7); box-shadow: var(--glow-s); }
 .bd-thumb:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .bd-thumb img,
 .bd-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* 视频只当封面用，点击要落到外层按钮上 */
 .bd-thumb video { pointer-events: none; }
-.bd-ck { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; background: rgba(4, 9, 28, .6); }
+.bd-ck { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; background: rgb(var(--c-scrim) / .6); }
 .bd-kind { position: absolute; top: 7px; right: 7px; height: 20px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-.bd-kind.img { background: rgba(4, 30, 52, .78); }
-.bd-kind.vid { background: rgba(28, 16, 62, .78); }
+.bd-kind.img { background: var(--kind-image-scrim); }
+.bd-kind.vid { background: var(--kind-video-scrim); }
 /* 图注压在画面上：底是恒暗渐变，字固定用浅色 */
 .bd-cap {
   position: absolute;
@@ -201,7 +201,7 @@ async function download() {
   font-size: 11px;
   text-align: left;
   color: var(--on-scrim);
-  background: linear-gradient(transparent, rgba(4, 9, 28, .85));
+  background: linear-gradient(transparent, rgb(var(--c-scrim) / .85));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

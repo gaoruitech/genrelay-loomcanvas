@@ -12,6 +12,7 @@
         class="lp-lang" size="sm" auto-width :model-value="app.locale" :options="LOCALE_OPTIONS"
         :aria-label="t('auth.language')" @update:model-value="app.setLocale"
       />
+      <ThemeSwitch plain />
       <a class="lc-btn ghost src" :href="LINKS.repo" target="_blank" rel="noopener"><LcIcon name="branch" />{{ t('landing.nav.source') }}</a>
       <router-link class="lc-btn" to="/login">{{ t('landing.nav.login') }}</router-link>
       <router-link v-if="app.registrationOpen" class="lc-btn primary" to="/register">{{ t('landing.nav.register') }}</router-link>
@@ -119,6 +120,7 @@ import { useAppStore } from '@/stores/app'
 import { LOCALE_OPTIONS } from '@/locales'
 import { LINKS } from '@/utils/links'
 import LcLogo from '@/components/LcLogo.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
 import HeroCanvas from '@/components/landing/HeroCanvas.vue'
@@ -140,7 +142,7 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .lp { height: 100%; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
 .lp-nav {
   position: sticky; top: 0; z-index: 30; height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 max(24px, calc((100% - 1200px) / 2));
-  border-bottom: 1px solid var(--line); background: rgba(5, 10, 30, .72);
+  border-bottom: 1px solid var(--line); background: rgb(var(--c-chrome-0) / .72);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .lp-links { display: flex; gap: 32px; margin-left: 44px; }
@@ -151,9 +153,9 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .lp-hero { padding: 80px max(24px, calc((100% - 1200px) / 2)) 0; text-align: center; }
 .kick {
   display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 14px; border-radius: 15px;
-  border: 1px solid var(--line-3); background: rgba(59, 123, 255, .12); color: var(--cyan-soft); font-size: 13px;
+  border: 1px solid var(--line-3); background: rgb(var(--c-blue) / .12); color: var(--cyan-soft); font-size: 13px;
 }
-.kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); flex: none; }
+.kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgb(var(--g-cyan)); flex: none; }
 .lp-hero h1 { font: 700 60px/1.18 var(--f-disp); letter-spacing: -.01em; margin-top: 24px; color: var(--text); }
 .lead { font-size: 18px; line-height: 1.75; color: var(--text-2); max-width: 720px; margin: 24px auto 0; }
 .lp-cta { display: flex; justify-content: center; gap: 16px; margin-top: 40px; flex-wrap: wrap; }
@@ -170,7 +172,7 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .tile { display: flex; gap: 16px; padding: 24px; min-height: 152px; }
 .ti {
   width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22)); box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22)); box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
 .tile h3 { font: 600 17px/1.4 var(--f-disp); color: var(--text); }
 .tile p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin-top: 6px; }
@@ -180,7 +182,7 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .step { min-width: 0; }
 .no {
   position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  font: 600 15px var(--f-disp); background: #0b1436; border: 1px solid var(--cyan); color: var(--cyan-soft); box-shadow: 0 0 16px rgba(63, 216, 255, .35);
+  font: 600 15px var(--f-disp); background: var(--port-bg); border: 1px solid var(--cyan); color: var(--cyan-soft); box-shadow: 0 0 16px rgb(var(--g-cyan) / .35);
 }
 .step .card { margin-top: 20px; padding: 24px; min-height: 176px; border-radius: var(--r-md); }
 .step h3 { font: 600 18px/1.4 var(--f-disp); color: var(--text); }
@@ -195,12 +197,12 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .oss { display: grid; grid-template-columns: minmax(0, 1fr) 320px 320px; gap: 24px; padding: 40px; border-radius: 22px; align-items: stretch; }
 .oss h2 { margin-top: 12px; }
 .oss-act { margin-top: 28px; gap: 12px; flex-wrap: wrap; }
-.lic { padding: 24px; border-radius: 14px; border: 1px solid var(--line-2); background: rgba(4, 9, 28, .4); }
+.lic { padding: 24px; border-radius: 14px; border: 1px solid var(--line-2); background: rgb(var(--c-well) / .4); }
 .lic h3 { font: 600 18px var(--f-disp); margin-top: 12px; color: var(--text); }
 .lic p { color: var(--text-2); font-size: 13px; line-height: 1.7; margin-top: 8px; }
 
 .lp-foot {
-  margin-top: 112px; padding: 48px max(24px, calc((100% - 1200px) / 2)) 40px; border-top: 1px solid var(--line); background: rgba(5, 10, 30, .6);
+  margin-top: 112px; padding: 48px max(24px, calc((100% - 1200px) / 2)) 40px; border-top: 1px solid var(--line); background: rgb(var(--c-chrome-0) / .6);
   display: grid; grid-template-columns: minmax(0, 1fr) 160px 160px 160px; gap: 32px;
 }
 .blurb { margin-top: 12px; font-size: 13px; max-width: 320px; color: var(--text-3); }

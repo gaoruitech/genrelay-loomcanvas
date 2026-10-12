@@ -318,8 +318,8 @@ async function handleRun() {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, .35);
-  background: rgba(4, 9, 28, .6);
+  border: 1px solid var(--on-scrim-line);
+  background: rgb(var(--c-scrim) / .6);
   color: var(--on-scrim);
   pointer-events: none;
 }
@@ -343,7 +343,7 @@ async function handleRun() {
   min-height: 120px;
   border-radius: 9px;
   border: 1px dashed var(--line-2);
-  background: rgba(4, 9, 28, .3);
+  background: rgb(var(--c-well) / .3);
   display: flex;
   flex-direction: column;
   align-items: center;

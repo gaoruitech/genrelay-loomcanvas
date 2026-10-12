@@ -320,7 +320,7 @@ async function downloadAll() {
   overflow: hidden; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease;
 }
 .br-var:hover { border-color: var(--line-3); }
-.br-var.on { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
+.br-var.on { border-color: rgb(var(--c-cyan) / .7); box-shadow: var(--glow-s); }
 .br-var img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .br-var-blank {
   display: flex; align-items: center; justify-content: center;
@@ -330,7 +330,7 @@ async function downloadAll() {
 .br-var-cap {
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 6px 0 2px; font-size: 10px; text-align: center; color: var(--on-scrim);
-  background: linear-gradient(to top, rgba(4, 9, 28, .85), rgba(4, 9, 28, 0));
+  background: linear-gradient(to top, rgb(var(--c-scrim) / .85), rgb(var(--c-scrim) / 0));
 }
 
 .br-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -343,7 +343,7 @@ async function downloadAll() {
 .br-src img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .br-src-x {
   position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
-  border: none; border-radius: 5px; background: rgba(4, 9, 28, .7); color: var(--on-scrim);
+  border: none; border-radius: 5px; background: rgb(var(--c-scrim) / .7); color: var(--on-scrim);
   font-size: 13px; line-height: 18px; padding: 0; cursor: pointer;
 }
 
@@ -357,17 +357,17 @@ async function downloadAll() {
 
 /* ── 运行 / 结果 ── */
 .br-progress { margin-bottom: 14px; }
-.br-progress-bar { height: 6px; border-radius: 3px; background: rgba(124, 160, 255, .14); overflow: hidden; }
+.br-progress-bar { height: 6px; border-radius: 3px; background: rgb(var(--c-film) / .14); overflow: hidden; }
 .br-progress-fill { height: 100%; border-radius: 3px; background: var(--grad); transition: width .3s ease; }
 .br-progress-txt { margin-top: 8px; font-size: 13px; color: var(--text-2); }
 
 .br-rows { display: flex; flex-direction: column; gap: 8px; }
 .br-row {
   display: flex; gap: 10px; padding: 10px;
-  border: 1px solid var(--line); border-radius: 12px; background: rgba(4, 9, 28, .45);
+  border: 1px solid var(--line); border-radius: 12px; background: rgb(var(--c-well) / .45);
 }
-.br-row.running { border-color: rgba(63, 216, 255, .5); }
-.br-row.failed, .br-row.error { border-color: rgba(255, 107, 139, .4); }
+.br-row.running { border-color: rgb(var(--c-cyan) / .5); }
+.br-row.failed, .br-row.error { border-color: rgb(var(--c-err) / .4); }
 .br-row-src { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
 .br-row-mid { min-width: 0; flex: 1; }
 .br-row-top { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }

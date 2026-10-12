@@ -158,15 +158,15 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 8px; min-height: 22px; padding: 0 12px; margin-bottom: 6px;
   font-size: 12px; color: var(--text-3); white-space: nowrap;
 }
-.only { padding: 2px 6px; border-radius: 6px; font-size: 11px; color: var(--cyan-soft); background: rgba(63, 216, 255, .1); white-space: nowrap; }
+.only { padding: 2px 6px; border-radius: 6px; font-size: 11px; color: var(--cyan-soft); background: rgb(var(--c-cyan) / .1); white-space: nowrap; }
 .item {
   height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px;
   color: var(--text-2); text-decoration: none; font-size: 14px; border-left: 2px solid transparent; white-space: nowrap;
   transition: background .15s, color .15s;
 }
-.item:hover { color: var(--text); background: rgba(124, 160, 255, .08); text-decoration: none; }
+.item:hover { color: var(--text); background: rgb(var(--c-film) / .08); text-decoration: none; }
 .item:focus-visible { outline: none; box-shadow: var(--ring); }
-.item.on { color: var(--text); background: rgba(59, 123, 255, .14); border-left-color: var(--cyan); }
+.item.on { color: var(--text); background: rgb(var(--c-blue) / .14); border-left-color: var(--cyan); }
 .item.on :deep(.lc-ic) { color: var(--cyan); }
 
 /* 表单不跟着宽屏无限拉长；用户表格多给一点 */
@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
     flex: none; height: 32px; padding: 0 12px; gap: 6px; border-radius: 16px; font-size: 13px;
     border: 1px solid var(--line-2);
   }
-  .item.on { border-color: var(--cyan); background: rgba(63, 216, 255, .1); }
+  .item.on { border-color: var(--cyan); background: rgb(var(--c-cyan) / .1); }
   .item :deep(.lc-ic) { width: 14px; height: 14px; }
   .set-main, .set-main.wide { max-width: none; }
 }

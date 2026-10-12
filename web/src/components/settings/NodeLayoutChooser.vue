@@ -86,12 +86,12 @@ const options = computed<{ value: NodeLayout; name: string; desc: string }[]>(()
 .nlc { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: 100%; }
 .nlc-card {
   display: grid; align-content: start; gap: 8px; min-width: 0; padding: 10px 10px 12px; border-radius: var(--r-md);
-  border: 1px solid var(--line-2); background: rgba(124, 160, 255, .04); color: var(--text-2); text-align: left; cursor: pointer;
+  border: 1px solid var(--line-2); background: rgb(var(--c-film) / .04); color: var(--text-2); text-align: left; cursor: pointer;
   transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
-.nlc-card:hover:not(:disabled) { border-color: var(--line-3); background: rgba(124, 160, 255, .08); }
+.nlc-card:hover:not(:disabled) { border-color: var(--line-3); background: rgb(var(--c-film) / .08); }
 .nlc-card:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
-.nlc-card.on { border-color: var(--cyan); background: rgba(63, 216, 255, .08); box-shadow: 0 0 0 1px var(--cyan) inset; }
+.nlc-card.on { border-color: var(--cyan); background: rgb(var(--c-cyan) / .08); box-shadow: 0 0 0 1px var(--cyan) inset; }
 .nlc-card:disabled { opacity: .6; cursor: default; }
 .nlc-thumb {
   display: block; border-radius: 9px; overflow: hidden; border: 1px solid var(--line);
@@ -101,16 +101,16 @@ const options = computed<{ value: NodeLayout; name: string; desc: string }[]>(()
     linear-gradient(180deg, var(--bg-0), var(--bg-1));
 }
 .nlc-thumb svg { display: block; width: 100%; height: auto; }
-.nlc-thumb .node { fill: #172552; stroke: var(--line-2); stroke-width: 1; }
+.nlc-thumb .node { fill: var(--mock-node); stroke: var(--line-2); stroke-width: 1; }
 .nlc-thumb .node.ghost { opacity: .5; }
-.nlc-thumb .media { fill: #1a1f6b; }
-.nlc-thumb .art { fill: #5b2a9a; opacity: .8; }
+.nlc-thumb .media { fill: var(--art-sky-1); }
+.nlc-thumb .art { fill: var(--art-sky-2); opacity: .8; }
 .nlc-thumb .dot { fill: var(--ok); }
-.nlc-thumb .panel { fill: #14214c; stroke: var(--line-2); stroke-width: 1; }
-.nlc-thumb .well { fill: rgba(4, 9, 28, .62); stroke: var(--line); stroke-width: 1; }
+.nlc-thumb .panel { fill: var(--mock-panel); stroke: var(--line-2); stroke-width: 1; }
+.nlc-thumb .well { fill: rgb(var(--c-well) / .62); stroke: var(--line); stroke-width: 1; }
 .nlc-thumb .txt { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-linecap: round; opacity: .7; }
-.nlc-thumb .chip { fill: rgba(124, 160, 255, .12); stroke: var(--line-2); stroke-width: .8; }
-.nlc-thumb .run { fill: #56c8ff; }
+.nlc-thumb .chip { fill: rgb(var(--c-film) / .12); stroke: var(--line-2); stroke-width: .8; }
+.nlc-thumb .run { fill: var(--btn-bg); }
 .nlc-card.on .nlc-thumb .node:not(.ghost), .nlc-card.on .nlc-thumb .panel { stroke: var(--cyan); }
 .nlc-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); }
 .nlc-name .lc-chip { flex: none; font-style: normal; font-weight: 400; height: 18px; padding: 0 6px; font-size: 11px; }

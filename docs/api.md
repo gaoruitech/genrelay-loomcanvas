@@ -145,14 +145,14 @@ Response `data`, for a caller who is not signed in:
 | `version` | The version of the server. |
 | `media.upstreamByUrl` | Whether an upstream model can be given a stored file by URL: `true` with a public `PUBLIC_URL`, or when new files go to a bucket reachable from the internet; always `false` for a caller who is not signed in. The canvas uses it to warn, before a run, when a model that only takes URLs (`imageByUrlOnly` in its ModelSpec) has a reference image connected. |
 
-Earlier versions also returned `authRequired`, `authed` and `site.defaultTheme`. They are gone: signing in is always required (use `user`), and the interface has a single theme.
+Earlier versions also returned `authRequired`, `authed` and `site.defaultTheme`. They are gone: signing in is always required (use `user`), and the theme is a preference of each account (`user.prefs.theme`), not a site setting.
 
 ### The User object
 
 What the API returns about an account:
 
 ```json
-{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "user", "mustChangePassword": false, "prefs": { "nodeLayout": "a" }, "createdAt": "2026-10-09T02:58:01.120Z" }
+{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "user", "mustChangePassword": false, "prefs": { "nodeLayout": "a", "theme": "dark" }, "createdAt": "2026-10-09T02:58:01.120Z" }
 ```
 
 | Field | Meaning |
@@ -160,7 +160,7 @@ What the API returns about an account:
 | `role` | `owner` (the super admin) or `user`. |
 | `email` | The account's address. It may be `""` for the super admin, the only account that can exist without one (created without `ADMIN_EMAIL`, until it adds one with [PUT /api/auth/profile](#put-apiauthprofile)). |
 | `mustChangePassword` | `true` while the account's password is one somebody else knows: the super admin password the server generated at start-up, a temporary password from [`POST /api/admin/users/:id/reset-password`](#accounts), or one from the command-line reset. `PUT /api/auth/password` sets it back to `false`. While it is `true` the API serves the account almost nothing else, see [Authentication](#authentication). |
-| `prefs` | The account's preferences for the web app, always complete (an account that never chose gets the defaults). `nodeLayout` is how generation nodes look on the canvas: `"a"` result first with a composer under the selected node (the default), `"b"` compact nodes with an inspector on the right, `"c"` everything on the node. Change it with [PUT /api/auth/prefs](#put-apiauthprefs). |
+| `prefs` | The account's preferences for the web app, always complete (an account that never chose gets the defaults). `nodeLayout` is how generation nodes look on the canvas: `"a"` result first with a composer under the selected node (the default), `"b"` compact nodes with an inspector on the right, `"c"` everything on the node. `theme` is the colour theme of the interface: `"dark"` (the default), `"light"`, or `"system"` to follow the device's own light / dark setting. Change them with [PUT /api/auth/prefs](#put-apiauthprefs). |
 
 Nothing else about an account leaves the server through this object. It is the same wherever a User is returned: registration, sign-in, `GET /api/auth/me`, `PUT /api/auth/profile`, `PUT /api/auth/prefs`, `user` in the bootstrap and the rows of `GET /api/admin/users`.
 
@@ -252,7 +252,9 @@ Limited to 20 changes per account per hour. Without a limit the `username_taken`
 
 ### PUT /api/auth/prefs
 
-Body: `{ "nodeLayout"?: "a" | "b" | "c" }`. Changes the caller's preferences; only the keys sent are changed. They are stored with the account, so they follow it to every browser. Response: `{ "user": User }`.
+Body: `{ "nodeLayout"?: "a" | "b" | "c", "theme"?: "dark" | "light" | "system" }`. Changes the caller's preferences; only the keys sent are changed. They are stored with the account, so they follow it to every browser. Response: `{ "user": User }`.
+
+The web app also mirrors `theme` in the browser's `localStorage` (key `loomcanvas-theme`), so that pages shown before signing in, shared canvases and the first paint of the next visit use it. The account's value wins whenever someone is signed in.
 
 The body is validated strictly: it has to be an object with at least one key, every key has to be a known preference and every value one of its allowed values. Nothing is changed when a request is refused.
 
@@ -261,7 +263,7 @@ The body is validated strictly: it has to be an object with at least one key, ev
 | 400 | `validation.body_object` | The body is not a JSON object. |
 | 400 | `common.nothing_to_update` | The object is empty. |
 | 400 | `validation.bad_key` | A key that is not a preference (an unknown key is refused, not ignored). |
-| 400 | `validation.one_of` | A value outside the allowed set, for example `{ "nodeLayout": "d" }`. |
+| 400 | `validation.one_of` | A value outside the allowed set, for example `{ "nodeLayout": "d" }` or `{ "theme": "sepia" }`. |
 
 The share view (`GET /api/canvas-share/:token`) does not depend on it: a shared canvas is always shown in layout A, read-only.
 
@@ -841,7 +843,7 @@ Keys, defaults and ranges are listed in [Configuration](configuration.md#admin-s
 
 The other limits, the timeouts and `retentionDays` are site settings too and apply to every account's runs. There is no per-account storage quota.
 
-The full set of keys is `siteName`, `logoUrl`, `defaultLocale`, `registrationOpen`, `concurrency`, `userConcurrency`, `userQueueLimit`, `maxRetries`, `imageTimeoutMinutes`, `videoTimeoutMinutes`, `chatTimeoutSec`, `submitTimeoutSec`, `downloadTimeoutSec` and `retentionDays`. `defaultTheme` of earlier versions is not among them any more: the interface has a single theme. `GET` does not return it, `PUT` refuses it with `settings.unknown_key` like any other unknown key, and a value stored by an earlier version is ignored.
+The full set of keys is `siteName`, `logoUrl`, `defaultLocale`, `registrationOpen`, `concurrency`, `userConcurrency`, `userQueueLimit`, `maxRetries`, `imageTimeoutMinutes`, `videoTimeoutMinutes`, `chatTimeoutSec`, `submitTimeoutSec`, `downloadTimeoutSec` and `retentionDays`. `defaultTheme` of earlier versions is not among them any more: the theme is each account's own preference (`prefs.theme`), not a site setting. `GET` does not return it, `PUT` refuses it with `settings.unknown_key` like any other unknown key, and a value stored by an earlier version is ignored.
 
 Errors: `auth.forbidden` (403); `settings.unknown_key` (any key that is not a setting, including names such as `constructor` or `__proto__`), `validation.int_range`, `validation.one_of`, `validation.string`, `validation.boolean`, `settings.logo_url` (400).
 

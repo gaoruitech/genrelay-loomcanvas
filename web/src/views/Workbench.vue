@@ -557,16 +557,16 @@ onBeforeUnmount(() => {
 .wb-cvs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .wb-cv { display: block; overflow: hidden; min-width: 0; color: inherit; transition: border-color .15s, box-shadow .15s; }
 .wb-cv:hover { text-decoration: none; border-color: var(--line-3); }
-.wb-cv.on:hover { border-color: rgba(63, 216, 255, .8); }
+.wb-cv.on:hover { border-color: rgb(var(--c-cyan) / .8); }
 .wb-cv-thumb { height: 144px; }
 /* 封面可能是浅色的图：徽标垫一层深底才读得出来 */
-.wb-cv-thumb .tag { box-shadow: 0 0 0 99px rgba(7, 13, 39, .8) inset; }
+.wb-cv-thumb .tag { box-shadow: 0 0 0 99px var(--tag-scrim) inset; }
 .wb-cv-meta { padding: 12px 14px 14px; }
 .wb-cv-meta h3 { font: 600 14px/1.5 var(--f-body); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wb-cv-meta small { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wb-ph {
-  position: absolute; inset: 0; display: grid; place-items: center; color: rgba(124, 170, 255, .38);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .07), rgba(138, 92, 255, .1));
+  position: absolute; inset: 0; display: grid; place-items: center; color: rgb(var(--c-film-2) / .38);
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .07), rgb(var(--c-violet) / .1));
 }
 
 /* 模板卡 */
@@ -588,10 +588,10 @@ onBeforeUnmount(() => {
 .wb-gen:hover { text-decoration: none; }
 .wb-gen-thumb { height: 92px; border-radius: 10px; border: 1px solid var(--line); transition: border-color .15s; }
 .wb-gen:hover .wb-gen-thumb { border-color: var(--line-3); }
-.wb-gen-thumb.busy { display: grid; place-items: center; background: linear-gradient(135deg, rgba(63, 216, 255, .1), rgba(138, 92, 255, .14)); }
+.wb-gen-thumb.busy { display: grid; place-items: center; background: linear-gradient(135deg, rgb(var(--c-cyan) / .1), rgb(var(--c-violet) / .14)); }
 .wb-gen-thumb.fail {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px;
-  background: rgba(255, 107, 139, .07); border-color: rgba(255, 107, 139, .3); color: var(--err-soft); font-size: 12px; line-height: 1.4;
+  background: rgb(var(--c-err) / .07); border-color: rgb(var(--c-err) / .3); color: var(--err-soft); font-size: 12px; line-height: 1.4;
 }
 .wb-gen-err { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-align: center; overflow-wrap: anywhere; }
 .wb-gen-cap { margin-top: 8px; font-size: 12px; }
@@ -614,8 +614,8 @@ onBeforeUnmount(() => {
 .wb-unk { font-size: 15px; color: var(--text-2); }
 .wb-dash { color: var(--text-3); font-size: 15px; }
 .wb-bars { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin-top: 4px; }
-.wb-bars i { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, var(--cyan), rgba(59, 123, 255, .35)); }
-.wb-bars i.zero { background: rgba(124, 160, 255, .16); }
+.wb-bars i { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, var(--cyan), rgb(var(--c-blue) / .35)); }
+.wb-bars i.zero { background: rgb(var(--c-film) / .16); }
 .wb-bars-cap { margin: 6px 0 12px; }
 .wb-unpriced { margin-top: 4px; }
 .wb-rc-empty { margin-top: 12px; color: var(--text-3); font-size: 13px; }
@@ -637,7 +637,7 @@ onBeforeUnmount(() => {
 .wb-state .lc-btn { margin-top: 6px; }
 .wb-state-ic {
   width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22)); box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22)); box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
 
 /* 骨架 */

@@ -243,9 +243,9 @@ async function remove() {
 .bke-thumb-x {
   position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0;
   display: grid; place-items: center;
-  border: 0; border-radius: 6px; background: rgba(4, 9, 28, .72); color: var(--on-scrim); cursor: pointer;
+  border: 0; border-radius: 6px; background: rgb(var(--c-scrim) / .72); color: var(--on-scrim); cursor: pointer;
 }
-.bke-thumb-x:hover { background: rgba(4, 9, 28, .92); }
+.bke-thumb-x:hover { background: rgb(var(--c-scrim) / .92); }
 .bke-foot { align-items: center; }
 
 @media (max-width: 720px) {

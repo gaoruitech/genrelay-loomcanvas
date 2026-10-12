@@ -5,10 +5,10 @@ import { getToken, setToken, replaceToken, clearToken } from '@/utils/authToken'
 import { normalizeLocale, savedLocale, setLocale as applyLocale, currentLocale } from '@/locales'
 import type { BootstrapInfo, LocaleCode, User, UserPrefs } from '@/types'
 import { normalizeNodeLayout, type NodeLayout } from '@/composables/nodeLayout'
+import { themePref, setThemePref, normalizeTheme, themePending, setThemePending, type ThemePref } from '@/composables/useTheme'
 
 /**
- * 应用级状态：启动信息、当前账号、语言。
- * 界面只有一套霓虹深色主题，所以这里没有主题相关的状态。
+ * 应用级状态：启动信息、当前账号、语言、主题。
  */
 export const useAppStore = defineStore('app', () => {
   const bootstrap = ref<BootstrapInfo | null>(null)
@@ -40,7 +40,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // ---- 启动与登录 ----
-  async function loadBootstrap(justSignedIn = false) {
+  async function loadBootstrap(justSignedIn = false, keepLocalTheme = false) {
     bootstrapError.value = ''
     try {
       const info = unwrap(await appApi.bootstrap())
@@ -48,6 +48,7 @@ export const useAppStore = defineStore('app', () => {
       // 带着令牌去取、回来却没有账号：令牌已经失效（过期 / 被下线 / 账号被停用）。
       // 清掉它，免得之后每个请求（包括公开页面的）都带着一个死令牌。
       if (!justSignedIn && token.value && !info.user) { token.value = ''; clearToken() }
+      syncTheme(info.user, keepLocalTheme)
       // 用户自己没选过语言，才跟站点默认值走
       const siteLocale = normalizeLocale(info.site?.defaultLocale)
       if (!savedLocale() && siteLocale) setLocale(siteLocale, false)
@@ -58,10 +59,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /** 登录 / 注册成功后：记下令牌，再整份重取启动信息（hasProvider 之类是按账号算的） */
-  async function adopt(data: { user: User; token: string }, remember: boolean) {
+  async function adopt(data: { user: User; token: string }, remember: boolean, keepLocalTheme = false) {
     token.value = data.token
     setToken(data.token, remember)
-    await loadBootstrap(true)
+    await loadBootstrap(true, keepLocalTheme)
     // 启动信息没取回来（网络抖了一下）也先让人进去，账号以登录接口返回的为准
     if (bootstrap.value && !bootstrap.value.user) bootstrap.value = { ...bootstrap.value, user: data.user }
   }
@@ -81,11 +82,14 @@ export const useAppStore = defineStore('app', () => {
     swapToken(out?.token || '')
     signInPassword.value = ''
     if (bootstrap.value?.user) bootstrap.value = { ...bootstrap.value, user: { ...bootstrap.value.user, mustChangePassword: false } }
+    // 用临时密码登录期间接口只放行改密码，登录页上选的主题那时存不上账号：现在补上
+    syncTheme(bootstrap.value?.user, false)
   }
 
   /** 注册完直接算登录；注册表单没有「记住我」，按记住处理 */
   async function register(username: string, email: string, password: string) {
-    await adopt(unwrap(await authApi.register({ username, email, password })), true)
+    // 新账号还没有自己的主题：注册之前在这台浏览器上选的那个，带到账号上
+    await adopt(unwrap(await authApi.register({ username, email, password })), true, true)
   }
 
   /**
@@ -143,6 +147,55 @@ export const useAppStore = defineStore('app', () => {
   }
   const setNodeLayout = (v: NodeLayout) => setPrefs({ nodeLayout: v })
 
+  // ---- 主题 ----
+  /**
+   * 主题的选择（深色 / 浅色 / 跟随系统）。它有两份：
+   *   账号上的一份（users.prefs.theme）是准的，换浏览器登录也跟着走；
+   *   这台浏览器上的一份（localStorage，见 composables/useTheme.ts）是它的镜像，
+   *   没登录的页面（落地页 / 登录页 / 分享页）和每次打开时的首帧都用它。
+   */
+  const theme = computed<ThemePref>(() => themePref.value)
+
+  /**
+   * 启动信息里带着账号时，把两份对齐：
+   *   一般情况以账号上的为准，本机跟过去；
+   *   本机的选择还没存到任何账号上（没登录时在落地页 / 登录页换的，或者这是刚注册的新账号）就反过来，
+   *   以本机的为准并存到账号上。没存上（比如还在用临时密码，接口只放行改密码）就留着记号，下次再存。
+   */
+  function syncTheme(u: User | null | undefined, keepLocal: boolean) {
+    if (!u) return
+    const mine = normalizeTheme(u.prefs?.theme)
+    const local = themePref.value
+    if (keepLocal || themePending()) {
+      if (mine === local) { setThemePending(false); return }
+      setThemePending(true)
+      // 还在用临时密码：接口只放行改密码，这会儿存不上，等改完密码再存（replaceTemporaryPassword 里会再来一次）
+      if (u.mustChangePassword) return
+      void setPrefs({ theme: local }).then(() => setThemePending(false)).catch(() => undefined)
+      return
+    }
+    if (mine !== local) setThemePref(mine, { animate: false })
+  }
+
+  /**
+   * 换主题：立刻生效并记在这台浏览器上；登录着就同时存到账号上。
+   * 没存上就改回去并把错误抛给调用方（否则下次打开会被账号上的旧值盖回去，等于白选）。
+   */
+  async function setTheme(v: ThemePref) {
+    const before = themePref.value
+    if (v === before) return
+    setThemePref(v)
+    // 没登录：先记在这台浏览器上，并留个记号，登录之后存到那个账号上
+    if (!user.value) { setThemePending(true); return }
+    try {
+      await setPrefs({ theme: v })
+      setThemePending(false)
+    } catch (err) {
+      setThemePref(before)
+      throw err
+    }
+  }
+
   // 任意接口返回 401：令牌失效。这里只清状态，跳去登录页由 App.vue 看着 authed 做。
   setUnauthorizedHandler(dropSession)
   // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被超级管理员重置了）。
@@ -164,6 +217,7 @@ export const useAppStore = defineStore('app', () => {
     locale, setLocale,
     loadBootstrap, login, register, logout, setUser, swapToken, leaving,
     nodeLayout, setPrefs, setNodeLayout,
+    theme, setTheme,
     immersive, setImmersive, toggleImmersive,
   }
 })

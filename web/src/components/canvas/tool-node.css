@@ -33,7 +33,7 @@
 .cv-gbtn:hover,
 .cv-anchor:hover { border-color: var(--line-3); color: var(--text); }
 .cv-gbtn.on,
-.cv-anchor.on { background: rgba(59, 123, 255, .28); border-color: var(--line-3); color: var(--text); }
+.cv-anchor.on { background: rgb(var(--c-blue) / .28); border-color: var(--line-3); color: var(--text); }
 /* 水印锚点：九宫格点阵，点哪格贴哪儿 */
 .cv-anchors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .cv-anchor { padding: 0; }
@@ -127,11 +127,11 @@
 
 /* 执行按钮用描边而不是实心：实心 = 调用付费模型，描边 = 本机处理 / 免费 */
 .cv-tool .cv-run {
-  background: rgba(63, 216, 255, .08);
+  background: rgb(var(--c-cyan) / .08);
   color: var(--cyan-soft);
-  box-shadow: 0 0 0 1px rgba(63, 216, 255, .5) inset;
+  box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .5) inset;
 }
 .cv-tool .cv-run:hover:not(:disabled) {
-  background: rgba(63, 216, 255, .16);
+  background: rgb(var(--c-cyan) / .16);
   box-shadow: 0 0 0 1px var(--cyan) inset;
 }

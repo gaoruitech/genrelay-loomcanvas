@@ -7,6 +7,8 @@
         <h1 class="sv-title">{{ detail?.title || t('views.share.fallbackTitle') }}</h1>
         <span v-if="detail" class="lc-chip sv-ro"><LcIcon name="eye" size="s" />{{ t('views.share.readOnly') }}</span>
       </div>
+      <!-- 分享页跟的是看的人自己的主题（这台浏览器上记着的 / 系统的），不是作者的 -->
+      <ThemeSwitch />
       <button v-if="detail" class="lc-btn primary sv-copy" :disabled="copying" @click="handleCopy">
         <LcIcon name="copy" />
         <span>{{ copying ? t('views.share.copying') : t('views.share.copyToMine') }}</span>
@@ -15,7 +17,7 @@
 
     <p v-if="detail?.description" class="sv-desc">{{ detail.description }}</p>
 
-    <div class="sv-canvas" :style="flowStyle">
+    <div class="sv-canvas" :style="flowStyle" :data-ground="groundTone">
       <div v-if="loading" class="sv-state">
         <span class="lc-ring sm spin" />
         <div class="sv-state-text">{{ t('common.loading') }}</div>
@@ -93,12 +95,14 @@ import '@/components/canvas/gen/gen.css'
 import { GEN_NODE_KINDS } from '@/composables/nodeLayout'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
 import LcLogo from '@/components/LcLogo.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import { canvasShareApi, apiErrorMessage, type CanvasShareDetail } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
 import { useTokenColor } from '@/utils/tokenColor'
+import { resolvedTheme } from '@/composables/useTheme'
 import {
-  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, relLuminance, hexToRgba,
+  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, hexToRgba, miniNodeColorFor, groundToneFor,
   type CanvasBgSettings,
 } from '@/utils/canvasBg'
 
@@ -112,8 +116,9 @@ import '@/styles/vue-flow-theme.css'
  * vue-flow 的 Background / MiniMap 把颜色当 SVG attribute 传，attribute 不解析
  * var()，所以这里读 token 的计算值，而不是直接写 var(--flow-dot)。
  */
-const vfPattern = useTokenColor('--flow-dot', '#313137')
-const vfMask = useTokenColor('--flow-bg', '#151517', 0.7)
+const vfPattern = useTokenColor('--flow-dot')
+const vfMask = useTokenColor('--mini-mask-ro')
+const vfMiniNode = useTokenColor('--mini-node-ro')
 
 const route = useRoute()
 const router = useRouter()
@@ -162,10 +167,9 @@ const flowStyle = computed(() => (bgIsAuto.value ? {} : { background: bgSettings
 const bgVariant = computed(() => (bgSettings.value.pattern === 'dots' ? 'dots' : 'lines'))
 const flowPatternColor = computed(() => (bgIsAuto.value ? vfPattern.value : patternColorFor(bgSettings.value.color)))
 const miniMaskColor = computed(() => (bgIsAuto.value ? vfMask.value : hexToRgba(bgSettings.value.color, 0.7)))
-const miniNodeColor = computed(() => {
-  if (bgIsAuto.value) return vfPattern.value
-  return relLuminance(bgSettings.value.color) > 0.45 ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.32)'
-})
+const miniNodeColor = computed(() => (bgIsAuto.value ? vfMiniNode.value : miniNodeColorFor(bgSettings.value.color)))
+// 自选底色的明暗和看的人的主题相反时：连线 / 组框按底色取值
+const groundTone = computed(() => groundToneFor(bgSettings.value, resolvedTheme.value))
 const crossPath = computed(() => {
   const g = Math.max(1, bgSettings.value.gap * (liveViewport.value?.zoom || 1))
   const arm = Math.max(2, Math.min(6, g * 0.18))
@@ -239,7 +243,7 @@ onMounted(load)
 .sv-topbar {
   flex: none; display: flex; align-items: center; gap: 16px; min-height: 56px;
   padding: 8px 20px; border-bottom: 1px solid var(--line);
-  background: rgba(8, 14, 38, .72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  background: rgb(var(--c-chrome-2) / .72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .sv-brand { flex: none; }
 .sv-sep { flex: none; width: 1px; height: 20px; background: var(--line-2); }
@@ -252,7 +256,7 @@ onMounted(load)
 .sv-copy { flex: none; }
 .sv-desc {
   flex: none; margin: 0; padding: 10px 20px; font-size: 13px; color: var(--text-2);
-  border-bottom: 1px solid var(--line); line-height: 1.6; background: rgba(8, 14, 38, .5);
+  border-bottom: 1px solid var(--line); line-height: 1.6; background: rgb(var(--c-chrome-2) / .5);
   max-height: 96px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
 }
 /* 跟编辑页的工作台同一个底色，否则同一张画布分享出去换了个颜色。
@@ -268,9 +272,9 @@ onMounted(load)
 }
 .sv-notice-ic {
   width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 8px;
-  color: var(--cyan-soft); background: rgba(63, 216, 255, .1); box-shadow: 0 0 0 1px var(--line-2) inset;
+  color: var(--cyan-soft); background: rgb(var(--c-cyan) / .1); box-shadow: 0 0 0 1px var(--line-2) inset;
 }
-.sv-notice-ic.err { color: var(--err-soft); background: rgba(255, 107, 139, .1); }
+.sv-notice-ic.err { color: var(--err-soft); background: rgb(var(--c-err) / .1); }
 .sv-notice-ic svg { width: 24px; height: 24px; }
 .sv-state-title { font: 600 18px/1.4 var(--f-disp); color: var(--text); }
 .sv-state-text { font-size: 14px; line-height: 1.7; color: var(--text-2); }

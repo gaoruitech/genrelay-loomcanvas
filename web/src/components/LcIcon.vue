@@ -80,6 +80,8 @@ const ICONS: Record<string, string> = {
   site: C(12, 12, 9) + P('M12 3v18M3.600 9h16.800M3.600 15h16.800'),
   monitor: R(3, 4, 18, 12, 2) + P('M8 20h8M12 16v4'),
   phone: R(7, 3, 10, 18, 2.5) + P('M11 17.500h2'),
+  sun: C(12, 12, 4) + P('M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8'),
+  moon: P('M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.500 10.500z'),
 }
 export type IconName = keyof typeof ICONS
 </script>

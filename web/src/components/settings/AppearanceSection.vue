@@ -1,6 +1,6 @@
 <template>
   <SettingsSection id="appearance" icon="eye" :title="t('settings.appearance.title')" :desc="app.isOwner ? t('settings.appearance.descOwner') : t('settings.appearance.desc')">
-    <!-- 每个人自己的：语言存在这台浏览器里，节点布局存在账号上 -->
+    <!-- 每个人自己的：语言存在这台浏览器里，主题和节点布局存在账号上 -->
     <SettingsCard :title="t('settings.appearance.personalTitle')" :desc="t('settings.appearance.personalDesc')">
       <div class="srow">
         <div id="ap-lang-lbl" class="k">{{ t('settings.appearance.language') }}</div>
@@ -16,6 +16,14 @@
             />
           </div>
           <span class="lc-help">{{ t('settings.appearance.languageHelp') }}</span>
+        </div>
+      </div>
+      <!-- 主题：深色 / 浅色 / 跟随系统。跟着账号存在服务端，同时记在这台浏览器上（没登录的页面和首帧用） -->
+      <div class="srow">
+        <div id="ap-theme-lbl" class="k">{{ t('settings.appearance.theme') }}</div>
+        <div class="v">
+          <ThemeChooser :model-value="app.theme" labelledby="ap-theme-lbl" @update:model-value="pickTheme" />
+          <span class="lc-help">{{ t('settings.appearance.themeHelp') }}</span>
         </div>
       </div>
       <!-- 画布上生成节点的布局：跟着账号存在服务端，点了就生效 -->
@@ -95,9 +103,9 @@
 
 <script setup lang="ts">
 /**
- * 外观：界面语言（每个人自己的，存在浏览器里）、画布节点布局（每个人自己的，存在账号上），
+ * 外观：界面语言（每个人自己的，存在浏览器里）、主题和画布节点布局（每个人自己的，存在账号上），
  * 以及超级管理员才能改的实例默认值（站点名称、Logo、默认语言）。
- * 界面只有一套霓虹深色主题，所以这里没有主题选项；服务端已经没有「默认主题」这个设置项。
+ * 主题是每个人自己的偏好，没有「站点默认主题」这个设置项：没选过的账号一律是深色。
  */
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -110,7 +118,9 @@ import { LOCALE_OPTIONS } from '@/locales'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import type { NodeLayout } from '@/composables/nodeLayout'
+import type { ThemePref } from '@/composables/useTheme'
 import NodeLayoutChooser from './NodeLayoutChooser.vue'
+import ThemeChooser from './ThemeChooser.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsCard from './SettingsCard.vue'
 import SaveBar from './SaveBar.vue'
@@ -134,6 +144,16 @@ async function pickLayout(v: NodeLayout) {
     await app.setNodeLayout(v)
   } catch (err) {
     MessagePlugin.error(apiErrorMessage(err, t('settings.appearance.nodeLayoutFailed')))
+  }
+}
+
+/** 主题同理：立刻换，再存到账号上；没存上会改回去 */
+async function pickTheme(v: ThemePref) {
+  if (v === app.theme) return
+  try {
+    await app.setTheme(v)
+  } catch (err) {
+    MessagePlugin.error(apiErrorMessage(err, t('shell.theme.failed')))
   }
 }
 

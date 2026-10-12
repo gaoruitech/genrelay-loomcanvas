@@ -157,14 +157,14 @@ watch(() => props.modelValue, (open) => {
   transition: background-color .15s, color .15s, border-color .15s;
 }
 .tt-cat:hover { color: var(--text); border-color: var(--line-3); }
-.tt-cat.on { background: rgba(59, 123, 255, .28); color: var(--text); border-color: var(--line-3); }
+.tt-cat.on { background: rgb(var(--c-blue) / .28); color: var(--text); border-color: var(--line-3); }
 
 .tt-body { flex: 1; min-height: 0; padding: 16px 20px 20px; overflow-y: auto; }
 .tt-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 13px; text-align: center; min-height: 280px;
 }
-.tt-empty svg { width: 40px; height: 40px; color: rgba(124, 160, 255, .4); }
+.tt-empty svg { width: 40px; height: 40px; color: rgb(var(--c-film) / .4); }
 
 .tt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .tt-card {
@@ -172,7 +172,7 @@ watch(() => props.modelValue, (open) => {
   min-height: 132px; display: flex; flex-direction: column;
   transition: border-color .15s;
 }
-.tt-card:hover { border-color: rgba(63, 216, 255, .55); }
+.tt-card:hover { border-color: rgb(var(--c-cyan) / .55); }
 .tt-card:hover .tt-card-hover { opacity: 1; }
 .tt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .tt-card-title {
@@ -190,7 +190,7 @@ watch(() => props.modelValue, (open) => {
   position: absolute; inset: 0;
   display: flex; align-items: flex-end; justify-content: center;
   padding-bottom: 12px;
-  background: linear-gradient(to top, rgba(12, 21, 52, .96) 30%, rgba(12, 21, 52, 0) 100%);
+  background: linear-gradient(to top, rgb(var(--c-glass) / .96) 30%, rgb(var(--c-glass) / 0) 100%);
   opacity: 0; transition: opacity .18s;
 }
 @media (max-width: 600px) {

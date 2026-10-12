@@ -643,7 +643,7 @@ onBeforeUnmount(() => {
 .as-selbar {
   display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-top: 16px;
   min-height: 48px; padding: 8px 8px 8px 16px; border-radius: 12px;
-  border: 1px solid rgba(63, 216, 255, .45); background: rgba(63, 216, 255, .08);
+  border: 1px solid rgb(var(--c-cyan) / .45); background: rgb(var(--c-cyan) / .08);
 }
 .as-selbar .lc-cb { cursor: pointer; }
 .as-selbar b { font-weight: 600; }
@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
 .as .meta small { display: block; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as-pick {
   position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, .6); background: rgba(4, 9, 28, .45);
+  border: 1.5px solid var(--on-scrim-line-2); background: rgb(var(--c-scrim) / .45);
   display: grid; place-items: center; color: var(--text-inv); cursor: pointer;
 }
 .as-pick:hover { border-color: var(--cyan-soft); }
@@ -671,7 +671,7 @@ onBeforeUnmount(() => {
 .as-up {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   min-height: 190px; padding: 16px 12px; text-align: center; font-size: 13px; color: var(--text-2);
-  border-style: dashed; border-color: var(--line-3); background: rgba(4, 9, 28, .3); cursor: pointer;
+  border-style: dashed; border-color: var(--line-3); background: rgb(var(--c-well) / .3); cursor: pointer;
 }
 .as-up:hover:not(:disabled) { border-color: var(--cyan); color: var(--text); }
 .as-up:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
@@ -682,8 +682,8 @@ onBeforeUnmount(() => {
 .as-up .lc-ring { font-size: 12px; }
 .as-ti {
   width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22));
-  box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22));
+  box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
 
 .skel { display: block; height: 12px; border-radius: 6px; background: var(--skel-bg); animation: lc-pulse 1.6s ease-in-out infinite; }
@@ -694,7 +694,7 @@ onBeforeUnmount(() => {
 .as-foot { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; font-size: 13px; color: var(--text-3); text-align: center; }
 
 /* ---- 空态 ---- */
-.as-empty { margin-top: 16px; padding: 56px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; border-style: dashed; border-color: var(--line-3); background: rgba(4, 9, 28, .3); }
+.as-empty { margin-top: 16px; padding: 56px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; border-style: dashed; border-color: var(--line-3); background: rgb(var(--c-well) / .3); }
 .as-empty h2 { font: 600 16px/1.4 var(--f-disp); color: var(--text); margin-top: 8px; }
 .as-empty p { color: var(--text-2); font-size: 13px; max-width: 440px; line-height: 1.7; }
 .as-empty .lc-btn { margin-top: 12px; }
@@ -703,11 +703,11 @@ onBeforeUnmount(() => {
 /* ---- 整页拖入 ---- */
 .as-dropmask {
   position: fixed; inset: 0; z-index: 2500; pointer-events: none; display: grid; place-items: center; padding: 24px;
-  background: rgba(2, 5, 18, .6); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  background: rgb(var(--c-void) / .6); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .as-dropbox {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 56px; max-width: 100%; text-align: center;
-  border: 1.5px dashed var(--cyan); border-radius: var(--r-lg); background: rgba(13, 22, 56, .9); box-shadow: var(--glow-m);
+  border: 1.5px dashed var(--cyan); border-radius: var(--r-lg); background: rgb(var(--c-glass-lo) / .9); box-shadow: var(--glow-m);
 }
 .as-dropbox b { font: 600 16px/1.4 var(--f-disp); margin-top: 8px; }
 .as-dropbox small { color: var(--text-2); font-size: 13px; }
@@ -718,7 +718,7 @@ onBeforeUnmount(() => {
 .as-folders { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .as-folders .lc-chip { height: 28px; padding: 0 10px; gap: 6px; border: 0; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .as-folders .lc-chip:hover { color: var(--text); box-shadow: 0 0 0 1px var(--line-3) inset; }
-.as-folders .lc-chip.on { color: var(--cyan-soft); background: rgba(63, 216, 255, .1); box-shadow: 0 0 0 1px var(--cyan) inset; }
+.as-folders .lc-chip.on { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .1); box-shadow: 0 0 0 1px var(--cyan) inset; }
 .as-out { margin-right: auto; }
 .as-confirm { color: var(--text-2); line-height: 1.7; word-break: break-word; }
 

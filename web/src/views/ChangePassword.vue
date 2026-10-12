@@ -192,7 +192,7 @@ async function leave() {
 .pts li { display: flex; gap: 12px; align-items: flex-start; color: var(--text-2); line-height: 1.7; }
 .pts svg { color: var(--cyan); margin-top: 3px; flex: none; }
 .meter { display: flex; gap: 4px; margin-top: 8px; }
-.meter i { flex: 1; height: 3px; border-radius: 2px; background: rgba(124, 160, 255, .18); }
+.meter i { flex: 1; height: 3px; border-radius: 2px; background: rgb(var(--c-film) / .18); }
 .meter i.on { background: var(--grad); }
 .linkish { border: 0; background: none; color: var(--cyan-soft); padding: 0; font-size: 14px; margin-left: 6px; }
 .linkish:hover:not(:disabled) { text-decoration: underline; }

@@ -556,24 +556,40 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
     assert.match(row.passwordHash, /^scrypt\$/)
 
     // Preferences: kept with the account, complete with defaults, and nothing but the known keys and values gets in.
-    assert.deepEqual(B.user.prefs, { nodeLayout: 'a' }, 'an account that never chose has the defaults')
-    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'a' })
+    assert.deepEqual(B.user.prefs, { nodeLayout: 'a', theme: 'dark' }, 'an account that never chose has the defaults')
+    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'a', theme: 'dark' })
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', {}), [400, 'common.nothing_to_update'])
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', []), [400, 'validation.body_object'])
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: 'd' }), [400, 'validation.one_of'])
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: ['b'] }), [400, 'validation.one_of'])
-    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: 'b', theme: 'light' }), [400, 'validation.bad_key'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: 'b', colour: 'light' }), [400, 'validation.bad_key'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { theme: 'sepia' }), [400, 'validation.one_of'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { theme: true }), [400, 'validation.one_of'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { theme: 'light', nodeLayout: 'd' }), [400, 'validation.one_of'], 'one bad value refuses the whole request')
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { __proto__: null, constructor: 'b' }), [400, 'validation.bad_key'])
     assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { role: 'owner' }), [400, 'validation.bad_key'])
-    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a' }, 'a refused request changes nothing')
+    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a', theme: 'dark' }, 'a refused request changes nothing')
     const chose = (await B.data('PUT', '/api/auth/prefs', { nodeLayout: 'b' })).user
-    assert.deepEqual(chose, { ...B.user, prefs: { nodeLayout: 'b' } }, 'the answer is the User, and nothing else about it moved')
-    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'b' })
-    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'b' })
-    assert.deepEqual((await A.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a' }, 'another account keeps its own')
+    assert.deepEqual(chose, { ...B.user, prefs: { nodeLayout: 'b', theme: 'dark' } }, 'the answer is the User, and nothing else about it moved')
+    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'b', theme: 'dark' })
+    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'b', theme: 'dark' })
+    assert.deepEqual((await A.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a', theme: 'dark' }, 'another account keeps its own')
+    // The theme is one more key of the same object: each key is changed on its own and the other stays.
+    for (const theme of ['light', 'system', 'dark', 'light']) {
+      assert.deepEqual((await B.data('PUT', '/api/auth/prefs', { theme })).user.prefs, { nodeLayout: 'b', theme })
+    }
+    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'b', theme: 'light' })
+    assert.deepEqual((await A.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a', theme: 'dark' }, 'the theme is per account too')
+    assert.equal((await anon.call('POST', '/api/auth/login', { account: 'bob', password: 'bob-password-2' })).body.data.user.prefs.theme, 'light', 'a new session of the account sees the theme')
+    assert.deepEqual((await B.data('PUT', '/api/auth/prefs', { theme: 'system', nodeLayout: 'b' })).user.prefs, { nodeLayout: 'b', theme: 'system' }, 'both keys in one request')
+    assert.deepEqual((await db.collection('users').findOne({ usernameLower: 'bob' })).prefs, { nodeLayout: 'b', theme: 'system' })
+    // A value that got into the database some other way is answered as the default, never passed on.
+    await db.collection('users').updateOne({ usernameLower: 'bob' }, { $set: { 'prefs.theme': 'neon' } })
+    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'b', theme: 'dark' })
+    await B.data('PUT', '/api/auth/prefs', { theme: 'dark' })
     assert.equal((await anon.call('POST', '/api/auth/login', { account: 'bob', password: 'bob-password-2' })).body.data.user.prefs.nodeLayout, 'b', 'a new session of the account sees it')
     assert.deepEqual(await anon.refused('PUT', '/api/auth/prefs', { nodeLayout: 'c' }), [401, 'auth.required'])
-    assert.deepEqual((await db.collection('users').findOne({ usernameLower: 'bob' })).prefs, { nodeLayout: 'b' })
+    assert.deepEqual((await db.collection('users').findOne({ usernameLower: 'bob' })).prefs, { nodeLayout: 'b', theme: 'dark' })
     B.user = (await B.data('PUT', '/api/auth/prefs', { nodeLayout: 'a' })).user
 
     // Each answer says whether a name or an email is taken, so the tries per account are bounded.

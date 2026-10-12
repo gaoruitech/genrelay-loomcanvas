@@ -23,7 +23,7 @@ const { t } = useI18n()
   background: var(--panel-solid); border: 1px solid var(--line-2); box-shadow: var(--sh-1);
   transition: border-color .15s;
 }
-.sbar.dirty { border-color: rgba(255, 195, 90, .5); }
+.sbar.dirty { border-color: rgb(var(--c-warn) / .5); }
 .sbar-note { flex: 1 1 220px; min-width: 0; font-size: 12px; line-height: 1.6; color: var(--text-3); display: flex; align-items: center; gap: 8px; }
 .sbar-note.on { color: var(--warn); font-size: 13px; }
 .sbar-note i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }

@@ -13,7 +13,7 @@
         <svg class="wires" viewBox="0 0 1200 576">
           <defs>
             <linearGradient id="hv-wg" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stop-color="#3fd8ff" /><stop offset=".55" stop-color="#5b8cff" /><stop offset="1" stop-color="#a98bff" />
+              <stop offset="0" class="wg1" /><stop offset=".55" class="wg2" /><stop offset="1" class="wg3" />
             </linearGradient>
           </defs>
           <template v-for="(w, i) in wires" :key="i">
@@ -87,10 +87,11 @@ const WIRES: Wire[] = [
   wire(560, 300, 640, 205, true), wire(560, 300, 640, 470, true, true),
 ]
 
-// 两张示意插画（矢量，随主题色）
+// 两张示意插画（矢量）。颜色全部是 --art-* 令牌，按类名取（见下面的样式）：深色主题是夜色霓虹街 / 逆光人像，
+// 浅色主题是清晨的城市 / 柔光人像 —— 同一张画换一套光线，不是把深色的图贴在浅色页面上。
 const art = (inner: string) => () => h('svg', { class: 'art', viewBox: '0 0 160 100', preserveAspectRatio: 'xMidYMid slice', innerHTML: inner })
-const ArtCity = art('<defs><linearGradient id="hv-a1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070c2c"/><stop offset=".6" stop-color="#1a1f6b"/><stop offset="1" stop-color="#5b2a9a"/></linearGradient></defs><rect width="160" height="100" fill="url(#hv-a1)"/><circle cx="118" cy="22" r="26" fill="#8a5cff" opacity=".25"/><path d="M58 100V46h10v-6h8v60zM82 100V50h12v-8h10v58z" fill="#131a52"/><path d="M0 100V38h14v-8h10v8h8v62z" fill="#060a24"/><path d="M36 100V24h18v76z" fill="#0a1034"/><path d="M110 100V30h16v-6h8v6h6v70z" fill="#070b28"/><path d="M144 100V44h16v56z" fill="#0a1034"/><g fill="#9be9ff" opacity=".55"><rect x="4" y="44" width="3" height="3"/><rect x="10" y="52" width="3" height="3"/><rect x="47" y="30" width="3" height="3"/><rect x="47" y="44" width="3" height="3"/><rect x="62" y="52" width="2" height="2"/><rect x="88" y="56" width="2" height="2"/><rect x="98" y="48" width="2" height="2"/><rect x="134" y="36" width="3" height="3"/><rect x="150" y="50" width="3" height="3"/><rect x="150" y="60" width="3" height="3"/></g><rect x="40" y="34" width="4" height="22" rx="1" fill="#ff5fb7"/><rect x="112" y="40" width="14" height="5" rx="1" fill="#3fd8ff"/><rect x="20" y="50" width="8" height="4" fill="#ffc35a"/><rect x="132" y="54" width="3" height="16" fill="#a98bff"/><path d="M0 78h160v22H0z" fill="#080c2a"/><rect x="40" y="80" width="4" height="16" fill="#ff5fb7" opacity=".35"/><rect x="112" y="80" width="14" height="14" fill="#3fd8ff" opacity=".25"/><rect x="20" y="80" width="8" height="10" fill="#ffc35a" opacity=".25"/><rect x="132" y="80" width="3" height="12" fill="#a98bff" opacity=".3"/><path d="M68 67a11 11 0 0 1 22 0z" fill="#04071c"/><path d="M68 67a11 11 0 0 1 22 0" stroke="#3fd8ff" stroke-width=".9" fill="none" opacity=".9"/><path d="M79 67v6" stroke="#04071c" stroke-width="1"/><circle cx="79" cy="71" r="2.4" fill="#04071c"/><path d="M75.5 74h7l1.5 14h-10z" fill="#04071c"/><path d="M10 5l-4 16M50 0l-4 16M96 8l-4 16M140 2l-4 16M26 30l-3 12M124 58l-3 12M64 20l-3 12M104 70l-2 8M30 66l-2 8" stroke="#9be9ff" stroke-width=".5" opacity=".35"/>')
-const ArtPortrait = art('<defs><radialGradient id="hv-a3" cx=".5" cy=".35" r=".8"><stop offset="0" stop-color="#5a44d8"/><stop offset="1" stop-color="#0a1038"/></radialGradient></defs><rect width="160" height="100" fill="url(#hv-a3)"/><circle cx="38" cy="30" r="32" fill="#3fd8ff" opacity=".14"/><circle cx="128" cy="72" r="38" fill="#ff5fb7" opacity=".14"/><path d="M36 100c2-20 16-28 30-30h28c14 2 28 10 30 30z" fill="#050920"/><path d="M72 74V60h16v14z" fill="#070c28"/><ellipse cx="80" cy="44" rx="15" ry="19" fill="#0a1030"/><path d="M63 48c-3-20 7-29 18-29s20 8 16 29c-2-11-8-16-17-16s-14 6-17 16z" fill="#03061a"/><path d="M95 44c0 9-4 16-9 19" stroke="#3fd8ff" stroke-width="1.2" fill="none"/><path d="M65 44c0 8 3 14 7 17" stroke="#ff5fb7" stroke-width="1" fill="none" opacity=".8"/><path d="M124 100c-2-18-14-27-30-30" stroke="#3fd8ff" stroke-width="1" fill="none" opacity=".7"/><path d="M36 100c2-18 14-27 30-30" stroke="#ff5fb7" stroke-width="1" fill="none" opacity=".5"/>')
+const ArtCity = art('<defs><linearGradient id="hv-a1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="c-sky-0"/><stop offset=".6" class="c-sky-1"/><stop offset="1" class="c-sky-2"/></linearGradient></defs><rect width="160" height="100" fill="url(#hv-a1)"/><circle cx="118" cy="22" r="26" class="f-moon" opacity=".25"/><path d="M58 100V46h10v-6h8v60zM82 100V50h12v-8h10v58z" class="f-b1"/><path d="M0 100V38h14v-8h10v8h8v62z" class="f-b2"/><path d="M36 100V24h18v76z" class="f-b3"/><path d="M110 100V30h16v-6h8v6h6v70z" class="f-b4"/><path d="M144 100V44h16v56z" class="f-b3"/><g class="f-light" opacity=".55"><rect x="4" y="44" width="3" height="3"/><rect x="10" y="52" width="3" height="3"/><rect x="47" y="30" width="3" height="3"/><rect x="47" y="44" width="3" height="3"/><rect x="62" y="52" width="2" height="2"/><rect x="88" y="56" width="2" height="2"/><rect x="98" y="48" width="2" height="2"/><rect x="134" y="36" width="3" height="3"/><rect x="150" y="50" width="3" height="3"/><rect x="150" y="60" width="3" height="3"/></g><rect x="40" y="34" width="4" height="22" rx="1" class="f-pink"/><rect x="112" y="40" width="14" height="5" rx="1" class="f-cyan"/><rect x="20" y="50" width="8" height="4" class="f-amber"/><rect x="132" y="54" width="3" height="16" class="f-lilac"/><path d="M0 78h160v22H0z" class="f-ground"/><rect x="40" y="80" width="4" height="16" class="f-pink" opacity=".35"/><rect x="112" y="80" width="14" height="14" class="f-cyan" opacity=".25"/><rect x="20" y="80" width="8" height="10" class="f-amber" opacity=".25"/><rect x="132" y="80" width="3" height="12" class="f-lilac" opacity=".3"/><path d="M68 67a11 11 0 0 1 22 0z" class="f-figure"/><path d="M68 67a11 11 0 0 1 22 0" class="s-cyan" stroke-width=".9" fill="none" opacity=".9"/><path d="M79 67v6" class="s-figure" stroke-width="1"/><circle cx="79" cy="71" r="2.4" class="f-figure"/><path d="M75.5 74h7l1.5 14h-10z" class="f-figure"/><path d="M10 5l-4 16M50 0l-4 16M96 8l-4 16M140 2l-4 16M26 30l-3 12M124 58l-3 12M64 20l-3 12M104 70l-2 8M30 66l-2 8" class="s-light" stroke-width=".5" opacity=".35"/>')
+const ArtPortrait = art('<defs><radialGradient id="hv-a3" cx=".5" cy=".35" r=".8"><stop offset="0" class="c-p0"/><stop offset="1" class="c-p1"/></radialGradient></defs><rect width="160" height="100" fill="url(#hv-a3)"/><circle cx="38" cy="30" r="32" class="f-cyan" opacity=".14"/><circle cx="128" cy="72" r="38" class="f-pink" opacity=".14"/><path d="M36 100c2-20 16-28 30-30h28c14 2 28 10 30 30z" class="f-body"/><path d="M72 74V60h16v14z" class="f-neck"/><ellipse cx="80" cy="44" rx="15" ry="19" class="f-face"/><path d="M63 48c-3-20 7-29 18-29s20 8 16 29c-2-11-8-16-17-16s-14 6-17 16z" class="f-hair"/><path d="M95 44c0 9-4 16-9 19" class="s-cyan" stroke-width="1.2" fill="none"/><path d="M65 44c0 8 3 14 7 17" class="s-pink" stroke-width="1" fill="none" opacity=".8"/><path d="M124 100c-2-18-14-27-30-30" class="s-cyan" stroke-width="1" fill="none" opacity=".7"/><path d="M36 100c2-18 14-27 30-30" class="s-pink" stroke-width="1" fill="none" opacity=".5"/>')
 
 const wrap = ref<HTMLElement | null>(null)
 const scale = ref(1)
@@ -120,14 +121,17 @@ onBeforeUnmount(() => ro?.disconnect())
 .hv-bar b { font-weight: 600; }
 .hv-bar .lc-st { font-size: 12px; }
 .dots { display: flex; gap: 6px; }
-.dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(124, 160, 255, .3); }
-.cv { position: relative; overflow: hidden; height: 576px; border-radius: 0 0 22px 22px; background-image: radial-gradient(rgba(124, 160, 255, .2) 1px, transparent 1px); background-size: 24px 24px; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; background: rgb(var(--c-film) / .3); }
+.cv { position: relative; overflow: hidden; height: 576px; border-radius: 0 0 22px 22px; background-image: radial-gradient(rgb(var(--c-film) / .2) 1px, transparent 1px); background-size: 24px 24px; }
 .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 2; }
-.wires .w { fill: none; stroke: url(#hv-wg); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(63, 216, 255, .65)); }
-.wires .wf { fill: none; stroke: #dff8ff; stroke-width: 2; stroke-dasharray: 4 20; stroke-linecap: round; opacity: .7; animation: hv-flow 2.8s linear infinite; }
+.wires .wg1 { stop-color: var(--hue-cyan); }
+.wires .wg2 { stop-color: var(--hue-sky); }
+.wires .wg3 { stop-color: var(--hue-lilac); }
+.wires .w { fill: none; stroke: url(#hv-wg); stroke-width: var(--wire-w); filter: drop-shadow(0 0 4px rgb(var(--g-cyan) / .65)); }
+.wires .wf { fill: none; stroke: var(--wire-flow); stroke-width: 2; stroke-dasharray: 4 20; stroke-linecap: round; opacity: .7; animation: hv-flow 2.8s linear infinite; }
 .wires .dash { stroke-dasharray: 5 6; opacity: .7; }
-.wires circle { fill: #0b1436; stroke: var(--cyan); stroke-width: 2; }
-.wires circle.v { stroke: #a98bff; }
+.wires circle { fill: var(--port-bg); stroke: var(--cyan); stroke-width: 2; }
+.wires circle.v { stroke: var(--port-video); }
 @keyframes hv-flow { to { stroke-dashoffset: -48; } }
 
 .nd { position: absolute; border-radius: 14px; border: 1px solid var(--line-2); background: var(--grad-node); box-shadow: var(--sh-1); font-size: 12px; line-height: 1.5; }
@@ -138,6 +142,37 @@ onBeforeUnmount(() => ro?.disconnect())
 .nd-b { padding: 10px 12px; }
 .nd-img { border-radius: 9px; overflow: hidden; border: 1px solid var(--line); }
 .nd-img :deep(.art) { display: block; width: 100%; height: 100%; }
+/* 插画的颜色：f- 填充 / s- 描边 / c- 渐变色标，各对应一个 --art-* 令牌 */
+.nd-img :deep(.f-sky-0) { fill: var(--art-sky-0); }
+.nd-img :deep(.f-sky-1) { fill: var(--art-sky-1); }
+.nd-img :deep(.f-sky-2) { fill: var(--art-sky-2); }
+.nd-img :deep(.f-moon) { fill: var(--art-moon); }
+.nd-img :deep(.f-b1) { fill: var(--art-b1); }
+.nd-img :deep(.f-b2) { fill: var(--art-b2); }
+.nd-img :deep(.f-b3) { fill: var(--art-b3); }
+.nd-img :deep(.f-b4) { fill: var(--art-b4); }
+.nd-img :deep(.f-light) { fill: var(--art-light); }
+.nd-img :deep(.f-pink) { fill: var(--art-pink); }
+.nd-img :deep(.f-cyan) { fill: var(--art-cyan); }
+.nd-img :deep(.f-amber) { fill: var(--art-amber); }
+.nd-img :deep(.f-lilac) { fill: var(--art-lilac); }
+.nd-img :deep(.f-ground) { fill: var(--art-ground); }
+.nd-img :deep(.f-figure) { fill: var(--art-figure); }
+.nd-img :deep(.f-p0) { fill: var(--art-p0); }
+.nd-img :deep(.f-p1) { fill: var(--art-p1); }
+.nd-img :deep(.f-body) { fill: var(--art-body); }
+.nd-img :deep(.f-neck) { fill: var(--art-neck); }
+.nd-img :deep(.f-face) { fill: var(--art-face); }
+.nd-img :deep(.f-hair) { fill: var(--art-hair); }
+.nd-img :deep(.s-cyan) { stroke: var(--art-cyan); }
+.nd-img :deep(.s-pink) { stroke: var(--art-pink); }
+.nd-img :deep(.s-light) { stroke: var(--art-light); }
+.nd-img :deep(.s-figure) { stroke: var(--art-figure); }
+.nd-img :deep(.c-sky-0) { stop-color: var(--art-sky-0); }
+.nd-img :deep(.c-sky-1) { stop-color: var(--art-sky-1); }
+.nd-img :deep(.c-sky-2) { stop-color: var(--art-sky-2); }
+.nd-img :deep(.c-p0) { stop-color: var(--art-p0); }
+.nd-img :deep(.c-p1) { stop-color: var(--art-p1); }
 .nd-txt { border-radius: 9px; background: var(--well); border: 1px solid var(--line); padding: 8px 10px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
 .kv { display: flex; align-items: center; justify-content: space-between; height: 28px; font-size: 12px; color: var(--text-2); }
 .kv b { font-weight: 500; color: var(--text); }
@@ -146,7 +181,7 @@ onBeforeUnmount(() => ro?.disconnect())
 .run { width: 100%; margin-top: 8px; pointer-events: none; }
 .play.big { width: 52px; height: 52px; }
 .qrow { display: flex; gap: 10px; }
-.qcard { flex: 1; display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 11px; border: 1px solid var(--line); background: rgba(4, 9, 28, .45); min-width: 0; }
+.qcard { flex: 1; display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 11px; border: 1px solid var(--line); background: rgb(var(--c-well) / .45); min-width: 0; }
 .qcard b { display: block; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .qcard small { display: block; font-size: 11px; color: var(--text-3); white-space: nowrap; }
 </style>

@@ -81,7 +81,7 @@ router.put('/profile', requireAuth, profileRateLimit, wrap(async (req, res) => {
 }))
 
 /**
- * PUT /api/auth/prefs { nodeLayout?: 'a'|'b'|'c' } -> { user }
+ * PUT /api/auth/prefs { nodeLayout?: 'a'|'b'|'c', theme?: 'dark'|'light'|'system' } -> { user }
  * Preferences of the web app, kept with the account so they follow it to every
  * browser. Only the keys sent are changed; an unknown key or value is refused.
  */

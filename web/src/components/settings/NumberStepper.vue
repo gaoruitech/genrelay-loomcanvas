@@ -85,7 +85,7 @@ function step(d: number) {
   width: 36px; height: 100%; flex: none; border: 0; background: none; color: var(--text-3);
   display: grid; place-items: center; border-radius: var(--r-sm);
 }
-.stp-b:hover:not(:disabled) { color: var(--text); background: rgba(124, 160, 255, .1); }
+.stp-b:hover:not(:disabled) { color: var(--text); background: rgb(var(--c-film) / .1); }
 .stp-b:disabled { opacity: .4; cursor: not-allowed; }
 .stp-i {
   flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--text);

@@ -61,7 +61,7 @@ function pick(key: string) {
 .rm-item {
   width: 100%; gap: 8px; border: 0; background: none; font: inherit; font-size: 13px; text-align: left; white-space: nowrap;
 }
-.rm-item:focus-visible { outline: none; background: rgba(124, 160, 255, .12); color: var(--text); }
+.rm-item:focus-visible { outline: none; background: rgb(var(--c-film) / .12); color: var(--text); }
 .rm-item.danger { color: var(--err-soft); }
-.rm-item.danger:hover, .rm-item.danger:focus-visible { background: rgba(255, 107, 139, .12); color: var(--err-soft); }
+.rm-item.danger:hover, .rm-item.danger:focus-visible { background: rgb(var(--c-err) / .12); color: var(--err-soft); }
 </style>

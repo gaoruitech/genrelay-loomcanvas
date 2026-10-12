@@ -320,7 +320,7 @@ async function revokeOthers() {
 @import './section-shared.css';
 .who { font-weight: 500; color: var(--text); margin: 0 8px 0 2px; }
 .role { vertical-align: 1px; }
-.role.own { color: var(--cyan-soft); background: rgba(63, 216, 255, .12); }
+.role.own { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .12); }
 
 .sess-list { list-style: none; margin-top: 8px; }
 .sess {
@@ -329,7 +329,7 @@ async function revokeOthers() {
 }
 .sess:first-child { border-top: 0; }
 .sess:last-child { padding-bottom: 0; min-height: 50px; }
-.dv { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgba(124, 160, 255, .1); color: var(--text-2); }
+.dv { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgb(var(--c-film) / .1); color: var(--text-2); }
 .who-dev { min-width: 0; }
 .who-dev b { display: block; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who-dev small { display: block; color: var(--text-3); font: 12px var(--f-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

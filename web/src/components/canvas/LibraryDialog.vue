@@ -796,14 +796,14 @@ watch(() => props.modelValue, (open) => {
   transition: background-color .15s, color .15s, border-color .15s;
 }
 .cat-tab:hover { color: var(--text); border-color: var(--line-3); }
-.cat-tab.active { background: rgba(59, 123, 255, .28); color: var(--text); border-color: var(--line-3); }
+.cat-tab.active { background: rgb(var(--c-blue) / .28); color: var(--text); border-color: var(--line-3); }
 .tt-lang { flex: none; }
 
 .lib-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 13px; text-align: center; min-height: 280px;
 }
-.lib-empty svg { width: 40px; height: 40px; color: rgba(124, 160, 255, .4); }
+.lib-empty svg { width: 40px; height: 40px; color: rgb(var(--c-film) / .4); }
 .lib-loading-more { text-align: center; padding: 16px 0 0; color: var(--text-3); font-size: 12px; }
 
 /* 卡片网格 */
@@ -812,7 +812,7 @@ watch(() => props.modelValue, (open) => {
   border-radius: var(--r-md); border: 1px solid var(--line); background: var(--grad-card);
   overflow: hidden; transition: border-color .15s ease;
 }
-.lib-card:hover { border-color: rgba(63, 216, 255, .55); }
+.lib-card:hover { border-color: rgb(var(--c-cyan) / .55); }
 .lib-card.clickable { cursor: pointer; }
 .lib-card.inactive .lib-thumb { opacity: .5; }
 .lib-thumb {
@@ -820,31 +820,31 @@ watch(() => props.modelValue, (open) => {
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
 .lib-thumb img, .lib-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb-empty { color: rgba(124, 160, 255, .4); }
+.thumb-empty { color: rgb(var(--c-film) / .4); }
 .thumb-empty svg { width: 36px; height: 36px; }
 /* 压在画面上的件：底是恒暗遮罩，字固定用浅色 */
 .play-overlay {
   position: absolute; inset: 0; margin: auto; width: 36px; height: 36px; border-radius: 50%;
   display: grid; place-items: center; pointer-events: none;
-  background: rgba(4, 9, 28, .6); border: 1px solid rgba(255, 255, 255, .35); color: var(--on-scrim);
+  background: rgb(var(--c-scrim) / .6); border: 1px solid var(--on-scrim-line); color: var(--on-scrim);
   transition: opacity .15s ease;
 }
 .play-overlay svg { width: 13px; height: 13px; margin-left: 2px; }
 .lib-thumb:hover .play-overlay { opacity: 0; }
 .thumb-overlay {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: rgba(4, 9, 28, .6); opacity: 0; transition: opacity .15s ease;
+  background: rgb(var(--c-scrim) / .6); opacity: 0; transition: opacity .15s ease;
 }
 .lib-thumb:hover .thumb-overlay { opacity: 1; }
 .btn-del {
   position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0;
   display: grid; place-items: center; border: 0; border-radius: 8px;
-  background: rgba(4, 9, 28, .7); color: var(--on-scrim); cursor: pointer;
+  background: rgb(var(--c-scrim) / .7); color: var(--on-scrim); cursor: pointer;
   opacity: 0; transition: opacity .15s ease, color .15s ease;
 }
 .lib-thumb:hover .btn-del { opacity: 1; }
 .btn-del:hover { color: var(--err-soft); }
-.status-tag { position: absolute; top: 8px; left: 8px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgba(12, 21, 52, .8); }
+.status-tag { position: absolute; top: 8px; left: 8px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgb(var(--c-glass) / .8); }
 .status-tag.st-active { color: var(--ok); }
 .status-tag.st-expired { color: var(--warn); }
 .status-tag.st-revoked { color: var(--text-3); }
@@ -863,7 +863,7 @@ watch(() => props.modelValue, (open) => {
   position: relative; padding: 12px 14px; cursor: pointer; overflow: hidden;
   min-height: 132px; display: flex; flex-direction: column; transition: border-color .15s;
 }
-.tt-card:hover { border-color: rgba(63, 216, 255, .55); }
+.tt-card:hover { border-color: rgb(var(--c-cyan) / .55); }
 .tt-card:hover .tt-card-hover { opacity: 1; }
 .tt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .tt-card-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
@@ -875,7 +875,7 @@ watch(() => props.modelValue, (open) => {
 }
 .tt-card-hover {
   position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 12px;
-  background: linear-gradient(to top, rgba(12, 21, 52, .96) 30%, rgba(12, 21, 52, 0) 100%);
+  background: linear-gradient(to top, rgb(var(--c-glass) / .96) 30%, rgb(var(--c-glass) / 0) 100%);
   opacity: 0; transition: opacity .18s;
 }
 
@@ -896,7 +896,7 @@ watch(() => props.modelValue, (open) => {
   .lib-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .tt-grid { grid-template-columns: 1fr; }
   /* 触屏没有悬停：动作直接露出来 */
-  .thumb-overlay { opacity: 1; inset: auto 0 0 0; padding: 8px; background: linear-gradient(to top, rgba(4, 9, 28, .8), transparent); }
+  .thumb-overlay { opacity: 1; inset: auto 0 0 0; padding: 8px; background: linear-gradient(to top, rgb(var(--c-scrim) / .8), transparent); }
   .btn-del { opacity: 1; }
 }
 </style>

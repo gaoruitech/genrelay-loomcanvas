@@ -45,7 +45,7 @@ const { t } = useI18n()
   cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .vp-card:hover:not(:disabled) { border-color: var(--line-3); }
-.vp-card.active { border-color: var(--cyan); background: rgba(63, 216, 255, .08); }
+.vp-card.active { border-color: var(--cyan); background: rgb(var(--c-cyan) / .08); }
 .vp-card:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
 .vp-card:disabled { cursor: not-allowed; opacity: .6; }
 .vp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }

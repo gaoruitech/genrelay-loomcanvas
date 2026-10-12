@@ -356,10 +356,10 @@ onMounted(fetchList)
 .cl-card:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
 .cl-thumb { aspect-ratio: 16 / 10; }
 /* 封面可能是浅色的图：徽标垫一层深底才读得出来 */
-.cl-thumb .tag { box-shadow: 0 0 0 99px rgba(7, 13, 39, .8) inset; }
+.cl-thumb .tag { box-shadow: 0 0 0 99px var(--tag-scrim) inset; }
 .cl-ph {
-  position: absolute; inset: 0; display: grid; place-items: center; color: rgba(124, 170, 255, .38);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .07), rgba(138, 92, 255, .1));
+  position: absolute; inset: 0; display: grid; place-items: center; color: rgb(var(--c-film-2) / .38);
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .07), rgb(var(--c-violet) / .1));
 }
 /* 名字是主角、时间是配角 */
 .cl-meta { padding: 12px 14px 14px; }
@@ -369,7 +369,7 @@ onMounted(fetchList)
 /* 卡片右上角的一排操作：悬停才出现，不跟封面抢戏 */
 .cl-ops {
   position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; padding: 3px;
-  border-radius: 10px; border: 1px solid var(--line-2); background: rgba(12, 21, 52, .88);
+  border-radius: 10px; border: 1px solid var(--line-2); background: rgb(var(--c-glass) / .88);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   opacity: 0; transition: opacity .15s;
 }
@@ -380,8 +380,8 @@ onMounted(fetchList)
   width: 28px; height: 28px; border: 0; border-radius: 7px; background: none; color: var(--text-2);
   display: grid; place-items: center; transition: background .15s, color .15s;
 }
-.cl-op:hover:not(:disabled) { background: rgba(124, 160, 255, .14); color: var(--text); }
-.cl-op.danger:hover:not(:disabled) { background: rgba(255, 107, 139, .14); color: var(--err-soft); }
+.cl-op:hover:not(:disabled) { background: rgb(var(--c-film) / .14); color: var(--text); }
+.cl-op.danger:hover:not(:disabled) { background: rgb(var(--c-err) / .14); color: var(--err-soft); }
 .cl-op:disabled { opacity: .4; cursor: not-allowed; }
 
 .cl-state { display: grid; justify-items: center; gap: 10px; margin-top: 24px; padding: 64px 20px; text-align: center; color: var(--text-2); }
@@ -389,9 +389,9 @@ onMounted(fetchList)
 .cl-state .lc-btn { margin-top: 6px; }
 .cl-state-ic {
   width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22)); box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22)); box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
-.cl-state-ic.err { color: var(--err); background: rgba(255, 107, 139, .1); box-shadow: 0 0 0 1px rgba(255, 107, 139, .35) inset; }
+.cl-state-ic.err { color: var(--err); background: rgb(var(--c-err) / .1); box-shadow: 0 0 0 1px rgb(var(--c-err) / .35) inset; }
 
 @media (max-width: 600px) {
   .cl-actions { width: 100%; }

@@ -300,7 +300,8 @@ Web:
 - TDesign components are auto-imported by `unplugin-vue-components`; write `<t-button>` without importing it.
 - `@/` is `web/src/`.
 - No user-visible literal text in components: everything goes through `t()`.
-- Colours and spacing come from `styles/design-tokens.css`. There is one dark theme; do not add a light variant or a theme switch.
+- Colours and spacing come from `styles/design-tokens.css`, which holds two themes under the same token names: `:root` is dark (the default) and `:root[data-theme='light']` is light. Never write a colour in a component: use a token, or a channel token when you need your own opacity (`rgb(var(--c-cyan) / .12)`; blurred glows use `--g-*`). A new token goes into both themes. SVG attributes do not resolve `var()`, so colour SVG art by class; for values a library wants as plain strings (the minimap) read the token with `utils/tokenColor.ts`. Things drawn over user media (`--c-scrim`, `--on-scrim*`) are the same in both themes.
+- `npm run theme:check` (in `web/`) compares the two token sets, prints the contrast of text, accent and status colours on their surfaces for both themes, and lists colour literals left outside the token file; pass a build directory to scan the built CSS and JS too. Look at a change in both themes before sending it.
 
 Both:
 

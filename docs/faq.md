@@ -222,9 +222,11 @@ So before that first start, set `ADMIN_PASSWORD` in `.env` (or read the generate
 
 Generation nodes became much taller in the redesign, so nodes placed for the old sizes can end up on top of each other. A canvas that was last saved by an earlier version is therefore arranged once, the first time you open it in the editor, and only if its nodes actually overlap at the new sizes. It is the same arrangement as **Tidy up** in the bottom toolbar. A notice says that it happened; press Ctrl+Z to get the old positions back. It happens once per canvas and never to a canvas saved by the current version. The two built-in templates were re-spaced as well. Canvas documents are now at `schemaVersion` 2; older ones are migrated when they are read, and nothing has to be done by hand.
 
-### The interface used to have a light theme
+### Is there a light theme?
 
-It has one dark theme now. The theme switch and the "default theme" site setting are gone; a value saved by an earlier version is ignored.
+Yes. Dark is the default; the sun / moon icon in the top bar (also on the landing, sign-in and shared-canvas pages) switches between Dark, Light and System, and Settings → Appearance has the same choice with previews. The choice is kept with your account and remembered by the browser, so the sign-in page and the first paint use it too. There is no site-wide "default theme" setting; a value saved by an earlier version is ignored.
+
+A canvas whose background is left on the default follows the theme of whoever is looking at it. A background colour you picked yourself stays as it is in both themes, and wires, group outlines and the pattern adapt to it.
 
 ### The server exits at startup
 

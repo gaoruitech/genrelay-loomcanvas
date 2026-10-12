@@ -138,7 +138,7 @@ function shapeStyle(v: string): CSSProperties {
 .cv-pp-pill:hover,
 .cv-pp-cell:hover { border-color: var(--line-3); color: var(--text); }
 .cv-pp-pill.active,
-.cv-pp-cell.active { background: rgba(59, 123, 255, .28); border-color: var(--line-3); color: var(--text); }
+.cv-pp-cell.active { background: rgb(var(--c-blue) / .28); border-color: var(--line-3); color: var(--text); }
 .cv-pp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 2px; }
 .cv-pp-cell {
   display: flex;

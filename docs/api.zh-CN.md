@@ -47,7 +47,7 @@
 
 - `role` 是 `owner`（超级管理员）或 `user`。
 - `email` 对超级管理员可能是 `""`：超级管理员是唯一可以没有邮箱的账号（创建时没设 `ADMIN_EMAIL`，之后也还没用 `PUT /api/auth/profile` 补上）。
-- `prefs` 是这个账号对网页端的偏好，总是完整的（没选过的项给默认值）。目前只有一项 `nodeLayout`，画布上生成节点的布局：`"a"` 结果优先、选中后在节点下方出输入条（默认），`"b"` 紧凑节点、设置在右侧属性面板里，`"c"` 全部放在节点上。用 `PUT /api/auth/prefs` 改。
+- `prefs` 是这个账号对网页端的偏好，总是完整的（没选过的项给默认值）。有两项：`nodeLayout` 是画布上生成节点的布局，`"a"` 结果优先、选中后在节点下方出输入条（默认），`"b"` 紧凑节点、设置在右侧属性面板里，`"c"` 全部放在节点上；`theme` 是界面主题，`"dark"` 深色（默认）、`"light"` 浅色、`"system"` 跟随设备自己的深浅设置。用 `PUT /api/auth/prefs` 改。
 - `mustChangePassword` 为 `true` 表示这个账号现在的密码是别人知道的：启动时生成的超级管理员密码、超级管理员「重置密码」给出的临时密码（`POST /api/admin/users/:id/reset-password`），或者命令行重置给出的临时密码。`PUT /api/auth/password` 成功后变回 `false`。为 `true` 期间接口几乎什么都不给用，见[通用约定](#通用约定)。
 
 | 方法 | 路径 | 说明 |
@@ -58,7 +58,7 @@
 | GET | `/api/auth/me` | → `{ user }`。还在用临时密码时也能调。 |
 | PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。改密码，并结束这个账号的**全部**会话，包括发出这个请求的会话。`token` 是给调用方的新凭证，有效期是被替换掉的那个会话剩下的时间；原来的凭证从此失效，之后的请求要用新的。网页端会悄悄换上。临时密码也是用它换掉的：`mustChangePassword` 为 `true` 时可以调（`currentPassword` 填临时密码），成功后这个标记变回 `false`。新密码不能和当前密码相同。 |
 | PUT | `/api/auth/profile` | `{ username?, email? }` → `{ user }`。规则同注册。每个账号每小时最多改 20 次：不限的话，`auth.username_taken` / `auth.email_taken` 这两种回答就成了可以无限次查询「这个邮箱注册过没有」的途径。 |
-| PUT | `/api/auth/prefs` | `{ nodeLayout?: "a" \| "b" \| "c" }` → `{ user }`。改调用者的偏好，只改发过去的那几项；存在账号上，换浏览器也跟着走。校验是严格的：请求体必须是对象（否则 `validation.body_object`）且至少有一项（否则 `common.nothing_to_update`）；不认识的键直接拒绝而不是忽略（`validation.bad_key`）；值不在允许范围内是 `validation.one_of`。都是 400，被拒绝的请求什么都不改。分享页不看这个偏好，一律按布局 A 只读显示。 |
+| PUT | `/api/auth/prefs` | `{ nodeLayout?: "a" \| "b" \| "c", theme?: "dark" \| "light" \| "system" }` → `{ user }`。改调用者的偏好，只改发过去的那几项；存在账号上，换浏览器也跟着走。校验是严格的：请求体必须是对象（否则 `validation.body_object`）且至少有一项（否则 `common.nothing_to_update`）；不认识的键直接拒绝而不是忽略（`validation.bad_key`）；值不在允许范围内是 `validation.one_of`。都是 400，被拒绝的请求什么都不改。分享页不看 `nodeLayout`，一律按布局 A 只读显示。网页端还会把 `theme` 镜像到浏览器的 `localStorage`（键 `loomcanvas-theme`），登录前的页面、分享页和下次打开时的首帧用它；登录着的时候以账号上的为准。 |
 | GET | `/api/auth/sessions` | 调用者还有效的会话，最近活跃的在前：`[{ id, current, createdAt, lastSeenAt, userAgent, ip }]`。`current` 标出当前会话；`lastSeenAt` 最多每分钟更新一次；`ip` 在反向代理后面要配好 `TRUST_PROXY` 才是真实的客户端地址。 |
 | DELETE | `/api/auth/sessions/:id` | 结束自己的一个会话（可以是当前这个）→ `{ id }`。 |
 | DELETE | `/api/auth/sessions` | 结束除当前会话以外的全部会话（「退出其他设备」）→ `{ revoked }`。 |

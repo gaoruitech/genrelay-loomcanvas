@@ -172,7 +172,7 @@ function download() {
 .cv-mark-actions { display: flex; gap: 6px; }
 .cv-mark-btn {
   flex: 1; height: 28px; display: grid; place-items: center;
-  background: rgba(4, 9, 28, .3); border: 1px dashed var(--line-2); border-radius: 8px;
+  background: rgb(var(--c-well) / .3); border: 1px dashed var(--line-2); border-radius: 8px;
   color: var(--text-2); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
   transition: border-color .15s ease, color .15s ease;
 }

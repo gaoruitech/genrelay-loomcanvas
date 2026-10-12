@@ -55,7 +55,7 @@ const emit = defineEmits<{
 .cv-mention {
   position: fixed; z-index: 10050;
   max-height: 232px; overflow-y: auto;
-  background: #131f4a; border: 1px solid var(--line-2); border-radius: 12px;
+  background: var(--pop); border: 1px solid var(--line-2); border-radius: 12px;
   padding: 6px; box-shadow: var(--sh-1);
 }
 .cv-mention-item {
@@ -63,7 +63,7 @@ const emit = defineEmits<{
   padding: 5px 8px; border: none; border-radius: 8px; background: none;
   color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
-.cv-mention-item.on { background: rgba(63, 216, 255, .12); color: var(--text); }
+.cv-mention-item.on { background: rgb(var(--c-cyan) / .12); color: var(--text); }
 .cv-mention-item img {
   width: 28px; height: 28px; object-fit: cover; border-radius: 6px;
   border: 1px solid var(--line); flex: 0 0 auto;

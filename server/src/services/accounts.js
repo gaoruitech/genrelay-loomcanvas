@@ -91,6 +91,7 @@ function serializeUser(u) {
  */
 const PREFS = {
   nodeLayout: { values: ['a', 'b', 'c'], default: 'a' },
+  theme: { values: ['dark', 'light', 'system'], default: 'dark' },
 }
 
 function readPrefs(u) {

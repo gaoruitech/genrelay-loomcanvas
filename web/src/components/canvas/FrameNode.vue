@@ -64,17 +64,17 @@ const childCount = computed(
 
 <style scoped>
 .fr {
-  border: 1.5px dashed rgba(124, 190, 255, .45);
+  border: 1.5px dashed var(--frame-line);
   border-radius: 18px;
-  background: rgba(59, 123, 255, .05);
+  background: var(--frame-fill);
   box-sizing: border-box;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .fr.selected {
   border-style: solid;
-  border-color: rgba(63, 216, 255, .75);
-  background: rgba(63, 216, 255, .05);
-  box-shadow: 0 0 0 3px rgba(63, 216, 255, .14);
+  border-color: var(--frame-line-sel);
+  background: var(--frame-fill-sel);
+  box-shadow: 0 0 0 3px var(--frame-ring);
 }
 
 /* 标题栏：悬浮在组左上角的一张小玻璃卡片 */
@@ -85,7 +85,7 @@ const childCount = computed(
   max-width: calc(100% + 2px);
   height: 30px;
   padding: 0 8px 0 8px;
-  background: rgba(12, 21, 52, .92);
+  background: rgb(var(--c-glass) / .92);
   border: 1px solid var(--line-2);
   border-radius: 10px;
   box-shadow: var(--sh-1);
@@ -114,13 +114,13 @@ const childCount = computed(
   min-width: 90px; max-width: 220px;
 }
 .fr-title::placeholder { font-weight: 400; color: var(--text-3); }
-.fr-title:hover { background: rgba(124, 160, 255, .1); }
+.fr-title:hover { background: rgb(var(--c-film) / .1); }
 .fr-title:focus { background: var(--well); border-color: var(--cyan); }
 
 .fr-count {
   font-size: 11px; white-space: nowrap;
   color: var(--text-2);
-  background: rgba(124, 160, 255, .12);
+  background: rgb(var(--c-film) / .12);
   border-radius: 6px; padding: 2px 8px;
 }
 </style>

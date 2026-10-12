@@ -186,7 +186,7 @@ async function submit() {
 
 
 .meter { display: flex; gap: 4px; margin-top: 8px; }
-.meter i { flex: 1; height: 3px; border-radius: 2px; background: rgba(124, 160, 255, .18); }
+.meter i { flex: 1; height: 3px; border-radius: 2px; background: rgb(var(--c-film) / .18); }
 .meter i.on { background: var(--grad); }
 .lic { font-size: 13px; color: var(--text-2); line-height: 1.6; }
 .closed { margin: 20px 0 24px; }

@@ -5,13 +5,21 @@ import { t } from '@/locales'
  *
  * 存在画布本身（Workflow.settings.bg），不是浏览器本地 —— 通过分享链接打开的画布要带着
  * 作者定的底色走，换设备也要一致。默认值 color:'auto' 就是编辑器的默认底色，
- * 等价于改动之前的行为，老画布读出来是空对象也会落到这一档。
+ * 老画布读出来是空对象也会落到这一档。
+ *
+ * 和主题的关系（两套主题下都不许有「存过的选择变得看不清」的情况）：
+ *   - 'auto' 跟着看的人的主题走：深色主题是深蓝底，浅色主题是浅蓝灰底（令牌 --flow-bg / --flow-dot）。
+ *   - 自选的颜色原样保留，哪个主题下看都是这个颜色。
+ *   - 直接画在底色上的东西（图案、小地图、连线、组的虚线框、框选矩形）按「这个底色是亮还是暗」取色，
+ *     不按主题：图案 / 小地图在下面用亮度算，连线那一组靠 groundToneFor() 给画布容器挂 data-ground。
+ *   - 节点卡片、浮在画布上的面板自己有底，照常跟主题。
+ * 这个文件里剩下的几个裸色值就是这件事：它们是「跟着用户选的颜色算出来的」，不属于任何一套主题。
  */
 
 export type CanvasBgPattern = 'dots' | 'lines' | 'cross' | 'none'
 
 export interface CanvasBgSettings {
-  /** 'auto' = 默认底色（令牌 --flow-bg）；否则是 #rrggbb */
+  /** 'auto' = 默认底色（令牌 --flow-bg，跟主题）；否则是 #rrggbb */
   color: string
   pattern: CanvasBgPattern
   /** 图案间距，px */
@@ -92,20 +100,33 @@ export function relLuminance(hex: string): number {
   return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
 }
 
+/** 这个底色算亮底还是暗底 */
+export function isLightBg(hex: string): boolean {
+  return relLuminance(hex) > 0.45
+}
+
 /** 自定义底色时的图案色：亮底加黑、暗底加白，跟着底色走而不是跟着主题走 */
 export function patternColorFor(hex: string): string {
-  return relLuminance(hex) > 0.45 ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.14)'
+  return isLightBg(hex) ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.14)'
+}
+
+/** 自定义底色时小地图上的节点块：要压得住遮罩，不能用图案那档极淡的颜色 */
+export function miniNodeColorFor(hex: string): string {
+  return isLightBg(hex) ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.32)'
+}
+
+/** 自定义底色时小地图的视口框 */
+export function miniStrokeColorFor(hex: string): string {
+  return isLightBg(hex) ? 'rgba(20, 80, 160, .9)' : '#3fd8ff'
 }
 
 /**
- * 对比度护栏。
- *
- * 节点卡片本身是透明底（node-shared.css 里 .cv-node background:transparent），
- * 所以真正会出事的不是"卡片和背景撞色"，而是「深色主题下选了浅底」——
- * 节点的文字和边框都是按主题配的浅色，压在浅底上直接消失。
- * 不禁止用户选，但要当场告诉他会发生什么。
+ * 画布容器的 data-ground：自选底色的明暗和当前主题相反时，返回底色的那一档，
+ * 让「画布底」那组令牌（连线、组的虚线框、框选矩形）按底色取值；否则返回 undefined（不挂属性，跟主题）。
  */
-export function canvasBgWarning(bg: CanvasBgSettings): string {
-  if (bg.color === 'auto' || !isHexColor(bg.color)) return ''
-  return relLuminance(bg.color) > 0.45 ? t('dialogs.bg.warnLightOnDark') : ''
+export function groundToneFor(bg: CanvasBgSettings, theme: 'dark' | 'light'): 'dark' | 'light' | undefined {
+  if (bg.color === 'auto' || !isHexColor(bg.color)) return undefined
+  const tone = isLightBg(bg.color) ? 'light' : 'dark'
+  return tone === theme ? undefined : tone
 }
+

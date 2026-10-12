@@ -25,6 +25,8 @@ export interface User {
 export interface UserPrefs {
   /** 画布上生成节点的布局：a 结果优先 + 输入条（默认）/ b 紧凑节点 + 右侧属性面板 / c 全部放在节点上 */
   nodeLayout?: 'a' | 'b' | 'c'
+  /** 界面主题：dark 深色（默认）/ light 浅色 / system 跟随系统 */
+  theme?: 'dark' | 'light' | 'system'
 }
 
 /** 超级管理员在「用户管理」里看到的一行 */

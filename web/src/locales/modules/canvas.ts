@@ -67,6 +67,7 @@ export default {
     },
     style: {
       auto: '默认深蓝',
+      autoLight: '默认浅蓝灰',
     },
     project: {
       current: '当前',
@@ -306,6 +307,7 @@ export default {
     },
     style: {
       auto: 'Default navy',
+      autoLight: 'Default light',
     },
     project: {
       current: 'Current',

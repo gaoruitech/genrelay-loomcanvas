@@ -60,7 +60,7 @@ defineOptions({ inheritAttrs: false })
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(124, 160, 255, .1) 45%, rgba(124, 160, 255, .1) 55%, transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--c-film) / .1) 45%, rgb(var(--c-film) / .1) 55%, transparent);
   animation: skel-shimmer 1.45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 @keyframes skel-shimmer {
@@ -83,7 +83,7 @@ defineOptions({ inheritAttrs: false })
   width: 100%;
   aspect-ratio: 16 / 10;
   border-radius: 0;
-  --skel-bg: rgba(4, 9, 28, .5);
+  --skel-bg: rgb(var(--c-well) / .5);
 }
 .skel-canvas-meta {
   padding: 12px 14px;

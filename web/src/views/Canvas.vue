@@ -98,6 +98,7 @@
       class="vf-wrap"
       :class="{ auto: bgIsAuto, 'drag-over': dragActive, 'box-selecting': boxSelecting }"
       :style="flowStyle"
+      :data-ground="groundTone"
       @dragenter="onDragEnter"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
@@ -794,6 +795,7 @@ import { confirmRerun } from '@/composables/useRerunConfirm'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { CANVAS_PICKER_KEY, type PickerOptions, type PickerItem } from '@/composables/canvasPickerKey'
 import { useTokenColor } from '@/utils/tokenColor'
+import { resolvedTheme } from '@/composables/useTheme'
 import {
   isFramesModeData, listAdapters, modelsLoaded, isModelSupported, defaultModelId, defaultVideoEditModelId,
 } from '@/utils/canvasModels'
@@ -817,7 +819,8 @@ import {
   planFrame, releaseFrame, planMerge, planRelease, frameNodeFrom, matchNode,
 } from '@/composables/useCanvasFrame'
 import {
-  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, relLuminance, hexToRgba,
+  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, hexToRgba,
+  miniNodeColorFor, miniStrokeColorFor, groundToneFor,
   type CanvasBgSettings,
 } from '@/utils/canvasBg'
 import { CANVAS_IMAGE_EDITOR_KEY, type ImageEditorResult } from '@/composables/canvasImageEditorKey'
@@ -831,7 +834,10 @@ import '@/styles/vue-flow-theme.css'
  * vue-flow 的 Background / MiniMap 把颜色当 SVG attribute 传，attribute 不解析
  * var()，所以这里读 token 的计算值，而不是直接写 var(--flow-dot)。
  */
-const vfPattern = useTokenColor('--flow-dot', 'rgba(124, 160, 255, .22)')
+const vfPattern = useTokenColor('--flow-dot')
+const vfMiniMask = useTokenColor('--mini-mask')
+const vfMiniStroke = useTokenColor('--mini-stroke')
+const vfMiniNode = useTokenColor('--mini-node')
 
 type NodeKind = 'text' | 'image' | 'video' | 'image-collection' | 'image-gen' | 'image-edit' | 'video-gen' | 'video-edit' | 'video-analysis' | 'llm' | 'output' | 'platform-export' | 'slice' | 'collage' | 'watermark' | 'fit-size' | 'frame'
 type DataType = 'text' | 'image' | 'video'
@@ -1060,7 +1066,7 @@ provide(CANVAS_PICKER_KEY, {
 })
 
 /* ==================== 画布外观（底色 / 图案 / 密度） ==================== */
-// 存在画布里（Workflow.settings.bg），跟着分享一起走；'auto' = 编辑器默认的深蓝底 + 点阵
+// 存在画布里（Workflow.settings.bg），跟着分享一起走；'auto' = 编辑器的默认底 + 点阵（跟主题）
 const bgSettings = ref<CanvasBgSettings>({ ...DEFAULT_CANVAS_BG })
 const stylePanelOpen = ref(false)
 const stylePanelPos = ref({ x: 0, y: 0 })
@@ -1071,15 +1077,12 @@ const flowStyle = computed(() => (bgIsAuto.value ? {} : { background: bgSettings
 const bgVariant = computed(() => (bgSettings.value.pattern === 'dots' ? 'dots' : 'lines'))
 // 自定义底色时图案色跟着底色走（亮底加黑、暗底加白），而不是跟着主题走
 const flowPatternColor = computed(() => (bgIsAuto.value ? vfPattern.value : patternColorFor(bgSettings.value.color)))
-// 小地图：默认底下是设计稿那一套（淡蓝节点块 + 青色视口框）；自选底色时跟着底色的明暗走
-const miniMaskColor = computed(() => (bgIsAuto.value ? 'rgba(4, 9, 28, .55)' : hexToRgba(bgSettings.value.color, 0.7)))
-const miniStrokeColor = computed(() => (
-  !bgIsAuto.value && relLuminance(bgSettings.value.color) > 0.45 ? 'rgba(20, 80, 160, .9)' : '#3fd8ff'))
-const miniNodeColor = computed(() => {
-  if (bgIsAuto.value) return 'rgba(124, 170, 255, .45)'
-  // 小地图上的节点块要压得住遮罩，不能用图案那档极淡的颜色
-  return relLuminance(bgSettings.value.color) > 0.45 ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.32)'
-})
+// 小地图：默认底下是设计稿那一套（令牌 --mini-*，跟主题）；自选底色时跟着底色的明暗走
+const miniMaskColor = computed(() => (bgIsAuto.value ? vfMiniMask.value : hexToRgba(bgSettings.value.color, 0.7)))
+const miniStrokeColor = computed(() => (bgIsAuto.value ? vfMiniStroke.value : miniStrokeColorFor(bgSettings.value.color)))
+const miniNodeColor = computed(() => (bgIsAuto.value ? vfMiniNode.value : miniNodeColorFor(bgSettings.value.color)))
+// 自选底色的明暗和主题相反时：直接画在底上的连线 / 组框 / 框选矩形按底色取值（见 design-tokens.css 的「画布底」）
+const groundTone = computed(() => groundToneFor(bgSettings.value, resolvedTheme.value))
 // 十字图案：画在 pattern 瓦片中心，瓦片边长 = gap × zoom
 const crossPath = computed(() => {
   const g = Math.max(1, bgSettings.value.gap * (viewport.value.zoom || 1))
@@ -3900,8 +3903,8 @@ onBeforeUnmount(() => {
 }
 .vf-wrap.auto {
   background:
-    radial-gradient(900px 520px at 78% -8%, rgba(59, 123, 255, .16), transparent 62%),
-    radial-gradient(760px 520px at 4% 108%, rgba(138, 92, 255, .12), transparent 60%),
+    radial-gradient(900px 520px at 78% -8%, var(--flow-aura-1), transparent 62%),
+    radial-gradient(760px 520px at 4% 108%, var(--flow-aura-2), transparent 60%),
     linear-gradient(180deg, var(--bg-0), var(--bg-1));
 }
 /* 按住 Shift 框选时，组不吃鼠标事件 —— 否则框选没法从组上面拉起来。
@@ -3917,9 +3920,9 @@ onBeforeUnmount(() => {
   content: '';
   position: absolute;
   inset: 8px;
-  border: 2px dashed rgba(63, 216, 255, .7);
+  border: 2px dashed rgb(var(--c-cyan) / .7);
   border-radius: 16px;
-  background: rgba(63, 216, 255, .06);
+  background: rgb(var(--c-cyan) / .06);
   pointer-events: none;
   z-index: 4;
 }
@@ -3963,8 +3966,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 20px 28px;
-  background: rgba(12, 21, 52, .92);
-  border: 1px solid rgba(63, 216, 255, .6);
+  background: rgb(var(--c-glass) / .92);
+  border: 1px solid rgb(var(--c-cyan) / .6);
   border-radius: var(--r-md);
   box-shadow: var(--sh-1);
   color: var(--cyan-soft);
@@ -3979,7 +3982,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: rgba(5, 10, 30, .72);
+  background: rgb(var(--c-chrome-0) / .72);
   color: var(--text-2);
   font-size: 14px;
   z-index: 4;
@@ -3991,7 +3994,7 @@ onBeforeUnmount(() => {
   z-index: 6;
   border-radius: 14px;
   border: 1px solid var(--line-2);
-  background: rgba(12, 21, 52, .88);
+  background: rgb(var(--c-glass) / .88);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   box-shadow: var(--sh-1);
 }
@@ -4019,7 +4022,7 @@ onBeforeUnmount(() => {
   font: 600 14px/28px var(--f-disp); color: var(--text); text-overflow: ellipsis;
 }
 .ed-name input::placeholder { color: var(--text-3); font-weight: 400; }
-.ed-name input:hover { background: rgba(124, 160, 255, .08); }
+.ed-name input:hover { background: rgb(var(--c-film) / .08); }
 .ed-name input:focus { background: var(--well); border-color: var(--cyan); }
 .ed-save {
   border: 0; background: none; padding: 4px 2px; border-radius: 6px; font-size: 12px; flex: none;
@@ -4053,7 +4056,7 @@ onBeforeUnmount(() => {
 .ed-pal.v .pal-grip { width: 34px; height: 16px; }
 .ed-pal.h .pal-grip { width: 16px; height: 34px; }
 .ed-pal.h .pal-grip .lc-ic { transform: rotate(90deg); }
-.pal-grip:hover, .pal-grip.on, .ed-pal.drag .pal-grip { background: rgba(124, 160, 255, .12); color: var(--text); opacity: 1; }
+.pal-grip:hover, .pal-grip.on, .ed-pal.drag .pal-grip { background: rgb(var(--c-film) / .12); color: var(--text); opacity: 1; }
 .ed-pal.drag .pal-grip { cursor: grabbing; }
 .pal-grip:focus-visible, .ed-pal .lc-tb:focus-visible { outline: none; box-shadow: var(--ring); }
 /* 方向开关：比加节点的按钮矮一截，一眼看得出不是同一类 */
@@ -4094,12 +4097,12 @@ onBeforeUnmount(() => {
 }
 .ed-item .lc-ic { width: 16px; height: 16px; color: var(--text-3); transition: color .12s; }
 .ed-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.ed-item:hover:not(:disabled) { background: rgba(124, 160, 255, .12); color: var(--text); }
+.ed-item:hover:not(:disabled) { background: rgb(var(--c-film) / .12); color: var(--text); }
 .ed-item:hover:not(:disabled) .lc-ic { color: var(--cyan); }
 .ed-item:focus-visible { outline: none; box-shadow: var(--ring); }
 .ed-item:disabled { opacity: .42; cursor: not-allowed; }
 /* 单选项里当前选中的那一个（节点布局） */
-.ed-item.on { background: rgba(63, 216, 255, .12); color: var(--cyan-soft); }
+.ed-item.on { background: rgb(var(--c-cyan) / .12); color: var(--cyan-soft); }
 .ed-item.on .lc-ic { color: var(--cyan); }
 
 .ed-legend {
@@ -4107,9 +4110,9 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3);
 }
 .ed-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: #0b1436; border: 2px solid var(--cyan); flex: none; }
-.d-text { border-color: #6f9dff; }
-.d-video { border-color: #a98bff; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--port-bg); border: 2px solid var(--cyan); flex: none; }
+.d-text { border-color: var(--port-text); }
+.d-video { border-color: var(--port-video); }
 .d-last { background: var(--cyan); }
 
 /* 切换项目 */
@@ -4120,8 +4123,8 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; min-width: 0;
   border: 1px solid transparent; border-radius: 10px; background: none; color: var(--text-2); text-align: left;
 }
-.proj-item:hover { background: rgba(124, 160, 255, .1); }
-.proj-item.cur { border-color: rgba(63, 216, 255, .4); background: rgba(63, 216, 255, .06); }
+.proj-item:hover { background: rgb(var(--c-film) / .1); }
+.proj-item.cur { border-color: rgb(var(--c-cyan) / .4); background: rgb(var(--c-cyan) / .06); }
 .proj-thumb { flex: none; width: 48px; height: 34px; border-radius: 6px; border: 1px solid var(--line); display: grid; place-items: center; color: var(--text-3); }
 .proj-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .proj-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--text); }
@@ -4135,7 +4138,7 @@ onBeforeUnmount(() => {
 .ed-hint {
   position: absolute; z-index: 6; top: 16px; right: 16px;
   max-width: min(520px, calc(100% - 552px)); align-items: center;
-  background: rgba(40, 30, 20, .92); box-shadow: var(--sh-1);
+  background: var(--hint-bg); box-shadow: var(--sh-1);
 }
 .ed-hint a { white-space: nowrap; font-weight: 500; }
 .ed.has-hint .ed-title { max-width: calc(100% - 48px - min(520px, 100% - 552px)); }
@@ -4153,7 +4156,7 @@ onBeforeUnmount(() => {
   width: 48px; height: 34px; border: 0; border-radius: 9px; background: none; flex: none;
   font: 500 12px var(--f-mono); color: var(--text-2); text-align: center;
 }
-.ed-zoom:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
+.ed-zoom:hover { background: rgb(var(--c-film) / .12); color: var(--text); }
 .ed-arrange { height: 34px; border-color: transparent; background: none; color: var(--text); flex: none; }
 .ed-run { height: 34px; padding: 0 14px; font-size: 13px; flex: none; }
 .ed-run .lc-ic { fill: currentColor; }
@@ -4179,7 +4182,7 @@ onBeforeUnmount(() => {
 .ctx-menu .lc-menu-item:hover .lc-ic { color: var(--cyan); }
 .ctx-menu .lc-menu-item.danger { color: var(--err-soft); }
 .ctx-menu .lc-menu-item.danger .lc-ic { color: var(--err-soft); }
-.ctx-menu .lc-menu-item.danger:hover { background: rgba(255, 107, 139, .12); }
+.ctx-menu .lc-menu-item.danger:hover { background: rgb(var(--c-err) / .12); }
 /* 品牌包那几项是单选：选中的前面打勾，没选中的留出同样宽的空位 */
 .ctx-menu .ed-sub { padding-top: 4px; }
 .ctx-menu .ctx-kit.active .lc-ic { color: var(--cyan); }
@@ -4199,7 +4202,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 8px;
   border: 0; border-radius: 8px; background: none; text-align: left; color: var(--text-2);
 }
-.nsearch-item:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
+.nsearch-item:hover { background: rgb(var(--c-film) / .12); color: var(--text); }
 .nsearch-b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* ---------- 分享弹窗 ---------- */
@@ -4230,7 +4233,7 @@ onBeforeUnmount(() => {
   /* 展开层是底部抽屉 */
   .ed-fly, .ed-fly.wide {
     left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: min(72%, 560px); z-index: 41;
-    background: rgba(12, 21, 52, .97); box-shadow: var(--sh-2);
+    background: rgb(var(--c-glass) / .97); box-shadow: var(--sh-2);
   }
   .ed-proj { left: 8px; top: 56px; max-width: calc(100% - 16px); }
   /* 工具条贴底，放不下就在自己里面横向滚动 */

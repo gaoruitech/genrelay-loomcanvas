@@ -38,6 +38,9 @@ const userSchema = new mongoose.Schema({
     // composer under the selected node, 'b' compact nodes with an inspector on
     // the right, 'c' everything on the node.
     nodeLayout: { type: String, enum: ['a', 'b', 'c'], default: 'a' },
+    // Colour theme of the interface: 'dark' (the default), 'light', or 'system'
+    // to follow the device's own light / dark setting.
+    theme: { type: String, enum: ['dark', 'light', 'system'], default: 'dark' },
   },
 }, { timestamps: true })
 

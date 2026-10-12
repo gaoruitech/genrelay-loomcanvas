@@ -13,6 +13,7 @@
         :aria-label="t('auth.language')"
         @update:model-value="app.setLocale"
       />
+      <ThemeSwitch />
     </header>
     <div class="au-body">
       <section class="au-l">
@@ -30,6 +31,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { LOCALE_OPTIONS } from '@/locales'
 import LcLogo from '@/components/LcLogo.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
 import LcSelect from '@/components/LcSelect.vue'
 
 /** back=false：没有「返回首页」（设置新密码那一屏哪儿也去不了，给个去不成的链接没意义） */
@@ -54,9 +56,9 @@ const app = useAppStore()
 .au-l { min-width: 0; }
 .au-l :deep(.kick) {
   display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 14px; border-radius: 15px;
-  border: 1px solid var(--line-3); background: rgba(59, 123, 255, .12); color: var(--cyan-soft); font-size: 13px;
+  border: 1px solid var(--line-3); background: rgb(var(--c-blue) / .12); color: var(--cyan-soft); font-size: 13px;
 }
-.au-l :deep(.kick i) { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.au-l :deep(.kick i) { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgb(var(--g-cyan)); }
 .au-l :deep(h1) { font: 700 44px/1.25 var(--f-disp); margin-top: 20px; color: var(--text); }
 .au-l :deep(.lead) { color: var(--text-2); font-size: 16px; line-height: 1.8; margin-top: 16px; max-width: 520px; }
 

@@ -120,7 +120,7 @@ defineExpose({ close })
   font: inherit; font-size: 12px; cursor: pointer; transition: background .13s, border-color .13s, color .13s;
 }
 .bkc-chip.set { color: var(--text); }
-.bkc-chip:hover { background: rgba(124, 160, 255, .1); color: var(--text); }
+.bkc-chip:hover { background: rgb(var(--c-film) / .1); color: var(--text); }
 .bkc-chip.on { border-color: var(--cyan); background: var(--well); color: var(--text); }
 .bkc-chip:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
 .bkc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -148,12 +148,12 @@ defineExpose({ close })
 .bkc-pop .bkc-list { display: grid; gap: 6px; max-height: 264px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
 .bkc-pop .bkc-row {
   display: flex; align-items: center; gap: 4px; min-width: 0; width: 100%; padding: 0 6px 0 0; text-align: left;
-  border: 1px solid var(--line); border-radius: 10px; background: rgba(4, 9, 28, .3); color: var(--text); font: inherit;
+  border: 1px solid var(--line); border-radius: 10px; background: rgb(var(--c-well) / .3); color: var(--text); font: inherit;
   transition: border-color .13s, background .13s;
 }
 .bkc-pop button.bkc-row { padding: 8px 10px; gap: 10px; cursor: pointer; }
 .bkc-pop .bkc-row:hover { border-color: var(--line-3); }
-.bkc-pop .bkc-row.on { border-color: var(--cyan); background: rgba(63, 216, 255, .07); }
+.bkc-pop .bkc-row.on { border-color: var(--cyan); background: rgb(var(--c-cyan) / .07); }
 .bkc-pop .bkc-pick {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 4px 8px 10px;
   border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px;

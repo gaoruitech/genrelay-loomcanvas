@@ -310,7 +310,7 @@ On macOS use ⌘ instead of Ctrl.
 
 - **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the super admin set under **Settings → Appearance** applies.
 - **Node layout**: one of three under **Settings → Appearance**; it decides how generation nodes look on the canvas, see [Generation](#generation-calls-a-paid-model). It is stored with your account, not in the browser.
-- **Theme**: the interface has one dark theme. There is no light theme and nothing to switch.
+- **Theme**: Dark (the default), Light, or System, which follows your device and switches with it. Pick one of the three preview cards; it applies at once, without a reload. The choice is kept with your account, so it is the same wherever you sign in, and this browser remembers it for the sign-in page and shared canvases. The icon next to the language menu in the top bar switches it too.
 - **Canvas appearance** (More ⋯ or right-click): background colour, pattern and density of one canvas. It is saved with the canvas and travels with its share links.
 
 ## Limits worth knowing

@@ -515,7 +515,7 @@ async function switchToLocal() {
 .srow > .v > .lc-input.long { max-width: 560px; }
 .hints {
   margin: 12px 0 0; padding: 12px 14px 12px 30px; border-radius: 10px; max-width: 600px;
-  background: rgba(63, 216, 255, .06); border: 1px solid var(--line);
+  background: rgb(var(--c-cyan) / .06); border: 1px solid var(--line);
   font-size: 12px; color: var(--text-2); line-height: 1.75;
 }
 .hints li { word-break: break-word; }
@@ -523,8 +523,8 @@ async function switchToLocal() {
 .srow > .v > .lc-switch { display: block; }
 
 .test { padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--line-2); }
-.test.ok { border-color: rgba(62, 230, 168, .45); background: var(--success-dim); }
-.test.err { border-color: rgba(255, 107, 139, .45); background: var(--danger-dim); }
+.test.ok { border-color: rgb(var(--c-ok) / .45); background: var(--success-dim); }
+.test.err { border-color: rgb(var(--c-err) / .45); background: var(--danger-dim); }
 .test-message { font-size: 13px; line-height: 1.65; color: var(--text); word-break: break-word; }
 .steps { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 .steps li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }

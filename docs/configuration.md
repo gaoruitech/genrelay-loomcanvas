@@ -122,7 +122,7 @@ The Settings page shows one section at a time. The list on the left is grouped: 
 | `downloadTimeoutSec` | `300` | 10 to 3600 | Run limits → Result download timeout | Time allowed for copying a finished result into storage. |
 | `retentionDays` | `0` | 0 to 3650 | Run limits → Result retention | Delete the result files of runs that finished more than this many days ago. `0` keeps them forever. |
 
-There is no theme setting. The interface has a single dark theme, and the `defaultTheme` key of earlier versions is gone: sending it is refused with `settings.unknown_key` like any other unknown key, and a value an earlier version stored is ignored.
+There is no site-wide theme setting. Dark or light is each person's own choice (the icon in the top bar, or Settings → Appearance), kept with their account; an account that never chose is dark. The `defaultTheme` key of earlier versions is gone: sending it is refused with `settings.unknown_key` like any other unknown key, and a value an earlier version stored is ignored.
 
 Every key can also be changed with a request, for example:
 
@@ -163,7 +163,7 @@ The other things you configure in the app are not settings keys and are not part
 | Brand kit of a canvas, and a node's exception to it | One canvas / one node | The canvas document (the kit itself is shared across the canvases of that account) |
 | Language (简体中文 / English) | One browser | `localStorage` (`loomcanvas-locale`) |
 
-A browser's own language wins over the site default. There is no theme to choose: the interface has one dark theme.
+A browser's own language wins over the site default. The theme is not a site setting: everyone picks dark, light or "follow the system" for themselves, and dark is the default.
 
 ## Fixed limits
 

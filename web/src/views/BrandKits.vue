@@ -181,7 +181,7 @@ async function remove(k: BrandKit) {
 .bk-error > span { flex: 1; min-width: 0; }
 
 /* 说明：一张不抢眼的卡片，正文限宽好读 */
-.bk-about { margin-top: 16px; padding: 16px 20px; display: grid; gap: 6px; background: rgba(4, 9, 28, .3); }
+.bk-about { margin-top: 16px; padding: 16px 20px; display: grid; gap: 6px; background: rgb(var(--c-well) / .3); }
 .bk-about h2 { display: flex; align-items: center; gap: 8px; font: 600 14px/1.5 var(--f-disp); color: var(--text); }
 .bk-about h2 :deep(svg) { color: var(--cyan); }
 .bk-about p { font-size: 13px; line-height: 1.7; color: var(--text-2); max-width: 880px; }
@@ -207,7 +207,7 @@ async function remove(k: BrandKit) {
 .bk-foot { display: flex; align-items: center; gap: 4px; padding: 10px 12px 10px 16px; border-top: 1px solid var(--line); }
 .bk-foot .lc-btn { margin-left: 4px; }
 .bk-used { font-size: 12px; color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bk-del:hover:not(:disabled) { color: var(--err-soft); background: rgba(255, 107, 139, .12); }
+.bk-del:hover:not(:disabled) { color: var(--err-soft); background: rgb(var(--c-err) / .12); }
 .bk-count { margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-3); }
 
 .skel-card { padding: 20px; gap: 12px; min-height: 180px; }
@@ -217,12 +217,12 @@ async function remove(k: BrandKit) {
 /* ---- 空态 ---- */
 .bk-empty {
   margin-top: 16px; padding: 48px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
-  border-style: dashed; border-color: var(--line-3); background: rgba(4, 9, 28, .3);
+  border-style: dashed; border-color: var(--line-3); background: rgb(var(--c-well) / .3);
 }
 .bk-ti {
   width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; color: var(--cyan);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .18), rgba(138, 92, 255, .22));
-  box-shadow: 0 0 0 1px rgba(63, 216, 255, .35) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22));
+  box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
 .bk-empty h2 { font: 600 16px/1.4 var(--f-disp); color: var(--text); margin-top: 8px; }
 .bk-empty p { color: var(--text-2); font-size: 13px; max-width: 620px; line-height: 1.7; }

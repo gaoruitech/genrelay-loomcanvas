@@ -76,21 +76,21 @@ loomcanvas/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/bootstrap` | 公开；旧路径 `/api/app/bootstrap` 仍然应答（Docker 的 HEALTHCHECK 还在用它）。`{ auth:{registrationOpen}, user, site:{name,logoUrl,defaultLocale}, hasProvider, limits:{maxUploadMb}, media:{upstreamByUrl}, version }`。`auth.registrationOpen` 表示现在能不能注册，就是 `registrationOpen` 这项设置的值，`auth` 里只有这一个字段；`user` 是调用者的 User（请求带了有效凭证时），否则 `null`，也就是没登录；早期版本的 `authRequired`、`authed` 和 `site.defaultTheme` 已经去掉（登录是必须的，界面只有一套主题）；`hasProvider` 说的是调用者自己的服务商，未登录为 `false`。`media.upstreamByUrl` 表示上游能不能按地址读到站内文件（配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里），画布据此在运行前提示「参考图只能给公网地址」的模型用不了参考图。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
+| GET | `/api/bootstrap` | 公开；旧路径 `/api/app/bootstrap` 仍然应答（Docker 的 HEALTHCHECK 还在用它）。`{ auth:{registrationOpen}, user, site:{name,logoUrl,defaultLocale}, hasProvider, limits:{maxUploadMb}, media:{upstreamByUrl}, version }`。`auth.registrationOpen` 表示现在能不能注册，就是 `registrationOpen` 这项设置的值，`auth` 里只有这一个字段；`user` 是调用者的 User（请求带了有效凭证时），否则 `null`，也就是没登录；早期版本的 `authRequired`、`authed` 和 `site.defaultTheme` 已经去掉（登录是必须的；主题是每个账号自己的偏好 `user.prefs.theme`，不是站点设置）；`hasProvider` 说的是调用者自己的服务商，未登录为 `false`。`media.upstreamByUrl` 表示上游能不能按地址读到站内文件（配了公网的 `PUBLIC_URL`，或新文件存在公网能访问的桶里），画布据此在运行前提示「参考图只能给公网地址」的模型用不了参考图。`limits.maxUploadMb` 是服务端的 `MAX_UPLOAD_MB`，前端据此在上传前拦下过大的文件 |
 | POST | `/api/auth/register` | 公开。`{ username, email, password }` → `{ user, token }`。产生的一定是普通账号（`role: 'user'`）；`registrationOpen` 关着时一律 403，没有例外。错误：`auth.invalid_username`、`auth.invalid_email`、`auth.weak_password`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.registration_closed`（403），`auth.too_many_attempts`（429） |
 | POST | `/api/auth/login` | 公开。`{ account, password, remember? }` → `{ user, token }`，`account` 是用户名或邮箱，不区分大小写。错误：`auth.credentials_required`（400，缺字段），`auth.invalid_credentials`（401；账号不存在和密码不对是同一个返回、同样的计算量），`auth.account_disabled`（403，密码正确之后才会告知），`auth.too_many_attempts`（429） |
 | POST | `/api/auth/logout` | 结束发出请求的这个会话，`data: null` |
 | GET | `/api/auth/me` | → `{ user }` |
 | PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。该账号的会话全部结束，包括发出请求的这一个；`token` 是给调用方的新凭证（有效期是被替换的会话剩下的时间），前端悄悄换上。临时密码也是用它换掉的：`mustChangePassword` 为 `true` 时可以调，成功后清掉这个标记。当前密码不对返回 400 `auth.wrong_current_password`（有意不用 401），新密码和当前密码相同返回 400 `auth.same_password`，另有 `auth.weak_password`（400）、`auth.too_many_attempts`（429） |
 | PUT | `/api/auth/profile` | `{ username?, email? }` → `{ user }`。错误：`auth.invalid_username`、`auth.invalid_email`、`common.nothing_to_update`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.too_many_attempts`（429；每个账号每小时最多 20 次，否则前两个 409 就成了不限次数的「这个邮箱注册过没有」查询） |
-| PUT | `/api/auth/prefs` | `{ nodeLayout?: 'a'\|'b'\|'c' }` → `{ user }`。账号对网页端的偏好，只改发过去的键；键和值都有白名单（`services/accounts.js` 的 `PREFS`），不认识的键 400 `validation.bad_key`，值不对 400 `validation.one_of`，空对象 400 `common.nothing_to_update` |
+| PUT | `/api/auth/prefs` | `{ nodeLayout?: 'a'\|'b'\|'c', theme?: 'dark'\|'light'\|'system' }` → `{ user }`。账号对网页端的偏好，只改发过去的键；键和值都有白名单（`services/accounts.js` 的 `PREFS`），不认识的键 400 `validation.bad_key`，值不对 400 `validation.one_of`，空对象 400 `common.nothing_to_update` |
 | GET | `/api/auth/sessions` | → `[{ id, current, createdAt, lastSeenAt, userAgent, ip }]`，调用者还有效的会话，最近活跃的在前；`lastSeenAt` 最多每分钟刷新一次 |
 | DELETE | `/api/auth/sessions/:id` | → `{ id }`，结束自己的一个会话（可以是当前这个）。不存在或是别人的：404 `auth.session_not_found` |
 | DELETE | `/api/auth/sessions` | → `{ revoked }`，结束除当前会话以外的全部会话 |
 | POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height?, thumbnailUrl? }`（后三项只有图片有） |
 | POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上。只接受图片：地址指向本实例存储时也一样，存储里的视频返回 400（`file.image_only`） |
 
-User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', mustChangePassword, prefs, createdAt }`（注册、登录、`me`、改资料、改偏好、bootstrap 的 `user`、超级管理员的账号列表给的都是它）。`prefs` 是这个账号对网页端的偏好（`users.prefs`），总是完整的，目前只有 `nodeLayout: 'a'|'b'|'c'`（默认 `'a'`），见第 10 节「生成节点的三种布局」。`email` 对超级管理员可能是 `''`（见第 11 节的邮箱规则）；`mustChangePassword` 为 `true` 表示还在用别人知道的密码。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：超级管理员在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（超级管理员自己的密码只能走这条）；两者都给出一个临时密码，让这个账号在所有设备上退出登录，并把 `mustChangePassword` 置为 `true`：用临时密码登录后必须先设置新密码。
+User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', mustChangePassword, prefs, createdAt }`（注册、登录、`me`、改资料、改偏好、bootstrap 的 `user`、超级管理员的账号列表给的都是它）。`prefs` 是这个账号对网页端的偏好（`users.prefs`），总是完整的，有两项：`nodeLayout: 'a'|'b'|'c'`（默认 `'a'`，见第 10 节「生成节点的三种布局」）和 `theme: 'dark'|'light'|'system'`（默认 `'dark'`，见第 10 节「主题」）。`email` 对超级管理员可能是 `''`（见第 11 节的邮箱规则）；`mustChangePassword` 为 `true` 表示还在用别人知道的密码。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：超级管理员在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（超级管理员自己的密码只能走这条）；两者都给出一个临时密码，让这个账号在所有设备上退出登录，并把 `mustChangePassword` 置为 `true`：用临时密码登录后必须先设置新密码。
 
 ## 4. 模型与运行（新接口）
 
@@ -391,7 +391,7 @@ module.exports = {
 
 - 站点设置和存储只有超级管理员能读写（其他账号 403 `auth.forbidden`）；服务商、模型、用量是每个账号各管各的（见第 5 节）。
 - 存储不在 `GET/PUT /api/admin/settings` 里：它有自己的三个接口（第 5 节的 `/api/admin/storage`），存在 `settings` 集合里键为 `storage` 的一条记录中，密钥加密。把 `storage` 当作设置键提交会得到 `settings.unknown_key`。
-- `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultLocale`、`registrationOpen`、`concurrency`、`userConcurrency`、`userQueueLimit`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。界面只有一套主题，早期版本的 `defaultTheme` 已经从头到尾删除：`GET` 不再返回它，`PUT` 带上它和别的不认识的键一样返回 `settings.unknown_key`，早期版本存下来的值不再使用。各项的默认值和范围、在「设置」页的哪个分区，见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
+- `GET/PUT /api/admin/settings` 是扁平对象：`siteName`、`logoUrl`、`defaultLocale`、`registrationOpen`、`concurrency`、`userConcurrency`、`userQueueLimit`、`submitTimeoutSec`、`imageTimeoutMinutes`、`videoTimeoutMinutes`、`chatTimeoutSec`、`downloadTimeoutSec`、`maxRetries`、`retentionDays`。不认识的键（包括 `constructor`、`__proto__` 这类名字）返回 400（`settings.unknown_key`）。主题是每个账号自己的偏好（`users.prefs.theme`），不是站点设置：早期版本的 `defaultTheme` 已经从头到尾删除：`GET` 不再返回它，`PUT` 带上它和别的不认识的键一样返回 `settings.unknown_key`，早期版本存下来的值不再使用。各项的默认值和范围、在「设置」页的哪个分区，见 [configuration.zh-CN.md](configuration.zh-CN.md#管理设置)。
 - 随账号新增的三个键：`registrationOpen`（布尔值，默认 `true`）是否允许自行注册（注册出来的都是普通账号）。环境变量 `REGISTRATION_OPEN` 只给它一个初始值：启动时 `index.js` 调 `settings.seed('registrationOpen', …)`，用 `$setOnInsert` 的 upsert 写入，所以只有这项设置从没保存过时才写得进去；一旦库里有了这一条（由这次播种、设置页或 `PUT /api/admin/site` 写入），存下的值为准，变量不再起作用。写进去的那一次，日志里有一行 `[auth] registration is open|closed (REGISTRATION_OPEN); ...`；`userConcurrency`（1 到 32，默认 4）一个账号同时执行的运行数，`concurrency` 仍是整个实例的总数；`userQueueLimit`（1 到 500，默认 200）一个账号未完成运行的上限，整个实例的总上限仍是 500。
 - 结果保留天数（`retentionDays`）是站点设置，对所有账号的运行生效。没有按账号的存储配额。
 - 原有的各项上限现在都按账号计：服务商 50 个、每个服务商的自定义模型 100 个、分享链接 500 个、品牌包 50 个、资产每种分类 5000 个、画布列表 200 张。
@@ -402,7 +402,7 @@ module.exports = {
 
 **安全响应头**
 
-- 每个页面带 `Content-Security-Policy`：`script-src 'self'`，脚本不允许 `'unsafe-inline'` 和 `'unsafe-eval'`。构建出的 `index.html` 里已经没有内联脚本（只有一套主题，`theme-mode` 直接写在 `<html>` 上），所以策略里不再有哈希；`middleware/security.js` 启动时仍会扫描 `index.html`，如果里面出现内联脚本，加进去的是它的 sha256，而不是 `'unsafe-inline'`。`img-src` / `media-src` / `connect-src` 有意对任何 http(s) 来源开放（画布要显示和下载对象存储、CDN、外链里的结果），另外明确列出存储配置里每个 `publicBaseUrl` 的来源，跟着当前的存储配置变，不用重启（现在不改变效果，为的是以后收紧开放来源时它们仍被允许）；另有 `frame-ancestors 'self'`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
+- 每个页面带 `Content-Security-Policy`：`script-src 'self'`，脚本不允许 `'unsafe-inline'` 和 `'unsafe-eval'`。构建出的 `index.html` 里没有内联脚本：首帧之前套用主题的那几行是同源的外链文件 `/theme-boot.js`（`web/public/`），在 `<head>` 里同步加载，`script-src 'self'` 本来就放行，所以策略里没有哈希；`middleware/security.js` 启动时仍会扫描 `index.html`，如果里面出现内联脚本，加进去的是它的 sha256，而不是 `'unsafe-inline'`。`img-src` / `media-src` / `connect-src` 有意对任何 http(s) 来源开放（画布要显示和下载对象存储、CDN、外链里的结果），另外明确列出存储配置里每个 `publicBaseUrl` 的来源，跟着当前的存储配置变，不用重启（现在不改变效果，为的是以后收紧开放来源时它们仍被允许）；另有 `frame-ancestors 'self'`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
 - 接口响应带 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` 和 `Cache-Control: no-store`。
 - 所有响应带 `X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy`、`Cross-Origin-Opener-Policy`、`Permissions-Policy`。
 - 应用不设置 HSTS，交给终结 TLS 的反向代理。
@@ -410,6 +410,14 @@ module.exports = {
 - `TRUST_PROXY` 只接受代理层数（1 到 10）或逗号分隔的 IP / CIDR / `loopback` / `linklocal` / `uniquelocal`；`true` 和主机名在启动时报配置错误。
 
 ### 生成节点的三种布局
+
+**主题。** 界面有深色（默认）和浅色两套主题，另有「跟随系统」。
+
+- 取值全部在 `web/src/styles/design-tokens.css`：`:root` 是深色，`:root[data-theme='light']` 把同名令牌逐个换成浅色，组件只引用令牌、不写裸色值。要自己配透明度的地方用通道令牌：`rgb(var(--c-cyan) / .12)`（模糊的外发光用 `--g-*`，浅色里它更淡）。压在用户画面上的件（`--c-scrim`、`--on-scrim*`）两套取值相同。`cd web && npm run theme:check` 核对两套令牌的名字、算对比度，并列出令牌文件之外残留的裸色值。
+- `<html>` 上的 `data-theme`（以及 TDesign 认的 `theme-mode`、`<meta name="color-scheme">`、`<meta name="theme-color">`）由 `web/public/theme-boot.js` 在首帧之前写好，之后由 `composables/useTheme.ts` 维护；「跟随系统」先解析成 dark / light 再写，并监听 `prefers-color-scheme`。切换不刷新页面，用 View Transitions 做一次约 0.2 秒的交叉淡入（不支持的浏览器退回颜色属性的过渡；系统开了「减少动态效果」就直接换）。
+- 选择存两份：账号上的 `users.prefs.theme`（`PUT /api/auth/prefs`）是准的；浏览器 `localStorage` 的 `loomcanvas-theme` 是它的镜像，落地页 / 登录页 / 分享页和每次打开时的首帧用它。登录或取回启动信息时以账号上的为准对齐本机；新注册的账号反过来，把注册前在本机选的主题带上去。入口在顶栏和公开页页头的图标钮，以及「设置 → 外观」的三张预览卡。
+- SVG 属性和 vue-flow 的 Background / MiniMap 不认 `var()`：前者改用类名取色，后者用 `utils/tokenColor.ts` 读令牌的计算值，主题一换自己重读。
+- 画布底色（`settings.bg`）：`auto` 跟看的人的主题走；自选的颜色原样保留，直接画在底上的东西（图案、小地图、连线、组的虚线框、框选矩形）按这个底色的明暗取色而不是按主题 —— 明暗和主题相反时画布容器带 `data-ground`，把「画布底」那一组令牌换成对应的取值。分享页用的是看的人自己的主题。
 
 图片生成 / 图片编辑 / 视频生成 / 视频编辑 / 大语言模型 / 视频分析这六种节点有三种布局，选哪种是账号的偏好（`users.prefs.nodeLayout`，`PUT /api/auth/prefs`；入口在「设置 → 外观」和画布的「更多 ⋯」菜单），默认 a：
 

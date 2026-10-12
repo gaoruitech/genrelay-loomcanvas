@@ -846,22 +846,22 @@ function hhmm(at: number): string {
 .qf-btn {
   position: relative; width: 100%; height: 100%; padding: 0; border-radius: 50%;
   display: grid; place-items: center;
-  border: 0; background: rgba(12, 21, 52, .78); color: var(--text-3);
+  border: 0; background: rgb(var(--c-glass) / .78); color: var(--text-3);
   box-shadow: var(--sh-1);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   transition: background .15s, color .15s, transform .15s, box-shadow .15s;
 }
-.qf-btn:hover, .qf.open .qf-btn { background: rgba(21, 34, 78, .94); color: var(--text); }
+.qf-btn:hover, .qf.open .qf-btn { background: rgb(var(--c-glass-hov) / .94); color: var(--text); }
 .qf-btn:focus-visible { outline: none; box-shadow: var(--sh-1), var(--ring); }
 .qf.drag .qf-btn { cursor: grabbing; transform: scale(1.06); box-shadow: var(--sh-2); }
-.qf.run .qf-btn { color: var(--text); background: rgba(12, 21, 52, .92); }
+.qf.run .qf-btn { color: var(--text); background: rgb(var(--c-glass) / .92); }
 
 /* 运行时外面那圈柔光：平时就是静止的一圈，动画只是让它呼吸 */
 .qf-btn::after {
   content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(63, 216, 255, .22), 0 0 18px rgba(63, 216, 255, .42);
+  box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .22), 0 0 18px rgb(var(--g-cyan) / .42);
   opacity: 0; transition: opacity .3s;
 }
 .qf.run .qf-btn::after { opacity: .75; animation: qf-breathe 2.4s ease-in-out infinite; }
@@ -874,7 +874,7 @@ function hhmm(at: number): string {
 .qf-ring .s2 { stop-color: var(--violet); }
 .qf-track { fill: none; stroke: var(--line-2); stroke-width: 1; transition: stroke .2s, stroke-width .2s; }
 .qf-btn:hover .qf-track, .qf.open .qf-track { stroke: var(--line-3); }
-.qf.run .qf-track { stroke: rgba(124, 160, 255, .2); stroke-width: 3; }
+.qf.run .qf-track { stroke: rgb(var(--c-film) / .2); stroke-width: 3; }
 /* 只有排队、还没有任务开跑：虚线环（和清单里排队那一行同一个意思） */
 .qf.wait .qf-track { stroke: var(--line-3); stroke-width: 2; stroke-dasharray: 3 4; }
 .qf-arc {
@@ -894,8 +894,8 @@ function hhmm(at: number): string {
   position: absolute; inset: 0; display: grid; place-items: center;
   font: 600 17px/1 var(--f-disp); font-variant-numeric: tabular-nums; color: var(--text);
 }
-.qf-tick { color: var(--ok); filter: drop-shadow(0 0 6px rgba(62, 230, 168, .7)); }
-.qf-oops { color: var(--err); filter: drop-shadow(0 0 6px rgba(255, 107, 139, .6)); }
+.qf-tick { color: var(--ok); filter: drop-shadow(0 0 6px rgb(var(--g-ok) / .7)); }
+.qf-oops { color: var(--err); filter: drop-shadow(0 0 6px rgb(var(--g-err) / .6)); }
 /* 数字滚动：变多时旧的往上走、新的从下面上来；变少反过来 */
 .qf-up-enter-active, .qf-up-leave-active, .qf-down-enter-active, .qf-down-leave-active { transition: transform .32s cubic-bezier(.3, .8, .3, 1), opacity .32s; }
 .qf-up-enter-from, .qf-down-leave-to { transform: translateY(70%); opacity: 0; }
@@ -917,9 +917,9 @@ function hhmm(at: number): string {
   display: grid; place-items: center; font: 600 11px/1 var(--f-body); font-style: normal; font-variant-numeric: tabular-nums;
   pointer-events: none;
   background: var(--cyan); color: var(--text-inv);
-  box-shadow: 0 0 0 2px var(--bg-1), 0 0 12px rgba(63, 216, 255, .55);
+  box-shadow: 0 0 0 2px var(--bg-1), 0 0 12px rgb(var(--g-cyan) / .55);
 }
-.qf-badge.bad { background: var(--err); box-shadow: 0 0 0 2px var(--bg-1), 0 0 12px rgba(255, 107, 139, .6); }
+.qf-badge.bad { background: var(--err); box-shadow: 0 0 0 2px var(--bg-1), 0 0 12px rgb(var(--g-err) / .6); }
 .qf-pop-enter-active { transition: transform .22s cubic-bezier(.3, 1.5, .5, 1), opacity .15s; }
 .qf-pop-leave-active { transition: transform .12s, opacity .12s; }
 .qf-pop-enter-from, .qf-pop-leave-to { transform: scale(.3); opacity: 0; }
@@ -929,7 +929,7 @@ function hhmm(at: number): string {
   position: absolute; top: 50%; right: calc(100% + 10px); transform: translateY(-50%) translateX(4px);
   padding: 6px 10px; border-radius: 8px; white-space: nowrap; pointer-events: none;
   font-size: 12px; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums;
-  background: #131f4a; border: 1px solid var(--line-2); box-shadow: var(--sh-1);
+  background: var(--pop); border: 1px solid var(--line-2); box-shadow: var(--sh-1);
   opacity: 0; visibility: hidden; transition: opacity .12s, transform .12s, visibility 0s .12s;
 }
 .qf.left .qf-tip { right: auto; left: calc(100% + 10px); transform: translateY(-50%) translateX(-4px); }
@@ -943,7 +943,7 @@ function hhmm(at: number): string {
   position: absolute; pointer-events: auto;
   display: flex; flex-direction: column; min-height: 0;
   border-radius: 14px; border: 1px solid var(--line-2);
-  background: rgba(12, 21, 52, .95); box-shadow: var(--sh-2);
+  background: rgb(var(--c-glass) / .95); box-shadow: var(--sh-2);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
 .qp-in-enter-active { transition: transform .16s cubic-bezier(.2, .8, .2, 1), opacity .14s; }
@@ -960,8 +960,8 @@ function hhmm(at: number): string {
   border: 0; background: none; height: 24px; padding: 0 6px; border-radius: 6px; font-size: 12px; flex: none;
   color: var(--text-3); white-space: nowrap; transition: background .12s, color .12s;
 }
-.qc-link:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
-.qc-link.danger:hover { background: rgba(255, 107, 139, .14); color: var(--err-soft); }
+.qc-link:hover { background: rgb(var(--c-film) / .12); color: var(--text); }
+.qc-link.danger:hover { background: rgb(var(--c-err) / .14); color: var(--err-soft); }
 
 .qc-bd {
   display: grid; gap: 8px; align-content: start; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
@@ -975,12 +975,12 @@ function hhmm(at: number): string {
 
 .qt {
   display: flex; gap: 10px; align-items: center; min-width: 0;
-  padding: 8px 6px 8px 8px; border-radius: 10px; border: 1px solid var(--line); background: rgba(4, 9, 28, .45);
+  padding: 8px 6px 8px 8px; border-radius: 10px; border: 1px solid var(--line); background: rgb(var(--c-well) / .45);
   cursor: pointer; transition: border-color .15s, background .15s;
 }
-.qt:hover { border-color: var(--line-3); background: rgba(4, 9, 28, .6); }
+.qt:hover { border-color: var(--line-3); background: rgb(var(--c-well) / .6); }
 .qt:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
-.qt.act { border-color: rgba(63, 216, 255, .4); }
+.qt.act { border-color: rgb(var(--c-cyan) / .4); }
 .qt .lc-ring { flex: none; }
 .qt .lc-ring.q { font-size: 14px; letter-spacing: 1px; }
 .qt-txt { min-width: 0; flex: 1; }
@@ -988,7 +988,7 @@ function hhmm(at: number): string {
 .qt small { display: block; font-size: 11px; line-height: 1.5; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qt-run { color: var(--cyan); }
 .qt-x { flex: none; }
-.qt-x:hover:not(:disabled) { background: rgba(255, 107, 139, .14); color: var(--err-soft); }
+.qt-x:hover:not(:disabled) { background: rgb(var(--c-err) / .14); color: var(--err-soft); }
 
 .qlab { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 0 0 6px; font-size: 12px; color: var(--text-3); }
 .qlab i { font: 500 11px var(--f-mono); font-style: normal; color: var(--text-3); opacity: .8; }
@@ -996,14 +996,14 @@ function hhmm(at: number): string {
   display: flex; gap: 10px; align-items: center; padding: 5px 6px; border: 0; border-radius: 8px;
   background: none; text-align: left; min-width: 0; width: 100%; color: inherit;
 }
-.qdone:hover:not(:disabled) { background: rgba(124, 160, 255, .08); }
+.qdone:hover:not(:disabled) { background: rgb(var(--c-film) / .08); }
 .qdone:disabled { cursor: default; }
 .qdone:focus-visible { outline: none; box-shadow: var(--ring); }
 .qdone .thumb {
   width: 40px; height: 30px; border-radius: 6px; flex: none; display: grid; place-items: center;
   border: 1px solid var(--line); color: var(--text-3);
 }
-.qdone.error .thumb { color: var(--err); border-color: rgba(255, 107, 139, .35); background: rgba(255, 107, 139, .08); }
+.qdone.error .thumb { color: var(--err); border-color: rgb(var(--c-err) / .35); background: rgb(var(--c-err) / .08); }
 .qdone-txt { min-width: 0; flex: 1; }
 .qdone b { font-size: 12px; font-weight: 500; display: block; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qdone small { font-size: 11px; color: var(--text-3); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1015,7 +1015,7 @@ function hhmm(at: number): string {
   height: 26px; margin-top: 2px; border: 0; border-radius: 8px; background: none;
   font-size: 12px; color: var(--text-3); text-align: center; transition: background .12s, color .12s;
 }
-.qc-more:hover { background: rgba(124, 160, 255, .08); color: var(--text); }
+.qc-more:hover { background: rgb(var(--c-film) / .08); color: var(--text); }
 
 /* 系统开了「减少动态效果」：环不转、光不呼吸、数字直接换。全局规则已经把时长压到近零，
    这里再把会循环的动画彻底关掉，免得停在半截的样子 */

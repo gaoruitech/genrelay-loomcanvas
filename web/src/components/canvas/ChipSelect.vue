@@ -173,7 +173,7 @@ function select(v: string | number) {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: rgba(124, 160, 255, .1);
+  background: rgb(var(--c-film) / .1);
   color: var(--cyan-soft);
 }
 .chip-item-icon :deep(svg) { width: 17px; height: 17px; }
@@ -198,7 +198,7 @@ function select(v: string | number) {
   font-size: 10.5px;
   font-weight: 500;
   color: var(--text-2);
-  background: rgba(124, 160, 255, .12);
+  background: rgb(var(--c-film) / .12);
 }
 .chip-item-check { width: 15px; height: 15px; flex-shrink: 0; color: var(--cyan); }
 </style>

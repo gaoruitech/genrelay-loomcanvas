@@ -12,6 +12,7 @@
         :aria-label="t('shell.language')"
         @update:model-value="app.setLocale"
       />
+      <ThemeSwitch />
     </header>
 
     <main class="su-body">
@@ -82,6 +83,7 @@ import { skipSetup } from '@/router'
 import { LOCALE_OPTIONS } from '@/locales'
 import LcSelect from '@/components/LcSelect.vue'
 import LcLogo from '@/components/LcLogo.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import { vendorLabel } from '@/utils/providerMeta'
 import ProviderForm from '@/components/models/ProviderForm.vue'
@@ -167,7 +169,7 @@ function skip() {
 </script>
 
 <style scoped>
-/* 和登录 / 注册页一个调子：霓虹底上一张居中的玻璃卡片 */
+/* 和登录 / 注册页一个调子：带网格的底上一张居中的玻璃卡片 */
 .su { height: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
 .su-nav { flex: none; height: 72px; display: flex; align-items: center; gap: 16px; padding: 0 120px; max-width: 1440px; width: 100%; margin: 0 auto; }
 .su-lang :deep(.lcs-trigger) { min-width: 120px; }
@@ -176,9 +178,9 @@ function skip() {
 
 .su-kick {
   display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 14px; border-radius: 15px;
-  border: 1px solid var(--line-3); background: rgba(59, 123, 255, .12); color: var(--cyan-soft); font-size: 13px;
+  border: 1px solid var(--line-3); background: rgb(var(--c-blue) / .12); color: var(--cyan-soft); font-size: 13px;
 }
-.su-kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.su-kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgb(var(--g-cyan)); }
 h1 { font: 600 26px/1.3 var(--f-disp); color: var(--text); margin-top: 16px; }
 .su-lead { color: var(--text-2); line-height: 1.75; margin-top: 8px; max-width: 620px; }
 

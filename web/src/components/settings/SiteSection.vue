@@ -95,8 +95,8 @@ async function toggle() {
 .state { font-size: 13px; color: var(--text-3); white-space: nowrap; }
 .state.on { color: var(--ok); }
 .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
-.mode { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: rgba(4, 9, 28, .25); transition: border-color .15s, background .15s; }
-.mode.on { opacity: 1; border-color: var(--line-3); background: rgba(63, 216, 255, .05); }
+.mode { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: rgb(var(--c-well) / .25); transition: border-color .15s, background .15s; }
+.mode.on { opacity: 1; border-color: var(--line-3); background: rgb(var(--c-cyan) / .05); }
 .mode b { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 22px; font-weight: 600; font-size: 14px; color: var(--text-2); }
 .mode.on b { color: var(--text); }
 .mode b .lc-tag { font-weight: 400; margin-left: auto; }

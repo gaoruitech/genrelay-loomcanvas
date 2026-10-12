@@ -124,10 +124,10 @@ const showMark = computed(() => !!props.mark && !!ctx && choice.value.own)
 /* 表头标记：跟在标题后面，弱化；「不套用」时划一道斜线 */
 .cv-kit-mark {
   position: relative; flex: none; width: 18px; height: 18px; display: grid; place-items: center;
-  border-radius: 5px; color: var(--cyan-soft); background: rgba(63, 216, 255, .12);
+  border-radius: 5px; color: var(--cyan-soft); background: rgb(var(--c-cyan) / .12);
 }
 .cv-kit-mark :deep(svg) { width: 12px; height: 12px; }
-.cv-kit-mark.off { color: var(--text-3); background: rgba(124, 160, 255, .12); }
+.cv-kit-mark.off { color: var(--text-3); background: rgb(var(--c-film) / .12); }
 .cv-kit-mark.off::after {
   content: ''; position: absolute; left: 3px; right: 3px; top: 50%; height: 1.5px; border-radius: 1px;
   background: currentColor; transform: rotate(-45deg);
@@ -148,7 +148,7 @@ button.cv-kit-t:focus-visible { outline: none; box-shadow: var(--ring); border-r
 
 .cv-kit-pre {
   display: grid; gap: 6px; padding: 10px; border-radius: 10px;
-  border: 1px solid var(--line); background: rgba(4, 9, 28, .3);
+  border: 1px solid var(--line); background: rgb(var(--c-well) / .3);
 }
 .cv-kit-h { font-size: 12px; font-weight: 600; color: var(--text); }
 .cv-kit-k { font-size: 11px; color: var(--text-3); margin-top: 2px; }

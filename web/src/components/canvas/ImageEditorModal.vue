@@ -547,8 +547,8 @@ function requestClose() {
   padding: 28px; min-width: 0; min-height: 0; overflow: hidden;
   background-color: var(--well-solid);
   background-image:
-    linear-gradient(45deg, rgba(124, 160, 255, .07) 25%, transparent 25% 75%, rgba(124, 160, 255, .07) 75%),
-    linear-gradient(45deg, rgba(124, 160, 255, .07) 25%, transparent 25% 75%, rgba(124, 160, 255, .07) 75%);
+    linear-gradient(45deg, rgb(var(--c-film) / .07) 25%, transparent 25% 75%, rgb(var(--c-film) / .07) 75%),
+    linear-gradient(45deg, rgb(var(--c-film) / .07) 25%, transparent 25% 75%, rgb(var(--c-film) / .07) 75%);
   background-size: 18px 18px;
   background-position: 0 0, 9px 9px;
 }
@@ -573,7 +573,7 @@ function requestClose() {
   position: absolute;
   border: 1px solid var(--cyan);
   /* 框外压暗：一个 box-shadow 顶掉四块遮罩 div */
-  box-shadow: 0 0 0 9999px rgba(2, 5, 18, .6);
+  box-shadow: 0 0 0 9999px rgb(var(--c-void) / .6);
   cursor: move;
   touch-action: none;
 }
@@ -581,8 +581,8 @@ function requestClose() {
 .ie-crop-grid {
   position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(to right, transparent 33.2%, rgba(255, 255, 255, .3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255, 255, 255, .3) 66.4% 66.7%, transparent 66.7%),
-    linear-gradient(to bottom, transparent 33.2%, rgba(255, 255, 255, .3) 33.2% 33.5%, transparent 33.5% 66.4%, rgba(255, 255, 255, .3) 66.4% 66.7%, transparent 66.7%);
+    linear-gradient(to right, transparent 33.2%, var(--on-scrim-grid) 33.2% 33.5%, transparent 33.5% 66.4%, var(--on-scrim-grid) 66.4% 66.7%, transparent 66.7%),
+    linear-gradient(to bottom, transparent 33.2%, var(--on-scrim-grid) 33.2% 33.5%, transparent 33.5% 66.4%, var(--on-scrim-grid) 66.4% 66.7%, transparent 66.7%);
 }
 .ie-handle {
   position: absolute; width: 12px; height: 12px;
@@ -610,7 +610,7 @@ function requestClose() {
   transition: border-color .14s ease, color .14s ease, background .14s ease;
 }
 .ie-opt:hover { color: var(--text); border-color: var(--line-3); }
-.ie-opt.on { border-color: var(--line-3); color: var(--text); background: rgba(59, 123, 255, .28); }
+.ie-opt.on { border-color: var(--line-3); color: var(--text); background: rgb(var(--c-blue) / .28); }
 .ie-opt.wide { width: 100%; }
 .ie-range { width: 100%; accent-color: var(--cyan); }
 .ie-readout {

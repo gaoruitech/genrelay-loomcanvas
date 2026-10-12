@@ -13,6 +13,7 @@
         :aria-label="t('shell.language')"
         @update:model-value="app.setLocale"
       />
+      <ThemeSwitch />
       <div ref="userEl" class="user-wrap">
         <button class="user" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
           <span class="avatar" aria-hidden="true">{{ initial }}</span>
@@ -79,6 +80,7 @@ import { LINKS } from '@/utils/links'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import LcLogo from '@/components/LcLogo.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -134,23 +136,23 @@ async function logout() {
 
 .shell-top {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 16px; min-width: 0;
-  border-bottom: 1px solid var(--line); background: rgba(7, 13, 36, .78);
+  border-bottom: 1px solid var(--line); background: rgb(var(--c-chrome) / .78);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   position: relative; z-index: 20;
 }
 .tagline { font-size: 12px; color: var(--text-3); padding-left: 16px; border-left: 1px solid var(--line-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.lang :deep(.lcs-trigger) { background: rgba(124, 160, 255, .05); border-color: var(--line); height: 36px; border-radius: 10px; }
+.lang :deep(.lcs-trigger) { background: rgb(var(--c-film) / .05); border-color: var(--line); height: 36px; border-radius: 10px; }
 
 .user-wrap { position: relative; flex: none; }
 .user {
   display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 4px; border-radius: 20px;
-  border: 1px solid var(--line); background: rgba(124, 160, 255, .05); color: var(--text-2); text-align: left;
+  border: 1px solid var(--line); background: rgb(var(--c-film) / .05); color: var(--text-2); text-align: left;
   transition: border-color .15s, background .15s;
 }
-.user:hover, .user[aria-expanded='true'] { border-color: var(--line-3); background: rgba(124, 160, 255, .1); }
+.user:hover, .user[aria-expanded='true'] { border-color: var(--line-3); background: rgb(var(--c-film) / .1); }
 .avatar {
   width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center;
-  background: linear-gradient(135deg, #3fd8ff, #8a5cff); color: var(--text-inv); font: 600 13px/1 var(--f-disp);
+  background: var(--grad-avatar); color: var(--text-inv); font: 600 13px/1 var(--f-disp);
 }
 .who b { display: block; font-weight: 500; font-size: 13px; color: var(--text); line-height: 1.25; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who small { display: block; font-size: 11px; color: var(--text-3); line-height: 1.2; }
@@ -160,10 +162,10 @@ async function logout() {
 .um-head small { display: block; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
 .user-menu .lc-menu-item { gap: 10px; width: 100%; border: 0; background: none; text-decoration: none; text-align: left; }
 .user-menu .lc-menu-item.danger { color: var(--err-soft); }
-.user-menu .lc-menu-item.danger:hover { background: rgba(255, 107, 139, .12); }
+.user-menu .lc-menu-item.danger:hover { background: rgb(var(--c-err) / .12); }
 
 .shell-side {
-  border-right: 1px solid var(--line); background: rgba(7, 13, 36, .55);
+  border-right: 1px solid var(--line); background: rgb(var(--c-chrome) / .55);
   padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; overflow-x: hidden;
 }
 .nav {
@@ -171,18 +173,18 @@ async function logout() {
   color: var(--text-2); font-size: 14px; border: 1px solid transparent; white-space: nowrap; text-decoration: none;
   transition: background .15s, color .15s;
 }
-.nav:hover { color: var(--text); background: rgba(124, 160, 255, .08); text-decoration: none; }
+.nav:hover { color: var(--text); background: rgb(var(--c-film) / .08); text-decoration: none; }
 .nav.on {
   color: var(--text);
-  background: linear-gradient(135deg, rgba(63, 216, 255, .2), rgba(59, 123, 255, .22) 55%, rgba(138, 92, 255, .24));
-  border-color: rgba(63, 216, 255, .5);
-  box-shadow: 0 0 20px rgba(59, 123, 255, .35), 0 0 0 1px rgba(63, 216, 255, .12) inset;
+  background: linear-gradient(135deg, rgb(var(--c-cyan) / .2), rgb(var(--c-blue) / .22) 55%, rgb(var(--c-violet) / .24));
+  border-color: rgb(var(--c-cyan) / .5);
+  box-shadow: 0 0 20px rgb(var(--g-blue) / .35), 0 0 0 1px rgb(var(--c-cyan) / .12) inset;
 }
 .nav.on .lc-ic { color: var(--cyan); }
 .shell-side hr { border: 0; border-top: 1px solid var(--line); margin: 8px 4px; flex: none; }
 .side-foot {
   margin-top: auto; padding: 12px; border-radius: 12px; border: 1px solid var(--line);
-  background: rgba(124, 160, 255, .05); font-size: 12px; color: var(--text-3); line-height: 1.6;
+  background: rgb(var(--c-film) / .05); font-size: 12px; color: var(--text-3); line-height: 1.6;
   display: flex; flex-direction: column;
 }
 .side-foot b { color: var(--text-2); font-weight: 500; }
@@ -217,12 +219,12 @@ async function logout() {
   .shell-side {
     grid-row: 3; flex-direction: row; align-items: stretch; justify-content: space-around; gap: 0;
     padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line);
-    background: rgba(7, 13, 36, .92); overflow: visible;
+    background: rgb(var(--c-chrome) / .92); overflow: visible;
   }
   .shell-side hr { display: none; }
   .nav { flex: 1 1 0; width: auto; min-width: 0; height: 50px; flex-direction: column; gap: 3px; padding: 0 2px; border-radius: 10px; font-size: 10.5px; }
   .nav span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
-  .nav.on { box-shadow: 0 0 0 1px rgba(63, 216, 255, .12) inset; }
+  .nav.on { box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .12) inset; }
   .shell.mini .shell-side { display: none; }
   .shell.mini:not(.immersive) { grid-template-rows: var(--shell-top) minmax(0, 1fr); }
 }

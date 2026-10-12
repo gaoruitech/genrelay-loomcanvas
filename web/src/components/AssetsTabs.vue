@@ -25,12 +25,12 @@ const { t } = useI18n()
   color: var(--text-2); font-size: 14px; text-decoration: none; border-radius: 8px 8px 0 0;
   transition: color .15s, background .15s;
 }
-.at-tab:hover { color: var(--text); background: rgba(124, 160, 255, .08); text-decoration: none; }
+.at-tab:hover { color: var(--text); background: rgb(var(--c-film) / .08); text-decoration: none; }
 .at-tab:focus-visible { outline: none; box-shadow: var(--ring); }
 .at-tab.on { color: var(--text); font-weight: 600; }
 .at-tab.on :deep(svg) { color: var(--cyan); }
 .at-tab.on::after {
   content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px;
-  background: var(--cyan); box-shadow: 0 0 8px rgba(63, 216, 255, .6);
+  background: var(--cyan); box-shadow: 0 0 8px rgb(var(--g-cyan) / .6);
 }
 </style>

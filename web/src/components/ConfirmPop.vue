@@ -99,7 +99,7 @@ onBeforeUnmount(() => {
 /* 确认气泡：和下拉菜单同一种玻璃面板 */
 .cp-pop {
   position: fixed; z-index: 3400; width: 240px; max-width: calc(100vw - 16px);
-  background: #131f4a; border: 1px solid var(--line-2); border-radius: 12px;
+  background: var(--pop); border: 1px solid var(--line-2); border-radius: 12px;
   padding: 12px 12px 10px; box-shadow: var(--sh-1);
 }
 .cp-text { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text); }

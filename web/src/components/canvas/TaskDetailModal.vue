@@ -216,7 +216,7 @@ async function copy(s: string) {
   background: var(--media-bg); display: grid; place-items: center; margin-bottom: 4px;
 }
 .td-media { max-width: 100%; max-height: 320px; object-fit: contain; display: block; }
-.td-dl { position: absolute; right: 8px; bottom: 8px; background: rgba(12, 21, 52, .88); }
+.td-dl { position: absolute; right: 8px; bottom: 8px; background: rgb(var(--c-glass) / .88); }
 
 .td-row { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; line-height: 1.7; }
 .td-row-block { flex-direction: column; gap: 6px; }

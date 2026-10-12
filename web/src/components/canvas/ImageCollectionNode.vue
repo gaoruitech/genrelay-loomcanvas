@@ -149,11 +149,11 @@ async function pickFromLibrary() {
   padding: 0;
   border: 0;
   border-radius: 6px;
-  background: rgba(4, 9, 28, .66);
+  background: rgb(var(--c-scrim) / .66);
   color: var(--on-scrim);
   cursor: pointer;
 }
-.cell-x:hover { background: rgba(4, 9, 28, .9); }
+.cell-x:hover { background: rgb(var(--c-scrim) / .9); }
 .cell-x svg { width: 11px; height: 11px; }
 
 .upstream-cell {
@@ -164,7 +164,7 @@ async function pickFromLibrary() {
   gap: 2px;
   color: var(--kind-image-fg);
   background: var(--kind-image-bg);
-  border-color: rgba(63, 216, 255, .3);
+  border-color: rgb(var(--c-cyan) / .3);
   font: 500 12px var(--f-mono);
 }
 .upstream-cell svg { width: 16px; height: 16px; }
@@ -178,7 +178,7 @@ async function pickFromLibrary() {
   padding: 0;
   cursor: pointer;
   color: var(--text-3);
-  background: rgba(4, 9, 28, .3);
+  background: rgb(var(--c-well) / .3);
   border: 1px dashed var(--line-2);
   font: inherit;
   transition: border-color .15s ease, color .15s ease;

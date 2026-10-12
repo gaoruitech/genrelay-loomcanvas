@@ -231,15 +231,15 @@ const handles = computed<H[]>(() => {
 /* 分组：只画一个带标题的虚线框 */
 .sn-frame {
   position: relative;
-  border: 1.5px dashed rgba(63, 216, 255, .4);
+  border: 1.5px dashed rgb(var(--c-cyan) / .4);
   border-radius: 18px;
-  background: rgba(63, 216, 255, .04);
+  background: rgb(var(--c-cyan) / .04);
   box-sizing: border-box;
 }
 .sn-frame-title {
   position: absolute; top: -32px; left: 0;
   max-width: 100%; height: 26px; padding: 0 10px; display: inline-flex; align-items: center;
-  background: rgba(12, 21, 52, .92); border: 1px solid var(--line-2); border-radius: 9px;
+  background: rgb(var(--c-glass) / .92); border: 1px solid var(--line-2); border-radius: 9px;
   font: 600 12px var(--f-body); color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

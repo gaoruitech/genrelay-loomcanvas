@@ -24,12 +24,12 @@
 .opt { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .optc {
   display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; text-align: left;
-  border-radius: 12px; border: 1px solid var(--line-2); background: rgba(4, 9, 28, .35);
+  border-radius: 12px; border: 1px solid var(--line-2); background: rgb(var(--c-well) / .35);
   color: var(--text); cursor: pointer; transition: border-color .15s, background .15s;
 }
 .optc:hover:not(.on):not(:disabled) { border-color: var(--line-3); }
 .optc:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
-.optc.on { border-color: var(--cyan); background: rgba(63, 216, 255, .07); box-shadow: var(--glow-s); }
+.optc.on { border-color: var(--cyan); background: rgb(var(--c-cyan) / .07); box-shadow: var(--glow-s); }
 /* 表单里面的二选一不发光 */
 .optc.flat.on { box-shadow: none; }
 .optc:disabled { opacity: .5; cursor: not-allowed; }
@@ -49,7 +49,7 @@
 .sec-state { color: var(--text-3); font-size: 13px; }
 .sec-state .lc-btn { margin-top: 10px; }
 .sk { display: grid; gap: 14px; padding: 4px 0; }
-.sk i { display: block; height: 14px; border-radius: 6px; background: rgba(124, 160, 255, .1); animation: lc-pulse 1.6s ease-in-out infinite; }
+.sk i { display: block; height: 14px; border-radius: 6px; background: rgb(var(--c-film) / .1); animation: lc-pulse 1.6s ease-in-out infinite; }
 .sk i:nth-child(1) { width: 46%; } .sk i:nth-child(2) { width: 72%; } .sk i:nth-child(3) { width: 58%; }
 
 .dlg p { line-height: 1.7; color: var(--text-2); }

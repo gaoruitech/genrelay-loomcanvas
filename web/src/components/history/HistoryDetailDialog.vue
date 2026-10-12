@@ -207,8 +207,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .hd-out-thumb { display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 1px solid var(--line); border-radius: var(--r-sm); cursor: zoom-in; }
 .hd-out-thumb:hover { border-color: var(--line-3); }
 .hd-out-thumb:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
-.hd-out-dl { position: absolute; right: 6px; bottom: 6px; background: rgba(4, 9, 28, .72); color: var(--text); }
-.hd-out-dl:hover:not(:disabled) { background: rgba(4, 9, 28, .9); }
+.hd-out-dl { position: absolute; right: 6px; bottom: 6px; background: rgb(var(--c-scrim) / .72); color: var(--on-media); }
+.hd-out-dl:hover:not(:disabled) { background: rgb(var(--c-scrim) / .9); }
 .hd-params { display: flex; flex-wrap: wrap; gap: 6px; }
 .hd-params .lc-chip { height: auto; min-height: 22px; padding: 3px 8px; gap: 6px; white-space: normal; word-break: break-all; line-height: 1.4; color: var(--text); }
 .hd-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }

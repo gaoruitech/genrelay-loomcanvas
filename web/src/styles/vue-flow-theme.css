@@ -5,7 +5,7 @@
 
 /* ---------- 缩放控件（分享页还在用库自带的那一组；编辑页用自己的底部工具条） ---------- */
 .vue-flow .vue-flow__controls {
-  background: rgba(12, 21, 52, .88);
+  background: rgb(var(--c-glass) / .88);
   border: 1px solid var(--line-2);
   border-radius: 12px;
   box-shadow: var(--sh-1);
@@ -21,7 +21,7 @@
 }
 .vue-flow .vue-flow__controls-button:last-child { border-bottom: 0; }
 .vue-flow .vue-flow__controls-button:hover {
-  background: rgba(124, 160, 255, .12);
+  background: rgb(var(--c-film) / .12);
   color: var(--text);
   fill: var(--text);
 }
@@ -29,7 +29,7 @@
 /* ---------- 小地图：一块悬浮玻璃 ---------- */
 .vue-flow .vue-flow__minimap {
   margin: 0;
-  background: rgba(12, 21, 52, .88);
+  background: rgb(var(--c-glass) / .88);
   border: 1px solid var(--line-2);
   border-radius: 14px;
   box-shadow: var(--sh-1);
@@ -41,10 +41,10 @@
 .vue-flow .vue-flow__minimap-mask { vector-effect: non-scaling-stroke; }
 
 /* ---------- 端口（节点上的圆点） ----------
-   深色实心 + 类型色描边：图片青、视频紫、文本蓝。尾帧口是实心的，和首帧区分。 */
+   实心底（--port-bg，深色主题深蓝、浅色主题白）+ 类型色描边：图片青、视频紫、文本蓝。尾帧口是实心的，和首帧区分。 */
 .vue-flow .vue-flow__handle {
   width: 12px; height: 12px;
-  background: #0b1436;
+  background: var(--port-bg);
   border: 2px solid var(--cyan);
   border-radius: 50%;
   cursor: crosshair;
@@ -54,28 +54,28 @@
 .vue-flow .vue-flow__handle::before {
   content: ''; position: absolute; inset: -9px; border-radius: 50%;
 }
-.vue-flow .vue-flow__handle.h-text { background: #0b1436; border-color: #6f9dff; }
-.vue-flow .vue-flow__handle.h-image { background: #0b1436; border-color: var(--cyan); }
+.vue-flow .vue-flow__handle.h-text { background: var(--port-bg); border-color: var(--port-text); }
+.vue-flow .vue-flow__handle.h-image { background: var(--port-bg); border-color: var(--cyan); }
 .vue-flow .vue-flow__handle.h-image-last { background: var(--cyan); border-color: var(--cyan); }
-.vue-flow .vue-flow__handle.h-video { background: #0b1436; border-color: #a98bff; }
-.vue-flow .vue-flow__handle:hover { box-shadow: 0 0 0 4px rgba(63, 216, 255, .22), 0 0 10px rgba(63, 216, 255, .5); }
-.vue-flow .vue-flow__handle.h-video:hover { box-shadow: 0 0 0 4px rgba(138, 92, 255, .26), 0 0 10px rgba(138, 92, 255, .55); }
+.vue-flow .vue-flow__handle.h-video { background: var(--port-bg); border-color: var(--port-video); }
+.vue-flow .vue-flow__handle:hover { box-shadow: 0 0 0 4px rgb(var(--c-cyan) / .22), 0 0 10px rgb(var(--g-cyan) / .5); }
+.vue-flow .vue-flow__handle.h-video:hover { box-shadow: 0 0 0 4px rgb(var(--c-violet) / .26), 0 0 10px rgb(var(--g-violet) / .55); }
 .vue-flow .vue-flow__handle.connecting,
 .vue-flow .vue-flow__handle.connectingto,
-.vue-flow .vue-flow__handle.valid { box-shadow: 0 0 0 5px rgba(63, 216, 255, .3), 0 0 14px rgba(63, 216, 255, .7); }
+.vue-flow .vue-flow__handle.valid { box-shadow: 0 0 0 5px rgb(var(--c-cyan) / .3), 0 0 14px rgb(var(--g-cyan) / .7); }
 
 /* ---------- 拖线时的预览线 / 框选矩形 ---------- */
 .vue-flow .vue-flow__connection-path {
-  stroke: var(--cyan);
-  stroke-width: 2;
+  stroke: var(--wire-draft);
+  stroke-width: var(--wire-w);
   stroke-dasharray: 5 6;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 4px rgba(63, 216, 255, .65));
+  filter: drop-shadow(0 0 4px var(--wire-draft-glow));
 }
 .vue-flow .vue-flow__selection,
 .vue-flow .vue-flow__nodesselection-rect {
-  background: rgba(63, 216, 255, .08);
-  border: 1px solid rgba(63, 216, 255, .6);
+  background: var(--sel-fill);
+  border: 1px solid var(--sel-line);
   border-radius: 6px;
 }
 

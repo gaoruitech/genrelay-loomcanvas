@@ -119,7 +119,6 @@ export default {
       dots: '点阵',
       lines: '网格',
       cross: '十字',
-      warnLightOnDark: '当前是深色主题，浅底会让节点文字和边框看不清',
     },
   },
   en: {
@@ -242,7 +241,6 @@ export default {
       dots: 'Dots',
       lines: 'Grid',
       cross: 'Crosses',
-      warnLightOnDark: 'You\'re on the dark theme. A light background makes node text and borders hard to see.',
     },
   },
 }

@@ -298,7 +298,8 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - TDesign 组件由 `unplugin-vue-components` 自动引入，直接写 `<t-button>` 即可。
 - `@/` 指 `web/src/`。
 - 组件里不写给用户看的字面文字，一律走 `t()`。
-- 颜色和间距来自 `styles/design-tokens.css`。界面只有一套深色主题，不要加浅色版本或主题开关。
+- 颜色和间距来自 `styles/design-tokens.css`，里面是同一组令牌名字的两套主题：`:root` 是深色（默认），`:root[data-theme='light']` 是浅色。组件里不写色值：用令牌；要自己配透明度就用通道令牌（`rgb(var(--c-cyan) / .12)`，模糊的外发光用 `--g-*`）。加令牌要两套一起加。SVG 属性不认 `var()`，插画用类名取色；库要纯字符串的地方（小地图）用 `utils/tokenColor.ts` 读令牌。压在用户画面上的件（`--c-scrim`、`--on-scrim*`）两套取值相同。
+- `npm run theme:check`（在 `web/` 下）核对两套令牌的名字，打印两套主题下文字、强调色、语义色压在各自底面上的对比度，并列出令牌文件之外残留的裸色值；后面带一个构建目录就连构建出的 CSS 和 JS 一起查。改了样式，两套主题都要看一眼再提交。
 
 共同的：
 

@@ -335,7 +335,7 @@ docker compose up -d --build
 - **删掉 `ACCESS_PASSWORD`**：从 `.env` 和你的 Compose 文件里去掉它。它已经不起作用；只要还设着，服务端每次启动会打一条警告。现在所有人都用账号登录，原来共用口令签发的凭证全部失效。
 - **不带凭证调用接口的集成**（原来没设 `ACCESS_PASSWORD` 的实例）现在要先登录：`POST /api/auth/login`，然后带上 `Authorization: Bearer <token>`。见 [API](api.zh-CN.md#账号与登录)。
 - **`GET /api/bootstrap` 的结构变了。** `authRequired` 和 `authed` 已经去掉（现在总是要登录；未登录时 `user` 是 `null`），`site.defaultTheme` 也去掉了。见 [API](api.zh-CN.md#基础)。
-- **只有一套主题。** 界面只有一套深色主题。`defaultTheme` 这个设置项已经删除：`PUT /api/admin/settings` 会把它当作不认识的键拒绝，早期版本存下来的值不再使用。
+- **主题。** 界面有深色（默认）和浅色两套主题，每个人自己选，跟着账号走。仍然没有全站的设置项：`defaultTheme` 已经删除，`PUT /api/admin/settings` 会把它当作不认识的键拒绝，早期版本存下来的值不再使用。页面最先加载一个同源的小脚本 `/theme-boot.js`，前面有反向代理或 CDN 的话，要像 `/assets/` 下的文件一样放行它。
 - **指向「设置」页旧页签的链接仍然可用。** 服务商、模型和价格搬到了「模型管理」页，用量搬到了「生成记录」页；`/settings?tab=providers`、`?tab=models`、`?tab=usage` 会被转到新页面。
 - **计费钩子**：`ctx.userId` 现在是账号的 id（原来是常量 `'local'`），另外新增了 `ctx.username`。见[计费钩子](billing-hook.zh-CN.md)。
 

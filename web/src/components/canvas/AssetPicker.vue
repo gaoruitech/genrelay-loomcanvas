@@ -231,7 +231,7 @@ defineExpose({ show })
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 .cp-item:hover { border-color: var(--line-3); }
-.cp-item.selected { border-color: rgba(63, 216, 255, .7); box-shadow: var(--glow-s); }
+.cp-item.selected { border-color: rgb(var(--c-cyan) / .7); box-shadow: var(--glow-s); }
 .cp-thumb { aspect-ratio: 1; background: var(--media-bg); overflow: hidden; }
 .cp-thumb img,
 .cp-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }

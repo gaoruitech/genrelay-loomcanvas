@@ -337,13 +337,13 @@ async function doDelete() {
 .users th:last-child, .users td:last-child { padding-right: 20px; }
 .users td { padding-top: 14px; padding-bottom: 14px; }
 .users tbody tr:first-child td { border-top: 0; }
-.users tbody tr:hover td { background: rgba(124, 160, 255, .04); }
+.users tbody tr:hover td { background: rgb(var(--c-film) / .04); }
 .idn { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .av {
   flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
-  font: 600 13px var(--f-disp); color: var(--text-2); background: rgba(124, 160, 255, .14);
+  font: 600 13px var(--f-disp); color: var(--text-2); background: rgb(var(--c-film) / .14);
 }
-.av.own { color: var(--cyan-soft); background: rgba(63, 216, 255, .14); }
+.av.own { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .14); }
 .nm { min-width: 0; }
 .c-user { min-width: 180px; max-width: 230px; }
 .nm b { display: flex; align-items: center; gap: 6px; font-weight: 500; color: var(--text); min-width: 0; }
@@ -351,7 +351,7 @@ async function doDelete() {
 .nm small { display: block; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 .you { flex: none; font-size: 12px; font-weight: 400; color: var(--text-3); }
 .pend { flex: none; height: 20px; padding: 0 6px; font-weight: 400; }
-.lc-bd.own { color: var(--cyan-soft); background: rgba(63, 216, 255, .12); }
+.lc-bd.own { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .12); }
 .when { white-space: nowrap; font-size: 13px; }
 .when span, .when small { display: block; }
 .when small { font-size: 12px; color: var(--text-3); margin-top: 1px; }
@@ -377,7 +377,7 @@ async function doDelete() {
   .tbl-wrap { overflow: visible; padding: 12px 12px 2px; }
   .users, .users tbody, .users tr, .users td { display: block; }
   .users thead { display: none; }
-  .users tr { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px 14px; margin-bottom: 10px; background: rgba(4, 9, 28, .25); }
+  .users tr { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px 14px; margin-bottom: 10px; background: rgb(var(--c-well) / .25); }
   .users tbody tr:hover td { background: none; }
   .users td, .users td:first-child, .users td:last-child { border: 0; padding: 5px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: right; }
   .users td[data-label]::before { content: attr(data-label); color: var(--text-3); font: 12px var(--f-body); text-align: left; flex: none; }

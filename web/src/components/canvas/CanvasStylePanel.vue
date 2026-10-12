@@ -36,7 +36,7 @@
           <input type="color" :value="pickerValue" @input="onPick" />
           <span>{{ t('dialogs.bg.custom') }}</span>
         </label>
-        <span class="cs-hex">{{ bg.color === 'auto' ? t('canvas.style.auto') : bg.color.toUpperCase() }}</span>
+        <span class="cs-hex">{{ bg.color === 'auto' ? autoLabel : bg.color.toUpperCase() }}</span>
       </div>
     </div>
 
@@ -72,8 +72,6 @@
       </div>
     </div>
 
-    <p v-if="warning" class="lc-alert warn cs-warn"><LcIcon name="warn" size="s" /><span>{{ warning }}</span></p>
-
     <div class="cs-foot">
       <span class="cs-dim">{{ t('dialogs.bg.autoSaved') }}</span>
       <button class="lc-btn sm" :disabled="isDefault" @click="reset">{{ t('dialogs.bg.restoreDefault') }}</button>
@@ -91,11 +89,12 @@ import {
   CANVAS_BG_GAP_MIN,
   CANVAS_BG_GAP_MAX,
   DEFAULT_CANVAS_BG,
-  canvasBgWarning,
   isDefaultCanvasBg,
   isHexColor,
   type CanvasBgSettings,
 } from '@/utils/canvasBg'
+import { useTokenColor } from '@/utils/tokenColor'
+import { resolvedTheme } from '@/composables/useTheme'
 
 const props = defineProps<{
   open: boolean
@@ -112,15 +111,16 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const isDefault = computed(() => isDefaultCanvasBg(props.bg))
-const warning = computed(() => canvasBgWarning(props.bg))
 
-// 'auto' 这一档就是编辑器的默认底（深蓝 + 点阵），不再是「跟随主题」
+// 'auto' 这一档是编辑器的默认底，跟着主题走：深色主题是深蓝 + 点阵，浅色主题是浅蓝灰 + 点阵
+const autoLabel = computed(() => (resolvedTheme.value === 'light' ? t('canvas.style.autoLight') : t('canvas.style.auto')))
 function presetLabel(p: { value: string; label: string }) {
-  return p.value === 'auto' ? t('canvas.style.auto') : p.label
+  return p.value === 'auto' ? autoLabel.value : p.label
 }
 
-// <input type="color"> 不接受 'auto'，默认底时给它一个接近的深蓝当起点
-const pickerValue = computed(() => (isHexColor(props.bg.color) ? props.bg.color : '#060b22'))
+// <input type="color"> 不接受 'auto'，默认底时把当前主题的默认底色（令牌 --flow-bg）给它当起点
+const autoHex = useTokenColor('--flow-bg')
+const pickerValue = computed(() => (isHexColor(props.bg.color) ? props.bg.color : autoHex.value))
 
 const rangePct = computed(() =>
   Math.round(((props.bg.gap - CANVAS_BG_GAP_MIN) / (CANVAS_BG_GAP_MAX - CANVAS_BG_GAP_MIN)) * 100))
@@ -152,7 +152,7 @@ function reset() {
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   padding: 14px;
-  background: rgba(12, 21, 52, .94);
+  background: rgb(var(--c-glass) / .94);
   border: 1px solid var(--line-2);
   border-radius: 14px;
   box-shadow: var(--sh-2);
@@ -182,10 +182,10 @@ function reset() {
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 .cs-sw:hover { border-color: var(--line-3); }
-/* 默认档：深蓝底 + 点阵，和画布上看到的是同一个样子 */
+/* 默认档：当前主题的默认底 + 点阵，和画布上看到的是同一个样子 */
 .cs-sw.auto {
-  background-color: #060b22;
-  background-image: radial-gradient(rgba(124, 160, 255, .55) 1px, transparent 1px);
+  background-color: var(--flow-bg);
+  background-image: radial-gradient(rgb(var(--c-film) / .55) 1px, transparent 1px);
   background-size: 6px 6px;
   background-position: 2px 2px;
 }
@@ -237,21 +237,20 @@ function reset() {
 }
 .cs-range::-webkit-slider-runnable-track {
   height: 4px; border-radius: 2px;
-  background: linear-gradient(90deg, var(--cyan), var(--blue) var(--v, 50%), rgba(124, 160, 255, .2) var(--v, 50%));
+  background: linear-gradient(90deg, var(--cyan), var(--blue) var(--v, 50%), rgb(var(--c-film) / .2) var(--v, 50%));
 }
-.cs-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(124, 160, 255, .2); }
+.cs-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgb(var(--c-film) / .2); }
 .cs-range::-moz-range-progress { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
 .cs-range::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
-  background: #e9efff; border: 2px solid var(--cyan);
+  background: var(--slider-thumb); border: 2px solid var(--cyan);
 }
-.cs-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #e9efff; border: 2px solid var(--cyan); }
+.cs-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--slider-thumb); border: 2px solid var(--cyan); }
 .cs-range:focus-visible { outline: none; }
 .cs-range:focus-visible::-webkit-slider-thumb { box-shadow: var(--ring); }
 .cs-range:disabled { cursor: not-allowed; }
 
-.cs-warn { margin: 0 0 12px; font-size: 12px; padding: 8px 10px; }
 .cs-foot {
   display: flex;
   align-items: center;

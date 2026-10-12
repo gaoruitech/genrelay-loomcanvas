@@ -22,12 +22,12 @@ const shown = computed(() => (props.images || []).filter(Boolean).slice(0, props
 .bkt { display: inline-flex; align-items: center; flex: none; }
 .bkt img {
   width: 20px; height: 20px; border-radius: 6px; object-fit: cover; display: block;
-  background: var(--media-bg); box-shadow: 0 0 0 1.5px #131f4a;
+  background: var(--media-bg); box-shadow: 0 0 0 1.5px var(--pop);
 }
 .bkt img + img { margin-left: -7px; }
 .bkt.empty {
   width: 20px; height: 20px; border-radius: 6px; justify-content: center;
-  background: rgba(124, 160, 255, .12); color: var(--text-3);
+  background: rgb(var(--c-film) / .12); color: var(--text-3);
 }
 .bkt.m img { width: 32px; height: 32px; border-radius: 8px; }
 .bkt.m img + img { margin-left: -10px; }

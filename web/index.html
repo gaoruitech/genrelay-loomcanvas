@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" theme-mode="dark">
+<html lang="en" theme-mode="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -7,19 +7,25 @@
     <title>LoomCanvas</title>
     <meta name="theme-color" content="#050a1e" />
     <meta name="color-scheme" content="dark" />
-    <!-- 只有一套深色主题：theme-mode 写死在 <html> 上（TDesign 的组件认它），不需要内联脚本 -->
+    <!-- 深色是默认主题，写死在 <html> 上；选了浅色 / 跟随系统的浏览器由下面这个脚本在首帧之前改过来。
+         它必须是外链的同源脚本、同步加载：页面的 CSP 是 script-src 'self'，内联脚本会被拦掉。 -->
+    <script src="/theme-boot.js"></script>
+    <!-- 样式表到之前的那一屏（底色 + 转圈）：这里还读不到设计令牌，两套主题的底色各写一份 -->
     <style>
       html { background: #050a1e; }
+      html[data-theme='light'] { background: #eef2f9; }
       .app-splash {
         position: fixed; inset: 0;
         display: flex; align-items: center; justify-content: center;
         background: #050a1e; z-index: 9999;
       }
+      html[data-theme='light'] .app-splash { background: #eef2f9; }
       .app-splash__spinner {
         width: 28px; height: 28px; border-radius: 50%;
         border: 3px solid rgba(124, 160, 255, .2); border-top-color: #3fd8ff;
         animation: app-spin .8s linear infinite;
       }
+      html[data-theme='light'] .app-splash__spinner { border-color: rgba(40, 68, 140, .16); border-top-color: #0577ad; }
       @keyframes app-spin { to { transform: rotate(360deg); } }
     </style>
   </head>

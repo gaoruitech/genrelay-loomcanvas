@@ -44,7 +44,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(2, 5, 18, .88);
+  background: rgb(var(--c-void) / .88);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   display: flex;
@@ -69,14 +69,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
   height: 40px;
   display: grid;
   place-items: center;
-  background: rgba(12, 21, 52, .88);
+  background: rgb(var(--c-glass) / .88);
   border: 1px solid var(--line-2);
   border-radius: 10px;
   color: var(--text-2);
   cursor: pointer;
   transition: background .15s ease, color .15s ease, border-color .15s ease;
 }
-.ml-close:hover { background: #1b2b5e; border-color: var(--line-3); color: var(--text); }
+.ml-close:hover { background: var(--pop-hover); border-color: var(--line-3); color: var(--text); }
 @media (max-width: 600px) {
   .ml-mask { padding: 64px 12px 24px; }
 }
