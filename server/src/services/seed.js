@@ -13,7 +13,8 @@ const { SYSTEM_USER } = require('../constants')
 
 const SEED_KEY = '_seedVersion'
 // 3: the built-in templates are spaced for the redesigned nodes (see the note above TEMPLATES).
-const SEED_VERSION = 3
+// 4: re-spaced for the three node layouts an account can choose from.
+const SEED_VERSION = 4
 
 const node = (id, type, x, y, data = {}) => ({ id, type, position: { x, y }, data })
 // 连线必须带连接点：画布靠它区分文字输入、图片输入和各自的输出
@@ -22,11 +23,14 @@ const edge = (source, sourceHandle, target, targetHandle) => ({
 })
 
 /*
- * Positions are for the node sizes of the current editor: source nodes are about
- * 280 x 300, generation nodes about 260 wide and 450 to 560 tall (taller once they
- * hold a result). Columns are 440 apart (a 160 gap, the same as Tidy up leaves),
- * and nothing sits below a generation node, so a template never opens with
- * overlapping nodes. Change the node sizes -> re-space here and bump SEED_VERSION.
+ * Positions have to work in all three node layouts, because the layout is a
+ * preference of the account that opens the template (web: composables/nodeLayout.ts,
+ * GEN_NODE_SIZE): a generation node is up to 272 x 344 in layout A (the default),
+ * 240 x 200 in B and 328 x 460 in C. Source nodes are about 280 x 300 in every
+ * layout. Columns are 440 apart: a 160 gap after a source node - the same as Tidy up
+ * leaves - and 168 after a generation node in A, 200 in B, 112 in C. Nothing sits
+ * below a generation node, so a template never opens with overlapping nodes.
+ * Change the node sizes -> re-space here and bump SEED_VERSION.
  */
 const TEMPLATES = [
   {
@@ -52,9 +56,9 @@ const TEMPLATES = [
     graph: {
       nodes: [
         node('prompt', 'text', 0, 0, { text: '雪山脚下的木屋，清晨薄雾，电影感构图' }),
-        node('motion', 'text', 0, 380, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
+        node('motion', 'text', 0, 360, { text: '镜头缓慢向前推进，薄雾流动，炊烟升起' }),
         node('image', 'image-gen', 440, 0),
-        node('video', 'video-gen', 860, 0),
+        node('video', 'video-gen', 880, 0),
       ],
       edges: [
         edge('prompt', 'text-out', 'image', 'text-in'),

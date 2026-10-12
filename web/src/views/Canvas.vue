@@ -1,5 +1,5 @@
 <template>
-  <div class="ed" :class="{ 'sheet-open': !!fly }">
+  <div ref="edRef" class="ed" :class="{ 'sheet-open': !!fly, 'insp-open': inspectorInset > 0, 'has-hint': noModels }" :data-node-layout="nodeLayout">
     <!-- 素材库 / 我的分享 / 模板 / 教程 -->
     <LibraryDialog v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
     <CanvasTemplateDialog v-model="templateDialogOpen" @apply="applyTemplate" />
@@ -244,8 +244,48 @@
       />
     </div>
 
-    <!-- 左侧：节点面板。+ 是全部节点，下面按类别分，最底下是素材库 -->
-    <div class="fl ed-pal" role="toolbar" :aria-label="t('canvas.rail.addNode')">
+    <!-- 工具面板：加节点（+ 是全部节点，下面按类别分）、素材库、分享、更多画布操作。
+         默认竖排在左边；抓着把手（或面板空白处）可以拖到任何地方，把手旁边的开关切横排 / 竖排。
+         手机上是标题块下面固定的一横条，不能拖。 -->
+    <div
+      ref="palRef"
+      class="fl ed-pal"
+      :class="[palOrient, { phone: palPhone, ready: palReady, drag: palDragging }]"
+      :style="palPhone ? undefined : { transform: `translate3d(${palXY.x}px, ${palXY.y}px, 0)` }"
+      role="toolbar"
+      :aria-label="t('canvas.pal.label')"
+      :aria-orientation="palOrient === 'h' ? 'horizontal' : 'vertical'"
+      data-testid="palette"
+      @pointerdown="palDown"
+      @pointermove="palMove"
+      @pointerup="palUp($event, true)"
+      @pointercancel="palUp($event, false)"
+      @mousedown="onPalMouseDown"
+      @keydown="onPalKeydown"
+      @focusin="onPalFocusIn"
+    >
+      <template v-if="!palPhone">
+        <button
+          type="button"
+          class="pal-grip"
+          :class="{ on: palMenu.open }"
+          :title="t('canvas.pal.grip')"
+          :aria-label="t('canvas.pal.grip')"
+          aria-haspopup="menu"
+          :aria-expanded="palMenu.open"
+          data-pal="grip"
+          @click="onGripClick"
+        ><LcIcon name="grip" size="s" /></button>
+        <button
+          type="button"
+          class="lc-tb pal-turn"
+          :title="turnLabel"
+          :aria-label="turnLabel"
+          data-pal="turn"
+          @click="turnPalette"
+        ><LcIcon :name="palOrient === 'v' ? 'turnh' : 'turnv'" size="s" /></button>
+        <hr />
+      </template>
       <button
         class="lc-tb"
         :class="{ on: fly === 'all' }"
@@ -253,32 +293,72 @@
         :aria-label="t('canvas.rail.addNode')"
         :aria-expanded="fly === 'all'"
         data-pal="all"
-        @click="toggleFly('all', $event)"
+        @click="toggleFly('all')"
       ><LcIcon name="plus" /></button>
       <hr />
       <button
         v-for="c in palCats"
         :key="c.key"
-        class="lc-tb pal-cat"
+        class="lc-tb"
         :class="{ on: fly === c.key }"
         :title="c.title"
         :aria-label="c.title"
         :data-pal="c.key"
-        @click="onPalClick(c, $event)"
+        @click="onPalClick(c)"
       ><LcIcon :name="c.icon" /></button>
-      <hr class="pal-cat" />
+      <hr />
       <button
-        class="lc-tb pal-cat"
+        class="lc-tb"
         :class="{ on: fly === 'lib' }"
         :title="t('canvas.pal.library')"
         :aria-label="t('canvas.pal.library')"
+        :aria-expanded="fly === 'lib'"
         data-pal="lib"
-        @click="toggleFly('lib', $event)"
+        @click="toggleFly('lib')"
       ><LcIcon name="folder" /></button>
+      <hr />
+      <!-- 分享 + 更多：原来在右上角，现在跟着面板走 -->
+      <button
+        class="lc-tb"
+        :disabled="saving || publishing"
+        :title="t('canvas.topbar.share')"
+        :aria-label="t('canvas.topbar.share')"
+        data-pal="share"
+        @click="openShareFromPal"
+      ><LcIcon name="share" /></button>
+      <button
+        class="lc-tb"
+        :class="{ on: moreMenu.open }"
+        :title="t('canvas.topbar.more')"
+        :aria-label="t('canvas.topbar.more')"
+        aria-haspopup="menu"
+        :aria-expanded="moreMenu.open"
+        data-pal="more"
+        @click="toggleMoreMenu"
+      ><LcIcon name="more" /></button>
+      <!-- 沉浸式里没有外壳导航：留一颗看得见的退出钮 -->
+      <button
+        v-if="appStore.immersive"
+        class="lc-tb"
+        :title="t('canvas.menu.exitImmersive')"
+        :aria-label="t('canvas.menu.exitImmersive')"
+        data-pal="exit"
+        @click="appStore.setImmersive(false)"
+      ><svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.exitFull" /></button>
     </div>
 
-    <!-- 节点面板的展开层：桌面贴在面板右边，手机是底部抽屉 -->
-    <div v-if="fly" class="fl ed-fly" :class="{ wide: fly === 'all' }" :style="{ top: flyTop + 'px' }">
+    <!-- 把手的小菜单：换方向、复位 -->
+    <div v-if="palMenu.open" ref="palMenuRef" class="ed-palmenu lc-menu" role="menu" :style="palMenu.style" @click.stop>
+      <button class="lc-menu-item" role="menuitem" data-key="turn" @click="turnPalette">
+        <LcIcon :name="palOrient === 'v' ? 'turnh' : 'turnv'" size="s" />{{ turnLabel }}
+      </button>
+      <button class="lc-menu-item" role="menuitem" data-key="reset" :disabled="palIsDefault" @click="resetPalette">
+        <LcIcon name="refresh" size="s" />{{ t('canvas.pal.reset') }}
+      </button>
+    </div>
+
+    <!-- 面板按钮的展开层：桌面上朝面板旁边有地方的那一侧开，手机是底部抽屉 -->
+    <div v-if="fly" ref="flyRef" class="fl ed-fly" :class="{ wide: fly === 'all' }" :style="flyStyle">
       <div class="ed-fly-h">
         <span>{{ flyTitle }}</span>
         <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="fly = ''"><LcIcon name="x" size="s" /></button>
@@ -341,28 +421,6 @@
       <router-link to="/models">{{ t('canvas.hint.goModels') }}</router-link>
     </div>
 
-    <!-- 右上：分享 + 更多（原来顶栏和右键菜单里的画布操作都在这里） -->
-    <div class="ed-act">
-      <button
-        v-if="appStore.immersive"
-        class="lc-btn icon ed-btn"
-        :title="t('canvas.menu.exitImmersive')"
-        :aria-label="t('canvas.menu.exitImmersive')"
-        @click="appStore.setImmersive(false)"
-      ><svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.exitFull" /></button>
-      <button class="lc-btn ed-btn ed-share" :disabled="saving || publishing" :title="t('canvas.topbar.share')" @click="openShareDialog">
-        <LcIcon name="share" /><span>{{ t('canvas.act.share') }}</span>
-      </button>
-      <button
-        class="lc-btn icon ed-btn ed-more-btn"
-        :class="{ on: moreMenu.open }"
-        :title="t('canvas.topbar.more')"
-        :aria-label="t('canvas.topbar.more')"
-        :aria-expanded="moreMenu.open"
-        @click.stop="toggleMoreMenu"
-      ><LcIcon name="more" /></button>
-    </div>
-
     <!-- 底部中间：缩放 / 撤销重做 / 自动整理 / 运行全部 -->
     <div class="fl ed-tools" role="toolbar" :aria-label="t('canvas.tools.label')">
       <button class="lc-tb" :disabled="zoomPct <= MIN_ZOOM * 100" :title="t('canvas.tools.zoomOut')" :aria-label="t('canvas.tools.zoomOut')" @click="zoomOut()"><LcIcon name="zout" /></button>
@@ -394,9 +452,37 @@
       <button class="lc-btn text sm" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
     </div>
 
+    <!-- 换了节点布局（或这张画布是在另一种布局下排的）之后节点互相压住：只提示，点了才整理 -->
+    <div v-if="layoutNote.visible && !layoutUndo.visible" class="fl ed-undo ed-note" role="status" data-testid="layout-note">
+      <span>{{ layoutNote.text }}</span>
+      <button class="lc-btn text sm" data-testid="layout-note-arrange" @click="arrangeFromNote">{{ t('canvas.tools.arrange') }}</button>
+      <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="dismissLayoutNote"><LcIcon name="x" size="s" /></button>
+    </div>
+
+    <!-- 生成节点的编辑面板，整张画布只有一个实例：布局 a 是跟着选中节点的输入条，布局 b 是右缘的属性面板。
+         布局 c 没有面板，全在节点上。按节点 id 加 key：换一个节点就整个重建。 -->
+    <GenComposer
+      v-if="nodeLayout === 'a' && panelNode"
+      :key="'gc-' + panelNode.id"
+      ref="genPanelRef"
+      :node-id="panelNode.id"
+      :kind="panelNode.kind"
+      @close="closeGenPanel"
+    />
+    <GenInspector
+      v-else-if="nodeLayout === 'b' && panelNode"
+      :key="'gi-' + panelNode.id"
+      ref="genPanelRef"
+      :node-id="panelNode.id"
+      :kind="panelNode.kind"
+      @close="closeGenPanel"
+    />
+
     <!-- 生成队列：一颗悬浮圆钮，默认在右下角，可以拖走；点开是贴着它的清单卡片 -->
     <QueuePanel
       :nodes="nodes"
+      :right-inset="inspectorInset"
+      :avoid="palAvoid"
       :workflow-id="currentId"
       :title-of="nodeTypeLabel"
       :cancel-node="executor.cancelNode"
@@ -516,7 +602,7 @@
       <!-- 导航（沉浸式 / 我的画布 / 使用教程）永远置顶 -->
       <template v-if="navMenuGroup">
         <div class="ed-grid">
-          <button v-for="item in navMenuGroup.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+          <button v-for="item in navMenuGroup.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
             <LcIcon v-if="item.lc" :name="item.lc" />
             <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
             <span>{{ item.label }}</span>
@@ -530,7 +616,7 @@
           <hr v-if="gi > 0" />
           <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
           <div class="ed-grid">
-            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
               <LcIcon v-if="item.lc" :name="item.lc" />
               <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
               <span>{{ item.label }}</span>
@@ -555,7 +641,7 @@
           <hr />
           <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
           <div class="ed-grid">
-            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
               <LcIcon v-if="item.lc" :name="item.lc" />
               <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
               <span>{{ item.label }}</span>
@@ -565,19 +651,20 @@
       </template>
     </div>
 
-    <!-- 右上「更多」菜单：内容与右键菜单的「画布操作」部分完全同源 -->
+    <!-- 面板上「更多」的菜单：内容与右键菜单的「画布操作」部分完全同源 -->
     <div
       v-if="moreMenu.open"
+      ref="moreRef"
       class="ed-menu ed-more lc-menu"
       role="menu"
-      :style="{ left: moreMenu.x + 'px', top: moreMenu.y + 'px', maxHeight: `calc(100vh - ${moreMenu.y}px - 16px)` }"
+      :style="{ left: moreMenu.x + 'px', top: moreMenu.y + 'px', maxHeight: moreMenu.maxH + 'px' }"
       @click.stop
     >
       <template v-for="(grp, gi) in canvasMenuGroups" :key="'mg-' + gi">
         <hr v-if="gi > 0" />
         <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
         <div class="ed-grid">
-          <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :data-key="item.key" @click="runCanvasMenuItem(item)">
+          <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
             <LcIcon v-if="item.lc" :name="item.lc" />
             <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
             <span>{{ item.label }}</span>
@@ -675,12 +762,14 @@ import TextNode from '@/components/canvas/TextNode.vue'
 import ImageNode from '@/components/canvas/ImageNode.vue'
 import VideoNode from '@/components/canvas/VideoNode.vue'
 import ImageCollectionNode from '@/components/canvas/ImageCollectionNode.vue'
-import ImageGenNode from '@/components/canvas/ImageGenNode.vue'
-import ImageEditNode from '@/components/canvas/ImageEditNode.vue'
-import VideoGenNode from '@/components/canvas/VideoGenNode.vue'
-import VideoEditNode from '@/components/canvas/VideoEditNode.vue'
-import VideoAnalysisNode from '@/components/canvas/VideoAnalysisNode.vue'
-import LlmNode from '@/components/canvas/LlmNode.vue'
+import GenNode from '@/components/canvas/gen/GenNode.vue'
+import GenComposer from '@/components/canvas/gen/GenComposer.vue'
+import GenInspector from '@/components/canvas/gen/GenInspector.vue'
+import '@/components/canvas/gen/gen.css'
+import {
+  CANVAS_NODE_UI_KEY, GEN_NODE_SIZE, INSPECTOR_GAP, INSPECTOR_WIDTH, NODE_LAYOUTS, genNodeSize, isGenNodeKind, normalizeNodeLayout,
+  type GenNodeKind, type NodeLayout,
+} from '@/composables/nodeLayout'
 import OutputNode from '@/components/canvas/OutputNode.vue'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
 import QueuePanel from '@/components/canvas/QueuePanel.vue'
@@ -708,8 +797,10 @@ import { useTokenColor } from '@/utils/tokenColor'
 import {
   isFramesModeData, listAdapters, modelsLoaded, isModelSupported, defaultModelId, defaultVideoEditModelId,
 } from '@/utils/canvasModels'
-import { useAutoLayout, LAYOUT_CONFIRM_THRESHOLD, type AlignMode, type DistributeAxis } from '@/composables/useAutoLayout'
+import { useAutoLayout, estimateNodeSize, LAYOUT_CONFIRM_THRESHOLD, type AlignMode, type DistributeAxis } from '@/composables/useAutoLayout'
 import { useCanvasHistory } from '@/composables/useCanvasHistory'
+import { usePaletteDock } from '@/composables/usePaletteDock'
+import { clampNum, type Rect } from '@/utils/floatSpot'
 import { useCanvasBatch } from '@/composables/useCanvasBatch'
 import { useBrandKits, resolveNodeKit, KIT_NONE, BRAND_KIT_NODE_TYPES, type BrandKit } from '@/composables/useBrandKits'
 import { CANVAS_BRAND_KIT_KEY } from '@/composables/canvasBrandKitKey'
@@ -761,12 +852,13 @@ const nodeTypes = {
   'image': markRaw(ImageNode),
   'video': markRaw(VideoNode),
   'image-collection': markRaw(ImageCollectionNode),
-  'image-gen': markRaw(ImageGenNode),
-  'image-edit': markRaw(ImageEditNode),
-  'video-gen': markRaw(VideoGenNode),
-  'video-edit': markRaw(VideoEditNode),
-  'video-analysis': markRaw(VideoAnalysisNode),
-  'llm': markRaw(LlmNode),
+  // 六种生成节点是同一个组件：状态共用一份（useGenNode），按账号选的布局换外壳
+  'image-gen': markRaw(GenNode),
+  'image-edit': markRaw(GenNode),
+  'video-gen': markRaw(GenNode),
+  'video-edit': markRaw(GenNode),
+  'video-analysis': markRaw(GenNode),
+  'llm': markRaw(GenNode),
   'output': markRaw(OutputNode),
   'platform-export': markRaw(PlatformExportNode),
   'slice': markRaw(SliceNode),
@@ -808,7 +900,74 @@ const {
   onNodesInitialized, zoomIn, zoomOut, zoomTo, findNode,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
+  onNodeClick,
 } = useVueFlow()
+
+/* ==================== 生成节点的布局 ==================== */
+/**
+ * 三种布局选哪种是账号的偏好（设置 → 外观，或「更多」菜单里直接切），存在服务端，换浏览器也跟着走。
+ * 这里只读它；节点、输入条、属性面板都从 CANVAS_NODE_UI_KEY 拿。
+ */
+const nodeLayout = computed<NodeLayout>(() => normalizeNodeLayout(appStore.user?.prefs?.nodeLayout))
+
+/** 只选中了一个节点、而且是生成节点：它就是面板要编辑的那一个。多选、没选都不出面板 */
+const soleGenNode = computed<{ id: string; kind: GenNodeKind } | null>(() => {
+  const sel = getSelectedNodes.value
+  if (sel.length !== 1 || !isGenNodeKind(sel[0].type)) return null
+  return { id: sel[0].id, kind: sel[0].type }
+})
+/** 用户按 Esc / 点关闭收起了哪个节点的面板；选中别的节点、或再点一下这个节点就恢复 */
+const panelDismissedId = ref('')
+const panelNode = computed(() => {
+  const n = soleGenNode.value
+  return n && n.id !== panelDismissedId.value && nodeLayout.value !== 'c' ? n : null
+})
+watch(() => soleGenNode.value?.id || '', (id) => { if (id !== panelDismissedId.value) panelDismissedId.value = '' })
+onNodeClick(({ node }) => { if (node.id === panelDismissedId.value) panelDismissedId.value = '' })
+function closeGenPanel() {
+  if (soleGenNode.value) panelDismissedId.value = soleGenNode.value.id
+}
+const genPanelRef = ref<{ focusPrompt: () => boolean; run: () => void } | null>(null)
+/** 属性面板开着时占掉的右侧宽度；「适应屏幕」、新节点落点、队列圆钮都要让出来。手机上面板是底部抽屉，不占宽度 */
+const paneWidth = ref(1200)
+const inspectorInset = computed(() => (nodeLayout.value === 'b' && panelNode.value && paneWidth.value > 640 ? INSPECTOR_WIDTH + INSPECTOR_GAP : 0))
+
+// 布局 c：节点把「聚焦自己的提示词框」登记上来
+const promptFocusers = new Map<string, () => void>()
+provide(CANVAS_NODE_UI_KEY, {
+  layout: nodeLayout,
+  registerPromptFocus: (id, fn) => { if (fn) promptFocusers.set(id, fn); else promptFocusers.delete(id) },
+})
+/** 画布上选中一个生成节点后直接打字：焦点落进它的提示词框（a 输入条 / b 属性面板 / c 节点里） */
+function focusGenPrompt(): boolean {
+  const n = soleGenNode.value
+  if (!n) return false
+  if (nodeLayout.value === 'c') {
+    const fn = promptFocusers.get(n.id)
+    if (!fn) return false
+    fn()
+    return true
+  }
+  if (!panelNode.value) {
+    // 面板被收起了：先打开，这一键只负责唤出它
+    panelDismissedId.value = ''
+    void nextTick(() => genPanelRef.value?.focusPrompt())
+    return false
+  }
+  return genPanelRef.value?.focusPrompt() || false
+}
+
+/**
+ * 某个节点的实测宽高。生成节点量到的宽度和当前布局对不上，说明那是在另一种布局下量的
+ * （节点在视野外没重画，或尺寸是跟着画布存下来的）—— 当作没量过，交给按布局估的那张表。
+ */
+function measuredSize(id: string): { width: number; height: number } | null {
+  const n = findNode(id)
+  const d = n?.dimensions
+  if (!n || !d?.width || !d?.height) return null
+  if (isGenNodeKind(n.type) && Math.abs(d.width - GEN_NODE_SIZE[nodeLayout.value].media.w) > 2) return null
+  return d
+}
 
 /* ==================== 品牌包 ==================== */
 // 品牌包按画布选：canvasKitId 跟着画布文档存（顶栏那颗 chip 改的就是它），这张画布上的
@@ -946,7 +1105,8 @@ function onBgChange(v: CanvasBgSettings) {
 /* ==================== 自动整理 ==================== */
 const layout = useAutoLayout({
   nodes, edges, getNodes, updateNode, fitView: fitFree,
-  measure: (id) => findNode(id)?.dimensions,
+  measure: measuredSize,
+  nodeLayout: () => nodeLayout.value,
 })
 const layoutUndo = ref({ visible: false, text: '' })
 let layoutUndoTimer: number | null = null
@@ -994,6 +1154,8 @@ async function runArrange() {
   if (nodes.value.length < 2) { MessagePlugin.info(t('canvas.layout.needTwo')); return }
   if (nodes.value.length > LAYOUT_CONFIRM_THRESHOLD && !(await confirmBigLayout(nodes.value.length))) return
   hist.record()
+  layoutNote.value = { visible: false, text: '' }
+  arrangedLayout.value = nodeLayout.value
   if (await layout.arrange()) showLayoutUndo(t('canvas.layout.arranged'))
   else hist.drop()
 }
@@ -1012,6 +1174,75 @@ async function runDistribute(axis: DistributeAxis) {
   if (await layout.distributeSelected(axis)) showLayoutUndo(t('canvas.layout.distributed'))
   else { hist.drop(); MessagePlugin.info(t('canvas.layout.distributeNeedThree')) }
 }
+
+/* ==================== 换节点布局 ==================== */
+const LAYOUT_ICONS: Record<NodeLayout, string> = {
+  a: '<rect x="5" y="3" width="14" height="12" rx="2"/><rect x="3" y="18" width="18" height="3.5" rx="1.75"/>',
+  b: '<rect x="3" y="7" width="9" height="10" rx="2"/><rect x="15" y="3" width="6" height="18" rx="2"/>',
+  c: '<rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M5 11h14M8 15h8M8 18h4"/>',
+}
+async function pickNodeLayout(v: NodeLayout) {
+  if (v === nodeLayout.value) return
+  try {
+    await appStore.setNodeLayout(v)
+  } catch (err) {
+    MessagePlugin.error(apiErrorMessage(err, t('settings.appearance.nodeLayoutFailed')))
+  }
+}
+
+/**
+ * 这张画布上的节点是在哪种布局下排的（跟着画布存在 settings.nodeLayout 里；老画布没有，是空串）。
+ * 换布局会改变节点的大小，但位置是用户排的、跟着画布存的 —— 绝不因为换了偏好就悄悄挪节点。
+ * 只在真的有节点互相压住时出一条提示，点「自动整理」才动（和工具条上那个是同一个，可以撤销）。
+ */
+const arrangedLayout = ref<NodeLayout | ''>('')
+const layoutNote = ref({ visible: false, text: '' })
+function dismissLayoutNote() {
+  layoutNote.value = { visible: false, text: '' }
+  // 看过了：这张画布就算是在当前布局下排的，下次打开不再提（跟着画布存下去）
+  arrangedLayout.value = nodeLayout.value
+  scheduleAutoSave()
+}
+async function arrangeFromNote() {
+  dismissLayoutNote()
+  await runArrange()
+}
+/** 等视野里的生成节点按新布局重新量完（宽度对上了就算），最多等 timeout 毫秒 */
+function waitForRelayout(timeout = 800): Promise<void> {
+  const started = Date.now()
+  const want = () => GEN_NODE_SIZE[nodeLayout.value].media.w
+  return new Promise((resolve) => {
+    const tick = () => {
+      const pending = getNodes.value.some((n: any) => isGenNodeKind(n.type) && Math.abs((n.dimensions?.width || 0) - want()) > 2)
+      if (!pending || Date.now() - started > timeout) resolve()
+      else window.setTimeout(tick, 50)
+    }
+    window.setTimeout(tick, 50)
+  })
+}
+let layoutCheckSeq = 0
+/** kind: switch = 刚换了布局；open = 打开了一张在别的布局下排的画布 */
+async function checkLayoutFit(kind: 'switch' | 'open') {
+  const id = currentId.value
+  const seq = ++layoutCheckSeq
+  layoutNote.value = { visible: false, text: '' }
+  if (!id) return
+  if (kind === 'open' && arrangedLayout.value === nodeLayout.value) return
+  if (nodes.value.length < 2) { arrangedLayout.value = nodeLayout.value; return }
+  if (kind === 'open') await waitForMeasured()
+  else { await nextTick(); await waitForRelayout() }
+  if (seq !== layoutCheckSeq || currentId.value !== id) return
+  if (layout.hasOverlap()) {
+    layoutNote.value = { visible: true, text: t(kind === 'switch' ? 'canvas.nodeLayout.overlapSwitched' : 'canvas.nodeLayout.overlapOpened') }
+  } else {
+    arrangedLayout.value = nodeLayout.value
+    if (kind === 'switch') MessagePlugin.success(t('canvas.nodeLayout.switched', { name: t(`canvas.nodeLayout.${nodeLayout.value}`) }))
+  }
+}
+watch(nodeLayout, () => {
+  panelDismissedId.value = ''
+  if (!loading.value) void checkLayoutFit('switch')
+})
 
 /* ==================== 画布操作菜单（右键菜单 与 顶栏「更多」共用一份） ==================== */
 // 图标只存 <svg> 内部的那段，跟 nodeMenuGroups 一样走 v-html 渲染
@@ -1047,6 +1278,8 @@ interface CanvasMenuItem {
   /** LcIcon 的图标名 */
   lc?: string
   disabled?: boolean
+  /** 单选项里当前选中的那一个（节点布局） */
+  active?: boolean
   run: () => void
 }
 
@@ -1063,7 +1296,7 @@ const frameMenuItem = computed<CanvasMenuItem>(() => {
   }
 })
 
-/** 素材库那一组入口：左侧面板最下面那颗按钮、「更多」菜单共用 */
+/** 素材库那一组入口：工具面板上那颗素材按钮、「更多」菜单共用 */
 const libraryMenuItems = computed<CanvasMenuItem[]>(() => [
   { key: 'library', label: t('canvas.rail.library'), lc: 'folder', run: openLibrary },
   { key: 'templates', label: t('canvas.rail.templates'), lc: 'layout', run: openTemplates },
@@ -1157,6 +1390,15 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
     ],
   })
 
+  // 节点布局：和「设置 → 外观」里的是同一个偏好，这里是顺手切换的入口
+  groups.push({
+    title: t('canvas.nodeLayout.title'),
+    items: NODE_LAYOUTS.map((v) => ({
+      key: `node-layout-${v}`, label: t(`canvas.nodeLayout.${v}`), icon: LAYOUT_ICONS[v],
+      active: nodeLayout.value === v, run: () => { void pickNodeLayout(v) },
+    })),
+  })
+
   groups.push({ title: t('canvas.pal.library'), items: libraryMenuItems.value })
 
   return groups
@@ -1166,25 +1408,31 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
 const navMenuGroup = computed(() => canvasMenuGroups.value.find(g => g.items.some(i => i.key === 'immersive')) || null)
 const otherMenuGroups = computed(() => canvasMenuGroups.value.filter(g => g.items.every(i => i.key !== 'immersive')))
 
-// 右上「更多」菜单
-const moreMenu = ref({ open: false, x: 0, y: 0 })
-// 右键菜单 / 顶栏「更多」菜单的宽度，夹进视口时用。与样式里 .add-context-menu 的 width 是同一个数
+// 工具面板上的「更多」菜单（坐标是视口的：菜单是 position: fixed）
+const moreMenu = ref({ open: false, x: -9999, y: 0, maxH: 600 })
+const moreRef = ref<HTMLElement | null>(null)
+// 右键菜单 /「更多」菜单的宽度，夹进视口时用。与样式里 .ed-menu 的 width 是同一个数
 const ADD_MENU_W = 344
 
 // 菜单弹出的位置，外观面板要贴着它开
 const lastMenuPos = ref({ x: 0, y: 0 })
 
-function toggleMoreMenu(e: MouseEvent) {
+function toggleMoreMenu() {
   const wasOpen = moreMenu.value.open
   closeMenus()
   if (wasOpen) return
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  // 按钮在右上角：菜单右边缘对齐按钮右边缘往左展开
-  const w = Math.min(ADD_MENU_W, window.innerWidth - 16)
-  const x = Math.max(8, Math.min(rect.right - w, window.innerWidth - w - 8))
-  const y = rect.bottom + 8
-  moreMenu.value = { open: true, x, y }
-  lastMenuPos.value = { x, y }
+  moreMenu.value = { open: true, x: -9999, y: 0, maxH: 600 }
+  void nextTick(placeMore)
+}
+/** 「更多」菜单贴着面板开：朝有地方的那一侧，整个留在编辑区里 */
+function placeMore() {
+  const el = moreRef.value, host = edRef.value
+  if (!moreMenu.value.open || !el || !host) return
+  const at = popNear('more', Math.min(ADD_MENU_W, host.clientWidth - 16), el.scrollHeight + 2)
+  if (!at) return
+  const o = host.getBoundingClientRect()
+  moreMenu.value = { open: true, x: Math.round(o.left + at.x), y: Math.round(o.top + at.y), maxH: at.maxH }
+  lastMenuPos.value = { x: moreMenu.value.x, y: moreMenu.value.y }
 }
 function closeMoreMenu() {
   if (moreMenu.value.open) moreMenu.value.open = false
@@ -1262,9 +1510,9 @@ function onEditorDone(payload: ImageEditorResult) {
   MessagePlugin.success(payload.mode === 'replace' ? t('canvas.editor.replaced') : t('canvas.editor.newNode'))
 }
 
-/* ==================== 左侧节点面板 ==================== */
-// 「+」是全部节点；下面按类别各一颗按钮，点开是这一类的节点；最下面是素材库那组入口。
-// 只有一种节点的类别（文本）点一下直接加。手机上只留「+」，展开层变成底部抽屉。
+/* ==================== 工具面板 ==================== */
+// 「+」是全部节点；下面按类别各一颗按钮，点开是这一类的节点；再往后是素材库那组入口、分享和「更多」。
+// 只有一种节点的类别（文本）点一下直接加。手机上展开层变成底部抽屉。
 type FlyKey = '' | 'all' | 'lib' | 'text' | 'image' | 'video' | 'chat' | 'tools'
 const PAL_CATS: { key: Exclude<FlyKey, '' | 'all' | 'lib'>; icon: string; kinds: NodeKind[] }[] = [
   { key: 'text', icon: 'text', kinds: ['text'] },
@@ -1279,20 +1527,195 @@ const PAL_TITLE_KEYS = {
 const palCats = computed(() => PAL_CATS.map((c) => ({ ...c, title: t(PAL_TITLE_KEYS[c.key]) })))
 
 const fly = ref<FlyKey>('')
-const flyTop = ref(76)
-function toggleFly(key: FlyKey, e?: MouseEvent) {
+const flyRef = ref<HTMLElement | null>(null)
+const flyStyle = ref<Record<string, string>>({})
+function toggleFly(key: FlyKey) {
   const next = fly.value === key ? '' : key
   closeMenus()
   fly.value = next
-  if (!next) return
-  // 展开层顶边对齐被点的那颗按钮；「全部」那一层最高，直接对齐面板顶
-  const btn = e?.currentTarget as HTMLElement | undefined
-  const pal = btn?.parentElement
-  flyTop.value = key === 'all' || !btn || !pal ? 76 : Math.max(76, pal.offsetTop + btn.offsetTop - 6)
+  if (next) void nextTick(placeFly)
 }
-function onPalClick(c: { key: FlyKey; kinds: NodeKind[] }, e: MouseEvent) {
+/** 展开层贴着面板开：朝有地方的那一侧，对齐被点的那颗按钮。手机上是底部抽屉，位置由样式定 */
+function placeFly() {
+  const el = flyRef.value, host = edRef.value
+  if (!fly.value || !el || !host) return
+  if (palPhone.value) { flyStyle.value = {}; return }
+  const w = Math.min(fly.value === 'all' ? 340 : 220, host.clientWidth - 16)
+  const head = el.querySelector<HTMLElement>('.ed-fly-h'), body = el.querySelector<HTMLElement>('.ed-fly-b')
+  const at = popNear(fly.value, w, (head?.offsetHeight || 0) + (body?.scrollHeight || 0) + 2)
+  if (at) flyStyle.value = { left: at.x + 'px', top: at.y + 'px', width: w + 'px', maxHeight: at.maxH + 'px' }
+}
+function onPalClick(c: { key: FlyKey; kinds: NodeKind[] }) {
   if (c.kinds.length === 1) { closeMenus(); addNode(c.kinds[0]); return }
-  toggleFly(c.key, e)
+  toggleFly(c.key)
+}
+/** 分享弹窗是模态的：开之前把面板的展开层收掉 */
+function openShareFromPal() {
+  closeMenus()
+  openShareDialog()
+}
+
+/* ---- 面板的位置 / 方向 ---- */
+const edRef = ref<HTMLElement | null>(null)
+const palRef = ref<HTMLElement | null>(null)
+const palMenuRef = ref<HTMLElement | null>(null)
+const palMenu = ref<{ open: boolean; style: Record<string, string> }>({ open: false, style: {} })
+let gripTapAt = 0
+const {
+  xy: palXY, rect: palRect, orient: palOrient, phone: palPhone, ready: palReady, dragging: palDragging, isDefault: palIsDefault,
+  layout: layoutPal, onDown: palDown, onMove: palMove, onUp: palUp, nudge: nudgePal, toggleOrient, reset: resetPal,
+} = usePaletteDock({
+  host: edRef,
+  el: palRef,
+  // 属性面板有入场动画，从 DOM 量会偏：按它的固定尺寸算（右 12、上下 12、宽 INSPECTOR_WIDTH）
+  extraObstacles: () => {
+    const host = edRef.value
+    if (!host || inspectorInset.value <= 0) return []
+    const W = host.clientWidth
+    return [{ l: W - 12 - INSPECTOR_WIDTH, t: 12, r: W - 12, b: host.clientHeight - 12 }]
+  },
+  onDragStart: () => closeMenus(),
+  // 把手上点一下开小菜单；紧接着再点一下（双击）= 复位
+  onGripTap: () => {
+    const now = Date.now()
+    if (now - gripTapAt < 350) { gripTapAt = 0; resetPalette(); return }
+    gripTapAt = now
+    togglePalMenu()
+  },
+})
+const turnLabel = computed(() => (palOrient.value === 'v' ? t('canvas.pal.toHorizontal') : t('canvas.pal.toVertical')))
+function turnPalette() {
+  closeMenus()
+  toggleOrient()
+}
+function resetPalette() {
+  closeMenus()
+  resetPal()
+}
+function togglePalMenu() {
+  const wasOpen = palMenu.value.open
+  closeMenus()
+  if (wasOpen) return
+  palMenu.value = { open: true, style: { visibility: 'hidden' } }
+  void nextTick(placePalMenu)
+}
+function placePalMenu() {
+  const el = palMenuRef.value
+  if (!palMenu.value.open || !el) return
+  const at = popNear('grip', el.offsetWidth, el.offsetHeight)
+  if (at) palMenu.value = { open: true, style: { left: at.x + 'px', top: at.y + 'px' } }
+}
+/** 键盘 / 读屏触发的 click 没有指针按下（detail 是 0）；指针点的已经在面板的 pointerup 里处理过了 */
+function onGripClick(e: MouseEvent) {
+  if (e.detail === 0) togglePalMenu()
+}
+/** 把手和面板空白处：拦掉 mousedown 的默认行为，免得拖的时候选中文字、或把底下节点里的图当成拖拽源 */
+function onPalMouseDown(e: MouseEvent) {
+  const el = e.target as HTMLElement
+  if (el.closest('.pal-grip') || !el.closest('button')) e.preventDefault()
+}
+/**
+ * 面板旁边的弹出层放哪（坐标相对编辑区）。
+ *   竖排：开在面板左 / 右，右边放得下就右边，否则哪边宽开哪边；顶边对齐那颗按钮。
+ *   横排：开在面板上 / 下，下面放得下就下面，否则哪边高开哪边；左边对齐那颗按钮。
+ * 最后整个夹回编辑区里，放不下的高度交给弹出层自己滚动。
+ */
+function popNear(key: string, w: number, h: number): { x: number; y: number; maxH: number } | null {
+  const host = edRef.value, pal = palRef.value
+  const btn = pal?.querySelector<HTMLElement>(`[data-pal="${key}"]`)
+  if (!host || !pal || !btn) return null
+  const W = host.clientWidth, H = host.clientHeight
+  const GAP = 8, EDGE = 8
+  const pr = pal.getBoundingClientRect(), br = btn.getBoundingClientRect()
+  // 面板可能正滑向新位置：用它要去的位置，按钮按它在面板里的偏移算
+  const o = host.getBoundingClientRect()
+  const P: Rect = palPhone.value || !palRect.value
+    ? { l: pr.left - o.left, t: pr.top - o.top, r: pr.right - o.left, b: pr.bottom - o.top }
+    : palRect.value
+  const bx = P.l + (br.left - pr.left), by = P.t + (br.top - pr.top)
+  if (palOrient.value === 'v') {
+    const roomR = W - P.r - GAP - EDGE, roomL = P.l - GAP - EDGE
+    const right = roomR >= w || roomR >= roomL
+    const maxH = H - EDGE * 2
+    return {
+      x: clampNum(right ? P.r + GAP : P.l - GAP - w, EDGE, W - w - EDGE),
+      y: clampNum(by - 6, EDGE, H - EDGE - Math.min(h, maxH)),
+      maxH,
+    }
+  }
+  const roomB = H - P.b - GAP - EDGE, roomT = P.t - GAP - EDGE
+  const below = roomB >= h || roomB >= roomT
+  const maxH = Math.max(120, below ? roomB : roomT)
+  return {
+    x: clampNum(bx - 6, EDGE, W - w - EDGE),
+    y: below ? P.b + GAP : Math.max(EDGE, P.t - GAP - Math.min(h, maxH)),
+    maxH,
+  }
+}
+// 面板挪了 / 换了方向 / 窗口变了：开着的弹出层跟过去
+watch([palRect, palOrient, palPhone], () => { void nextTick(() => { placeFly(); placeMore(); placePalMenu() }) })
+// 属性面板开合、提示条出现 / 消失：面板重新找位置（它们不改编辑区的尺寸，ResizeObserver 不会报）
+watch([inspectorInset, () => noModels.value], () => { void nextTick(layoutPal) }, { flush: 'post' })
+/** 生成队列圆钮要绕开的矩形 */
+const palAvoid = computed<Rect[]>(() => (palRect.value ? [palRect.value] : []))
+
+/* ---- 面板的键盘：方向键在按钮之间走（竖排上下、横排左右），Tab 只停一次 ---- */
+const palButtons = () => Array.from(palRef.value?.querySelectorAll<HTMLButtonElement>('button') || [])
+function syncPalTabStops(cur?: HTMLElement | null) {
+  const list = palButtons()
+  const keep = cur && list.includes(cur as HTMLButtonElement) ? cur : list.find((b) => b.tabIndex === 0 && !b.disabled) || list.find((b) => !b.disabled)
+  for (const b of list) b.tabIndex = b === keep ? 0 : -1
+}
+function onPalFocusIn(e: FocusEvent) {
+  syncPalTabStops(e.target as HTMLElement)
+}
+function onPalKeydown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement
+  const vertical = palOrient.value === 'v'
+  // 把手上 Shift + 方向键：挪面板
+  if (e.shiftKey && target.closest('.pal-grip') && e.key.startsWith('Arrow')) {
+    e.preventDefault()
+    const STEP = 24
+    nudgePal(e.key === 'ArrowLeft' ? -STEP : e.key === 'ArrowRight' ? STEP : 0, e.key === 'ArrowUp' ? -STEP : e.key === 'ArrowDown' ? STEP : 0)
+    return
+  }
+  const prev = vertical ? 'ArrowUp' : 'ArrowLeft', next = vertical ? 'ArrowDown' : 'ArrowRight'
+  if (e.key !== prev && e.key !== next && e.key !== 'Home' && e.key !== 'End') return
+  const list = palButtons().filter((b) => !b.disabled)
+  if (!list.length) return
+  e.preventDefault()
+  const i = list.indexOf(target as HTMLButtonElement)
+  const to = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : (i + (e.key === next ? 1 : -1) + list.length) % list.length
+  list[to].focus()
+  list[to].scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+// 按钮的数量会变（手机上没有把手、沉浸式多一颗退出钮）：重新定 Tab 停在哪
+watch([palPhone, () => appStore.immersive, palOrient], () => { void nextTick(() => syncPalTabStops()) }, { flush: 'post' })
+onMounted(() => syncPalTabStops())
+
+/**
+ * 四边各被悬浮块占掉多少：「适应屏幕」和新节点的落点都按这个让。
+ * 面板想放哪放哪，所以只在它贴边的时候让：竖排贴左 / 右边让出那一条宽度，横排在顶上 / 底下那一带
+ * 让出那一条高度；漂在画布中间时不让 —— 那是用户自己挑的位置，和别的小控件一样允许节点从底下过。
+ */
+function chromeInsets(W: number, H: number): { l: number; t: number; r: number; b: number } {
+  layoutPal()
+  const p = palRect.value
+  // 手机：顶上是标题块 + 面板那一横条；底边除了工具条，还有它上面右角的生成队列圆钮
+  if (palPhone.value) return { l: 12, t: Math.max(60, (p ? p.b : 102) + 6), r: 12, b: 126 }
+  // 顶上让给标题块；底边多让一截：左下角的小地图比工具条高（右下角的圆钮也在这一条里）；
+  // 右边：属性面板开着时把它的宽度让出来
+  const ins = { l: 24, t: 76, r: 24 + inspectorInset.value, b: 140 }
+  if (!p) return ins
+  if (palOrient.value === 'v') {
+    if (p.l <= 18) ins.l = p.r + 24
+    else if (p.r >= W - inspectorInset.value - 18) ins.r = W - p.l + 24
+  } else if (p.t <= 78) {
+    ins.t = Math.max(ins.t, p.b + 16)
+  } else if (p.b >= H - 142) {
+    ins.b = Math.max(ins.b, H - p.t + 16)
+  }
+  return ins
 }
 const nodeMenuItem = (kind: NodeKind): CanvasMenuItem => ({
   key: kind, label: nodeTypeLabel(kind), icon: NODE_MENU_ICONS[kind] || '', run: () => { addNode(kind) },
@@ -1538,6 +1961,7 @@ function closeMenus() {
   closeMoreMenu()
   projMenuOpen.value = false
   fly.value = ''
+  if (palMenu.value.open) palMenu.value = { open: false, style: {} }
 }
 
 // 从右键菜单添加节点：落在光标对应的画布坐标处
@@ -1933,7 +2357,7 @@ function onDocClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   // 外观面板自己 stop 了 mousedown，这里只负责"点到别处就收起"
   if (!target.closest('.cs-panel')) stylePanelOpen.value = false
-  if (target.closest('.ctx-menu, .ed-menu, .ed-more-btn, .ed-pal, .ed-fly, .ed-proj')) return
+  if (target.closest('.ctx-menu, .ed-menu, .ed-pal, .ed-palmenu, .ed-fly, .ed-proj')) return
   closeMenus()
 }
 
@@ -2007,7 +2431,8 @@ function buildContent() {
     nodes: nodes.value.map(nodeForSave),
     edges: edges.value.map(edgeForSave),
     // 画布外观。后端 PUT 是显式白名单透传，那边不加对应的一行这里存了也白存
-    settings: { bg: bgSettings.value },
+    // nodeLayout：这张画布的节点是在哪种布局下排的（见 arrangedLayout），不是「用哪种布局显示」
+    settings: { bg: bgSettings.value, ...(arrangedLayout.value ? { nodeLayout: arrangedLayout.value } : {}) },
     // 这张画布套用的品牌包；空串 = 不套用
     brandKitId: canvasKitId.value,
   }
@@ -2089,17 +2514,19 @@ function freeSpot(): { x: number; y: number } {
   const zoom = viewport.value.zoom || 1
   const toFlow = (sx: number, sy: number) => ({ x: (sx - viewport.value.x) / zoom, y: (sy - viewport.value.y) / zoom })
   const pane = document.querySelector('.vf-wrap') as HTMLElement | null
-  // 底下让给工具条和右下角的生成队列圆钮（两者一样高）
-  const paneW = pane?.clientWidth || 1200
-  const paneH = (pane?.clientHeight || 800) - 80
-  // 新节点还没量过尺寸，按常见节点大小留地方；组是一大片底板，不算占位
-  const BOX_W = 300, BOX_H = 320, GAP = 24
+  // 四边让给悬浮块：顶上是标题块，底下是工具条和右下角的生成队列圆钮（两者一样高），
+  // 右边是属性面板（开着的话），工具面板贴着哪条边就再让哪条边
+  const W = pane?.clientWidth || 1200, H = pane?.clientHeight || 800
+  const ins = chromeInsets(W, H)
+  const paneW = W - (ins.r - 24)
+  const paneH = H - Math.max(80, ins.b - 60)
+  // 新节点还没量过尺寸，按常见节点大小留地方（生成节点在布局 c 下更宽更高）；组是一大片底板，不算占位
+  const BOX_W = nodeLayout.value === 'c' ? 340 : 300, BOX_H = nodeLayout.value === 'c' ? 420 : 320, GAP = 24
   const boxes = getNodes.value.filter((n: any) => n.type !== 'frame').map(nodeBox)
   const hits = (p: { x: number; y: number }) => boxes.some((b) =>
     p.x < b.right + GAP && p.x + BOX_W + GAP > b.left && p.y < b.bottom + GAP && p.y + BOX_H + GAP > b.top)
-  // 左边 88px 让给节点面板，顶上 76px 让给标题块
-  for (let sy = 76; sy + BOX_H * zoom <= paneH; sy += (BOX_H + GAP) * zoom) {
-    for (let sx = 88; sx + BOX_W * zoom <= paneW; sx += (BOX_W + GAP) * zoom) {
+  for (let sy = ins.t; sy + BOX_H * zoom <= paneH; sy += (BOX_H + GAP) * zoom) {
+    for (let sx = ins.l; sx + BOX_W * zoom <= paneW; sx += (BOX_W + GAP) * zoom) {
       const p = toFlow(sx, sy)
       if (!hits(p)) return p
     }
@@ -2789,11 +3216,10 @@ function applyTemplate(tpl: { title?: string; graph?: { nodes?: any[]; edges?: a
     const PAD = 28, PAD_TOP = 34
     const TYPE_SIZE: Record<string, { w: number; h: number }> = {
       image: { w: 260, h: 300 }, 'image-collection': { w: 260, h: 300 },
-      text: { w: 280, h: 240 }, llm: { w: 360, h: 460 },
-      'image-gen': { w: 300, h: 360 }, 'image-edit': { w: 300, h: 360 },
-      'video-gen': { w: 300, h: 360 }, 'video-edit': { w: 300, h: 360 },
+      text: { w: 280, h: 240 },
     }
-    const est = (type: string) => TYPE_SIZE[type] || { w: 260, h: 220 }
+    // 生成节点的大小跟着当前布局走
+    const est = (type: string) => (isGenNodeKind(type) ? genNodeSize(type, nodeLayout.value) : TYPE_SIZE[type] || { w: 260, h: 220 })
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const n of newNodes) {
       const sz = est(n.type as string)
@@ -2941,6 +3367,10 @@ onNodesInitialized(() => {
     fitOnInit = false
     fitToNodes = null
     fitFree({ maxZoom: 1 })
+    if (layoutCheckPending) { layoutCheckPending = false; void checkLayoutFit('open') }
+  } else if (layoutCheckPending) {
+    layoutCheckPending = false
+    void checkLayoutFit('open')
   } else if (fitToNodes) {
     const ids = fitToNodes
     fitToNodes = null
@@ -2961,6 +3391,8 @@ onNodesInitialized(() => {
  */
 let legacyLayoutPending = false
 let legacyLayoutChecked = false
+/** 刚载入的画布还没查过「在别的节点布局下排的、现在压住了没有」（见 checkLayoutFit） */
+let layoutCheckPending = false
 
 /** 等节点量完尺寸：都有宽高了就走，最多等 timeout 毫秒（缩放到下限还框不全的大画布会剩几个量不到，按类型估） */
 function waitForMeasured(timeout = 1500): Promise<void> {
@@ -2988,6 +3420,7 @@ async function checkLegacyLayout() {
     hist.record()
     if (await layout.arrange()) {
       if (currentId.value !== id) return
+      arrangedLayout.value = nodeLayout.value
       showLayoutUndo(t('canvas.layout.legacyArranged'))
       // 新位置和「已查过」一起落库；之后撤销也只是一次普通的改动
       await doSave(true)
@@ -3008,9 +3441,9 @@ async function checkLegacyLayout() {
 /**
  * 把内容框进「没被控件盖住」的那块区域。
  *
- * vue-flow 自带的 fitView 按整块画布居中，而画布四周浮着标题块、节点面板、工具条、
+ * vue-flow 自带的 fitView 按整块画布居中，而画布四周浮着标题块、工具面板、工具条、
  * 小地图和右下角的生成队列圆钮 —— 照它的算法，边上的节点正好压在这些块底下。这里按
- * 四边各自让出的宽度算视口，其余（只框某几个节点、缩放上限、动画时长）与 fitView 的用法一致。
+ * 四边各自让出的宽度算视口（见 chromeInsets），其余（只框某几个节点、缩放上限、动画时长）与 fitView 的用法一致。
  * 圆钮不单独让位：桌面上它和工具条、小地图同在底边那一条里；手机上底边多让出它那一层。
  * 它被拖到别处之后不再跟着让 —— 那是用户自己挑的位置，和别的小控件一样允许节点从底下过。
  */
@@ -3029,17 +3462,15 @@ function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number }
   }
   const boxes = all.filter((n) => !only || only.has(n.id)).map((n) => {
     const { x, y } = absPos(n)
-    const dim = findNode(n.id)?.dimensions
-    const w = dim?.width || 300, h = dim?.height || 320
+    const dim = measuredSize(n.id)
+    const est = estimateNodeSize(n.type, nodeLayout.value)
+    const w = dim?.width || est.w, h = dim?.height || est.h
     return { left: x, top: y, right: x + w, bottom: y + h }
   })
   if (!pane || !boxes.length) return
   const W = pane.clientWidth, H = pane.clientHeight
-  const inset = W <= 640
-    // 手机：底边除了工具条，还有它上面右角的生成队列圆钮
-    ? { l: 12, t: 60, r: 12, b: 126 }
-    // 底边多让一截：左下角的小地图比工具条高（右下角的圆钮也在这一条里）
-    : { l: 88, t: 76, r: 24, b: 140 }
+  paneWidth.value = W
+  const inset = chromeInsets(W, H)
   const freeW = Math.max(120, W - inset.l - inset.r)
   const freeH = Math.max(120, H - inset.t - inset.b)
   const minX = Math.min(...boxes.map((b) => b.left)), maxX = Math.max(...boxes.map((b) => b.right))
@@ -3103,10 +3534,18 @@ async function loadWorkflow(id: string) {
       // 老画布没有 settings，normalizeCanvasBg 会兜底到默认底色 = 改动前的行为
       bgSettings.value = normalizeCanvasBg((w as any).settings?.bg)
       canvasKitId.value = w.brandKitId || ''
+      {
+        const saved = (w as any).settings?.nodeLayout
+        arrangedLayout.value = saved === 'a' || saved === 'b' || saved === 'c' ? saved : ''
+        layoutNote.value = { visible: false, text: '' }
+        // 一个节点都没有的画布无所谓在哪种布局下排的：记成当前的
+        if (!nodes.value.length) arrangedLayout.value = nodeLayout.value
+      }
       const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
       fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
       legacyLayoutPending = !!w.legacyLayout && nodes.value.length > 1
       legacyLayoutChecked = false
+      layoutCheckPending = !legacyLayoutPending && nodes.value.length > 1 && arrangedLayout.value !== nodeLayout.value
       savedViewportKey = viewportKey(vp)
       viewport.value = vp
       // 把 zoom 钳制在 [0.2, 2]，防止历史脏数据把节点撑爆
@@ -3302,6 +3741,36 @@ function onShiftDown(e: KeyboardEvent) { if (e.key === 'Shift') boxSelecting.val
 function onShiftUp(e: KeyboardEvent) { if (e.key === 'Shift') boxSelecting.value = false }
 function onWindowBlur() { boxSelecting.value = false }
 
+function syncPaneWidth() {
+  const pane = document.querySelector('.vf-wrap') as HTMLElement | null
+  if (pane?.clientWidth) paneWidth.value = pane.clientWidth
+}
+
+/**
+ * 选中一个生成节点时的两个键，要抢在 vue-flow 前面（捕获阶段）处理：
+ *   Ctrl / ⌘ + Enter  运行它。vue-flow 把聚焦节点上的 Enter 当成「点一下节点」，而 Ctrl 又是它的
+ *                     多选键 —— 不拦的话这一下会把节点取消选中。
+ *   Esc               收起它的输入条 / 属性面板，节点保持选中。vue-flow 的 Esc 是取消选中。
+ *                     有菜单开着时不拦，先让菜单收掉。
+ */
+function onCanvasKeydownCapture(e: KeyboardEvent) {
+  if (isTypingTarget(e.target) || anyOverlayOpen()) return
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const n = soleGenNode.value
+    if (!n) return
+    e.preventDefault()
+    e.stopPropagation()
+    void executor.runSubtree(n.id)
+    return
+  }
+  if (e.key === 'Escape' && panelNode.value) {
+    if (contextMenu.value.open || addMenu.value.open || moreMenu.value.open || palMenu.value.open || fly.value || stylePanelOpen.value || searchOpen.value) return
+    e.preventDefault()
+    e.stopPropagation()
+    closeGenPanel()
+  }
+}
+
 function onCanvasKeydown(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return
   if (anyOverlayOpen()) return
@@ -3342,7 +3811,12 @@ function onCanvasKeydown(e: KeyboardEvent) {
     return
   }
   if (key === 'delete' || key === 'backspace') { e.preventDefault(); deleteSelection(); return }
-  if (key === 'escape') { closeMenus(); stylePanelOpen.value = false; searchOpen.value = false }
+  if (key === 'escape') { closeMenus(); stylePanelOpen.value = false; searchOpen.value = false; return }
+  // 选中一个生成节点后直接打字：焦点落进它的提示词框，这一键照常进到框里。
+  // 空格留给画布（按住拖动平移）；输入法组字的第一键 key 是 Process。
+  if (!mod && !e.altKey && soleGenNode.value && e.key !== ' ' && (e.key.length === 1 || e.key === 'Process')) {
+    focusGenPrompt()
+  }
 }
 
 // 编辑器内切换项目：URL 的画布 id 变了就重新加载
@@ -3357,9 +3831,12 @@ onMounted(async () => {
   document.addEventListener('paste', onCanvasPaste)
   window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('keydown', onCanvasKeydown)
+  window.addEventListener('keydown', onCanvasKeydownCapture, true)
   window.addEventListener('keydown', onShiftDown)
   window.addEventListener('keyup', onShiftUp)
   window.addEventListener('blur', onWindowBlur)
+  window.addEventListener('resize', syncPaneWidth)
+  syncPaneWidth()
   // 品牌包列表：拉不到不影响画布使用（useBrandKits 内部已吞掉异常）
   void brandKits.load()
   const paramId = route.params.id
@@ -3385,9 +3862,11 @@ onBeforeUnmount(() => {
   document.removeEventListener('paste', onCanvasPaste)
   window.removeEventListener('beforeunload', onBeforeUnload)
   window.removeEventListener('keydown', onCanvasKeydown)
+  window.removeEventListener('keydown', onCanvasKeydownCapture, true)
   window.removeEventListener('keydown', onShiftDown)
   window.removeEventListener('keyup', onShiftUp)
   window.removeEventListener('blur', onWindowBlur)
+  window.removeEventListener('resize', syncPaneWidth)
   if (layoutUndoTimer) { clearTimeout(layoutUndoTimer); layoutUndoTimer = null }
   if (guidesHideTimer) { clearTimeout(guidesHideTimer); guidesHideTimer = null }
   if (autoSaveTimer) {
@@ -3523,9 +4002,11 @@ onBeforeUnmount(() => {
 .ed-title {
   left: 16px; top: 16px; height: 44px;
   display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px;
-  max-width: calc(100% - 32px - 200px);
+  max-width: calc(100% - 32px);
   min-width: 0;
 }
+/* 属性面板（布局 b）开着：标题块别伸到它底下去 */
+.ed.insp-open .ed-title { max-width: calc(100% - 32px - 332px); }
 /* 画布名：镜像文字撑开宽度，输入框叠在上面 —— 名字多长块就多宽，超了就截断 */
 .ed-name { position: relative; display: block; min-width: 40px; max-width: 320px; flex: 0 1 auto; overflow: hidden; height: 30px; border-radius: 8px; }
 .ed-name-mirror {
@@ -3548,15 +4029,50 @@ onBeforeUnmount(() => {
 .ed-save:disabled { cursor: default; }
 .ed-save:focus-visible { outline: none; box-shadow: var(--ring); }
 
-/* 左侧：节点面板 */
-.ed-pal { left: 16px; top: 76px; width: 48px; padding: 6px; display: grid; gap: 4px; }
-.ed-pal hr { height: 1px; margin: 2px 4px; }
+/* 工具面板：位置由 transform 给（可拖动），竖排一列 / 横排一行 */
+.ed-pal {
+  left: 0; top: 0; padding: 6px; display: flex; gap: 4px;
+  max-width: calc(100% - 16px); max-height: calc(100% - 16px);
+  overflow: auto; scrollbar-width: none; touch-action: none; will-change: transform;
+  user-select: none; -webkit-user-select: none;
+}
+.ed-pal::-webkit-scrollbar { display: none; }
+.ed-pal.v { flex-direction: column; width: 48px; }
+.ed-pal.h { flex-direction: row; align-items: center; height: 48px; }
+.ed-pal.v hr { height: 1px; margin: 2px 4px; }
+.ed-pal.h hr { width: 1px; height: 20px; margin: 0 2px; }
+/* 松手吸边、复位、窗口变化时滑过去；拖着的时候必须跟手，不能有过渡 */
+.ed-pal.ready { transition: transform .24s cubic-bezier(.2, .8, .2, 1), box-shadow .15s; }
+.ed-pal.drag { transition: none; box-shadow: var(--sh-2); border-color: var(--line-3); cursor: grabbing; }
+/* 把手：安静的六个点，悬停 / 拖动时才亮一点 */
+.pal-grip {
+  flex: none; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--text-3);
+  display: grid; place-items: center; cursor: grab; touch-action: none; opacity: .7;
+  transition: background .15s, color .15s, opacity .15s;
+}
+.ed-pal.v .pal-grip { width: 34px; height: 16px; }
+.ed-pal.h .pal-grip { width: 16px; height: 34px; }
+.ed-pal.h .pal-grip .lc-ic { transform: rotate(90deg); }
+.pal-grip:hover, .pal-grip.on, .ed-pal.drag .pal-grip { background: rgba(124, 160, 255, .12); color: var(--text); opacity: 1; }
+.ed-pal.drag .pal-grip { cursor: grabbing; }
+.pal-grip:focus-visible, .ed-pal .lc-tb:focus-visible { outline: none; box-shadow: var(--ring); }
+/* 方向开关：比加节点的按钮矮一截，一眼看得出不是同一类 */
+.ed-pal .pal-turn { color: var(--text-3); }
+.ed-pal.v .pal-turn { height: 24px; }
+.ed-pal.h .pal-turn { width: 24px; }
+/* 把手的小菜单 */
+.ed-palmenu { position: absolute; z-index: 9; min-width: 160px; white-space: nowrap; }
+.ed-palmenu .lc-menu-item { width: 100%; gap: 10px; border: 0; background: none; text-align: left; }
+.ed-palmenu .lc-menu-item .lc-ic { color: var(--text-3); }
+.ed-palmenu .lc-menu-item:hover:not(:disabled) .lc-ic { color: var(--cyan); }
+.ed-palmenu .lc-menu-item:disabled { opacity: .42; cursor: not-allowed; background: none; color: var(--text-2); }
+.ed-palmenu .lc-menu-item:focus-visible { outline: none; box-shadow: var(--ring); }
 
-/* 节点面板的展开层 */
+/* 面板按钮的展开层：位置和高度上限由脚本按面板眼下在哪来给 */
 .ed-fly {
-  left: 72px; width: 220px; z-index: 8;
+  left: 72px; top: 76px; width: 220px; z-index: 8;
   display: flex; flex-direction: column; min-height: 0;
-  max-height: calc(100% - 92px);
+  max-height: calc(100% - 16px);
 }
 .ed-fly.wide { width: 340px; }
 .ed-fly-h {
@@ -3582,6 +4098,9 @@ onBeforeUnmount(() => {
 .ed-item:hover:not(:disabled) .lc-ic { color: var(--cyan); }
 .ed-item:focus-visible { outline: none; box-shadow: var(--ring); }
 .ed-item:disabled { opacity: .42; cursor: not-allowed; }
+/* 单选项里当前选中的那一个（节点布局） */
+.ed-item.on { background: rgba(63, 216, 255, .12); color: var(--cyan-soft); }
+.ed-item.on .lc-ic { color: var(--cyan); }
 
 .ed-legend {
   display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; padding: 8px;
@@ -3611,25 +4130,17 @@ onBeforeUnmount(() => {
 .proj-dialog .lc-dialog-body { display: grid; gap: 2px; padding: 16px 14px; }
 .proj-note { margin: 0 6px 8px; }
 
-/* 没有模型的提示 */
+/* 没有模型的提示：右上角（那里现在是空的），标题块把它那一段宽度让出来。
+   属性面板开着时右上角归面板：提示挪到第二排、面板左边 */
 .ed-hint {
-  position: absolute; z-index: 6; top: 16px; left: 50%; transform: translateX(-50%);
-  max-width: min(520px, calc(100% - 520px)); align-items: center;
+  position: absolute; z-index: 6; top: 16px; right: 16px;
+  max-width: min(520px, calc(100% - 552px)); align-items: center;
   background: rgba(40, 30, 20, .92); box-shadow: var(--sh-1);
 }
 .ed-hint a { white-space: nowrap; font-weight: 500; }
-
-/* 右上：按钮组（没有底板，每颗按钮自己是一块玻璃） */
-.ed-act {
-  position: absolute; z-index: 6; right: 16px; top: 16px; height: 44px;
-  display: flex; align-items: center; gap: 8px;
-}
-.ed-btn {
-  position: relative; height: 36px; background: rgba(12, 21, 52, .88);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-}
-.ed-btn:hover:not(:disabled) { background: rgba(27, 43, 94, .95); }
-.ed-btn.on { border-color: var(--line-3); color: var(--cyan); }
+.ed.has-hint .ed-title { max-width: calc(100% - 48px - min(520px, 100% - 552px)); }
+.ed.insp-open .ed-hint { top: 68px; right: 348px; max-width: calc(100% - 436px); }
+.ed.has-hint.insp-open .ed-title { max-width: calc(100% - 32px - 332px); }
 
 /* 底部中间：工具条 */
 .ed-tools {
@@ -3653,6 +4164,12 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 14px;
   font-size: 13px; color: var(--text-2); white-space: nowrap;
 }
+
+/* 换布局后节点互相压住的提示：和「撤销」小条同一个位置、同一种样子 */
+.ed-note { gap: 4px; max-width: calc(100% - 32px); }
+.ed-note > span { overflow: hidden; text-overflow: ellipsis; margin-right: 4px; }
+/* 属性面板（布局 b）开着：底部工具条和它上面的小条往左让，别钻到面板底下 */
+.ed.insp-open .ed-tools, .ed.insp-open .ed-undo { left: calc(50% - 166px); }
 
 /* ---------- 菜单 ---------- */
 .lc-menu hr { height: 1px; margin: 4px 6px; }
@@ -3699,25 +4216,20 @@ onBeforeUnmount(() => {
 
 /* ---------- 窄屏 ---------- */
 @media (max-width: 1100px) {
-  .ed-title { max-width: calc(100% - 32px - 150px); }
-  /* 提示条挪到第二排：第一排放不下了，夹在节点面板和右边界之间 */
-  .ed-hint { top: 68px; left: 80px; right: 16px; transform: none; max-width: none; }
+  /* 提示条挪到第二排：第一排放不下了。左边留出工具面板默认待的那一条 */
+  .ed-hint { top: 68px; max-width: calc(100% - 104px); }
+  .ed.has-hint .ed-title { max-width: calc(100% - 32px); }
 }
 @media (max-width: 640px) {
-  .ed-title { left: 8px; top: 8px; height: 40px; padding: 0 8px 0 3px; gap: 4px; max-width: calc(100% - 16px - 138px); }
+  .ed-title { left: 8px; top: 8px; height: 40px; padding: 0 8px 0 3px; gap: 4px; max-width: calc(100% - 16px); }
   .ed-name { min-width: 24px; }
   .ed-name-mirror, .ed-name input { padding: 0 4px; font-size: 13px; }
   /* 保存状态只留圆点，文字靠 title / 读屏 */
   .ed-save { padding: 6px; }
   .ed-save > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .ed-act { right: 8px; top: 8px; height: 40px; gap: 6px; }
-  .ed-share { width: 36px; padding: 0; }
-  .ed-share > span { display: none; }
-  /* 节点面板收成一颗「+」，点开是底部抽屉（里面有全部节点和素材入口） */
-  .ed-pal { left: 8px; top: 56px; width: 46px; padding: 5px; }
-  .ed-pal .pal-cat, .ed-pal hr { display: none; }
+  /* 展开层是底部抽屉 */
   .ed-fly, .ed-fly.wide {
-    left: 8px; right: 8px; top: auto !important; bottom: 8px; width: auto; max-height: min(72%, 560px); z-index: 41;
+    left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: min(72%, 560px); z-index: 41;
     background: rgba(12, 21, 52, .97); box-shadow: var(--sh-2);
   }
   .ed-proj { left: 8px; top: 56px; max-width: calc(100% - 16px); }
@@ -3735,10 +4247,22 @@ onBeforeUnmount(() => {
   .ed-arrange .lc-ic { width: 18px; height: 18px; color: var(--text-2); }
   /* 「撤销」贴在工具条上面；右边留出生成队列圆钮默认待的那一角 */
   .ed-undo { left: 8px; right: 76px; bottom: 62px; transform: none; justify-content: space-between; }
+  .ed-note { max-width: none; }
   .vf-wrap :deep(.vue-flow__minimap) { display: none; }
   .nsearch { top: 56px; left: 8px; right: 8px; transform: none; width: auto; max-width: none; }
-  .ed-hint { top: 56px; left: 62px; right: 8px; transform: none; max-width: none; }
+  .ed-hint, .ed.insp-open .ed-hint { top: 108px; left: 8px; right: 8px; max-width: none; }
+  .ed.has-hint .ed-title, .ed.has-hint.insp-open .ed-title { max-width: calc(100% - 16px); }
   .ed.sheet-open .ed-scrim { display: block; position: absolute; inset: 0; z-index: 40; background: var(--scrim); }
-  .ed-menu { max-height: calc(100vh - 80px) !important; }
+  .ed-menu:not(.ed-more) { max-height: calc(100vh - 80px) !important; }
+}
+/* 手机宽度（和上面同一个断点，类名由脚本按 matchMedia 加）：工具面板是标题块下面固定的一横条，
+   不能拖，放不下就在自己里面横向滚动 */
+.ed-pal.phone {
+  left: 8px; top: 56px; height: 46px; padding: 5px; gap: 2px; max-width: calc(100% - 16px);
+  overflow-x: auto; overflow-y: hidden; touch-action: pan-x; transform: none; transition: none;
+}
+.ed-pal.phone hr { margin: 0 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .ed-pal.ready { transition: none; }
 }
 </style>

@@ -32,6 +32,7 @@ const settings = require('./settings')
 const { getStorage } = require('../storage')
 const { hashPassword, verifyPassword, burnVerification, temporaryPassword } = require('../utils/password')
 const { ApiError, badRequest } = require('../utils/http')
+const { isPlainObject } = require('../utils/validate')
 const { getConfig, ConfigError } = require('../config')
 const { LEGACY_USER, SYSTEM_USER, ROLES } = require('../constants')
 
@@ -77,8 +78,47 @@ function serializeUser(u) {
     role: u.role,
     // True while the password is one somebody else knows; the API then serves only the change of it.
     mustChangePassword: !!u.mustChangePassword,
+    // Always complete: an account that never chose gets the defaults.
+    prefs: readPrefs(u),
     createdAt: u.createdAt,
   }
+}
+
+/**
+ * Per-account preferences of the web app. Every key has a closed set of values
+ * and a default; nothing else can be stored, so the object the client gets is
+ * always one it can trust without checking.
+ */
+const PREFS = {
+  nodeLayout: { values: ['a', 'b', 'c'], default: 'a' },
+}
+
+function readPrefs(u) {
+  const stored = (u && u.prefs) || {}
+  const out = {}
+  for (const [key, def] of Object.entries(PREFS)) out[key] = def.values.includes(stored[key]) ? stored[key] : def.default
+  return out
+}
+
+/**
+ * The account holder changes some of their preferences. `body` is the request
+ * body: only known keys, each with one of its allowed values; an unknown key is
+ * refused rather than dropped, so a client that misspells one finds out.
+ */
+async function updatePrefs(user, body) {
+  if (!isPlainObject(body)) throw badRequest('validation.body_object')
+  const keys = Object.keys(body)
+  if (!keys.length) throw badRequest('common.nothing_to_update')
+  const set = {}
+  for (const key of keys) {
+    const def = Object.prototype.hasOwnProperty.call(PREFS, key) ? PREFS[key] : null
+    if (!def) throw badRequest('validation.bad_key', { field: 'prefs' })
+    if (typeof body[key] !== 'string' || !def.values.includes(body[key])) {
+      throw badRequest('validation.one_of', { field: key, values: def.values.join(', ') })
+    }
+    set[`prefs.${key}`] = body[key]
+  }
+  return User.findByIdAndUpdate(user._id, { $set: set }, { new: true })
 }
 
 function parseUsername(v) {
@@ -508,6 +548,8 @@ module.exports = {
   OWNED,
   SESSION_TTL_MS,
   serializeUser,
+  updatePrefs,
+  PREFS,
   register,
   ensureAdministrator,
   announceGeneratedPassword,

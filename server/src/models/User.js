@@ -31,6 +31,14 @@ const userSchema = new mongoose.Schema({
   // the pre-account version has been handed to it, then 'done'. Written with
   // the account itself, so an interrupted hand-over is finished at the next start.
   legacyAdoption: { type: String, enum: ['', 'pending', 'done'], default: '' },
+  // How the web app looks for this account, on whichever browser it signs in.
+  // The allowed keys and values live in services/accounts.js (PREFS).
+  prefs: {
+    // Layout of the generation nodes on the canvas: 'a' result first with a
+    // composer under the selected node, 'b' compact nodes with an inspector on
+    // the right, 'c' everything on the node.
+    nodeLayout: { type: String, enum: ['a', 'b', 'c'], default: 'a' },
+  },
 }, { timestamps: true })
 
 // At most one owner, however many processes start at the same moment.

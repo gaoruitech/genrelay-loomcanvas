@@ -238,6 +238,7 @@ import { ensureHttps } from '@/utils/mediaUrl'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { getAdapter, listChatModels, listVideoChatModels } from '@/utils/canvasModels'
 import { MAX_CONCURRENT, type NodeResultEntry } from '@/composables/useCanvasExecutor'
+import { clampNum, isFree, nearestFree, rectsIn, type Rect } from '@/utils/floatSpot'
 
 const props = defineProps<{
   nodes: Node[]
@@ -246,6 +247,10 @@ const props = defineProps<{
   /** 节点类型 → 当前语言下的名字（和添加节点菜单同一份） */
   titleOf: (type: string) => string
   cancelNode: (nodeId: string) => Promise<void>
+  /** 画布右缘被别的面板（布局 b 的属性面板）占掉的宽度：贴右边时从它左边算起 */
+  rightInset?: number
+  /** 工具面板（可以拖到任何地方）眼下占着的矩形，相对编辑区：圆钮找空位时绕开它 */
+  avoid?: Rect[]
 }>()
 
 const emit = defineEmits<{
@@ -629,35 +634,27 @@ const dragging = ref(false)
 const SIZE = 52
 /** 手机上边距收一点 */
 const margin = () => (box.w <= 640 ? 12 : 20)
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(Math.max(lo, hi), v))
+const clamp = clampNum
 const onLeft = computed(() => xy.x + SIZE / 2 < box.w / 2)
 
-interface Rect { l: number; t: number; r: number; b: number }
-/** 画布上别的悬浮块（标题、节点面板、右上按钮、底部工具条、小地图）相对这一层的位置 */
+/** 画布上别的固定悬浮块（标题、底部工具条、属性面板、小地图）相对这一层的位置；工具面板的位置由父级给 */
 function obstacles(): Rect[] {
-  const layer = layerRef.value
-  const host = layer?.parentElement
-  if (!layer || !host) return []
-  const o = layer.getBoundingClientRect()
-  const out: Rect[] = []
-  host.querySelectorAll<HTMLElement>('.ed-title, .ed-pal, .ed-act, .ed-tools, .vue-flow__minimap').forEach((el) => {
-    const r = el.getBoundingClientRect()
-    if (r.width > 0 && r.height > 0 && getComputedStyle(el).display !== 'none') out.push({ l: r.left - o.left, t: r.top - o.top, r: r.right - o.left, b: r.bottom - o.top })
-  })
-  return out
+  return [...rectsIn(layerRef.value?.parentElement, '.ed-title, .ed-tools, .ed-insp, .vue-flow__minimap'), ...(props.avoid || [])]
 }
 /** 贴着某条边、想放在 wantY：要是压着别的悬浮块，就挪到离得最近的那块空地 */
 function settle(edge: 'l' | 'r', wantY: number): { x: number; y: number } {
-  const m = margin(), GAP = 10
-  const x = edge === 'l' ? m : box.w - SIZE - m
-  const minY = m, maxY = box.h - SIZE - m
-  const cols = obstacles().filter((r) => r.r > x - GAP && r.l < x + SIZE + GAP)
-  const free = (y: number) => !cols.some((r) => r.b > y - GAP && r.t < y + SIZE + GAP)
-  const want = clamp(wantY, minY, maxY)
-  if (free(want)) return { x, y: want }
-  const cands = cols.flatMap((r) => [r.t - SIZE - GAP, r.b + GAP]).filter((y) => y >= minY && y <= maxY && free(y))
-  if (!cands.length) return { x, y: want }
-  return { x, y: cands.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a)) }
+  const m = margin()
+  // 贴右边时，从属性面板（开着的话）的左边算起，不钻到面板底下
+  const obs = obstacles(), size = { w: SIZE, h: SIZE }
+  const at = (e: 'l' | 'r') => {
+    const x = e === 'l' ? m : box.w - SIZE - m - (props.rightInset || 0)
+    return nearestFree({ x, y: wantY }, size, { minX: x, maxX: x, minY: m, maxY: box.h - SIZE - m }, obs, { lockX: true })
+  }
+  const here = at(edge)
+  if (isFree(here.x, here.y, size, obs)) return here
+  // 这条边从上到下都被占满了（窗口很矮、工具面板竖着贴在这边）：到对面那条边去找
+  const there = at(edge === 'l' ? 'r' : 'l')
+  return isFree(there.x, there.y, size, obs) ? there : here
 }
 function layout() {
   const el = layerRef.value
@@ -780,6 +777,10 @@ onBeforeUnmount(() => {
 })
 // 换语言会改工具条的宽度
 watch(locale, () => { void nextTick(layout) })
+// 属性面板开合：重新找位置
+watch(() => props.rightInset, () => { void nextTick(layout) })
+// 工具面板挪了位置 / 换了方向：重新找位置
+watch(() => (props.avoid || []).map((r) => `${r.l},${r.t},${r.r},${r.b}`).join('|'), () => { void nextTick(layout) })
 
 // ---------------- 取消 ----------------
 const canceling = reactive(new Set<string>())

@@ -1,6 +1,6 @@
 <template>
   <SettingsSection id="appearance" icon="eye" :title="t('settings.appearance.title')" :desc="app.isOwner ? t('settings.appearance.descOwner') : t('settings.appearance.desc')">
-    <!-- 每个人自己的：只存在这台浏览器里 -->
+    <!-- 每个人自己的：语言存在这台浏览器里，节点布局存在账号上 -->
     <SettingsCard :title="t('settings.appearance.personalTitle')" :desc="t('settings.appearance.personalDesc')">
       <div class="srow">
         <div id="ap-lang-lbl" class="k">{{ t('settings.appearance.language') }}</div>
@@ -16,6 +16,14 @@
             />
           </div>
           <span class="lc-help">{{ t('settings.appearance.languageHelp') }}</span>
+        </div>
+      </div>
+      <!-- 画布上生成节点的布局：跟着账号存在服务端，点了就生效 -->
+      <div class="srow">
+        <div id="ap-layout-lbl" class="k">{{ t('settings.appearance.nodeLayout') }}</div>
+        <div class="v">
+          <NodeLayoutChooser :model-value="app.nodeLayout" labelledby="ap-layout-lbl" @update:model-value="pickLayout" />
+          <span class="lc-help">{{ t('settings.appearance.nodeLayoutHelp') }}</span>
         </div>
       </div>
     </SettingsCard>
@@ -87,7 +95,8 @@
 
 <script setup lang="ts">
 /**
- * 外观：界面语言（每个人自己的，存在浏览器里），以及超级管理员才能改的实例默认值（站点名称、Logo、默认语言）。
+ * 外观：界面语言（每个人自己的，存在浏览器里）、画布节点布局（每个人自己的，存在账号上），
+ * 以及超级管理员才能改的实例默认值（站点名称、Logo、默认语言）。
  * 界面只有一套霓虹深色主题，所以这里没有主题选项；服务端已经没有「默认主题」这个设置项。
  */
 import { onMounted, ref } from 'vue'
@@ -100,6 +109,8 @@ import { useAppStore } from '@/stores/app'
 import { LOCALE_OPTIONS } from '@/locales'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
+import type { NodeLayout } from '@/composables/nodeLayout'
+import NodeLayoutChooser from './NodeLayoutChooser.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsCard from './SettingsCard.vue'
 import SaveBar from './SaveBar.vue'
@@ -115,6 +126,16 @@ const { form, loading, loadError, saving, dirty, load, save, reset } = useAdminS
 // 实例设置只有超级管理员能读（其他人 403），不是就不去取
 onMounted(() => { if (app.isOwner) void load() })
 useSectionDirty(() => app.isOwner && dirty.value)
+
+/** 选了就生效：本地先换，再存到账号上；没存上会自己改回去 */
+async function pickLayout(v: NodeLayout) {
+  if (v === app.nodeLayout) return
+  try {
+    await app.setNodeLayout(v)
+  } catch (err) {
+    MessagePlugin.error(apiErrorMessage(err, t('settings.appearance.nodeLayoutFailed')))
+  }
+}
 
 const error = ref('')
 const uploading = ref(false)

@@ -464,6 +464,3 @@ html .t-message {
 
 /* 重跑确认（composables/useRerunConfirm）：弹窗挂在 body 上，样式只能写在全局 */
 .cv-rerun-line { margin: 0 0 8px; line-height: 1.6; }
-
-/* 生成节点展开面板时，整个节点提到其它节点上面（vue-flow 会把行内 z-index 写回去，所以用样式） */
-.vue-flow__node:has(.cv-prompt-popover) { z-index: 1000 !important; }

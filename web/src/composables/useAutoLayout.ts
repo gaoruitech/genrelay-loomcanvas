@@ -1,5 +1,6 @@
 import { ref, computed, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
+import { DEFAULT_NODE_LAYOUT, genNodeSize, isGenNodeKind, type NodeLayout } from '@/composables/nodeLayout'
 
 /**
  * 画布自动整理。
@@ -26,6 +27,8 @@ interface Options {
    * 这时按节点类型估一个（见 estimateNodeSize）。整理全图必须覆盖全部节点，不能只排看得见的那几个。
    */
   measure?: (id: string) => { width: number; height: number } | null | undefined
+  /** 生成节点现在用的布局：量不到尺寸时按它估（三种布局下节点大小差得很远） */
+  nodeLayout?: () => NodeLayout
   updateNode: (id: string, update: any) => void
   fitView?: (opts?: any) => void
 }
@@ -44,23 +47,15 @@ const MAX_ANIMATE = 120
 /** 超过这个数量先弹确认，交给调用方决定 */
 export const LAYOUT_CONFIRM_THRESHOLD = 200
 
-/**
- * 量不到尺寸时按类型估的宽高（未选模型、未出结果时的常见大小，实测自当前这套节点）。
- * 只在节点从没进过视野时用到；宁可估大一点 —— 估小了整理完还会叠。
- */
-const ESTIMATED_SIZE: Record<string, { w: number; h: number }> = {
-  'image-gen': { w: 260, h: 560 },
-  'image-edit': { w: 260, h: 560 },
-  'video-gen': { w: 260, h: 560 },
-  'video-edit': { w: 260, h: 560 },
-  'llm': { w: 280, h: 360 },
-  'video-analysis': { w: 280, h: 360 },
-}
 /** 素材、成品和工具节点都是 280 x 300 上下 */
 const FALLBACK_SIZE = { w: 280, h: 320 }
 
-export function estimateNodeSize(type: string | undefined): { w: number; h: number } {
-  return (type && ESTIMATED_SIZE[type]) || FALLBACK_SIZE
+/**
+ * 量不到尺寸时按类型估的宽高。只在节点从没进过视野（或上次量是在另一种布局下）时用到；
+ * 宁可估大一点 —— 估小了整理完还会叠。生成节点的大小跟着布局走，见 nodeLayout.ts 的 GEN_NODE_SIZE。
+ */
+export function estimateNodeSize(type: string | undefined, layout: NodeLayout = DEFAULT_NODE_LAYOUT): { w: number; h: number } {
+  return type && isGenNodeKind(type) ? genNodeSize(type, layout) : FALLBACK_SIZE
 }
 
 export interface LayoutBox { id: string; x: number; y: number; w: number; h: number }
@@ -85,6 +80,7 @@ export function boxesOverlap(list: LayoutBox[], tolerance = 12): boolean {
 
 export function useAutoLayout(opts: Options) {
   const { nodes, edges, getNodes, updateNode, fitView, measure } = opts
+  const layoutOf = () => opts.nodeLayout?.() || DEFAULT_NODE_LAYOUT
 
   const running = ref(false)
   /** 上一次整理前的位置快照；撤销后清空 */
@@ -106,13 +102,15 @@ export function useAutoLayout(opts: Options) {
     const src = list || allNodes()
     return src.map((n: any) => {
       const m = measure?.(n.id)
-      const est = estimateNodeSize(n.type)
+      const est = estimateNodeSize(n.type, layoutOf())
+      // 生成节点：调用方说量不到（没渲染过，或那是在另一种布局下量的），就不要再去翻节点上存着的旧尺寸
+      const stored = measure && isGenNodeKind(n.type) ? null : n.dimensions
       return {
         id: n.id,
         x: n.position?.x ?? 0,
         y: n.position?.y ?? 0,
-        w: m?.width || n.dimensions?.width || (typeof n.width === 'number' ? n.width : 0) || est.w,
-        h: m?.height || n.dimensions?.height || (typeof n.height === 'number' ? n.height : 0) || est.h,
+        w: m?.width || stored?.width || (typeof n.width === 'number' ? n.width : 0) || est.w,
+        h: m?.height || stored?.height || (typeof n.height === 'number' ? n.height : 0) || est.h,
       }
     })
   }

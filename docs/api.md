@@ -152,7 +152,7 @@ Earlier versions also returned `authRequired`, `authed` and `site.defaultTheme`.
 What the API returns about an account:
 
 ```json
-{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "user", "mustChangePassword": false, "createdAt": "2026-10-09T02:58:01.120Z" }
+{ "id": "670e…b2", "username": "ada", "email": "ada@example.com", "role": "user", "mustChangePassword": false, "prefs": { "nodeLayout": "a" }, "createdAt": "2026-10-09T02:58:01.120Z" }
 ```
 
 | Field | Meaning |
@@ -160,8 +160,9 @@ What the API returns about an account:
 | `role` | `owner` (the super admin) or `user`. |
 | `email` | The account's address. It may be `""` for the super admin, the only account that can exist without one (created without `ADMIN_EMAIL`, until it adds one with [PUT /api/auth/profile](#put-apiauthprofile)). |
 | `mustChangePassword` | `true` while the account's password is one somebody else knows: the super admin password the server generated at start-up, a temporary password from [`POST /api/admin/users/:id/reset-password`](#accounts), or one from the command-line reset. `PUT /api/auth/password` sets it back to `false`. While it is `true` the API serves the account almost nothing else, see [Authentication](#authentication). |
+| `prefs` | The account's preferences for the web app, always complete (an account that never chose gets the defaults). `nodeLayout` is how generation nodes look on the canvas: `"a"` result first with a composer under the selected node (the default), `"b"` compact nodes with an inspector on the right, `"c"` everything on the node. Change it with [PUT /api/auth/prefs](#put-apiauthprefs). |
 
-Nothing else about an account leaves the server through this object. It is the same wherever a User is returned: registration, sign-in, `GET /api/auth/me`, `PUT /api/auth/profile`, `user` in the bootstrap and the rows of `GET /api/admin/users`.
+Nothing else about an account leaves the server through this object. It is the same wherever a User is returned: registration, sign-in, `GET /api/auth/me`, `PUT /api/auth/profile`, `PUT /api/auth/prefs`, `user` in the bootstrap and the rows of `GET /api/admin/users`.
 
 ### POST /api/auth/register
 
@@ -248,6 +249,21 @@ Body: `{ "username"?: string, "email"?: string }`, with the rules of [registrati
 Errors: `auth.invalid_username`, `auth.invalid_email`, `common.nothing_to_update` (neither field sent) (400); `auth.username_taken`, `auth.email_taken` (409); `auth.too_many_attempts` (429, with `data.retryAfterSeconds` and `Retry-After`).
 
 Limited to 20 changes per account per hour. Without a limit the `username_taken` and `email_taken` answers would let a signed-in account test any number of addresses for whether they are registered.
+
+### PUT /api/auth/prefs
+
+Body: `{ "nodeLayout"?: "a" | "b" | "c" }`. Changes the caller's preferences; only the keys sent are changed. They are stored with the account, so they follow it to every browser. Response: `{ "user": User }`.
+
+The body is validated strictly: it has to be an object with at least one key, every key has to be a known preference and every value one of its allowed values. Nothing is changed when a request is refused.
+
+| HTTP | `code` | When |
+| --- | --- | --- |
+| 400 | `validation.body_object` | The body is not a JSON object. |
+| 400 | `common.nothing_to_update` | The object is empty. |
+| 400 | `validation.bad_key` | A key that is not a preference (an unknown key is refused, not ignored). |
+| 400 | `validation.one_of` | A value outside the allowed set, for example `{ "nodeLayout": "d" }`. |
+
+The share view (`GET /api/canvas-share/:token`) does not depend on it: a shared canvas is always shown in layout A, read-only.
 
 ### GET /api/auth/sessions
 

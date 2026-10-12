@@ -353,6 +353,11 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     )
   }
 
+  /** 连进来的文本（提示词），与 collectInputs 给执行用的是同一份。面板上「提示词来自上游」那一段显示的就是它 */
+  function upstreamText(targetId: string): string {
+    return collectInputs(targetId).text || ''
+  }
+
   // ============ 校验 ============
 
   function validateGenNode(node: Node, inputs: CollectedInputs): string | null {
@@ -1527,6 +1532,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     resumeIncompleteTasks,
     refreshRunErrors,
     collectImageRefs,
+    upstreamText,
     brandKitEffect,
     // 批量运行要在换完素材后立刻作废下游：内部那个 stale watcher 是 200ms
     // 去抖的，等它的话 runAll 会认为下游「已有产物」而整轮跳过

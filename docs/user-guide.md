@@ -2,7 +2,7 @@
 
 [简体中文](user-guide.zh-CN.md)
 
-How to use the app, and above all the canvas. A guide to the canvas is also built into the app: in the editor, open **More ⋯** at the top right and choose **Guide**.
+How to use the app, and above all the canvas. A guide to the canvas is also built into the app: in the editor, open **More ⋯** on the toolbar and choose **Guide**.
 
 The canvas is a workspace you can pan and extend without limit. You place source material and model steps as blocks (nodes) and wire them together into a small production pipeline: sources on the left, model steps in the middle, finished work on the right.
 
@@ -36,11 +36,10 @@ In the editor the sidebar shrinks to icons, to leave the width to the canvas.
 | Area | What is there |
 | --- | --- |
 | Top left | Back to your canvases, the canvas name (click it to rename), the save status (click it to save at once) and the [brand kit](#brand-kits) this canvas uses. |
-| Top right | **Share** and **More ⋯**. |
-| Left palette | **+** lists every node. The buttons below it are one per category: text, image, video, chat / analysis, output and tools. The last button opens the asset library, the canvas templates and your share links. |
+| Toolbar | Vertical on the left by default. **+** lists every node. The buttons below it are one per category: text, image, video, chat / analysis, output and tools. The folder button opens the asset library, the canvas templates and your share links. The last two are **Share** and **More ⋯**. The toolbar can be moved: drag it by the handle at its start (or by its empty background) to anywhere on the canvas; it snaps when it gets close to an edge or to its default spot. The switch next to the handle flips it between horizontal and vertical. If you drop it on the title block, the bottom toolbar, the minimap or the queue button, it moves aside. Double-click the handle, or click it and choose **Reset**, to send it back to the left. Position and orientation are remembered in the browser. On a phone it is a fixed row under the title block and cannot be moved. |
 | Bottom toolbar | Zoom out / in, reset to 100%, fit to screen, undo / redo, **Tidy up**, **Run all**. |
 | Bottom left | Minimap. Drag or scroll it to jump around. |
-| Queue button | A round floating button, in the bottom-right corner by default. While something runs it shows a progress ring and the number of unfinished nodes; a badge counts what has finished since you last looked, in red when something failed or could not start. Click it for the list: the nodes of this canvas that are running, queued or finished since you opened it. Click a row to jump to its node. Drag the button anywhere on the canvas (it snaps to the left or right edge and the browser remembers the spot); double-click it, or use **Reset** in the list, to send it back. On a phone it sits above the bottom toolbar. |
+| Queue button | A round floating button, in the bottom-right corner by default. While something runs it shows a progress ring and the number of unfinished nodes; a badge counts what has finished since you last looked, in red when something failed or could not start. Click it for the list: the nodes of this canvas that are running, queued or finished since you opened it. Click a row to jump to its node. Drag the button anywhere on the canvas (it snaps to the left or right edge, keeps clear of the toolbar, and the browser remembers the spot); double-click it, or use **Reset** in the list, to send it back. On a phone it sits above the bottom toolbar. |
 | Right-click on empty canvas | Add nodes and canvas actions. **More ⋯** opens the same canvas actions. |
 | Right-click on a node | Actions for that node. |
 
@@ -53,7 +52,7 @@ Basics:
 
 ## Node types
 
-Add a node by right-clicking the empty canvas or with the **+** button on the left palette.
+Add a node by right-clicking the empty canvas or with the **+** button on the toolbar.
 
 ### Sources (free)
 
@@ -75,7 +74,17 @@ Add a node by right-clicking the empty canvas or with the **+** button on the le
 | Video analysis | Sends a video to a chat model and outputs text you can pass downstream. Only chat models that accept video input are listed. |
 | Language model | Writes text from a prompt: analysis, copy, plans. |
 
-The image and video generation and edit nodes share one layout: result frame, reference strip, prompt box, model dropdown, parameters dropdown and Run button. Aspect ratio, resolution, duration and count are all in the parameters dropdown, which shows only what the selected model supports.
+These six nodes come in three layouts. Choose one under **Settings → Appearance → Node layout**, or switch from **More ⋯** on a canvas; the choice is kept with your account, so it follows you to any device:
+
+| Layout | What a node looks like | Where you edit prompt, model and parameters |
+| --- | --- | --- |
+| Result first (default) | The node is the result: header, picture, and one line of "model · parameters · cost". Before the first run it is a dashed placeholder with the first line of the prompt and a **Run** chip. | Select one node and a composer appears under it: the prompt (type `@` to point at a reference image), model, parameters, estimated cost and Run. Just start typing to write the prompt, Ctrl / ⌘ + Enter runs, Esc collapses it. Hovering the result of an unselected node also offers **Re-run**. |
+| Compact + side panel | Header, thumbnail, a one-line summary and a small Run button, so the most nodes fit on screen. | Select one node and the inspector at the right edge of the canvas shows all of its settings and its versions. With nothing or several nodes selected the inspector is closed. |
+| Everything on the node | Result on top, one prompt field that grows as you type, and model, parameters, cost and Run in a single row. | On the node itself. |
+
+All three do the same things and send the same request to the model; only where things sit differs. Aspect ratio, resolution, duration and count are in the parameters, which show only what the selected model supports. When the prompt comes from a connected text node, that text is shown read-only and the node's own text becomes the **fallback**: the connected text is used whenever it has content, and the node's own only when it is empty.
+
+Switching layouts changes the size of the nodes but never moves what you arranged. If nodes overlap afterwards (or when you open a canvas that was arranged under another layout), a one-line notice at the bottom offers **Auto-arrange**; nothing moves until you click it, and it can be undone. On a phone the composer and the inspector are bottom sheets. A canvas opened from a share link is always shown in the result-first layout, read-only.
 
 Which models a node offers, and what each can do, depends on the providers you added and on the custom models you added to them; see [Providers](providers.md).
 
@@ -194,11 +203,11 @@ The brand kit button sits at the top left of the canvas, next to the canvas name
 
 **Seeing what will be sent**
 
-Click a node's prompt to open its prompt panel. Below the prompt box a line says "Brand kit applied: <name>". Click it to see exactly what the next run adds: the text in front of the prompt, the line at the end, and the reference images that will be sent, together with any that will not be sent and why (the model's limit, first/last-frame mode, or a model without reference images). After a run, the task details show the prompt that was actually sent.
+Select a generation node. Where you edit its prompt (the composer, the inspector, or the node itself) a line says "Brand kit applied: <name>". Click it to see exactly what the next run adds: the text in front of the prompt, the line at the end, and the reference images that will be sent, together with any that will not be sent and why (the model's limit, first/last-frame mode, or a model without reference images). After a run, the task details show the prompt that was actually sent.
 
 **An exception for one node**
 
-Right-click a generation node, or use "This node" in its prompt panel, and choose **Follow canvas** (the default), **No kit for this node**, or another kit for this node only. A node with an exception shows a small icon next to its title; hover it to see which exception it is. Nothing is added to the node's body.
+Right-click a generation node, or use "This node" at the right of that line, and choose **Follow canvas** (the default), **No kit for this node**, or another kit for this node only. A node with an exception shows a small icon next to its title; hover it to see which exception it is. Nothing is added to the node's body.
 
 **Managing kits**
 
@@ -219,7 +228,7 @@ Earlier versions chose the kit on every node. Such canvases are converted automa
 
 ## Templates
 
-- **Canvas templates** drop a whole pipeline onto the canvas in one click. Open them from the last button of the left palette, or start a new canvas from one: a card under **Start from a template** on the workbench, or **New from template** on the Canvases page. Two are built in: *Text to image* and *Image to video*.
+- **Canvas templates** drop a whole pipeline onto the canvas in one click. Open them from the folder button of the toolbar, or start a new canvas from one: a card under **Start from a template** on the workbench, or **New from template** on the Canvases page. Two are built in: *Text to image* and *Image to video*.
 
   ![The built-in Image to video template in the editor](images/09-editor-dark.png)
 
@@ -227,7 +236,7 @@ Earlier versions chose the kit on every node. Such canvases are converted automa
 
 ## Asset library
 
-In the editor, click the last button of the left palette and choose **Asset library**. The dialog has these tabs:
+In the editor, click the folder button of the toolbar and choose **Asset library**. The dialog has these tabs:
 
 | Tab | Contents |
 | --- | --- |
@@ -247,7 +256,7 @@ The **Assets** page in the sidebar shows the same My assets outside the editor. 
 
 A share link gives read-only access to a snapshot of one canvas.
 
-1. Click **Share** at the top right of the editor.
+1. Click **Share** on the editor toolbar.
 2. Enter a title and optionally a description.
 3. Choose when it expires: 1 day, 7 days, 30 days or never.
 4. Copy the link.
@@ -300,6 +309,7 @@ On macOS use ⌘ instead of Ctrl.
 ## Language and appearance
 
 - **Language**: the dropdown in the top bar, or **Interface language** under **Settings → Appearance**, switches between 简体中文 and English. Messages from the server follow the same language. The choice is remembered per browser; until you choose, the **Default language** the super admin set under **Settings → Appearance** applies.
+- **Node layout**: one of three under **Settings → Appearance**; it decides how generation nodes look on the canvas, see [Generation](#generation-calls-a-paid-model). It is stored with your account, not in the browser.
 - **Theme**: the interface has one dark theme. There is no light theme and nothing to switch.
 - **Canvas appearance** (More ⋯ or right-click): background colour, pattern and density of one canvas. It is saved with the canvas and travels with its share links.
 

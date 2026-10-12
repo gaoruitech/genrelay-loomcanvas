@@ -80,6 +80,16 @@ router.put('/profile', requireAuth, profileRateLimit, wrap(async (req, res) => {
   ok(res, { user: accounts.serializeUser(user) })
 }))
 
+/**
+ * PUT /api/auth/prefs { nodeLayout?: 'a'|'b'|'c' } -> { user }
+ * Preferences of the web app, kept with the account so they follow it to every
+ * browser. Only the keys sent are changed; an unknown key or value is refused.
+ */
+router.put('/prefs', requireAuth, wrap(async (req, res) => {
+  const user = await accounts.updatePrefs(req.user, req.body)
+  ok(res, { user: accounts.serializeUser(user) })
+}))
+
 /** GET /api/auth/sessions -> [{ id, current, createdAt, lastSeenAt, userAgent, ip }] */
 router.get('/sessions', requireAuth, wrap(async (req, res) => {
   ok(res, await accounts.listSessions(req.userId, req.session._id))

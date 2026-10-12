@@ -3,7 +3,8 @@ import { ref, computed } from 'vue'
 import { appApi, authApi, unwrap, setUnauthorizedHandler, setPasswordChangeHandler } from '@/utils/api'
 import { getToken, setToken, replaceToken, clearToken } from '@/utils/authToken'
 import { normalizeLocale, savedLocale, setLocale as applyLocale, currentLocale } from '@/locales'
-import type { BootstrapInfo, LocaleCode, User } from '@/types'
+import type { BootstrapInfo, LocaleCode, User, UserPrefs } from '@/types'
+import { normalizeNodeLayout, type NodeLayout } from '@/composables/nodeLayout'
 
 /**
  * 应用级状态：启动信息、当前账号、语言。
@@ -120,6 +121,28 @@ export const useAppStore = defineStore('app', () => {
     if (bootstrap.value) bootstrap.value = { ...bootstrap.value, user: u }
   }
 
+  // ---- 界面偏好（跟着账号存在服务端） ----
+  /** 画布上生成节点用哪种布局；没登录（分享页）时是默认的 a */
+  const nodeLayout = computed<NodeLayout>(() => normalizeNodeLayout(user.value?.prefs?.nodeLayout))
+
+  /**
+   * 改一项偏好：先改本地（选了就生效，不等请求），再存到服务端；没存上就改回去并把错误抛给调用方。
+   */
+  async function setPrefs(patch: UserPrefs) {
+    const before = user.value
+    if (!before) return
+    setUser({ ...before, prefs: { ...before.prefs, ...patch } })
+    try {
+      const out = unwrap(await authApi.updatePrefs(patch))
+      // 只接偏好这一项：请求在路上时账号的别的字段可能已经变了（改了名字、被要求改密码）
+      if (user.value && out?.user?.prefs) setUser({ ...user.value, prefs: out.user.prefs })
+    } catch (err) {
+      if (user.value) setUser({ ...user.value, prefs: before.prefs })
+      throw err
+    }
+  }
+  const setNodeLayout = (v: NodeLayout) => setPrefs({ nodeLayout: v })
+
   // 任意接口返回 401：令牌失效。这里只清状态，跳去登录页由 App.vue 看着 authed 做。
   setUnauthorizedHandler(dropSession)
   // 任意接口返回 403 auth.password_change_required：账号被要求先改密码（比如开着页面时被超级管理员重置了）。
@@ -140,6 +163,7 @@ export const useAppStore = defineStore('app', () => {
     hasProvider, siteName, logoUrl,
     locale, setLocale,
     loadBootstrap, login, register, logout, setUser, swapToken, leaving,
+    nodeLayout, setPrefs, setNodeLayout,
     immersive, setImmersive, toggleImmersive,
   }
 })

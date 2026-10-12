@@ -17,7 +17,14 @@ export interface User {
   role: 'owner' | 'user'
   /** 现在的密码是别人知道的（启动时生成的 / 被重置出来的临时密码）：改掉之前接口只放行改密码 */
   mustChangePassword?: boolean
+  /** 这个账号对界面的偏好，存在服务端，换浏览器也跟着走；老版本后端没有这一项 */
+  prefs?: UserPrefs
   createdAt: string
+}
+
+export interface UserPrefs {
+  /** 画布上生成节点的布局：a 结果优先 + 输入条（默认）/ b 紧凑节点 + 右侧属性面板 / c 全部放在节点上 */
+  nodeLayout?: 'a' | 'b' | 'c'
 }
 
 /** 超级管理员在「用户管理」里看到的一行 */

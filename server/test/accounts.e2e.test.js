@@ -261,7 +261,7 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
 
     // Signing in with the generated password works - and opens nothing but the change of it.
     const signedIn = await anon.data('POST', '/api/auth/login', { account: 'alice', password: generated })
-    assert.deepEqual(Object.keys(signedIn.user).sort(), ['createdAt', 'email', 'id', 'mustChangePassword', 'role', 'username'])
+    assert.deepEqual(Object.keys(signedIn.user).sort(), ['createdAt', 'email', 'id', 'mustChangePassword', 'prefs', 'role', 'username'])
     assert.deepEqual([signedIn.user.username, signedIn.user.email, signedIn.user.role, signedIn.user.mustChangePassword], ['Alice', 'Alice@Example.com', 'owner', true])
     A.token = signedIn.token
     assert.equal((await A.data('GET', '/api/auth/me')).user.mustChangePassword, true)
@@ -271,7 +271,7 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
       ['GET', '/api/models'], ['POST', '/api/runs', { model: 'gaorui:nano-banana-2', prompt: 'x' }], ['GET', `/api/runs/${legacy.finished}`],
       ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['GET', '/api/admin/storage'], ['GET', '/api/admin/users'], ['PUT', '/api/admin/site', { registrationOpen: false }],
       ['GET', '/api/user-asset/list'], ['GET', '/api/brand-kits'], ['GET', '/api/canvas-share/mine'], ['POST', '/api/files/fetch', {}],
-      ['GET', '/api/auth/sessions'], ['DELETE', '/api/auth/sessions'], ['PUT', '/api/auth/profile', { username: 'Alice2' }],
+      ['GET', '/api/auth/sessions'], ['DELETE', '/api/auth/sessions'], ['PUT', '/api/auth/profile', { username: 'Alice2' }], ['PUT', '/api/auth/prefs', { nodeLayout: 'b' }],
     ]
     for (const [m, p, body] of closed) assert.deepEqual(await A.refused(m, p, body), [403, 'auth.password_change_required'], `${m} ${p}`)
     assert.equal(settings.get('registrationOpen'), true, 'nothing was changed by the refused calls')
@@ -555,6 +555,27 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
     assert.deepEqual([row.role, !!row.disabled, String(row._id), row.legacyAdoption || '', !!row.mustChangePassword], ['user', false, B.user.id, '', false])
     assert.match(row.passwordHash, /^scrypt\$/)
 
+    // Preferences: kept with the account, complete with defaults, and nothing but the known keys and values gets in.
+    assert.deepEqual(B.user.prefs, { nodeLayout: 'a' }, 'an account that never chose has the defaults')
+    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'a' })
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', {}), [400, 'common.nothing_to_update'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', []), [400, 'validation.body_object'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: 'd' }), [400, 'validation.one_of'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: ['b'] }), [400, 'validation.one_of'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { nodeLayout: 'b', theme: 'light' }), [400, 'validation.bad_key'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { __proto__: null, constructor: 'b' }), [400, 'validation.bad_key'])
+    assert.deepEqual(await B.refused('PUT', '/api/auth/prefs', { role: 'owner' }), [400, 'validation.bad_key'])
+    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a' }, 'a refused request changes nothing')
+    const chose = (await B.data('PUT', '/api/auth/prefs', { nodeLayout: 'b' })).user
+    assert.deepEqual(chose, { ...B.user, prefs: { nodeLayout: 'b' } }, 'the answer is the User, and nothing else about it moved')
+    assert.deepEqual((await B.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'b' })
+    assert.deepEqual((await B.data('GET', '/api/bootstrap')).user.prefs, { nodeLayout: 'b' })
+    assert.deepEqual((await A.data('GET', '/api/auth/me')).user.prefs, { nodeLayout: 'a' }, 'another account keeps its own')
+    assert.equal((await anon.call('POST', '/api/auth/login', { account: 'bob', password: 'bob-password-2' })).body.data.user.prefs.nodeLayout, 'b', 'a new session of the account sees it')
+    assert.deepEqual(await anon.refused('PUT', '/api/auth/prefs', { nodeLayout: 'c' }), [401, 'auth.required'])
+    assert.deepEqual((await db.collection('users').findOne({ usernameLower: 'bob' })).prefs, { nodeLayout: 'b' })
+    B.user = (await B.data('PUT', '/api/auth/prefs', { nodeLayout: 'a' })).user
+
     // Each answer says whether a name or an email is taken, so the tries per account are bounded.
     auth.resetRateLimits()
     for (let i = 0; i < auth.PROFILE_LIMITS.perAccount; i++) assert.deepEqual(await B.refused('PUT', '/api/auth/profile', { email: 'alice@example.com' }), [409, 'auth.email_taken'])
@@ -798,7 +819,7 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
 
     const users = await A.data('GET', '/api/admin/users')
     assert.deepEqual(users.map((x) => [x.username, x.role, x.disabled]), [['Alice', 'owner', false], ['bob', 'user', false]])
-    assert.deepEqual(Object.keys(users[1]).sort(), ['counts', 'createdAt', 'disabled', 'email', 'id', 'lastLoginAt', 'mustChangePassword', 'role', 'username'])
+    assert.deepEqual(Object.keys(users[1]).sort(), ['counts', 'createdAt', 'disabled', 'email', 'id', 'lastLoginAt', 'mustChangePassword', 'prefs', 'role', 'username'])
     const wf = await db.collection('workflows').countDocuments({ userId: B.user.id, isDeleted: false })
     assert.deepEqual(users[1].counts, { workflows: wf, runs: await db.collection('runs').countDocuments({ userId: B.user.id }) })
     assert.ok(users[1].lastLoginAt && !JSON.stringify(users).includes('scrypt'))

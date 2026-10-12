@@ -4,7 +4,7 @@
     <LcIcon name="star" size="s" />
   </span>
 
-  <!-- 提示词面板里的一行：这次运行套用哪个品牌包、会加什么、这个节点要不要例外 -->
+  <!-- 改提示词的地方的一行：这次运行套用哪个品牌包、会加什么、这个节点要不要例外 -->
   <div v-else-if="showLine" class="cv-kit" data-testid="kit-line">
     <div class="cv-kit-row">
       <button v-if="shown" type="button" class="cv-kit-t on" :aria-expanded="open" data-testid="kit-applied" @click.stop="open = !open">
@@ -42,7 +42,7 @@
 /**
  * 生成节点上跟品牌包有关的两样东西，节点本体里不放任何品牌包控件：
  *  - mark：表头上的小图标，只在这个节点没跟随画布时出现（悬停说明是哪种例外）
- *  - 默认：提示词面板里的一行，写明这次运行套用哪个品牌包，点开能看到会原样加上的文字和参考图，
+ *  - 默认：改提示词的地方（布局 a 的输入条 / b 的属性面板 / c 的节点内，见 gen/GenNotes.vue）的一行，写明这次运行套用哪个品牌包，点开能看到会原样加上的文字和参考图，
  *    右边可以让这个节点例外（跟随画布 / 此节点不套用 / 单独用另一个）
  *
  * 「会加什么」直接问执行器（executor.brandKitEffect），那是提交时用的同一份推导，不是另算的一份。

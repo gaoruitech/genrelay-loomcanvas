@@ -34,7 +34,7 @@ loomcanvas/
 │     ├─ views/             Landing / Login / Register / Workbench / CanvasList / Canvas / CanvasShareView / Assets / History / Models / Settings / Setup / NotFound
 │     ├─ router/            路由与登录守卫：/（落地页）、/login、/register、/app（工作台）、/canvases、/canvas/:id、/assets、/models、/history、/settings、/setup、/share/:token
 │     ├─ components/AppShell.vue 登录后的外壳：顶栏 + 左侧栏（工作台 / 画布 / 素材库 / 模型管理 / 生成记录 / 设置）；编辑器里侧栏收成图标栏
-│     ├─ components/canvas/ 画布节点与对话框
+│     ├─ components/canvas/ 画布节点与对话框（gen/ 是生成节点：一份状态、三套布局外壳、输入条和属性面板）
 │     ├─ components/auth/   登录页与注册页共用的版式
 │     ├─ components/landing/ 落地页的示意画布
 │     ├─ components/workbench/ 工作台：新建画布、模板卡片
@@ -83,13 +83,14 @@ loomcanvas/
 | GET | `/api/auth/me` | → `{ user }` |
 | PUT | `/api/auth/password` | `{ currentPassword, newPassword }` → `{ revokedSessions, token }`。该账号的会话全部结束，包括发出请求的这一个；`token` 是给调用方的新凭证（有效期是被替换的会话剩下的时间），前端悄悄换上。临时密码也是用它换掉的：`mustChangePassword` 为 `true` 时可以调，成功后清掉这个标记。当前密码不对返回 400 `auth.wrong_current_password`（有意不用 401），新密码和当前密码相同返回 400 `auth.same_password`，另有 `auth.weak_password`（400）、`auth.too_many_attempts`（429） |
 | PUT | `/api/auth/profile` | `{ username?, email? }` → `{ user }`。错误：`auth.invalid_username`、`auth.invalid_email`、`common.nothing_to_update`（400），`auth.username_taken`、`auth.email_taken`（409），`auth.too_many_attempts`（429；每个账号每小时最多 20 次，否则前两个 409 就成了不限次数的「这个邮箱注册过没有」查询） |
+| PUT | `/api/auth/prefs` | `{ nodeLayout?: 'a'\|'b'\|'c' }` → `{ user }`。账号对网页端的偏好，只改发过去的键；键和值都有白名单（`services/accounts.js` 的 `PREFS`），不认识的键 400 `validation.bad_key`，值不对 400 `validation.one_of`，空对象 400 `common.nothing_to_update` |
 | GET | `/api/auth/sessions` | → `[{ id, current, createdAt, lastSeenAt, userAgent, ip }]`，调用者还有效的会话，最近活跃的在前；`lastSeenAt` 最多每分钟刷新一次 |
 | DELETE | `/api/auth/sessions/:id` | → `{ id }`，结束自己的一个会话（可以是当前这个）。不存在或是别人的：404 `auth.session_not_found` |
 | DELETE | `/api/auth/sessions` | → `{ revoked }`，结束除当前会话以外的全部会话 |
 | POST | `/api/files/upload` | multipart，字段 `file` → `{ url, key, size, mime, width?, height?, thumbnailUrl? }`（后三项只有图片有） |
 | POST | `/api/files/fetch` | `{ url }`，后端抓取远程图片转存（做内网地址拦截）→ 同上。只接受图片：地址指向本实例存储时也一样，存储里的视频返回 400（`file.image_only`） |
 
-User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', mustChangePassword, createdAt }`（注册、登录、`me`、改资料、bootstrap 的 `user`、超级管理员的账号列表给的都是它）。`email` 对超级管理员可能是 `''`（见第 11 节的邮箱规则）；`mustChangePassword` 为 `true` 表示还在用别人知道的密码。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：超级管理员在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（超级管理员自己的密码只能走这条）；两者都给出一个临时密码，让这个账号在所有设备上退出登录，并把 `mustChangePassword` 置为 `true`：用临时密码登录后必须先设置新密码。
+User 是接口对外给出的账号信息：`{ id, username, email, role: 'owner'|'user', mustChangePassword, prefs, createdAt }`（注册、登录、`me`、改资料、改偏好、bootstrap 的 `user`、超级管理员的账号列表给的都是它）。`prefs` 是这个账号对网页端的偏好（`users.prefs`），总是完整的，目前只有 `nodeLayout: 'a'|'b'|'c'`（默认 `'a'`），见第 10 节「生成节点的三种布局」。`email` 对超级管理员可能是 `''`（见第 11 节的邮箱规则）；`mustChangePassword` 为 `true` 表示还在用别人知道的密码。用户名 3 到 32 个字符（`A-Z a-z 0-9 _ -`），邮箱最长 254 个字符，两者都不区分大小写地唯一；密码 8 到 128 个字符。不发任何邮件：没有邮箱验证，也没有「忘记密码」邮件。忘了密码有两条路：超级管理员在「设置 → 用户管理」里重置（接口见第 5 节），或者运行服务的人执行 `node server/src/cli/reset-password.js <用户名或邮箱>`（超级管理员自己的密码只能走这条）；两者都给出一个临时密码，让这个账号在所有设备上退出登录，并把 `mustChangePassword` 置为 `true`：用临时密码登录后必须先设置新密码。
 
 ## 4. 模型与运行（新接口）
 
@@ -354,7 +355,7 @@ module.exports = {
 
 - `PUT /api/workflow/:id` 只带 `{ name }` 时只改名；保存 `settings.bg`；返回 `updatedAt`。只带 `viewport`（和 / 或 `legacyLayout`）的保存不更新 `updatedAt`：平移、缩放不算改动。编辑器据此把视口单独、悄悄地存（停手约 1.2 秒后一次），不置「未保存」；内容的自动保存照旧，指纹里不含视口。
 - 画布文档在 `schemaVersion` 3。3 把品牌包从「每个节点各选」改成「按画布选」：画布文档多了 `brandKitId`（空串 = 不套用），生成类节点（`image-gen` / `image-edit` / `video-gen` / `video-edit`）只在不跟随画布时带 `data.brandKitOverride`（品牌包 id，或 `'none'` 表示这个节点不套用），原来节点上的 `data.brandKitId` 没有了。迁移（`utils/workflowSchema.js` 的 2→3，纯函数、幂等）：所有生成节点用的是同一个品牌包 → 它成为画布的品牌包，节点跟随；其余情况（都没用，或混用）→ 画布不套用，原来有品牌包的节点各自保留成例外。两种情况下每个节点套用的都还是原来那一个。读取时迁移并落库（不更新 `updatedAt`），另外启动时 `routes/workflow.js` 的 `migrateStoredWorkflows()` 把还没迁的画布全部过一遍，这样「有几张画布在用这个品牌包」之类往文档里面看的查询只需要认一种形状。升级时还开着的旧页面仍会往节点上写 `brandKitId`：`PUT` 先把文档迁到当前版本，再把请求里的这个字段转成节点的例外（`normalizeNodeKits`），不会原样存下去。
-- 品牌包是前端套用的：执行器 `useCanvasExecutor.ts` 的 `composeGenRequest` 先按 `resolveNodeKit`（节点有例外听节点的，否则跟画布；查不到就当没有）定下品牌包，再用 `useBrandKits.ts` 的 `composeBrandKit` 把前缀、「不要出现：…」和参考图拼进这次请求。节点提示词面板里的「会加什么」预览（`executor.brandKitEffect`）走的是同一个函数，所以预览和实际发出去的一致。新建画布（`POST /api/workflow`）不带 `brandKitId` 时由服务端填上这个账号的默认品牌包；复制画布保留 `brandKitId` 和节点例外；分享快照两样都不带（`cleanNodes` 去掉 `brandKitOverride`），从快照复制出来的画布 `brandKitId` 为空；模板里的节点不带品牌包，放进哪张画布就跟哪张；把另一张画布加载进当前画布时，两边品牌包不同就把原来「跟随画布」的节点钉成例外。
+- 品牌包是前端套用的：执行器 `useCanvasExecutor.ts` 的 `composeGenRequest` 先按 `resolveNodeKit`（节点有例外听节点的，否则跟画布；查不到就当没有）定下品牌包，再用 `useBrandKits.ts` 的 `composeBrandKit` 把前缀、「不要出现：…」和参考图拼进这次请求。节点编辑处（布局 a 的输入条、b 的属性面板、c 的节点内）的「会加什么」预览（`executor.brandKitEffect`）走的是同一个函数，所以预览和实际发出去的一致。新建画布（`POST /api/workflow`）不带 `brandKitId` 时由服务端填上这个账号的默认品牌包；复制画布保留 `brandKitId` 和节点例外；分享快照两样都不带（`cleanNodes` 去掉 `brandKitOverride`），从快照复制出来的画布 `brandKitId` 为空；模板里的节点不带品牌包，放进哪张画布就跟哪张；把另一张画布加载进当前画布时，两边品牌包不同就把原来「跟随画布」的节点钉成例外。
 - 版本 2 是随改版来的：生成类节点高了一倍左右，按旧尺寸排的画布会有节点叠在一起。节点的真实尺寸只有浏览器知道，所以服务端的迁移（`utils/workflowSchema.js` 的 1→2）不动位置，只在节点多于一个时给文档打上 `legacyLayout: true`；读取时迁移并落库（不更新 `updatedAt`）。编辑器打开带这个标记的画布时查一次：先把全部节点框进视野（开着「只渲染视野内」，视野外的节点量不到尺寸；实在量不到的按节点类型估），按实测尺寸判断散节点有没有真的重叠（12 像素以内的贴边不算），有才调用和工具条同一个的自动整理、记一笔撤销历史并提示，没有就一个位置都不动、视口还原；然后用 `PUT { legacyLayout: false }`（整理过的话连同新位置）把标记清掉。标记只能由客户端清成 `false`，不能设成 `true`；新建的画布没有标记；复制带标记的画布，副本也带。所以每张老画布只查一次，改版后保存的画布永远不会被动。
 - 自动整理覆盖画布上的全部散节点（组和组内节点保持原样），不只是视野里的：尺寸取实测值，没渲染过的节点按类型估（`web/src/composables/useAutoLayout.ts` 的 `ESTIMATED_SIZE`）。内置模板的位置按同一组尺寸排（`services/seed.js`，`SEED_VERSION` 3），`server/test/seed.test.js` 守着它们不重叠；改了节点尺寸要同时改这三处。
 - `POST /api/workflow/:id/duplicate` 和 `POST /api/canvas-share/:token/copy` 可带 `{ name }` 指定新画布的名字（前端按界面语言起名）；不带时后端用默认名。
@@ -407,6 +408,24 @@ module.exports = {
 - 应用不设置 HSTS，交给终结 TLS 的反向代理。
 - 前端构建打开了 `__INTLIFY_JIT_COMPILATION__`（`web/vite.config.ts`），vue-i18n 不需要 eval。前端构建产物如果不由本服务端提供，那台服务器要自己发送等效的 CSP。
 - `TRUST_PROXY` 只接受代理层数（1 到 10）或逗号分隔的 IP / CIDR / `loopback` / `linklocal` / `uniquelocal`；`true` 和主机名在启动时报配置错误。
+
+### 生成节点的三种布局
+
+图片生成 / 图片编辑 / 视频生成 / 视频编辑 / 大语言模型 / 视频分析这六种节点有三种布局，选哪种是账号的偏好（`users.prefs.nodeLayout`，`PUT /api/auth/prefs`；入口在「设置 → 外观」和画布的「更多 ⋯」菜单），默认 a：
+
+| 布局 | 节点 | 在哪里编辑 |
+| --- | --- | --- |
+| a 结果优先 | 表头 + 通栏的结果 + 一行摘要（272 宽） | 选中一个节点后，节点下方的输入条 `GenComposer` |
+| b 紧凑 | 表头 + 缩略图 + 一行摘要 + 小运行钮（240 宽） | 选中一个节点后，画布右缘的属性面板 `GenInspector` |
+| c 一体化 | 结果、提示词框、模型 / 参数 / 成本 / 运行都在节点上（328 宽） | 节点本身 |
+
+实现上是「一份状态 + 三套外壳」，不是三份节点：
+
+- `web/src/composables/useGenNode.ts`：一个生成节点的全部状态和动作（模型、参数、提示词、上游文本、输入图与 @、端口、结果与历史版本、成本、状态、运行前提示、运行 / 取消），与布局无关。发出去什么仍然只由执行器决定（`collectInputs` / `composeGenRequest`），所以同一份节点数据在三种布局下发出的请求一样。
+- `web/src/components/canvas/gen/`：`GenNode.vue` 是六种节点共用的那个组件，按布局挑 `GenShellA/B/C.vue` 来画；提示词、输入图、模型、参数、成本、运行、说明、历史版本各是一个字段组件（`GenPromptField`、`GenRefs`、`GenModelField`、`GenParamsField`、`GenCost`、`GenRunButton`、`GenNotes`、`GenVersions`），输入条、属性面板和布局 c 的节点内表单用的是同一批。样式全在 `gen.css`。
+- 输入条和属性面板整张画布各只有一个实例（挂在 `Canvas.vue` 上，按节点 id 加 key）。它们自己另起一份 `useGenNode`：开着 `only-render-visible-elements`，被选中的节点可能没渲染。只选中一个生成节点时出现；多选、没选都不出。输入条跟着节点走（平移 / 缩放 / 拖动），大小是固定的屏幕像素、不跟画布缩放，下方放不下就翻到节点上方；属性面板开着时「适应屏幕」、新节点落点和生成队列圆钮都把它的宽度让出来。手机宽度下两者都是贴底的抽屉。
+- 换布局只改节点的大小，不改位置：位置是跟着画布存的。画布在 `settings.nodeLayout` 里记着「节点是在哪种布局下排的」；换布局后、或打开一张在别的布局下排的画布时，只有真的有节点互相压住才出一条提示，点「自动整理」才动（可撤销）。没渲染过的节点按 `nodeLayout.ts` 的 `GEN_NODE_SIZE` 估大小，内置模板的间距（`server/src/services/seed.js`）和它的测试用的是同一组数。
+- 分享页不 provide 画布上下文，`GenNode` 据此走只读：一律布局 a，不写数据、不发请求。
 
 ## 11. 账号与数据归属
 

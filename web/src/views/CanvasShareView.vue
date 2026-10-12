@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, markRaw } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -88,6 +88,9 @@ import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 
 import ShareNode from '@/components/canvas/ShareNode.vue'
+import GenNode from '@/components/canvas/gen/GenNode.vue'
+import '@/components/canvas/gen/gen.css'
+import { GEN_NODE_KINDS } from '@/composables/nodeLayout'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
 import LcLogo from '@/components/LcLogo.vue'
 import LcIcon from '@/components/LcIcon.vue'
@@ -117,11 +120,14 @@ const router = useRouter()
 const appStore = useAppStore()
 const { t } = useI18n()
 
-// 所有节点类型都用只读 ShareNode 渲染
-const nodeTypes = Object.fromEntries([
-  'text', 'image', 'video', 'image-collection', 'image-gen', 'image-edit', 'video-gen', 'video-edit',
-  'video-analysis', 'llm', 'output', 'platform-export', 'slice', 'collage', 'watermark', 'fit-size', 'frame',
-].map(k => [k, ShareNode])) as any
+// 素材 / 工具 / 成品 / 组用只读的 ShareNode；六种生成节点和编辑页是同一个组件（GenNode）。
+// 这里不 provide 画布上下文，GenNode 据此走只读：不看谁的偏好，一律是布局 a，不写数据、不发请求。
+const nodeTypes = {
+  ...Object.fromEntries([
+    'text', 'image', 'video', 'image-collection', 'output', 'platform-export', 'slice', 'collage', 'watermark', 'fit-size', 'frame',
+  ].map(k => [k, markRaw(ShareNode)])),
+  ...Object.fromEntries(GEN_NODE_KINDS.map(k => [k, markRaw(GenNode)])),
+} as any
 const edgeTypes = { 'glow': GlowEdge } as any
 
 const loading = ref(true)

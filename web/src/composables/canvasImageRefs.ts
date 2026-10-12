@@ -172,6 +172,19 @@ export function findMentions(text: string): string[] {
   return out
 }
 
+/**
+ * 提示词里每一个「对得上当前输入图」的 @ 指代在文本里的位置。输入框据此给它们垫一块底色。
+ * 切词和认名字用的是下面校验、翻译同一套规则，所以标出来的就是运行时认得的那些。
+ */
+export function knownMentionRanges(text: string, refs: ImageRef[]): { start: number; end: number }[] {
+  const known = new Set(refs.flatMap(refAliases))
+  const out: { start: number; end: number }[] = []
+  for (const m of String(text || '').matchAll(MENTION_RE)) {
+    if (known.has(m[1])) out.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length })
+  }
+  return out
+}
+
 /** 提示词里出现了、但当前输入图里已经没有的名字（图被删了或线断了） */
 export function danglingMentions(text: string, refs: ImageRef[]): string[] {
   const known = new Set(refs.flatMap(refAliases))

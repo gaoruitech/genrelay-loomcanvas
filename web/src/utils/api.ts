@@ -1,10 +1,5 @@
 import axios from 'axios'
-import type {
-  ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest,
-  LlmTask, Vendor, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings,
-  UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult,
-  User, AdminUser, AuthSession, SiteSettings, RunStatus,
-} from '@/types'
+import type { ApiResponse, BootstrapInfo, UploadedFile, ModelSpec, ModelKind, CostEstimate, Run, RunRequest, LlmTask, Vendor, ProviderInstance, ProviderTestResult, AdminModel, AdminSettings, UsageSummaryRow, UsageRecord, StorageStatus, StorageS3Form, StorageTestResult, User, AdminUser, AuthSession, SiteSettings, RunStatus, UserPrefs } from '@/types'
 import { getToken, clearToken } from '@/utils/authToken'
 import { localizeTemplates } from '@/utils/builtinContent'
 import { currentLocale } from '@/locales'
@@ -100,6 +95,9 @@ export const authApi = {
     api.put<ApiResponse<{ revokedSessions: number; token: string }>>('/auth/password', data),
   updateProfile: (data: { username?: string; email?: string }) =>
     api.put<ApiResponse<{ user: User }>>('/auth/profile', data),
+  /** 改界面偏好：只改发过去的那几项，返回完整的账号 */
+  updatePrefs: (data: UserPrefs) =>
+    api.put<ApiResponse<{ user: User }>>('/auth/prefs', data),
   sessions: () => api.get<ApiResponse<AuthSession[]>>('/auth/sessions'),
   revokeSession: (id: string) => api.delete<ApiResponse>(`/auth/sessions/${encodeURIComponent(id)}`),
   /** 退出除当前这个以外的全部会话 */

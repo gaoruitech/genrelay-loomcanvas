@@ -1,8 +1,9 @@
 /*
- * 画布节点共用的一套卡片语言。所有节点（素材 / 生成 / 分析 / 成品 / 工具）都是同一种卡片：
+ * 画布节点共用的一套卡片语言：素材 / 成品 / 工具节点，以及分享页的只读节点，都是同一种卡片：
  *   .cv-node                卡片外壳：14px 圆角、1px 描边、深蓝渐变底
  *     .cv-head              36px 表头：青色图标 + 标题 + 右侧弱化的副标（状态 / 模式）
- *     .cv-body              内容区，自上而下：输入口 → 文本井 → 模型 → 参数 → 画面 → 预估成本 → 运行
+ *     .cv-body              内容区
+ * 生成节点（图片 / 视频 / 大语言模型 / 视频分析）有三种布局，样式单独在 gen/gen.css。
  * 取值全部来自 styles/design-tokens.css。按钮 / 标签 / 弹窗直接用 base.css 里的全局件（.lc-btn 等）。
  *
  * 注意：引用它的 <style scoped> 里，@import 必须是第一条 —— CSS 规定 @import 之前不能有任何规则。
@@ -121,22 +122,6 @@
   cursor: help;
 }
 .cv-help:hover { color: var(--cyan-soft); border-color: var(--line-3); }
-.cv-icon-btn {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  background: none;
-  border: 0;
-  border-radius: 7px;
-  color: var(--text-3);
-  cursor: pointer;
-  transition: background .15s ease, color .15s ease;
-}
-.cv-icon-btn:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
-.cv-icon-btn svg { width: 14px; height: 14px; }
 
 /* ---------- 内容区 ---------- */
 .cv-body {
@@ -170,33 +155,6 @@
 }
 .cv-in em.on { color: var(--cyan-soft); }
 .cv-in.off { opacity: .5; }
-
-/* 文本井：只读摘要（点开编辑）与可编辑文本域共用同一种底 */
-.cv-well {
-  display: block;
-  width: 100%;
-  border-radius: 9px;
-  border: 1px solid var(--line);
-  background: var(--well);
-  padding: 8px 10px;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: left;
-  word-break: break-word;
-}
-button.cv-well { cursor: text; transition: border-color .15s ease; }
-button.cv-well:hover { border-color: var(--line-3); }
-.cv-well.open { border-color: var(--cyan); box-shadow: var(--ring); }
-.cv-well-text {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  white-space: pre-wrap;
-}
-.cv-well-text.ph { color: var(--text-3); }
 
 .cv-textarea,
 .cv-prompt-textarea {
@@ -345,55 +303,6 @@ button.cv-well:hover { border-color: var(--line-3); }
 .cv-dl:hover { background: rgba(124, 160, 255, .14); border-color: var(--line-3); }
 .cv-pick-btn svg { width: 13px; height: 13px; color: var(--text-2); }
 
-/* ---------- 运行中：节点内进度条 ---------- */
-.cv-progress {
-  position: relative;
-  flex: none;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid rgba(63, 216, 255, .45);
-  background: var(--well);
-  overflow: hidden;
-}
-.cv-progress > i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: linear-gradient(90deg, rgba(63, 216, 255, .35), rgba(138, 92, 255, .45));
-  transition: width .4s ease;
-}
-/* 上游还没报进度：来回滑动的一段，不显示任何数字 */
-.cv-progress.indet > i { width: 38%; animation: cv-indet 1.6s ease-in-out infinite; }
-@keyframes cv-indet {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(265%); }
-}
-.cv-progress > span {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 100%;
-  padding: 0 4px 0 10px;
-  font-size: 12px;
-  color: var(--text);
-}
-.cv-progress b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-progress-cancel {
-  flex: none;
-  height: 20px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: rgba(4, 9, 28, .5);
-  color: var(--text-2);
-  font: inherit;
-  font-size: 11px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.cv-progress-cancel:hover { color: var(--err-soft); }
-
 /* ---------- 报错 / 提示 ---------- */
 .cv-error {
   flex: none;
@@ -411,142 +320,9 @@ button.cv-well:hover { border-color: var(--line-3); }
   word-break: break-word;
 }
 .cv-error-msg { max-height: 96px; overflow-y: auto; align-self: stretch; }
-.cv-retry {
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 107, 139, .45);
-  background: none;
-  color: var(--err-soft);
-  font: 500 11px/1 var(--f-body);
-  cursor: pointer;
-}
-.cv-retry:hover { background: rgba(255, 107, 139, .14); }
-.cv-notice {
-  flex: none;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 195, 90, .4);
-  background: rgba(255, 195, 90, .08);
-  color: #ffe2b0;
-  font-size: 11px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-/* 长说明收成三行，鼠标悬停看全文 */
-.cv-notice.clamp > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-
-/* ---------- 画面框 ---------- */
-.cv-frame {
-  position: relative;
-  flex: none;
-  align-self: center;
-  border-radius: 9px;
-  border: 1px solid var(--line);
-  background: var(--media-bg);
-  overflow: hidden;
-  cursor: grab;
-  transition: border-color .15s ease;
-}
-.cv-frame:active { cursor: grabbing; }
-/* 还没有成品：通栏的矮占位，不按比例撑高 */
-.cv-frame.empty { align-self: stretch; height: 96px; border-style: dashed; border-color: var(--line-2); background: rgba(4, 9, 28, .3); }
-.cv-frame:hover { border-color: var(--line-2); }
-.cv-frame-img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cv-frame-empty {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  color: var(--text-3);
-  text-align: center;
-  font-size: 11px;
-  user-select: none;
-}
+/* ---------- 占位图标 / 结果缩略图 ---------- */
 .cv-empty-icon { display: block; width: 26px; height: 26px; color: rgba(124, 160, 255, .4); }
 .cv-empty-icon svg { width: 100%; height: 100%; }
-/* 压在画面上的件：底是恒暗的遮罩，所以字固定用浅色（--on-scrim） */
-.cv-frame-play {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, .35);
-  background: rgba(4, 9, 28, .6);
-  color: var(--on-scrim);
-  pointer-events: none;
-  transition: opacity .15s ease;
-}
-.cv-frame-play svg { width: 13px; height: 13px; margin-left: 2px; }
-.cv-frame:hover .cv-frame-play { opacity: 0; }
-.cv-frame-dim {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: rgba(4, 9, 28, .72);
-  color: var(--text);
-  font: 500 10.5px var(--f-mono);
-  pointer-events: none;
-}
-.cv-frame-zoom {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 3;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: rgba(4, 9, 28, .66);
-  color: var(--on-scrim);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity .15s ease, background .15s ease;
-}
-.cv-frame-zoom svg { width: 14px; height: 14px; }
-.cv-frame:hover .cv-frame-zoom { opacity: 1; }
-.cv-frame-zoom:hover { background: rgba(4, 9, 28, .9); }
-/* 运行中：画面压暗 + 一条扫光，表示这一块正在被重画 */
-.cv-frame-running {
-  position: absolute;
-  inset: 0;
-  background: rgba(4, 9, 28, .55);
-  overflow: hidden;
-  pointer-events: none;
-}
-.cv-frame-running::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(63, 216, 255, .16) 50%, transparent 70%);
-  animation: cv-sweep 1.8s linear infinite;
-}
-@keyframes cv-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
-
-/* 多张结果缩略图条：横向滚动 */
-.cv-thumb-strip {
-  flex: none;
-  display: flex;
-  gap: 4px;
-  padding-bottom: 2px;
-  overflow-x: auto;
-}
-.cv-thumb-strip::-webkit-scrollbar { height: 4px; }
 .cv-thumb {
   position: relative;
   flex: 0 0 auto;
@@ -626,30 +402,26 @@ button.cv-well:hover { border-color: var(--line-3); }
 .cv-placeholder svg { width: 24px; height: 24px; }
 .cv-placeholder svg { opacity: .6; }
 
-/* ---------- 弹层：提示词编辑 ----------
-   挂在节点下方；面板开着时整个节点提到其它节点上面（见 base.css）。 */
-.cv-prompt-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: calc(50% - 200px);
-  width: 400px;
-  z-index: 1000;
+/* ---------- 放大编辑（文本节点）：Teleport 到 body 居中 ---------- */
+.cv-prompt-popover.expanded {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(800px, calc(100vw - 32px));
+  height: min(520px, calc(100vh - 32px));
+  transform: translate(-50%, -50%);
+  z-index: 10000;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
-  background: #131f4a;
+  padding: 44px 16px 16px;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
-  box-shadow: var(--sh-1);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #16234f, #0d1638);
+  box-shadow: var(--sh-2);
   color: var(--text-2);
   font-size: 12px;
   cursor: default;
-  animation: cv-pop-down .18s ease-out;
-}
-@keyframes cv-pop-down {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 .cv-popover-zoom {
   position: absolute;
@@ -668,28 +440,10 @@ button.cv-well:hover { border-color: var(--line-3); }
 }
 .cv-popover-zoom:hover { background: rgba(124, 160, 255, .12); color: var(--text); }
 .cv-popover-zoom svg { width: 14px; height: 14px; }
-/* 放大态：脱离节点（Teleport 到 body）居中 */
-.cv-prompt-popover.expanded {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  width: min(800px, calc(100vw - 32px));
-  height: min(520px, calc(100vh - 32px));
-  transform: translate(-50%, -50%);
-  padding: 44px 16px 16px;
-  z-index: 10000;
-  border-radius: var(--r-lg);
-  background: linear-gradient(180deg, #16234f, #0d1638);
-  box-shadow: var(--sh-2);
-  animation: none;
-}
 .cv-prompt-popover.expanded .cv-textarea-wrap { flex: 1; min-height: 0; }
 .cv-prompt-popover.expanded .cv-prompt-textarea { height: 100%; min-height: 0; font-size: 14px; }
 
 /* ---------- 端口 ----------
    圆点本身（尺寸、按数据类型分色、悬停光晕）在 styles/vue-flow-theme.css，编辑页和分享页共用；
-   这里只管节点自己的两件事：不可用态，以及把端口放到表头那一行。 */
-:global(.vue-flow .vue-flow__handle.h-off) { border-color: var(--line-2); opacity: .55; cursor: not-allowed; box-shadow: none; }
+   这里只管一件事：把端口放到表头那一行。 */
 :global(.vue-flow .vue-flow__handle.h-top) { top: 18px; }

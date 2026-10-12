@@ -46,7 +46,7 @@ export default {
     },
     share: {
       search: '搜索我的分享',
-      empty: '还没有分享链接。在画布右上角点「分享」就能生成一条。',
+      empty: '还没有分享链接。在画布的工具栏上点「分享」就能生成一条。',
       nodeCount: '{n} 个节点',
       active: '有效',
       expired: '已过期',
@@ -122,11 +122,12 @@ export default {
         ui: {
           title: '界面速览',
           items: [
-            '左上角：返回我的画布、画布名（点一下就能改）、保存状态（点一下立即保存），以及这张画布套用的品牌包。右上角：分享和「更多 ⋯」。',
-            '左侧节点面板：「+」是全部节点，下面按文本 / 图片 / 视频 / 对话 / 工具分类，最下面是素材库、画布模板和我的分享。',
+            '左上角：返回我的画布、画布名（点一下就能改）、保存状态（点一下立即保存），以及这张画布套用的品牌包。',
+            '工具栏（默认竖排在左侧）：「+」是全部节点，下面按文本 / 图片 / 视频 / 对话 / 工具分类，再往下是素材库（含画布模板和我的分享）、「分享」和「更多 ⋯」。',
+            '工具栏可以挪：抓着最上面的把手拖到画布上任何地方，把手旁边的开关切换横向 / 竖向；双击把手（或点把手菜单里的「复位」）回到左侧竖排。位置和方向记在这个浏览器里。',
             '底部工具条：缩放、适应屏幕、撤销 / 重做、自动整理、运行全部。左下角是小地图（可拖可缩放，用来快速定位）。',
             '右下角的「生成队列」圆钮：有任务时边上一圈进度、中间是还没完成的数量，有新结果时右上角亮角标。点开是这张画布上正在运行、排队和刚完成的节点，点一条就定位到对应节点。圆钮可以拖到别处，双击回到右下角。',
-            '空白处右键 = 添加节点 + 画布操作；节点上右键 = 针对该节点的操作。右上角「更多 ⋯」里是同一份画布操作。',
+            '空白处右键 = 添加节点 + 画布操作；节点上右键 = 针对该节点的操作。工具栏上的「更多 ⋯」里是同一份画布操作。',
           ],
         },
         basic: {
@@ -147,7 +148,7 @@ export default {
             '生成（调用付费模型）：图片生成、图片编辑、视频生成、视频编辑、视频分析、大语言模型。',
             '输出：成品。',
             '工具（本机处理，免费）：多平台导出、切片、拼图、加水印、改尺寸。',
-            '添加节点：空白处右键，或点左侧面板的「＋」。',
+            '添加节点：空白处右键，或点工具栏上的「＋」。',
           ],
         },
         source: {
@@ -221,9 +222,9 @@ export default {
           intro: '品牌包是一组固定的出图设定：几张参考图（最多 5 张）、一段固定写在提示词前面的话、一份「不要出现」的清单。给一张画布选了品牌包，这张画布上的图片生成、图片编辑、视频生成、视频编辑节点每次运行都会自动带上它。',
           items: [
             '在哪里选：画布左上角、画布名旁边的品牌包按钮。点开能看到说明、你的所有品牌包和「不套用」；选一个，对整张画布生效，跟画布一起保存。',
-            '运行时加了什么：那段话加在提示词最前面，「不要出现：…」加在提示词末尾，参考图排在节点自己的参考图后面，只填模型剩下的名额。点开节点的提示词面板，下面有一行「已套用品牌包：…」，点它能看到这次会原样加上的文字和图片。',
+            '运行时加了什么：那段话加在提示词最前面，「不要出现：…」加在提示词末尾，参考图排在节点自己的参考图后面，只填模型剩下的名额。选中节点，在改提示词的地方有一行「已套用品牌包：…」，点它能看到这次会原样加上的文字和图片。',
             '它不做什么：不改模型、比例、分辨率和数量，预估成本也不变；首尾帧模式的视频和不接收参考图的模型只加文字；「不要出现」只是提示词里的一句话，模型不一定照做。品牌包里没有 Logo 和品牌色这两项。',
-            '让一个节点例外：在节点上右键，或在它的提示词面板里，选「此节点不套用」或单独用另一个品牌包。有例外的节点标题旁会多一个小图标，鼠标放上去能看到是哪种例外。',
+            '让一个节点例外：在节点上右键，或在那一行右边的「此节点」里，选「此节点不套用」或单独用另一个品牌包。有例外的节点标题旁会多一个小图标，鼠标放上去能看到是哪种例外。',
             '新建、修改、复制、删除和「新画布默认套用」在「素材库 › 品牌包」；在画布的选择面板里也能直接新建和编辑。改了品牌包，之后每次运行都用新的内容；删掉它，用它的画布和节点之后就不再套用，已经生成的结果不变。',
             '分享链接不带品牌包：别人看到的是你运行时实际发出去的提示词，复制过去的画布从「不套用」开始。复制自己的画布会保留品牌包。',
           ],
@@ -245,7 +246,7 @@ export default {
         lib: {
           title: '资源库与我的资产',
           items: [
-            '点左侧面板最下面那颗按钮里的「素材库」打开资源库，里面有 4 个标签页：我的资产、画布模板、文本模板、我的分享。部署方预置了公共素材时，最前面还会多一个「素材库」。',
+            '点工具栏上文件夹那颗按钮里的「素材库」打开资源库，里面有 4 个标签页：我的资产、画布模板、文本模板、我的分享。部署方预置了公共素材时，最前面还会多一个「素材库」。',
             '我的资产是你自己上传和存下来的图片、视频，分为产品图、品牌素材、参考、成品四类。',
             '画布模板：一键套用整套流水线；文本模板：选一段现成的提示词放进画布。',
             '成品回收：在生成节点上右键「存入我的资产」，它会出现在「我的资产 → 成品」，下次直接复用。',
@@ -254,7 +255,7 @@ export default {
         share: {
           title: '分享链接',
           items: [
-            '点右上角的「分享」，为当前画布生成一条只读链接。有效期可以选 1 天、7 天、30 天或永久。',
+            '点工具栏上的「分享」，为当前画布生成一条只读链接。有效期可以选 1 天、7 天、30 天或永久。',
             '分享的是当时的快照：之后再修改或删除原画布，都不影响已经分享出去的内容。',
             '资源库的「我的分享」里列出所有链接，可以复制链接、打开、复制回自己的画布。',
             '不想再公开时点「撤销」，链接立即失效；过了有效期的链接也会自动失效。',
@@ -340,7 +341,7 @@ export default {
     },
     share: {
       search: 'Search my share links',
-      empty: 'No share links yet. Click "Share" at the top right of a canvas to make one.',
+      empty: 'No share links yet. Click "Share" on the toolbar of a canvas to make one.',
       nodeCount: '{n} node(s)',
       active: 'Active',
       expired: 'Expired',
@@ -416,11 +417,12 @@ export default {
         ui: {
           title: 'The interface',
           items: [
-            'Top left: back to your canvases, the canvas name (click it to rename), the save status (click it to save right away) and the brand kit this canvas uses. Top right: Share and "More ⋯".',
-            'Node palette on the left: "+" lists every node, the buttons below group them by text / image / video / chat / tools, and the last one opens the asset library, canvas templates and your share links.',
+            'Top left: back to your canvases, the canvas name (click it to rename), the save status (click it to save right away) and the brand kit this canvas uses.',
+            'Toolbar (vertical on the left by default): "+" lists every node, the buttons below group them by text / image / video / chat / tools, followed by the asset library (with canvas templates and your share links), Share and "More ⋯".',
+            'The toolbar can be moved: drag it by the handle at its start to anywhere on the canvas, and use the switch next to the handle to flip it between horizontal and vertical. Double-click the handle (or choose Reset in its menu) to send it back to the left. Position and orientation are remembered in this browser.',
             'Bottom toolbar: zoom, fit to screen, undo / redo, tidy up, Run all. The minimap sits at the bottom left (drag or scroll it to jump around).',
             'Queue button in the bottom-right corner: while something runs it shows a progress ring and the number of unfinished nodes, and a badge when there are new results. Click it for the nodes on this canvas that are running, queued or just finished; click a row to jump to its node. Drag the button anywhere, double-click to send it back.',
-            'Right-click the empty canvas to add nodes and reach canvas actions; right-click a node for actions on that node. "More ⋯" at the top right opens the same canvas actions.',
+            'Right-click the empty canvas to add nodes and reach canvas actions; right-click a node for actions on that node. "More ⋯" on the toolbar opens the same canvas actions.',
           ],
         },
         basic: {
@@ -441,7 +443,7 @@ export default {
             'Generation (calls a paid model): Image generation, Image edit, Video generation, Video edit, Video analysis, Language model.',
             'Output: Output.',
             'Tools (processed locally, free): Multi-platform export, Slice, Collage, Watermark, Resize.',
-            'Add a node by right-clicking the empty canvas, or with the "+" button on the left palette.',
+            'Add a node by right-clicking the empty canvas, or with the "+" button on the toolbar.',
           ],
         },
         source: {
@@ -515,9 +517,9 @@ export default {
           intro: 'A brand kit is a fixed set of generation settings: a few reference images (up to 5), a piece of text that always goes in front of the prompt, and a list of things to leave out. Choose one for a canvas and every Image generation, Image edit, Video generation and Video edit node on it adds the kit on each run.',
           items: [
             'Where to choose it: the brand kit button at the top left of the canvas, next to the canvas name. It opens an explanation, all your kits and "None". The choice applies to the whole canvas and is saved with it.',
-            'What a run adds: the text goes in front of the prompt, "Do not include: …" goes at the end, and the reference images come after the node\'s own, filling only the slots the model has left. Open a node\'s prompt panel and the line "Brand kit applied: …" below it shows the exact text and images that will be added.',
+            'What a run adds: the text goes in front of the prompt, "Do not include: …" goes at the end, and the reference images come after the node\'s own, filling only the slots the model has left. Select a node: where you edit its prompt, the line "Brand kit applied: …" shows the exact text and images that will be added.',
             'What it does not do: it does not change the model, aspect ratio, resolution or count, and the estimated cost stays the same. Videos in first/last-frame mode and models that take no reference images get the text only. "Do not include" is a sentence in the prompt, so the model may ignore it. A kit has no logo or colour fields.',
-            'An exception for one node: right-click the node, or use its prompt panel, and choose "None for this node" or another kit. A node with an exception shows a small icon next to its title; hover it to see which.',
+            'An exception for one node: right-click the node, or use "This node" at the right of that line, and choose "None for this node" or another kit. A node with an exception shows a small icon next to its title; hover it to see which.',
             'Create, edit, duplicate, delete and "Default for new canvases" are under Assets › Brand kits; the panel on the canvas can create and edit kits too. Edit a kit and every later run uses the new content. Delete it and the canvases and nodes that used it run without a kit; results you already have do not change.',
             'Share links carry no brand kit: viewers see the prompt that was actually sent, and a copy of a shared canvas starts without one. Duplicating your own canvas keeps its kit.',
           ],
@@ -539,7 +541,7 @@ export default {
         lib: {
           title: 'Library and my assets',
           items: [
-            'Click "Asset library" under the last button of the left palette to open the library. It has 4 tabs: My assets, Canvas templates, Text templates, My share links. If the person who runs this instance has preloaded shared assets, a "Stock assets" tab appears in front.',
+            'Click "Asset library" under the folder button of the toolbar to open the library. It has 4 tabs: My assets, Canvas templates, Text templates, My share links. If the person who runs this instance has preloaded shared assets, a "Stock assets" tab appears in front.',
             'My assets are the images and videos you uploaded or saved, in four categories: product shots, brand assets, references and outputs.',
             'Canvas templates apply a whole pipeline in one click. Text templates drop a ready-made prompt onto the canvas.',
             'Keep a result: right-click a generation node and choose "Save to my assets". It appears under My assets → Outputs, ready to reuse.',
@@ -548,7 +550,7 @@ export default {
         share: {
           title: 'Share links',
           items: [
-            'Click "Share" at the top right to make a read-only link to the current canvas. It can expire after 1, 7 or 30 days, or never.',
+            'Click "Share" on the toolbar to make a read-only link to the current canvas. It can expire after 1, 7 or 30 days, or never.',
             'A link shares a snapshot: editing or deleting the original canvas later does not change what you shared.',
             'The "My share links" tab in the library lists every link. From there you can copy a link, open it, or copy the shared canvas back into your own canvases.',
             'Click "Revoke" to stop sharing; the link stops working immediately. Links past their expiry date stop working on their own.',

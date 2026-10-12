@@ -14,6 +14,8 @@ export interface CanvasExecutorApi {
   cancelNode: (nodeId: string) => Promise<void>
   /** 该节点当前会送出去的图，按最终顺序。缩略图条和 @ 候选都读它 */
   collectImageRefs: (nodeId: string) => ImageRef[]
+  /** 上游文本节点连进来的提示词（多条已按顺序拼好），就是运行时会用的那一份；没连或上游是空的返回空串 */
+  upstreamText: (nodeId: string) => string
   /** 该节点现在运行的话，品牌包会往请求里加什么（与真正发出去的同一份推导）；不套用返回 null */
   brandKitEffect: (nodeId: string) => { kit: BrandKit; effect: BrandKitEffect } | null
   resumeIncompleteTasks: () => void
