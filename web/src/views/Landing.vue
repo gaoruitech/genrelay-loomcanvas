@@ -4,6 +4,7 @@
       <LcLogo to="/" />
       <nav class="lp-links" :aria-label="t('shell.navLabel')">
         <a href="#features">{{ t('landing.nav.features') }}</a>
+        <a href="#integration">{{ t('landing.nav.integration') }}</a>
         <a :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.nav.docs') }}</a>
         <a href="#open-source">{{ t('landing.nav.open') }}</a>
       </nav>
@@ -30,6 +31,7 @@
         <span><LcIcon name="check" size="s" />{{ t('landing.meta1') }}</span>
         <span><LcIcon name="check" size="s" />{{ t('landing.meta2') }}</span>
         <span><LcIcon name="check" size="s" />{{ t('landing.meta3') }}</span>
+        <span><LcIcon name="check" size="s" />{{ t('landing.meta4') }}</span>
       </div>
       <HeroCanvas />
     </section>
@@ -42,7 +44,20 @@
           <span class="ti"><LcIcon :name="f.icon" size="l" /></span>
           <div><h3>{{ t(`landing.feats.${f.k}T`) }}</h3><p>{{ t(`landing.feats.${f.k}D`) }}</p></div>
         </div>
+        <!-- 第七块横跨整行：六块正好排满三列 / 两列，这一块单独一行，不留孤块 -->
+        <div class="tile lc-glass wide">
+          <span class="ti"><LcIcon name="panel" size="l" /></span>
+          <div><h3>{{ t('landing.feats.embedT') }}</h3><p>{{ t('landing.feats.embedD') }}</p></div>
+          <a class="lc-btn" href="#integration">{{ t('landing.feats.embedLink') }}<LcIcon name="arrow" /></a>
+        </div>
       </div>
+    </section>
+
+    <section id="integration" class="lp-sec">
+      <div class="eyebrow">{{ t('landing.integ.eyebrow') }}</div>
+      <h2>{{ t('landing.integ.title') }}</h2>
+      <p class="sub">{{ t('landing.integ.sub') }}</p>
+      <IntegrationCards />
     </section>
 
     <section class="lp-sec">
@@ -124,6 +139,7 @@ import ThemeSwitch from '@/components/ThemeSwitch.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
 import HeroCanvas from '@/components/landing/HeroCanvas.vue'
+import IntegrationCards from '@/components/landing/IntegrationCards.vue'
 
 const { t } = useI18n()
 const app = useAppStore()
@@ -176,6 +192,9 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 }
 .tile h3 { font: 600 17px/1.4 var(--f-disp); color: var(--text); }
 .tile p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin-top: 6px; }
+.tile.wide { grid-column: 1 / -1; min-height: 0; align-items: center; }
+.tile.wide > div { flex: 1; min-width: 0; }
+.tile.wide .lc-btn { flex: none; }
 
 .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 48px; position: relative; }
 .steps::before { content: ''; position: absolute; left: 44px; right: 44px; top: 20px; height: 2px; background: var(--grad); opacity: .5; }
@@ -241,6 +260,9 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
   .lp-sec h2 { font-size: 24px; }
   .tiles { grid-template-columns: 1fr; gap: 12px; margin-top: 28px; }
   .tile { min-height: 0; padding: 18px; }
+  .tile.wide { flex-wrap: wrap; align-items: flex-start; }
+  .tile.wide > div { flex: 1 1 0; }
+  .tile.wide .lc-btn { flex: 1 1 100%; }
   .steps { margin-top: 28px; }
   .oss { grid-template-columns: 1fr; padding: 24px 20px; }
   .lp-foot { padding: 32px 16px 28px; grid-template-columns: 1fr 1fr; gap: 24px; }

@@ -17,6 +17,8 @@ export const LINKS = {
   get deployment() { return doc('deployment') },
   get faq() { return doc('faq') },
   get security() { return doc('security') },
+  get integration() { return doc('integration') },
+  examples: `${REPO}/tree/master/examples`,
   license: `${FILE}/LICENSE`,
   commercial: `${FILE}/COMMERCIAL.md`,
   changelog: `${FILE}/CHANGELOG.md`,
