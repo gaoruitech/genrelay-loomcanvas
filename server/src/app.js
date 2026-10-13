@@ -8,6 +8,7 @@ const { getConfig } = require('./config')
 const { getStorage } = require('./storage')
 const { securityHeaders, noStore, cors, buildContentSecurityPolicy, inlineScriptHashes } = require('./middleware/security')
 const { requireAuth, requireOwner } = require('./middleware/auth')
+const { resolveSpace } = require('./services/spaces')
 const { locale } = require('./middleware/locale')
 const { apiNotFound, errorHandler } = require('./middleware/errors')
 const files = require('./routes/files')
@@ -47,10 +48,13 @@ function createApp() {
 
   // --- public ---
   // What anybody may send is small: a name and a password, the fields of a share link.
-  api.use(['/auth', '/canvas-share'], express.json({ limit: '64kb' }))
+  api.use(['/auth', '/canvas-share', '/team-invitations'], express.json({ limit: '64kb' }))
   api.use(require('./routes/base')) // bootstrap
   api.use('/auth', require('./routes/auth')) // register and login are public; the rest guards itself
   api.use('/canvas-share', require('./routes/canvasShare')) // public read; the rest guards itself
+  api.use('/team-invitations', require('./routes/teamInvitations')) // public preview; joining guards itself
+  // Giving an edit lock back when a page closes: the beacon carries the lock's release token, not a session.
+  api.use('/workflow', require('./routes/workflow').publicRouter)
 
   // --- everything below needs a session, and works on the caller's own data only ---
   // Bodies are parsed after this check, so only a signed-in client gets megabytes read and parsed.
@@ -58,12 +62,21 @@ function createApp() {
   // Canvas saves carry the whole graph; everything else is small.
   api.use('/workflow', express.json({ limit: '6mb' }))
   api.use(express.json({ limit: '1mb' }))
+  // Teams as their members manage them. These routes name the team in the path
+  // and check membership themselves, so they come before the X-Space header is read.
+  api.use('/teams', require('./routes/teams'))
+  // --- from here on every request acts in one space: the caller's personal one, or the
+  // team named by X-Space, of which they are checked to be a member (services/spaces.js) ---
+  api.use(resolveSpace)
   api.use('/files', files.apiRouter())
+  api.use('/spaces', require('./routes/spaces')) // where something can be copied to, and why not
+  api.use(require('./routes/runExport')) // several history records as one zip
   api.use(require('./routes/runs')) // models, runs, llm tasks
-  // Per account: providers, models, usage. Owner only: settings and storage (guarded inside).
+  // Per space: providers, models, usage. Owner only: settings and storage (guarded inside).
   api.use('/admin', require('./routes/admin'))
-  // Owner only: accounts and registration.
+  // Super admin only: accounts and registration, teams and who may create them.
   api.use('/admin', requireOwner, require('./routes/adminUsers'))
+  api.use('/admin', requireOwner, require('./routes/adminTeams'))
   api.use('/workflow', require('./routes/workflow'))
   api.use('/canvas-asset', assets.canvasAssetRouter())
   api.use('/user-asset', assets.userAssetRouter())

@@ -9,22 +9,28 @@
     <div class="cv-body">
     <div class="grid nodrag nowheel" @mousedown.stop>
       <div v-for="(url, i) in internalUrls" :key="`int-${i}`" class="cell">
-        <img :src="canvasImageThumb(url, 96)" alt="" />
-        <button class="cell-x" :title="t('common.remove')" @click.stop="removeInternal(i)"><LcIcon name="x" size="s" /></button>
+        <!-- 点缩略图放大看（可编辑时也一样：小图看不清内容）；移除只在可编辑时有 -->
+        <button v-if="viewer" type="button" class="cell-v" v-tip="t('gen.view.image')" :aria-label="t('gen.node.nthImage', { n: i + 1 }) + ' · ' + t('gen.view.image')" data-testid="node-view" @click.stop="viewer(url, 'image')">
+          <img :src="canvasImageThumb(url, 96)" alt="" />
+        </button>
+        <img v-else :src="canvasImageThumb(url, 96)" alt="" />
+        <button v-if="!ro" class="cell-x" v-tip="t('common.remove')" :aria-label="t('common.remove')" @click.stop="removeInternal(i)"><LcIcon name="x" size="s" /></button>
       </div>
 
       <div v-for="i in uploadingCount" :key="`up-${i}`" class="cell uploading-cell">
         <span class="dot"></span>
       </div>
 
-      <div v-if="upstreamCount > 0" class="cell upstream-cell" :title="t('nodeui.collection.upstream', { n: upstreamCount })">
+      <div v-if="upstreamCount > 0" class="cell upstream-cell" v-tip="t('nodeui.collection.upstream', { n: upstreamCount })">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
         <span>{{ upstreamCount }}</span>
       </div>
 
-      <label class="cell add-cell">
+      <!-- 只读：没有上传、没有从素材库选；一张都没有时写一句话 -->
+      <span v-if="ro && !totalCount" class="coll-none">{{ t('nodeui.share.noImage') }}</span>
+      <label v-if="!ro" class="cell add-cell">
         <input
           type="file"
           accept="image/*"
@@ -36,7 +42,7 @@
         <span class="plus-label">{{ t('common.upload') }}</span>
       </label>
 
-      <button v-if="$feat.assetLibrary" class="cell add-cell pick-cell" :title="t('nodes.action.pickFromLibrary')" @click.stop="pickFromLibrary">
+      <button v-if="$feat.assetLibrary && !ro" class="cell add-cell pick-cell" v-tip="t('nodes.action.pickFromLibrary')" :aria-label="t('nodes.action.pickFromLibrary')" @click.stop="pickFromLibrary">
         <LcIcon name="folder" />
         <span class="plus-label">{{ t('nodeui.collection.library') }}</span>
       </button>
@@ -58,6 +64,7 @@ import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { apiErrorMessage } from '@/utils/api'
 import { canvasImageThumb, registerThumb } from '@/utils/canvasMedia'
 import LcIcon from '@/components/LcIcon.vue'
+import { useCanvasReadOnly, useCanvasViewer } from '@/composables/nodeLayout'
 
 const props = defineProps<{
   id: string
@@ -68,6 +75,9 @@ const props = defineProps<{
 const { t } = useI18n()
 const { updateNodeData, edges } = useVueFlow()
 const picker = inject(CANVAS_PICKER_KEY)
+/** 只读（别人正在编辑、只有查看权）：能点开看大图，不能加、不能移除 */
+const ro = useCanvasReadOnly()
+const viewer = useCanvasViewer()
 
 const internalUrls = computed<string[]>(() => props.data.imageUrls || [])
 const uploadingCount = ref(0)
@@ -91,7 +101,8 @@ async function handleSelect(e: Event) {
   await Promise.all(files.map(async (file) => {
     try {
       const url = await uploadCanvasImage(file)
-      updateNodeData(props.id, { imageUrls: [...(props.data.imageUrls || []), url] })
+      // 传到一半丢了编辑权：不往节点里写
+      if (!ro.value) updateNodeData(props.id, { imageUrls: [...(props.data.imageUrls || []), url] })
     } catch (err: any) {
       MessagePlugin.error(apiErrorMessage(err, t('upload.failed')))
     } finally {
@@ -101,15 +112,16 @@ async function handleSelect(e: Event) {
 }
 
 function removeInternal(i: number) {
+  if (ro.value) return
   const next = [...internalUrls.value]
   next.splice(i, 1)
   updateNodeData(props.id, { imageUrls: next })
 }
 
 async function pickFromLibrary() {
-  if (!picker) return
+  if (!picker || ro.value) return
   const items = await picker.open({ mediaType: 'image', multiSelect: true })
-  if (items.length > 0) {
+  if (items.length > 0 && !ro.value) {
     for (const it of items) registerThumb(it.fileUrl, it.thumbnailUrl)
     const next = [...internalUrls.value, ...items.map(it => it.fileUrl)]
     updateNodeData(props.id, { imageUrls: next })
@@ -138,6 +150,11 @@ async function pickFromLibrary() {
   border: 1px solid var(--line);
 }
 .cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 缩略图本身是一颗按钮：点开看大图 */
+.cell-v { display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: none; cursor: zoom-in; }
+.cell-v:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--cyan); }
+/* 只读、一张图都没有 */
+.coll-none { grid-column: 1 / -1; padding: 20px 12px; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--text-3); font-size: 12px; text-align: center; }
 .cell-x {
   position: absolute;
   top: 3px;
@@ -153,7 +170,8 @@ async function pickFromLibrary() {
   color: var(--on-scrim);
   cursor: pointer;
 }
-.cell-x:hover { background: rgb(var(--c-scrim) / .9); }
+.cell-x:hover { background: var(--scrim-danger); color: var(--on-scrim-max); }
+.cell-x:focus-visible { outline: none; opacity: 1; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .cell-x svg { width: 11px; height: 11px; }
 
 .upstream-cell {

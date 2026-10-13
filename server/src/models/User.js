@@ -23,6 +23,9 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: Object.values(ROLES), default: ROLES.USER },
   disabled: { type: Boolean, default: false },
   lastLoginAt: { type: Date, default: null },
+  // The super admin's authorisation to create teams (how many: the `teamMaxPerUser` setting).
+  // Taking it back stops new teams; the ones that exist stay.
+  canCreateTeams: { type: Boolean, default: false },
   // The password is one somebody else knows (generated at start-up, or a
   // temporary one from a reset). Until the holder replaces it the API serves
   // nothing but that change, see middleware/auth.js.

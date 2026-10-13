@@ -125,13 +125,45 @@
 .cv-preview:hover { border-color: var(--line-3); }
 .cv-preview img { width: 100%; max-height: 120px; object-fit: contain; display: block; }
 
-/* 执行按钮用描边而不是实心：实心 = 调用付费模型，描边 = 本机处理 / 免费 */
+/* 执行按钮：这个节点的主操作，一颗实心按钮 —— 中性的「墨色」实底（浅色主题是深石板色配白字，深色主题是浅灰蓝配深字），
+   两套主题下字和底、底和卡片都够对比，一眼看得出能点。
+   它和调用付费模型的「运行」靠颜色本身分开，不靠光晕：那一颗是品牌色的渐变，这一颗没有色相 ——
+   本机处理、不花钱（表头也写着）。两种都是实心的，谁也不比谁弱。
+   和旁边的次级按钮（下载，描边）等高；悬停 / 按下 / 聚焦 / 处理中各有各的样子 */
+.cv-tool .cv-actions { gap: 8px; }
+.cv-tool .cv-run,
+.cv-tool .cv-dl { height: 32px; border-radius: 9px; font-size: 12.5px; }
 .cv-tool .cv-run {
-  background: rgb(var(--c-cyan) / .08);
-  color: var(--cyan-soft);
-  box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .5) inset;
+  background: var(--t-body);
+  color: var(--text-inv);
+  box-shadow: 0 1px 2px var(--shadow-2);
+  transition: background .15s ease, box-shadow .15s ease, transform .05s ease;
 }
 .cv-tool .cv-run:hover:not(:disabled) {
-  background: rgb(var(--c-cyan) / .16);
-  box-shadow: 0 0 0 1px var(--cyan) inset;
+  background: var(--t-strong);
+  box-shadow: 0 3px 8px var(--shadow-2);
 }
+.cv-tool .cv-run:active:not(:disabled) {
+  background: var(--t-max);
+  box-shadow: none;
+  transform: translateY(1px);
+}
+.cv-tool .cv-run:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--cyan); }
+/* 处理中（按钮暂时点不了）：退成中性的底，字还读得清 —— 不用半透明，那样在浅色主题里像褪了色 */
+.cv-tool .cv-run:disabled {
+  opacity: 1;
+  background: rgb(var(--c-film) / .1);
+  color: var(--text-2);
+  box-shadow: 0 0 0 1px var(--line-2) inset;
+}
+
+/* ---------- 只读（别人正在编辑、只有查看权）：设置是一项一行的字，不是控件 ----------
+   「做事」的入口（预设、输入框、滑杆、取色、上传、执行）整块不出现，留下的是这个节点现在的设置和它的结果 */
+.cv-ro { display: grid; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: rgb(var(--c-well) / .3); }
+.cv-ro > div { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 20px; font-size: 12px; }
+.cv-ro dt { flex: none; width: 56px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-ro dd { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 底色 / 补白色：一小块色样（颜色是节点里存的值） */
+.cv-swatch { flex: none; display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-3); }
+/* 只读时只剩「下载」：通栏 */
+.cv-actions.ro .cv-dl { flex: 1; }

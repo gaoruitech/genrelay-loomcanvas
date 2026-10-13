@@ -80,6 +80,20 @@ export function runAdapterContract(name: string, fixture: () => ContractFixture 
       expect(loaded.document.name).toBe('Contract canvas')
     })
 
+    it('a name-only save renames the canvas and keeps everything else', async () => {
+      const { adapter, canvasId } = await fixture()
+      await adapter.saveCanvas(canvasId, doc())
+      const before = await adapter.loadCanvas(canvasId)
+      await adapter.saveCanvas(canvasId, { name: 'Renamed canvas' })
+      const loaded = await adapter.loadCanvas(canvasId)
+      expect(loaded.document.name).toBe('Renamed canvas')
+      expect(loaded.document.nodes).toHaveLength(2)
+      expect(loaded.document.edges).toHaveLength(1)
+      expect(loaded.document.viewport).toEqual({ x: 5, y: 6, zoom: 0.8 })
+      // A rename is not a content change: where the backend counts revisions, the count stays.
+      if (typeof before.revision === 'number') expect(loaded.revision).toBe(before.revision)
+    })
+
     it('rejects loading a canvas that does not exist', async () => {
       const { adapter } = await fixture()
       await expect(adapter.loadCanvas('0123456789abcdef01234567')).rejects.toBeTruthy()

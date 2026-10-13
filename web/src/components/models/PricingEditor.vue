@@ -1,9 +1,10 @@
 <template>
-  <div class="lc-mask" @click.self="emit('close')">
-    <div class="lc-dialog pe" role="dialog" aria-modal="true">
+  <Teleport :to="$lcPortal">
+  <div class="lc-mask lc-sheet" @mousedown="downOnMask = $event.target === $event.currentTarget" @click.self="downOnMask && close()">
+    <form v-dialog="{ onEscape: close, busy: !!saving, initialFocus: firstPrice }" class="lc-dialog pe" role="dialog" aria-modal="true" aria-labelledby="pr-title" novalidate data-testid="pricing-dialog" @submit.prevent="submit">
       <div class="lc-dialog-head">
-        <span>{{ t('modelsPage.pricing.title', { model: model.label || model.id }) }}</span>
-        <button class="lc-x" :aria-label="t('common.close')" @click="emit('close')">×</button>
+        <span id="pr-title" class="pe-title">{{ t('modelsPage.pricing.title', { model: model.label || model.id }) }}</span>
+        <button class="lc-x" type="button" :aria-label="t('common.close')" :disabled="saving" @click="close">×</button>
       </div>
 
       <div class="lc-dialog-body">
@@ -49,25 +50,26 @@
           <div v-for="(row, i) in rows" :key="i" class="row">
             <input v-model.trim="row.key" class="lc-input mono" :placeholder="keyPlaceholder" :aria-label="t('modelsPage.pricing.tier')" :disabled="saving" />
             <input v-model="row.price" class="lc-input" type="number" min="0" step="any" :placeholder="t('modelsPage.pricing.price')" :aria-label="t('modelsPage.pricing.price')" :disabled="saving" />
-            <button class="lc-tb sm" :disabled="saving" :aria-label="t('common.remove')" :title="t('common.remove')" @click="rows.splice(i, 1)"><LcIcon name="trash" size="s" /></button>
+            <button class="lc-tb sm" type="button" :disabled="saving" :aria-label="t('common.remove')" v-tip="t('common.remove')" @click="rows.splice(i, 1)"><LcIcon name="trash" size="s" /></button>
           </div>
-          <button class="lc-btn sm" :disabled="saving" @click="rows.push({ key: '', price: '' })"><LcIcon name="plus" size="s" />{{ t('modelsPage.pricing.addRow') }}</button>
+          <button class="lc-btn sm" type="button" :disabled="saving" @click="rows.push({ key: '', price: '' })"><LcIcon name="plus" size="s" />{{ t('modelsPage.pricing.addRow') }}</button>
         </template>
 
-        <p v-if="error" class="lc-error-text err">{{ error }}</p>
+        <p v-if="error" class="lc-error-text err" role="alert">{{ error }}</p>
       </div>
 
       <div class="lc-dialog-foot">
-        <button class="lc-btn ghost clear" :disabled="saving || !model.pricing" @click="emit('save', null)">
+        <button class="lc-btn ghost clear" type="button" :disabled="saving || !model.pricing" data-act="clear-price" @click="emit('save', null)">
           {{ t('modelsPage.pricing.clear') }}
         </button>
-        <button class="lc-btn" :disabled="saving" @click="emit('close')">{{ t('common.cancel') }}</button>
-        <button class="lc-btn primary quiet" :disabled="saving" @click="submit">
+        <button class="lc-btn" type="button" :disabled="saving" @click="close">{{ t('common.cancel') }}</button>
+        <button class="lc-btn primary quiet" type="submit" :disabled="saving" data-act="save-price">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>
-    </div>
+    </form>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -80,11 +82,15 @@
  *   输入输出分开 { unit: 'per_1m_tokens', table: { input, output } }
  * 这里两种都能显示、都能改；打开一个分开计价的价格再保存，不会被压成一个数。
  * 按 token 计价没有「随分辨率 / 时长变化」这回事，所以那个下拉换成「输入和输出」。
+ *
+ * 是一张表单：在任何一个框里回车就是保存。键盘和焦点交给 v-dialog，打开时焦点落在第一个价格框上
+ * （币种、单位多半不用改）。
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
+import { vDialog } from '@/directives/dialog'
 import type { AdminModel, ModelPricing } from '@/types'
 
 const props = defineProps<{ model: AdminModel; saving?: boolean }>()
@@ -133,6 +139,16 @@ const rows = ref<{ key: string; price: number | string }[]>(
   initToken ? [] : Object.entries(init?.table || {}).map(([key, v]) => ({ key, price: v })),
 )
 const error = ref('')
+
+function close() {
+  if (!props.saving) emit('close')
+}
+/** 按下和松开都在遮罩上才算「点外面」：在输入框里拖选文字、松手时滑到外面不算 */
+const downOnMask = ref(false)
+/** 打开时焦点放哪儿：第一个价格框（分开计价时是输入单价）；价格表还没有档位时落在币种上 */
+function firstPrice(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('#pr-input, #pr-price, .pe .row input[type="number"]')
+}
 
 const keyPlaceholder = computed(() => {
   if (by.value === 'resolution') return '1K'
@@ -204,7 +220,8 @@ function submit() {
 </script>
 
 <style scoped>
-.pe { width: 560px; color-scheme: dark; }
+.pe { width: 560px; }
+.pe-title { min-width: 0; overflow-wrap: anywhere; }
 .hint { font-size: 13px; color: var(--text-3); line-height: 1.6; margin-bottom: 16px; }
 .grid { display: grid; grid-template-columns: 96px 1fr 1fr; gap: 0 12px; }
 .token-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }

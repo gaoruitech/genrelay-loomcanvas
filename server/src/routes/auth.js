@@ -43,9 +43,17 @@ router.post('/logout', requireSession, wrap(async (req, res) => {
   ok(res, null)
 }))
 
-/** GET /api/auth/me -> { user } */
+/**
+ * GET /api/auth/me -> { user, spaces }
+ * `spaces`: the personal space and the teams the account is in (id, name, role);
+ * empty while the account still has to replace its password.
+ */
 router.get('/me', requireSession, wrap(async (req, res) => {
-  ok(res, { user: accounts.serializeUser(req.user) })
+  const teams = req.user.mustChangePassword ? null : await require('../services/teams').listFor(req.userId)
+  ok(res, {
+    user: accounts.serializeUser(req.user),
+    spaces: teams ? [{ id: 'personal', kind: 'personal', name: '', role: 'owner' }, ...teams] : [],
+  })
 }))
 
 /**

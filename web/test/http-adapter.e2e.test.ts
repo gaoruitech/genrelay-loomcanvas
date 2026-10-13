@@ -136,7 +136,7 @@ describe.skipIf(!MONGO)('HTTP adapter against the stock server', () => {
 
   it('offers the optional parts the stock server has', async () => {
     const { adapter, canvasId } = state.fixture!
-    expect(await adapter.capabilities!()).toEqual({ maxUploadMb: 50, upstreamByUrl: false })
+    expect(await adapter.capabilities!()).toEqual({ maxUploadMb: 50, upstreamByUrl: false, storageWritable: true })
     expect((await adapter.listCanvases!()).some((c) => c.id === canvasId)).toBe(true)
     expect(Array.isArray(await adapter.brandKits!.list())).toBe(true)
     expect(Array.isArray(await adapter.templates!.listCanvasTemplates())).toBe(true)

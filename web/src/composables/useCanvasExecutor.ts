@@ -1,6 +1,8 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
 import { MessagePlugin } from '@/utils/feedback'
+import { refreshRefusal, refusalOf, refusalText, storedRefusal } from '@/utils/budget'
+import type { BudgetRefusal, TeamLimits } from '@/types'
 import {
   getAdapter, isModelSupported, isLastFrameHandle, isFramesModeData, listChatModels, listVideoChatModels, chatReadsImages,
   type AdapterPollResult,
@@ -36,8 +38,15 @@ const TEXT_OUT_TYPES = new Set([ANALYSIS_TYPE, LLM_TYPE])
 function runFailure(message: string, runId: string): Error {
   return Object.assign(new Error(message), { runId })
 }
-/** 这次运行被用户取消了。不是失败：节点回到中性的「已取消」，不标红、不提示 */
+/**
+ * 这次运行被取消了。不是失败：节点回到中性的「已取消」，不标红。
+ * message：不是人点的取消时后端给的原因（run.canceled_*），人点的是空串。
+ */
 class RunCanceled extends Error {}
+/** 后端只在「不是人点的取消」时才有话要说：普通取消的 errorCode 是 run.canceled */
+function canceledWhy(run: { error?: string; errorCode?: string } | null | undefined): string {
+  return run?.errorCode && run.errorCode !== 'run.canceled' ? String(run.error || '') : ''
+}
 
 /**
  * 多平台导出。与 video-analysis / llm 一样不走模型适配器，但它更特殊：
@@ -145,7 +154,20 @@ export interface RunOptions {
 // 同时真正在执行(submit/poll)的节点上限。多条生成并发时用它兜底，避免一次打出过多请求触发上游限流。
 export const MAX_CONCURRENT = 10
 
-export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
+export function useCanvasExecutor({ nodes, edges, updateNodeData: writeNodeData, getNodeBrandKit, getWorkflowId, persist, confirmRerun }: ExecutorOptions) {
+  /**
+   * 节点转入排队 / 运行之前是什么状态。被每月上限拦下的那次运行根本没发出去：上限提高之后撤掉说明时
+   * （syncRefusals），节点要回到这个状态 ——「输入已更新」的还是「输入已更新」，不能变成「已完成」让「运行全部」跳过它。
+   */
+  const statusBeforeRun = new Map<string, string>()
+  function updateNodeData(id: string, patch: Record<string, any>) {
+    if (patch.status === 'queued' || patch.status === 'running') {
+      const cur = String(nodes.value.find(n => n.id === id)?.data?.status || '')
+      if (cur !== 'queued' && cur !== 'running') statusBeforeRun.set(id, cur)
+    }
+    writeNodeData(id, patch)
+  }
+
   // ============ 并发调度状态 ============
   // 多条生成可同时进行：不再用单一全局锁，改为「按依赖就绪即执行 + 并发上限」的 DAG 调度。
   // inflight：节点 → 正在跑的 Promise。既做「同一节点只跑一次」的去重（防共享上游被重复触发重复计费），
@@ -497,7 +519,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     updateNodeData(nodeId, {
       status: 'running',
       progress: 0,
-      errorMsg: '',
+      errorMsg: '', refusal: null, cancelNote: '',
       errorRunId: '',
       cost: null,
       // 落库"本次执行实际用的提示词"：上游文本节点会覆盖本地 prompt/instruction，
@@ -540,7 +562,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
           emitProgress()
           return { taskId, fileUrls: outputUrls(polled), cost: polled.cost }
         }
-        if (polled.status === 'canceled') throw new RunCanceled()
+        if (polled.status === 'canceled') throw new RunCanceled(polled.error || '')
         if (polled.status === 'failed') {
           throw polled.error ? runFailure(polled.error, taskId) : new Error(t('executor.genFailed'))
         }
@@ -582,13 +604,23 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
         Array.from({ length: count }, () => adapter.submit(submitParams))
       )
       const taskIds: string[] = []
-      let submitError: string | null = null
+      let submitFailure: any = null
       for (const s of submitted) {
         if (s.status === 'fulfilled') taskIds.push(s.value.taskId)
-        else if (!submitError) submitError = submitErrorMessage(s.reason)
+        else if (!submitFailure) submitFailure = s.reason
       }
       if (taskIds.length === 0) {
-        throw new Error(submitError || t('executor.submitFailed'))
+        // 原样抛：被每月上限拒绝的那种带着是哪一项、数字、找谁（见 refusalOf）
+        throw submitFailure || new Error(t('executor.submitFailed'))
+      }
+      if (submitFailure) {
+        // 要了几张，只收下了前几张（上限正好卡在中间）：这句话得留到人看完，不能一闪而过
+        const refused = refusalOf(submitFailure)
+        MessagePlugin.warning({
+          content: t('executor.partialSubmit', { ok: taskIds.length, total: count, reason: refused ? refusalText(refused).full : submitErrorMessage(submitFailure) }),
+          duration: 0,
+          closeBtn: true,
+        })
       }
       // taskIds 立刻落库 —— 用户中途刷新也能恢复所有任务的产物
       // taskId 保留:兼容历史 resumeIncompleteTasks 与详情面板
@@ -607,12 +639,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       let firstError: string | null = null
       let firstErrorRunId = ''
       let canceled = 0
+      let cancelNote = ''
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
         } else if (s.reason instanceof RunCanceled) {
           canceled++
+          cancelNote = cancelNote || s.reason.message
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
           firstErrorRunId = s.reason?.runId || ''
@@ -622,14 +656,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
 
       // 一张没出、且都是被取消的（不是失败）
       if (fileUrls.length === 0 && canceled && !firstError) {
-        markCanceled(nodeId)
+        markCanceled(nodeId, cancelNote)
         return false
       }
       // 全军覆没 —— 标 error
       if (fileUrls.length === 0) {
         updateNodeData(nodeId, {
           status: 'error',
-          errorMsg: firstError || t('executor.allFailed'),
+          errorMsg: firstError || t('executor.allFailed'), refusal: null,
           errorRunId: firstErrorRunId,
           cost: totalCost,
           runPending: false,
@@ -652,7 +686,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
         [field]: first,
         [arrField]: fileUrls,
         cost: totalCost,
-        errorMsg: '',
+        errorMsg: '', refusal: null, cancelNote: '',
         runPending: false,
       })
       pushResult(nodeId, {
@@ -666,7 +700,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     } catch (err: any) {
       updateNodeData(nodeId, {
         status: 'error',
-        errorMsg: submitErrorMessage(err) || t('executor.runFailed'),
+        ...failurePatch(err, t('executor.runFailed')),
         cost: sumCosts(costs),
         runPending: false,
       })
@@ -691,7 +725,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       return false
     }
     if (videoUrl.startsWith('data:')) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.videoNotUploaded') })
+      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.videoNotUploaded'), refusal: null })
       MessagePlugin.error(`[${t('nodes.title.videoAnalysis')}] ${t('executor.videoNotUploaded')}`)
       return false
     }
@@ -708,7 +742,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       // 纯文本模型不带图（节点上已提示）
@@ -720,8 +754,8 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       markTextTaskPending(nodeId, taskId)
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.runFailed'), errorRunId: err?.runId || '', runPending: false })
+      if (err instanceof RunCanceled) { markCanceled(nodeId, err.message); return false }
+      updateNodeData(nodeId, { status: 'error', ...failurePatch(err, t('executor.runFailed')), errorRunId: err?.runId || '', runPending: false })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -749,7 +783,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       // 纯文本模型不带图：节点上已经说明连着的图片不会发送，这里照着做
@@ -766,8 +800,8 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       markTextTaskPending(nodeId, taskId)
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
-      updateNodeData(nodeId, { status: 'error', errorMsg: submitErrorMessage(err) || t('executor.genFailed'), errorRunId: err?.runId || '', runPending: false })
+      if (err instanceof RunCanceled) { markCanceled(nodeId, err.message); return false }
+      updateNodeData(nodeId, { status: 'error', ...failurePatch(err, t('executor.genFailed')), errorRunId: err?.runId || '', runPending: false })
       return false
     } finally {
       if (runningNodeId.value === nodeId) runningNodeId.value = null
@@ -810,12 +844,12 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     }
     if (type === WATERMARK_TYPE && !markUrl) return need(t('executor.needMarkImage'))
     if ([...baseUrls, markUrl].filter(Boolean).some(u => u.startsWith('data:'))) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.imageNotUploaded') })
+      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.imageNotUploaded'), refusal: null })
       return false
     }
     if (d.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       let patch: Record<string, any>
@@ -857,13 +891,13 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
           bytes: r.bytes, overLimit: !!r.overLimit,
         }
       }
-      updateNodeData(nodeId, { status: 'done', progress: 100, errorMsg: '', ...patch })
+      updateNodeData(nodeId, { status: 'done', progress: 100, errorMsg: '', refusal: null, cancelNote: '', ...patch })
       if (patch.imageUrl) propagateResultToOutputs(nodeId, 'image', patch.imageUrl)
       return true
     } catch (err: any) {
       updateNodeData(nodeId, {
         status: 'error',
-        errorMsg: submitErrorMessage(err) || t('executor.processFailed'),
+        ...failurePatch(err, t('executor.processFailed')),
       })
       return false
     } finally {
@@ -888,12 +922,12 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       return false
     }
     if (src.startsWith('data:')) {
-      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.imageNotUploaded') })
+      updateNodeData(nodeId, { status: 'error', errorMsg: t('executor.imageNotUploaded'), refusal: null })
       return false
     }
     if (node.data?.validationError) updateNodeData(nodeId, { validationError: '' })
 
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
     runningNodeId.value = nodeId
     try {
       const group = node.data?.group === 'overseas' ? 'overseas' : 'domestic'
@@ -915,14 +949,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
           whiteBgCheck: d.whiteBg || null,
           urls,
         }),
-        errorMsg: '',
+        errorMsg: '', refusal: null, cancelNote: '',
       })
       propagateResultToOutputs(nodeId, 'image', urls[0])
       return true
     } catch (err: any) {
       updateNodeData(nodeId, {
         status: 'error',
-        errorMsg: submitErrorMessage(err) || t('executor.exportFailed'),
+        ...failurePatch(err, t('executor.exportFailed')),
       })
       return false
     } finally {
@@ -984,12 +1018,12 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
           progress: 100,
           text,
           cost: task.cost || null,
-          errorMsg: '',
+          errorMsg: '', refusal: null, cancelNote: '',
           runPending: false,
         })
         return true
       }
-      if (task.status === 'canceled') throw new RunCanceled()
+      if (task.status === 'canceled') throw new RunCanceled(canceledWhy(task))
       if (task.status === 'failed') {
         throw task.error ? runFailure(task.error, taskId) : new Error(t('executor.genFailed'))
       }
@@ -1001,8 +1035,12 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
   // ============ 取消 ============
 
   /** 节点这次运行被取消后的样子：不是失败，不留错误信息；上一版结果（如果有）原样留着 */
-  function markCanceled(nodeId: string) {
-    updateNodeData(nodeId, { status: 'canceled', progress: 0, errorMsg: '', errorRunId: '', runPending: false })
+  /**
+   * `note`：不是人点的取消时，后端说的原因（发起人被移出团队、账号被停用、团队关了）。
+   * 只在这次打开期间显示，不随画布存下去（见 Canvas.vue 的 RUNTIME_FIELDS）。
+   */
+  function markCanceled(nodeId: string, note = '') {
+    updateNodeData(nodeId, { status: 'canceled', progress: 0, errorMsg: '', refusal: null, cancelNote: note, errorRunId: '', runPending: false })
   }
 
   /**
@@ -1241,7 +1279,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     const adapter = getAdapter(modelId)
     if (!adapter) return false
 
-    updateNodeData(nodeId, { status: 'running', errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
 
     // 恢复轮询的实时进度：各任务进度汇总写回节点
     const progressByTask: Record<string, number> = {}
@@ -1270,7 +1308,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
           emitProgress()
           return { fileUrls: outputUrls(polled), cost: polled.cost }
         }
-        if (polled.status === 'canceled') throw new RunCanceled()
+        if (polled.status === 'canceled') throw new RunCanceled(polled.error || '')
         if (polled.status === 'failed') {
           throw polled.error ? runFailure(polled.error, tid) : new Error(t('executor.genFailed'))
         }
@@ -1288,12 +1326,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       let firstError: string | null = null
       let firstErrorRunId = ''
       let canceled = 0
+      let cancelNote = ''
       for (const s of settled) {
         if (s.status === 'fulfilled') {
           fileUrls.push(...s.value.fileUrls)
           costs.push(s.value.cost)
         } else if (s.reason instanceof RunCanceled) {
           canceled++
+          cancelNote = cancelNote || s.reason.message
         } else if (!firstError) {
           firstError = s.reason?.message || String(s.reason || t('executor.genFailed'))
           firstErrorRunId = s.reason?.runId || ''
@@ -1301,13 +1341,13 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
       }
       const totalCost = sumCosts(costs) || node.data?.cost || null
       if (fileUrls.length === 0 && canceled && !firstError) {
-        markCanceled(nodeId)
+        markCanceled(nodeId, cancelNote)
         return false
       }
       if (fileUrls.length === 0) {
         updateNodeData(nodeId, {
           status: 'error',
-          errorMsg: firstError || t('executor.resumeFailed'),
+          errorMsg: firstError || t('executor.resumeFailed'), refusal: null,
           errorRunId: firstErrorRunId,
           runPending: false,
         })
@@ -1325,7 +1365,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
         [field]: fileUrls[0],
         [arrField]: fileUrls,
         cost: totalCost,
-        errorMsg: '',
+        errorMsg: '', refusal: null, cancelNote: '',
         runPending: false,
       })
       // 刷新前提交、刷新后才回来的那一版同样要进历史，
@@ -1341,7 +1381,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     } catch (err: any) {
       updateNodeData(nodeId, {
         status: 'error',
-        errorMsg: err?.message || t('executor.resumeFailed'),
+        errorMsg: err?.message || t('executor.resumeFailed'), refusal: null,
         runPending: false,
       })
       return false
@@ -1353,14 +1393,14 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     const nodeId = node.id
     const taskId = (node.data?.taskId as string) || ''
     if (!taskId) return false
-    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', errorRunId: '' })
+    updateNodeData(nodeId, { status: 'running', progress: 0, errorMsg: '', refusal: null, cancelNote: '', errorRunId: '' })
     try {
       return await pollTextTask(nodeId, taskId)
     } catch (err: any) {
-      if (err instanceof RunCanceled) { markCanceled(nodeId); return false }
+      if (err instanceof RunCanceled) { markCanceled(nodeId, err.message); return false }
       updateNodeData(nodeId, {
         status: 'error',
-        errorMsg: submitErrorMessage(err) || t('executor.resumeFailed'),
+        ...failurePatch(err, t('executor.resumeFailed')),
         errorRunId: err?.runId || '',
         runPending: false,
       })
@@ -1521,6 +1561,28 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
   // 连边变化也会改变上游图片输入，需要重新校验
   watch(edges, () => clearPassedValidations(), { deep: true })
 
+  /**
+   * 上限的答案换了（团长提高了上限、填上了价格、月份翻篇了）：各节点上记着的「被每月上限拦下」跟着对一遍。
+   * 那句说明说的是「拦下的那一刻」；不对的话它会一直留在节点上（还带着「重试」），直到人再点一次运行或者刷新页面。
+   * 不成立的撤掉，节点回到运行之前的样子；还成立的把那一项和数字换成现在的。怎么算「成立」见 refreshRefusal。
+   */
+  function syncRefusals(limits: TeamLimits | null | undefined) {
+    if (!limits) return
+    for (const n of nodes.value) {
+      const d = n.data || {}
+      if (!d.refusal || d.status !== 'error') continue
+      const stored = storedRefusal(d.refusal)
+      if (!stored) continue
+      const next = refreshRefusal(stored, limits)
+      if (next === stored) continue
+      if (next) { updateNodeData(n.id, { refusal: next }); continue }
+      const hasResult = !!(d.imageUrl || d.videoUrl || (TEXT_OUT_TYPES.has(n.type as string) && d.text))
+      const before = statusBeforeRun.get(n.id)
+      const back = !hasResult ? 'idle' : before === 'stale' ? 'stale' : 'done'
+      updateNodeData(n.id, { status: back, errorMsg: '', refusal: null, errorRunId: '' })
+    }
+  }
+
   return {
     running,
     runningNodeId,
@@ -1531,6 +1593,7 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
     cancelNode,
     resumeIncompleteTasks,
     refreshRunErrors,
+    syncRefusals,
     collectImageRefs,
     upstreamText,
     brandKitEffect,
@@ -1544,6 +1607,17 @@ export function useCanvasExecutor({ nodes, edges, updateNodeData, getNodeBrandKi
 function outputUrls(polled: AdapterPollResult): string[] {
   if (polled.fileUrls?.length) return polled.fileUrls
   return polled.fileUrl ? [polled.fileUrl] : []
+}
+
+/**
+ * 一次提交失败在节点上记什么。
+ * 被团队的每月上限拒绝的（403 budget.*）记成 refusal：是哪一项、数字、找谁，界面按当前语言现写；
+ * 它说的是「这个人此刻」的事，不随画布存下去（见 Canvas.vue 的 RUNTIME_FIELDS），所以 errorMsg 留空 ——
+ * 否则别的成员打开这张团队画布，会看到一句「你本月的次数已用完」。其余失败照旧记后端给的那句话。
+ */
+function failurePatch(err: any, fallback: string): { errorMsg: string; refusal: BudgetRefusal | null } {
+  const refusal = refusalOf(err)
+  return refusal ? { errorMsg: '', refusal } : { errorMsg: submitErrorMessage(err) || fallback, refusal: null }
 }
 
 /** 后端用 HTTP 状态码 + message 报错时，优先取后端给用户看的那句 */

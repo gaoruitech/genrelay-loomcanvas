@@ -4,7 +4,9 @@
       <LcLogo :to="back ? '/' : undefined" />
       <span class="lc-sp" />
       <router-link v-if="back" to="/" class="lc-btn ghost back">{{ t('auth.backHome') }}</router-link>
+      <!-- 语言、主题两个开关：集成方关了（features.localeSwitch / themeSwitch）就不出 -->
       <LcSelect
+        v-if="$feat.localeSwitch"
         class="au-lang"
         size="sm"
         auto-width
@@ -13,7 +15,7 @@
         :aria-label="t('auth.language')"
         @update:model-value="app.setLocale"
       />
-      <ThemeSwitch />
+      <ThemeSwitch v-if="$feat.themeSwitch" />
     </header>
     <div class="au-body">
       <section class="au-l">

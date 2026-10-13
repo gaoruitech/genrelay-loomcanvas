@@ -11,14 +11,22 @@
  *  - A session is a random token handed to the browser and a row holding its
  *    SHA-256. Signing out, changing the password, disabling an account and a
  *    password reset all work by deleting rows, so they take effect at once.
- *  - Every per-account collection carries the account's id in `userId`
- *    (OWNED below is the one list of them). Data written before accounts
- *    existed carries the constant 'local' and is handed to the super admin
- *    when that account is created.
+ *  - Every per-space collection carries the id of the space a document
+ *    belongs to in `userId` (OWNED below is the one list of them). A space is
+ *    an account's personal space - then the id is the account's - or a team -
+ *    then it is the team's (services/spaces.js, services/teams.js). The field
+ *    kept its name from before teams, so nothing stored had to be rewritten:
+ *    every account's existing data simply is its personal space. Who made a
+ *    document is `createdBy`. Data written before accounts existed carries
+ *    the constant 'local' and is handed to the super admin when that account
+ *    is created.
  */
 const crypto = require('crypto')
 const User = require('../models/User')
 const Session = require('../models/Session')
+const Team = require('../models/Team')
+const TeamMember = require('../models/TeamMember')
+const mongoose = require('mongoose')
 const Workflow = require('../models/Workflow')
 const Share = require('../models/Share')
 const { UserAsset } = require('../models/Asset')
@@ -29,7 +37,7 @@ const Run = require('../models/Run')
 const Template = require('../models/Template')
 const TextTemplate = require('../models/TextTemplate')
 const settings = require('./settings')
-const { getStorage } = require('../storage')
+const storageCleanup = require('./storageCleanup')
 const { hashPassword, verifyPassword, burnVerification, temporaryPassword } = require('../utils/password')
 const { ApiError, badRequest } = require('../utils/http')
 const { isPlainObject } = require('../utils/validate')
@@ -49,10 +57,10 @@ const SEEN_GRANULARITY_MS = 60 * 1000
 
 const notBuiltin = { builtin: { $ne: true } }
 /**
- * Every collection whose documents belong to one account, with the filter
- * that picks the per-account ones where a collection also holds site content.
- * Adoption of old data and deletion of an account both walk this list - a new
- * per-account collection has to be added here.
+ * Every collection whose documents belong to one space (an account's personal
+ * space, or a team), with the filter that picks those where a collection also
+ * holds site content. Adoption of old data, deletion of an account and removal
+ * of a team all walk this list - a new per-space collection has to be added here.
  */
 const OWNED = [
   { model: Workflow },
@@ -168,6 +176,7 @@ async function register({ username, email, password }) {
 
   try {
     return await User.create({
+      _id: await newAccountId(),
       username: name,
       usernameLower: name.toLowerCase(),
       email: mail,
@@ -179,6 +188,17 @@ async function register({ username, email, password }) {
     const dup = duplicateOf(err)
     if (dup === 'username' || dup === 'email') throw taken(dup)
     throw err
+  }
+}
+
+/**
+ * An id for a new account that no team has. Ids are what `userId` in the
+ * per-space collections holds, so an account and a team must never share one.
+ */
+async function newAccountId() {
+  for (;;) {
+    const id = new mongoose.Types.ObjectId()
+    if (!(await Team.exists({ _id: id }))) return id
   }
 }
 
@@ -502,7 +522,10 @@ async function prepare({ admin, log = console.log } = {}) {
 
 /* ------------------------------------------------------ account removal */
 
-/** Per-account counts for the owner's user list. Numbers only: no content crosses over. */
+/**
+ * Per-account counts for the owner's user list: what is in each account's
+ * personal space. Numbers only: no content crosses over.
+ */
 async function countsByUser() {
   const [workflows, runs] = await Promise.all([
     Workflow.aggregate([{ $match: { isDeleted: false } }, { $group: { _id: '$userId', n: { $sum: 1 } } }]),
@@ -515,15 +538,37 @@ async function countsByUser() {
   return out
 }
 
+/** Per account: how many teams it is in, and how many of them it owns. */
+async function teamCountsByUser() {
+  const [member, owned] = await Promise.all([
+    TeamMember.aggregate([{ $group: { _id: '$userId', n: { $sum: 1 } } }]),
+    Team.aggregate([{ $group: { _id: '$ownerId', n: { $sum: 1 } } }]),
+  ])
+  const out = new Map()
+  const at = (id) => out.get(id) || out.set(id, { member: 0, owned: 0 }).get(id)
+  for (const r of member) at(String(r._id)).member = r.n
+  for (const r of owned) at(String(r._id)).owned = r.n
+  return out
+}
+
 /**
- * Remove an account with everything it owns: sessions first (nobody can act
+ * Remove an account with its personal space: sessions first (nobody can act
  * as it any more), then its documents, then its files. `cancelRun` stops what
  * is still running for it.
+ *
+ * Teams are not the account's to take along:
+ *  - an account that owns a team is not deleted at all (409
+ *    `team.account_owns_teams`): the team is handed over, or removed, first;
+ *  - from every other team the account simply leaves, as if it had been
+ *    removed: what it made there stays with the team (services/teams.js).
  */
 async function deleteAccount(userId, { cancelRun } = {}) {
   const id = String(userId)
+  const teams = require('./teams')
+  await teams.assertAccountDeletable(id)
   await User.updateOne({ _id: userId }, { $set: { disabled: true } })
   await revokeSessions(id)
+  await teams.forgetAccount(id, { actor: { id: '', name: '' } })
   if (cancelRun) {
     const unfinished = await Run.find({ userId: id, status: { $in: ['queued', 'running', 'archiving'] } }).select('_id').lean()
     for (const run of unfinished) await cancelRun(String(run._id)).catch(() => {})
@@ -536,7 +581,11 @@ async function deleteAccount(userId, { cancelRun } = {}) {
   let files = 0
   let filesError = ''
   try {
-    files = await getStorage().deleteUserFiles(id)
+    // Waits a few seconds at most. What a storage that is slow or cannot be reached still holds
+    // is removed in the background and tried again until it is gone (services/storageCleanup.js).
+    const cleanup = await storageCleanup.removeOwnerFiles(id)
+    files = cleanup.removed
+    filesError = cleanup.error
   } catch (err) {
     // The account is gone either way; what could not be removed from storage is reported, not hidden.
     filesError = (err && (err.name || err.code)) || 'error'
@@ -568,5 +617,6 @@ module.exports = {
   adoptLegacy,
   prepare,
   countsByUser,
+  teamCountsByUser,
   deleteAccount,
 }

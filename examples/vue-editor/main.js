@@ -14,6 +14,9 @@ createApp({
     const message = ref('')
     const canvases = ref([])
     const canvasId = ref('')
+    // The LoomCanvas space the editor works in: 'personal' or a team id. It is a property of the ADAPTER.
+    const space = ref('personal')
+    const teams = ref([])
     const theme = ref('dark')
     const locale = ref('en')
     const nodeLayout = ref('a')
@@ -28,7 +31,12 @@ createApp({
     const call = async (method, path, body) => {
       const res = await fetch(API + path, {
         method,
-        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token.value ? { Authorization: `Bearer ${token.value}` } : {}) },
+        headers: {
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+          ...(token.value ? { Authorization: `Bearer ${token.value}` } : {}),
+          // The host's own calls name the space the same way the adapter does.
+          ...(space.value !== 'personal' ? { 'X-Space': space.value } : {}),
+        },
         body: body ? JSON.stringify(body) : undefined,
       })
       const out = await res.json()
@@ -41,19 +49,40 @@ createApp({
       try {
         // See examples/host-page/main.js: in a real product your backend does this exchange.
         token.value = (await call('POST', '/auth/login', { account: user.value, password: password.value, remember: false })).token
-        // One adapter for the page. `getAuth` is asked before every request.
-        adapter.value = createHttpAdapter({
-          apiBase: API,
-          getAuth: () => ({ Authorization: `Bearer ${token.value}` }),
-          onAuthRequired: () => { message.value = 'Session expired'; token.value = '' },
-        })
-        // Which canvases exist is the host's business: the editor edits one.
-        canvases.value = await call('GET', '/workflow/list')
-        if (!canvases.value.length) canvases.value = [await call('POST', '/workflow', { name: 'From the Vue host' })]
-        canvasId.value = canvases.value[0].id
+        teams.value = (await call('GET', '/teams')).teams.filter((t) => t.status === 'active')
+        await enterSpace('personal')
       } catch (err) {
         message.value = err.message
       }
+    }
+
+    /**
+     * Work in a space. An adapter belongs to ONE space (`space` is sent as X-Space with every request),
+     * so changing the space means a new adapter, and the editor is remounted with it (`:key` below).
+     * In a team space the stock server adds what a team needs and the adapter passes it on: the edit
+     * lock (somebody else editing -> the editor is read-only and says who), and revision-checked saves
+     * (a save conflict asks the user what to do).
+     */
+    async function enterSpace(id) {
+      space.value = id
+      canvasId.value = ''
+      adapter.value = createHttpAdapter({
+        apiBase: API,
+        space: id,
+        // `getAuth` is asked before every request.
+        getAuth: () => ({ Authorization: `Bearer ${token.value}` }),
+        onAuthRequired: () => { message.value = 'Session expired'; token.value = '' },
+      })
+      // Which canvases exist is the host's business: the editor edits one.
+      canvases.value = await call('GET', '/workflow/list')
+      if (!canvases.value.length) canvases.value = [await call('POST', '/workflow', { name: 'From the Vue host' })]
+      canvasId.value = canvases.value[0].id
+    }
+    const onSpace = (e) => enterSpace(e.target.value).catch((err) => log(`space failed: ${err.message}`))
+    // The editor saved its document as a new canvas ("make a copy" / "save my version as a copy"): list it.
+    const onCreated = async (p) => {
+      log(`created ${JSON.stringify(p)}`)
+      canvases.value = await call('GET', '/workflow/list')
     }
 
     async function newCanvas() {
@@ -68,8 +97,8 @@ createApp({
     const dump = () => { const d = editor.value.getDocument(); log(`getDocument -> v${d.schemaVersion}, ${d.nodes.length} nodes, ${d.edges.length} edges`) }
 
     return {
-      token, user, password, message, canvases, canvasId, theme, locale, nodeLayout, readOnly, narrow, lines, editor, adapter,
-      signIn, newCanvas, on, addText, dump,
+      token, user, password, message, canvases, canvasId, space, teams, theme, locale, nodeLayout, readOnly, narrow, lines, editor, adapter,
+      signIn, newCanvas, on, onSpace, onCreated, addText, dump,
       // Opt in to features the HTTP adapter can serve; everything else of the product stays out.
       features: { cost: true, templates: true },
     }
@@ -83,6 +112,7 @@ createApp({
     <template v-else>
       <div class="bar">
         <b>My Vue product</b>
+        <select :value="space" id="space" @change="onSpace"><option value="personal">Personal space</option><option v-for="t in teams" :key="t.id" :value="t.id">Team: {{ t.name }}</option></select>
         <select v-model="canvasId" id="canvas"><option v-for="c in canvases" :key="c.id" :value="c.id">{{ c.name }}</option></select>
         <button id="new" @click="newCanvas">New canvas</button>
         <select v-model="theme" id="theme"><option>dark</option><option>light</option></select>
@@ -101,6 +131,8 @@ createApp({
         <!-- The editor fills its parent: the parent decides the size. -->
         <div class="box">
           <LoomCanvasEditor
+            v-if="canvasId"
+            :key="space"
             ref="editor"
             :adapter="adapter"
             :canvas-id="canvasId"
@@ -113,6 +145,7 @@ createApp({
             @ready="on('ready')($event)"
             @change="on('change')({ nodes: $event.document.nodes.length })"
             @saved="on('saved')($event)"
+            @created="onCreated"
             @run:started="on('run:started')($event)"
             @run:finished="on('run:finished')($event)"
             @run:failed="on('run:failed')($event)"

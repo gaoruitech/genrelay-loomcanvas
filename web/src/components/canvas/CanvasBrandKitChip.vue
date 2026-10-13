@@ -2,7 +2,7 @@
   <div ref="root" class="bkc">
     <button
       ref="btn" type="button" class="bkc-chip" :class="{ on: open, set: !!current }"
-      :title="current ? t('brandKit.chip.tip', { name: current.name }) : t('brandKit.chip.tipNone')"
+      v-tip="open ? '' : current ? t('brandKit.chip.tip', { name: current.name }) : t('brandKit.chip.tipNone')"
       :aria-label="t('brandKit.chip.label')" aria-haspopup="dialog" :aria-expanded="open"
       data-testid="kit-chip" @click.stop="toggle"
     >
@@ -14,10 +14,11 @@
     </button>
 
     <Teleport :to="$lcPortal">
-      <div v-if="open" ref="pop" class="lc-menu bkc-pop" role="dialog" :aria-label="t('brandKit.pop.title')" :style="menuStyle" data-testid="kit-pop" @mousedown.stop @wheel.stop>
+      <div v-if="open" ref="pop" v-dialog="{ onEscape: close, modal: false }" class="lc-menu bkc-pop" role="dialog" :aria-label="t('brandKit.pop.title')" :style="menuStyle" data-testid="kit-pop" @mousedown.stop @wheel.stop>
         <div class="bkc-h">{{ t('brandKit.pop.title') }}</div>
         <p class="bkc-what">{{ t('brandKit.explain.summary') }}</p>
-        <p v-if="more" class="bkc-what dim">{{ t('brandKit.explain.limits') }}</p>
+        <!-- 集成方关了成本显示（features.cost）：同一段话，不提「预估成本」（和品牌包页用的是同一句） -->
+        <p v-if="more" class="bkc-what dim">{{ $feat.cost ? t('brandKit.explain.limits') : t('brandKit.explain.limitsNoCost') }}</p>
         <button type="button" class="bkc-more" :aria-expanded="more" @click="toggleMore">{{ more ? t('brandKit.node.hide') : t('brandKit.pop.limits') }}</button>
 
         <div class="bkc-sub">{{ t('brandKit.pop.pick') }}</div>
@@ -34,11 +35,11 @@
               <span class="bkc-rd" />
               <BrandKitThumbs :images="k.refImages" size="m" :max="2" />
               <span class="bkc-main">
-                <b><span class="bkc-n">{{ k.name }}</span><span v-if="k.isDefault" class="lc-tag bkc-tag" :title="t('brandKit.isDefault')">{{ t('brandKit.defaultTag') }}</span></b>
+                <b><span class="bkc-n">{{ k.name }}</span><span v-if="k.isDefault" class="lc-tag bkc-tag" v-tip="t('brandKit.isDefault')">{{ t('brandKit.defaultTag') }}</span></b>
                 <small>{{ brandKitSummary(k) }}</small>
               </span>
             </button>
-            <button type="button" class="lc-tb sm bkc-edit" :title="t('brandKit.pop.edit', { name: k.name })" :aria-label="t('brandKit.pop.edit', { name: k.name })" @click="onEdit(k)"><LcIcon name="edit" size="s" /></button>
+            <button v-if="canManage && k.canManage !== false" type="button" class="lc-tb sm bkc-edit" v-tip="t('brandKit.pop.edit', { name: k.name })" :aria-label="t('brandKit.pop.edit', { name: k.name })" @click="onEdit(k)"><LcIcon name="edit" size="s" /></button>
           </div>
           <p v-if="!kits.length" class="bkc-empty">{{ t('brandKit.pop.empty') }} {{ t('brandKit.page.example') }}</p>
         </div>
@@ -49,7 +50,7 @@
         <div class="bkc-foot">
           <router-link class="lc-btn sm ghost" :to="{ name: 'brand-kits' }" data-testid="kit-manage"><LcIcon name="settings" size="s" />{{ t('brandKit.pop.manage') }}</router-link>
           <span class="lc-sp" />
-          <button type="button" class="lc-btn sm" data-testid="kit-new" @click="onCreate"><LcIcon name="plus" size="s" />{{ t('brandKit.pop.create') }}</button>
+          <button v-if="canManage" type="button" class="lc-btn sm" data-testid="kit-new" @click="onCreate"><LcIcon name="plus" size="s" />{{ t('brandKit.pop.create') }}</button>
         </div>
       </div>
     </Teleport>
@@ -61,6 +62,7 @@
  * 画布顶栏上的品牌包：一颗显示「这张画布现在套用哪个」的 chip，点开是选择面板。
  * 品牌包按画布选，这里是唯一的入口；面板里先用一段话说清它是什么、运行时会做什么。
  */
+import { vDialog } from '@/directives/dialog'
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
@@ -70,7 +72,7 @@ import { brandKitSummary, type BrandKit } from '@/composables/useBrandKits'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   kits: BrandKit[]
   /** 这张画布选的品牌包 id；空串 = 没选 */
   modelValue: string
@@ -78,7 +80,9 @@ const props = defineProps<{
   exceptions?: number
   /** 列表已经拉到了：之前不能把「查不到」当成「被删了」 */
   loaded?: boolean
-}>()
+  /** 能不能新建、修改品牌包（团队里的成员只能选用） */
+  canManage?: boolean
+}>(), { canManage: true })
 const emit = defineEmits<{
   (e: 'update:modelValue', id: string): void
   (e: 'edit', kit: BrandKit): void

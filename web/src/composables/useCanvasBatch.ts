@@ -1,5 +1,7 @@
 import { ref, computed, nextTick, type Ref } from 'vue'
 import { MessagePlugin } from '@/utils/feedback'
+import { nodeErrorText, storedRefusal } from '@/utils/budget'
+import type { BudgetRefusal } from '@/types'
 import { t } from '@/locales'
 import { sumCosts } from '@/utils/cost'
 import type { Cost } from '@/types'
@@ -26,6 +28,8 @@ import type { Cost } from '@/types'
  */
 
 const GEN_TYPES = new Set(['image-gen', 'image-edit', 'video-gen', 'video-edit'])
+/** 也向上游提交任务、也花钱的文本类节点：每一轮它们同样会重跑，同样会被每月上限拦下 */
+const TEXT_TYPES = new Set(['llm', 'video-analysis'])
 const OUTPUT_TYPE = 'output'
 /** 与后端 MAX_ZIP_ITEMS 对齐，也是一次批量的理智上限 */
 export const MAX_BATCH_SOURCES = 100
@@ -112,6 +116,17 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
       .map(findNode)
       .filter((n) => n && GEN_TYPES.has(n.type)) as any[]
   })
+  /**
+   * 变量位下游会向上游提交任务的全部节点：出图 / 出片的，加上大语言模型、视频分析。
+   * 「会不会被每月上限拦下」按这一组看 —— 只看出图出片的话，下游一个用着没填价格的对话模型的节点
+   * 要跑到它那一步才知道。预估和花费统计仍然按 affectedGenNodes（文本节点的花费跑完才知道）。
+   */
+  const affectedPaidNodes = computed(() => {
+    if (!varNodeId.value) return []
+    return downstreamIds(varNodeId.value)
+      .map(findNode)
+      .filter((n) => n && (GEN_TYPES.has(n.type) || TEXT_TYPES.has(n.type))) as any[]
+  })
 
   /**
    * 单轮预估：下游各生成节点自己算好的 estimatedCost 之和。
@@ -133,6 +148,9 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
   })
   /** 有节点报不上价时，总价无从算起 —— 界面上要说明原因 */
   const costIsPartial = computed(() => !!unitCost.value?.unknown)
+
+  /** 这一批是被团队的每月上限拦停的：哪一项、停在第几份、后面还剩几份没跑 */
+  const refusal = ref<{ refusal: BudgetRefusal; at: number; left: number } | null>(null)
 
   const doneCount = computed(() => items.value.filter((i) => i.status === 'done').length)
   const failedCount = computed(() => items.value.filter((i) => i.status === 'error').length)
@@ -183,10 +201,20 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
   function roundError(): string {
     for (const n of affectedGenNodes.value) {
       if (n.data?.status === 'error') {
-        return n.data?.errorMsg || t('executor.genFailed')
+        return nodeErrorText(n.data) || t('executor.genFailed')
       }
     }
     return ''
+  }
+  /** 这一轮是不是被团队的每月上限拦下的：是的话后面几份也一样跑不了，不再一份份去碰 */
+  function roundRefusal(): BudgetRefusal | null {
+    for (const n of affectedPaidNodes.value) {
+      if (n.data?.status === 'error') {
+        const r = storedRefusal(n.data?.refusal)
+        if (r) return r
+      }
+    }
+    return null
   }
 
   /** 这一轮的实际花费：各生成节点执行器写回的 data.cost 之和 */
@@ -223,6 +251,7 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
     }))
     running.value = true
     stopping.value = false
+    refusal.value = null
     currentIndex.value = 0
 
     try {
@@ -252,6 +281,14 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
           // 钱已经花了就要记上，哪怕这一轮最后判了失败
           it.cost = roundCost()
           const err = roundError()
+          const refused = roundRefusal()
+          if (refused) {
+            // 上限不会在这一批里自己松开：停在这儿，说清楚是哪一项、后面还有几份没跑
+            refusal.value = { refusal: refused, at: i, left: items.value.length - i - 1 }
+            it.status = 'error'
+            it.error = err
+            break
+          }
           if (err) throw new Error(err)
           const outs = collectOutputs()
           if (!outs.length) throw new Error(t('dialogs.batch.roundEmpty'))
@@ -267,6 +304,8 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
       const stopped = stopping.value
       stopping.value = false
       if (stopped) MessagePlugin.info(t('dialogs.batch.stoppedAt', { n: currentIndex.value + 1 }))
+      // 被上限拦下：说明留在弹窗里（BudgetNotice），不靠一闪而过的轻提示
+      else if (refusal.value) { /* 见 BatchRunDialog */ }
       else if (failedCount.value) {
         MessagePlugin.warning(t('dialogs.batch.finishedMixed', { done: doneCount.value, failed: failedCount.value }))
       } else MessagePlugin.success(t('dialogs.batch.finishedAll', { n: doneCount.value }))
@@ -289,14 +328,15 @@ export function useCanvasBatch({ nodes, edges, updateNodeData, executor, beforeS
 
   function reset() {
     items.value = []
+    refusal.value = null
     currentIndex.value = 0
   }
 
   return {
     open, varNodeId, sources, items, running, stopping, currentIndex,
-    varCandidates, affectedGenNodes, outputNodes,
+    varCandidates, affectedGenNodes, affectedPaidNodes, outputNodes,
     unitCost, totalCost, costIsPartial,
-    doneCount, failedCount, spentCost, allOutputs, originalUrl,
+    doneCount, failedCount, spentCost, allOutputs, originalUrl, refusal,
     addSources, removeSource, clearSources,
     validate, start, stop, restoreVarNode, reset,
   }

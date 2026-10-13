@@ -29,6 +29,13 @@ export interface Runtime {
   activeRoot: HTMLElement | null
   /** Where Teleports and TDesign popups of the active root go. */
   activePortal: HTMLElement | null
+  /**
+   * The space every request of the shared HTTP client acts in: '' = the caller's personal space
+   * (no `X-Space` header), otherwise a team id. Written only by stores/space.ts.
+   */
+  space: string
+  /** Bumped on every change of `space`: an answer that belongs to an earlier value is thrown away. */
+  spaceEpoch: number
 }
 
 export const DEFAULT_STORAGE_PREFIX = 'loomcanvas-'
@@ -44,6 +51,8 @@ export const runtime: Runtime = {
   roots: new Set(),
   activeRoot: null,
   activePortal: null,
+  space: '',
+  spaceEpoch: 0,
 }
 
 /** Origin part of an API base; '' when it is relative (same origin). */
@@ -77,8 +86,20 @@ export function currentRoot(): HTMLElement {
   return document.documentElement
 }
 
+/**
+ * The popup layer of a mounted view: the one the user touched last, else any that is in the document.
+ * null when embedded and nothing is mounted (any more).
+ */
+export function mountedPortal(): HTMLElement | null {
+  if (runtime.activePortal && runtime.activePortal.isConnected) return runtime.activePortal
+  for (const r of runtime.roots) {
+    if (!r.isConnected) continue
+    for (const c of Array.from(r.children)) if (c.classList.contains('lc-portal')) return c as HTMLElement
+  }
+  return null
+}
+
 /** Where a popup opened from non-component code should be attached. */
 export function currentPortal(): HTMLElement {
-  if (runtime.activePortal && runtime.activePortal.isConnected) return runtime.activePortal
-  return document.body
+  return mountedPortal() || document.body
 }

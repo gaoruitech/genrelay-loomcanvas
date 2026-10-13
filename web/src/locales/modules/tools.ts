@@ -90,7 +90,7 @@ export default {
       maxSizeUnit: 'KB（0 = 不限）',
       resultAlt: '处理结果',
       empty: '处理结果会显示在这里',
-      overLimit: '（已压到最小，仍超过 {kb}KB）',
+      overLimit: '（已压到最小，仍超过 {kb} KB）',
       run: '处理',
       output: '处理后的图',
     },

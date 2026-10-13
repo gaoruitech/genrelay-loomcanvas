@@ -87,11 +87,18 @@ async function readPublic(url, expected) {
 
 /**
  * @param {object} cfg a parsed configuration with its secret
+ * @param {object} [opts] { connectionTimeout, requestTimeout } in ms - how long the service gets to
+ *   accept a connection and to answer one request. Both are hard limits: a service that accepts
+ *   the connection and then says nothing fails the step it was asked for, it does not hang the test.
  * @returns {Promise<{ ok: boolean, steps: { step: string, status: 'ok'|'failed'|'skipped', ms?: number }[], error: object|null }>}
  *   `error` is a message ({ code, params }) for the first step that failed.
  */
-async function probe(cfg) {
-  const backend = createS3Backend(cfg, { maxAttempts: 1, connectionTimeout: CONNECT_TIMEOUT_MS, requestTimeout: REQUEST_TIMEOUT_MS })
+async function probe(cfg, opts = {}) {
+  const backend = createS3Backend(cfg, {
+    maxAttempts: 1,
+    connectionTimeout: opts.connectionTimeout || CONNECT_TIMEOUT_MS,
+    requestTimeout: opts.requestTimeout || REQUEST_TIMEOUT_MS,
+  })
   const key = `probe/${crypto.randomBytes(16).toString('hex')}.txt`
   const absent = `probe/${crypto.randomBytes(16).toString('hex')}.txt`
   const body = Buffer.from(`LoomCanvas storage test ${crypto.randomBytes(16).toString('hex')}\n`)

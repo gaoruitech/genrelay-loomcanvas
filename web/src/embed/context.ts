@@ -50,13 +50,20 @@ export interface EmbedContext {
   hostUser: HostUser | null
   /** null: every page. */
   pages: Set<LoomCanvasPage> | null
+  /** The host pinned the app to one space: 'personal' or a team id. null: the user switches. */
+  space: string | null
   features: LoomCanvasFeatures
-  /** undefined: follow the server's site settings; false: no brand block. */
-  brand: { name?: string; logoUrl?: string } | false | undefined
+  /** undefined: follow the server's site settings; false: no brand block. `showName: false`: a logo that stands alone. */
+  brand: { name?: string; logoUrl?: string; showName?: boolean } | false | undefined
   defaultNodeLayout: LoomCanvasNodeLayout
   /** The host passed `theme` / `locale`: account and site defaults must not override them. */
   themeControlled: boolean
   localeControlled: boolean
+  /**
+   * How in-app navigation shows in the address bar. `'memory'`: not at all, so an in-app address
+   * means nothing to the browser: a link cannot be opened in a new tab, it has to navigate in place.
+   */
+  routerMode: 'history' | 'hash' | 'memory'
   emit(event: string, payload: unknown): void
   editor: EditorHost | null
 }
@@ -74,11 +81,13 @@ export function createEmbedContext(over: Partial<EmbedContext> = {}): EmbedConte
     hostAuth: false,
     hostUser: null,
     pages: null,
+    space: null,
     features: reactive(resolveFeatures(undefined, { mode })),
     brand: undefined,
     defaultNodeLayout: 'a',
     themeControlled: false,
     localeControlled: false,
+    routerMode: mode === 'editor' ? 'memory' : 'history',
     emit: () => undefined,
     editor: null,
     ...over,

@@ -1,7 +1,22 @@
 <template>
-  <ChipSelect label="" :display-value="display" :title="t('gen.params.title')">
+  <ChipSelect label="" :display-value="shown" :title="compact ? `${t('gen.params.title')} · ${full}` : t('gen.params.title')">
     <template #menu>
       <div class="cv-pp">
+        <!-- 地方窄的时候（布局 c 的那一行）「模式」不另起一颗 chip，收在这里 -->
+        <template v-if="modes && modes.length">
+          <div class="cv-pp-label">{{ t('gen.node.mode') }}</div>
+          <div class="cv-pp-row" data-testid="gen-mode-row">
+            <button
+              v-for="m in modes"
+              :key="String(m.value)"
+              type="button"
+              class="cv-pp-pill"
+              :class="{ active: String(m.value) === String(mode) }"
+              @click.stop="$emit('update:mode', String(m.value))"
+            >{{ m.label }}</button>
+          </div>
+        </template>
+
         <div class="cv-pp-label">{{ t('nodes.field.aspectRatio') }}</div>
         <div class="cv-pp-grid">
           <button
@@ -63,6 +78,7 @@ import { computed, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChipSelect from './ChipSelect.vue'
 import type { ModelOption } from '@/utils/canvasModels'
+import { clipLength } from '@/utils/duration'
 
 const { t } = useI18n()
 
@@ -76,6 +92,11 @@ const props = defineProps<{
   durations?: ModelOption<number>[]
   duration?: number
   fixedDuration?: number
+  /** 图片输入模式（多图参考 / 首尾帧）；给了就在弹层最上面多一组 */
+  modes?: ModelOption[]
+  mode?: string
+  /** 放不下时的短写法：只写第一项，其余记成「+N」，完整的在悬停提示里 */
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,19 +104,23 @@ const emit = defineEmits<{
   (e: 'update:aspectRatio', v: string): void
   (e: 'update:count', v: number): void
   (e: 'update:duration', v: number): void
+  (e: 'update:mode', v: string): void
 }>()
 
-const display = computed(() => {
+const parts = computed(() => {
   const a = props.aspectRatios.find(x => String(x.value) === String(props.aspectRatio))?.label
     || props.aspectRatio || t('models.auto')
   const parts = [a]
   const r = props.resolutions?.find(x => String(x.value) === String(props.resolution))?.label
   if (r) parts.push(r)
-  if (props.durations && props.durations.length && props.duration != null) parts.push(`${props.duration}s`)
-  else if (props.fixedDuration != null) parts.push(`${props.fixedDuration}s`)
+  // 片长的写法和节点摘要、队列、生成记录是同一份（utils/duration.ts）
+  if (props.durations && props.durations.length && props.duration != null) parts.push(clipLength(props.duration))
+  else if (props.fixedDuration != null) parts.push(clipLength(props.fixedDuration))
   if (props.counts && props.counts.length) parts.push(`×${props.count ?? props.counts[0].value}`)
-  return parts.join(' · ')
+  return parts.map(String)
 })
+const full = computed(() => parts.value.join(' · '))
+const shown = computed(() => (props.compact && parts.value.length > 1 ? `${parts.value[0]} +${parts.value.length - 1}` : full.value))
 
 const countIdx = computed(() => {
   if (!props.counts) return 0

@@ -8,7 +8,7 @@
     <div class="cv-head">
       <LcIcon :name="iconName" />
       <span class="cv-title">{{ typeLabel }}</span>
-      <span v-if="modelName" class="cv-head-x" :title="modelName">{{ modelName }}</span>
+      <span v-if="modelName" v-tip="{ text: modelName, clipped: true }" class="cv-head-x">{{ modelName }}</span>
     </div>
 
     <div class="cv-body">

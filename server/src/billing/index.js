@@ -8,9 +8,12 @@
  * or meter usage point BILLING_HOOK at a module exporting any of the three
  * functions below; missing ones fall back to these no-ops.
  *
- *   ctx  = { runId, userId, username, kind, model, providerType, workflowId, nodeId, params, count }
- *          userId / username: the account the run belongs to (its id, and its
+ *   ctx  = { runId, userId, username, spaceId, teamId, kind, model, providerType, workflowId, nodeId, params, count }
+ *          userId / username: the account that started the run (its id, and its
  *          name at the time of the call)
+ *          spaceId: the space the run belongs to - equal to userId for a run in
+ *          a personal space, the team's id for a run in a team
+ *          teamId: the team's id for a run in a team, '' otherwise
  *   cost = { amount, currency, unknown }
  *
  * beforeRun runs once per run before anything is sent upstream; returning

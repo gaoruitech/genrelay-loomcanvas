@@ -44,6 +44,9 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// What ships: the server (the image) and the web app (the image and the library build).
+// examples/react-host is not here on purpose: nothing of it is distributed, and whoever runs the
+// example installs its dependencies (React, the build tools) themselves.
 const PROJECTS = ['server', 'web']
 const NOTICES_FILE = 'THIRD_PARTY_NOTICES.md'
 

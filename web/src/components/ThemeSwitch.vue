@@ -4,7 +4,7 @@
       type="button"
       class="ths-btn"
       :aria-label="t('shell.theme.label')"
-      :title="t('shell.theme.title', { name: t('shell.theme.' + app.theme) })"
+      v-tip="open ? '' : t('shell.theme.title', { name: t('shell.theme.' + app.theme) })"
       aria-haspopup="menu"
       :aria-expanded="open"
       data-testid="theme-switch"

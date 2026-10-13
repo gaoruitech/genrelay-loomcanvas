@@ -6,7 +6,7 @@
       class="gf-rf"
       :class="{ over: r.overCap, dragging: dragKey === r.key, drop: dropIdx === i }"
       :draggable="reorderable"
-      :title="r.overCap ? t('gen.refs.overCapTip') : reorderable ? t('gen.refs.hint') : t('gen.refs.insert', { name: r.label })"
+      v-tip="r.overCap ? t('gen.refs.overCapTip') : g.viewOnly ? (viewer ? t('gen.refs.view', { name: r.label }) : '') : reorderable ? t('gen.refs.hint') : t('gen.refs.insert', { name: r.label })"
       data-testid="gen-ref"
       @dragstart="onDragStart(r.key, $event)"
       @dragover.prevent="dropIdx = i"
@@ -46,13 +46,16 @@ import { useI18n } from 'vue-i18n'
 import { useGenNodeState } from '@/composables/useGenNode'
 import { normalizeRefName, type ImageRef } from '@/composables/canvasImageRefs'
 import { canvasImageThumb } from '@/utils/canvasMedia'
+import { useCanvasViewer } from '@/composables/nodeLayout'
 
 defineProps<{ sm?: boolean }>()
 const { t } = useI18n()
 const g = useGenNodeState()
-const reorderable = computed(() => !g.readonly && g.refsReorderable)
+// 只读：不调序、不改名、不往提示词里插 @；点一下是把这张图放大看
+const viewer = useCanvasViewer()
+const reorderable = computed(() => !g.viewOnly && g.refsReorderable)
 // 节点自己没有提示词框（文本类）时，点了也没地方插
-const canInsert = computed(() => !g.readonly && g.hasOwnPrompt)
+const canInsert = computed(() => !g.viewOnly && g.hasOwnPrompt)
 
 const dragKey = ref('')
 const dropIdx = ref(-1)
@@ -83,6 +86,7 @@ function onDrop(target: number) {
  */
 let insertTimer: number | null = null
 function onClick(r: ImageRef) {
+  if (g.viewOnly) { viewer?.(r.url, 'image'); return }
   if (editingKey.value || !canInsert.value) return
   if (insertTimer) window.clearTimeout(insertTimer)
   insertTimer = window.setTimeout(() => { insertTimer = null; g.mention.insertAtEnd(r) }, 240)
@@ -90,7 +94,7 @@ function onClick(r: ImageRef) {
 onBeforeUnmount(() => { if (insertTimer) window.clearTimeout(insertTimer) })
 
 function startRename(r: ImageRef) {
-  if (g.readonly) return
+  if (g.viewOnly) return
   if (insertTimer) { window.clearTimeout(insertTimer); insertTimer = null }
   editingKey.value = r.key
   draftName.value = r.name

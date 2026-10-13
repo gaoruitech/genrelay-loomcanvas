@@ -153,7 +153,8 @@ test('LoomCanvas API end to end', async (t) => {
     assert.deepEqual([boot.body.data.auth, boot.body.data.user], [{ registrationOpen: true }, null])
     assert.deepEqual((await call('GET', '/api/bootstrap')).body.data.auth, boot.body.data.auth, 'the same answer at the path of the contract')
     assert.deepEqual(boot.body.data.limits, { maxUploadMb: 50 })
-    assert.deepEqual(boot.body.data.media, { upstreamByUrl: false })
+    // Nothing about storage is said to a caller who is not signed in: `writable` is simply true.
+    assert.deepEqual(boot.body.data.media, { upstreamByUrl: false, writable: true })
     for (const [m, p] of [['GET', '/api/workflow/list'], ['GET', '/api/models'], ['GET', '/api/admin/providers'], ['GET', '/api/admin/settings'], ['GET', '/api/admin/storage'], ['POST', '/api/admin/storage/test'], ['POST', '/api/runs'], ['POST', '/api/files/fetch'], ['GET', '/api/canvas-share/mine'], ['GET', '/api/brand-kits']]) {
       const r = await call(m, p, m === 'POST' ? {} : undefined)
       assert.deepEqual([r.status, r.body.code], [401, 'auth.required'], `${m} ${p}`)
@@ -172,7 +173,8 @@ test('LoomCanvas API end to end', async (t) => {
     assert.deepEqual([after.user.username, after.user.role, after.user.mustChangePassword, after.auth], ['owner', 'owner', false, { registrationOpen: true }])
     // No PUBLIC_URL and files on the local disk: an upstream cannot be given a stored file by URL.
     // The canvas reads this to warn before a run with a model that only takes URLs (ModelSpec.imageByUrlOnly).
-    assert.deepEqual((await call('GET', '/api/app/bootstrap')).body.data.media, { upstreamByUrl: false })
+    // `writable`: new files can be stored (the local disk); every signed-in client is told so before an upload or a run.
+    assert.deepEqual((await call('GET', '/api/app/bootstrap')).body.data.media, { upstreamByUrl: false, writable: true })
 
     // A token nobody was given is not accepted, however well-formed.
     const forged = crypto.randomBytes(32).toString('base64url')
@@ -633,6 +635,16 @@ test('LoomCanvas API end to end', async (t) => {
     assert.equal((await call('GET', '/api/app/bootstrap', undefined, { auth: false })).body.data.site.name, 'Mine')
     assert.equal((await call('PUT', '/api/admin/settings', { concurrency: 0 })).status, 400)
     assert.equal((await call('PUT', '/api/admin/settings', { logoUrl: 'javascript:alert(1)' })).status, 400)
+    // The name next to the logo: on unless the owner turns it off (a wordmark logo stands alone); a real boolean only.
+    const bootSite = async () => (await call('GET', '/api/app/bootstrap', undefined, { auth: false })).body.data.site
+    assert.equal(s.showSiteName, true)
+    assert.equal((await bootSite()).showName, true)
+    for (const bad of ['false', 0, null]) assert.equal((await call('PUT', '/api/admin/settings', { showSiteName: bad })).body.code, 'validation.boolean', String(bad))
+    assert.equal((await data('PUT', '/api/admin/settings', { showSiteName: false })).showSiteName, false)
+    assert.deepEqual([(await bootSite()).showName, (await bootSite()).name], [false, 'Mine'], 'the name itself is still served: the browser tab and the alt text of the logo use it')
+    await settings.load()
+    assert.equal(settings.get('showSiteName'), false, 'stored, not only cached')
+    assert.equal((await data('PUT', '/api/admin/settings', { showSiteName: true })).showSiteName, true)
 
     const templates = await data('GET', '/api/canvas/templates')
     assert.ok(templates.length >= 1 && templates[0].graph.nodes.length >= 2 && templates[0].key && templates[0].title)

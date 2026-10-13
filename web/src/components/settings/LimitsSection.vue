@@ -67,7 +67,7 @@ import { useSectionDirty } from './dirty'
 
 const { t } = useI18n()
 
-type LimitKey = 'concurrency' | 'userConcurrency' | 'userQueueLimit' | 'imageTimeoutMinutes' | 'videoTimeoutMinutes' | 'maxRetries' | 'retentionDays'
+type LimitKey = 'concurrency' | 'userConcurrency' | 'userQueueLimit' | 'teamConcurrency' | 'imageTimeoutMinutes' | 'videoTimeoutMinutes' | 'maxRetries' | 'retentionDays'
   | 'submitTimeoutSec' | 'chatTimeoutSec' | 'downloadTimeoutSec'
 type Unit = 'runs' | 'times' | 'minutes' | 'seconds' | 'days'
 interface Field { key: LimitKey; min: number; max: number; unit: Unit }
@@ -80,6 +80,7 @@ const GROUPS: { id: 'capacity' | 'timeouts' | 'upkeep'; fields: Field[] }[] = [
       { key: 'concurrency', min: 1, max: 32, unit: 'runs' },
       { key: 'userConcurrency', min: 1, max: 32, unit: 'runs' },
       { key: 'userQueueLimit', min: 1, max: 500, unit: 'runs' },
+      { key: 'teamConcurrency', min: 1, max: 32, unit: 'runs' },
     ],
   },
   {
@@ -105,7 +106,7 @@ const FIELDS = GROUPS.flatMap(g => g.fields)
 const { form, loading, loadError, saving, dirty, load, save, reset } = useAdminSettings(
   FIELDS.map(f => f.key),
   {
-    concurrency: 4, userConcurrency: 4, userQueueLimit: 200, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 2, retentionDays: 0,
+    concurrency: 4, userConcurrency: 4, userQueueLimit: 200, teamConcurrency: 4, imageTimeoutMinutes: 10, videoTimeoutMinutes: 30, maxRetries: 2, retentionDays: 0,
     submitTimeoutSec: 60, chatTimeoutSec: 300, downloadTimeoutSec: 300,
   },
 )

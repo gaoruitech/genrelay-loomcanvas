@@ -24,6 +24,7 @@ import EditorRoot from './EditorRoot.vue'
 import { configureRuntime, runtime } from './runtime'
 import { createEditorHost, createEmbedContext } from './context'
 import { applyCommonOptions, createEmitter, createMountRoot, hostSetTheme, installCommon } from './mount'
+import { guardedLink } from './links'
 import { EDITOR_EVENT_KEYS, resolveFeatures, resolveNodeTypes, validateAdapter } from './options'
 import { createEmptyDocument, migrateDocument, type CanvasDocument } from './document'
 import { useAppStore } from '@/stores/app'
@@ -56,11 +57,17 @@ const LOCAL_ID = 'local'
  * host's adapter untouched.
  */
 function withLocalDocument(adapter: EditorAdapter, state: { doc: CanvasDocument; updatedAt: string }): EditorAdapter {
+  let loaded = false
   const local: Pick<EditorAdapter, 'loadCanvas' | 'saveCanvas'> = {
     async loadCanvas(id): Promise<StoredCanvas> {
+      loaded = true
       return { id, document: JSON.parse(JSON.stringify(state.doc)), updatedAt: state.updatedAt }
     },
     async saveCanvas(_id, patch) {
+      // A save before this editor has loaded anything can only be the parting save of an editor that
+      // was unmounted just before this one was mounted (every `document` editor calls its canvas
+      // 'local'): it is not this document, do not let it overwrite it.
+      if (!loaded) return { updatedAt: state.updatedAt }
       const { legacyLayout, ...rest } = patch
       state.doc = { ...state.doc, ...JSON.parse(JSON.stringify(rest)) }
       if (legacyLayout === false) delete state.doc.legacyLayout
@@ -142,6 +149,9 @@ export function mountEditor(el: HTMLElement, options: LoomCanvasEditorOptions): 
   // (links, leave guards) keep working. The address bar is never touched.
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:all(.*)*', name: 'canvas', component: Canvas }] })
   app.use(router)
+  // There are no pages to go to here: a `<router-link>` inside a shared component (the brand-kit
+  // chip's "manage" link, a "set prices" link) is not rendered instead of pointing nowhere.
+  app.component('RouterLink', guardedLink(ctx, router))
 
   let alive = true
   // Models and backend limits first: a node created before the model list arrives would have no default model.
@@ -164,7 +174,10 @@ export function mountEditor(el: HTMLElement, options: LoomCanvasEditorOptions): 
       try { rawUnmount() } finally {
         mount.destroy()
         emitter.clear()
-        if (runtime.adapter === adapter && runtime.roots.size === 0) runtime.adapter = null
+        // `runtime.adapter` is deliberately NOT cleared here. Leaving the canvas saves what was not
+        // saved yet, and that save is queued behind the one in flight: it reaches for the adapter
+        // after this function has returned. Clearing it would send that last save to the built-in
+        // HTTP adapter (the page's own `/api`) instead of the host's. The next mount replaces it.
       }
     },
     getDocument: () => api().getDocument(),
@@ -232,6 +245,7 @@ export const LoomCanvasEditor = defineComponent({
     ready: (_p: LoomCanvasEditorEvents['ready']) => true,
     change: (_p: LoomCanvasEditorEvents['change']) => true,
     saved: (_p: LoomCanvasEditorEvents['saved']) => true,
+    created: (_p: LoomCanvasEditorEvents['created']) => true,
     'run:started': (_p: LoomCanvasEditorEvents['run:started']) => true,
     'run:finished': (_p: LoomCanvasEditorEvents['run:finished']) => true,
     'run:failed': (_p: LoomCanvasEditorEvents['run:failed']) => true,

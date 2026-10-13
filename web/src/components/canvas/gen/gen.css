@@ -93,7 +93,7 @@
 .gn-img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .gn-play {
   position: absolute; inset: 0; margin: auto; width: 36px; height: 36px; display: grid; place-items: center;
-  border-radius: 50%; border: 1px solid var(--line-3); background: rgb(var(--c-scrim) / .66); color: var(--on-scrim);
+  border-radius: 50%; border: 1px solid var(--on-scrim-line); background: rgb(var(--c-scrim) / .66); color: var(--on-scrim);
   pointer-events: none; transition: opacity .15s ease;
 }
 .gn-play svg { width: 13px; height: 13px; margin-left: 2px; fill: currentColor; }
@@ -120,23 +120,38 @@
 .gn-b .gn-ph.err .gn-ph-t { -webkit-line-clamp: 3; }
 .gn-c .gn-media.is-empty { padding: 0 12px; }
 
-/* 文本类节点：结果是一段文字 */
+/* 文本类节点：结果是一段可以手改的文字 —— 它是「输出」，画法上和下面的输入框（提示词，带底色的井）分开：
+   不带底色、和节点同一个面，细描边圆角收在节点内边距里，左上角一行小字写明「生成结果」。
+   还没有结果时描边是虚线，和出图 / 出片节点「结果出现在这里」的占位同一种说法；聚焦（手改）时描边换成强调色并带光环 */
+.gn-media.m-text { background: none; overflow: visible; padding: 0 8px; }
+.gn-c .gn-media.m-text { padding: 0 12px; }
+.gn-tbox {
+  height: 100%; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  border: 1px solid var(--line-2); border-radius: 10px; background: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.gn-tbox.empty { border-style: dashed; border-color: var(--line-3); }
+.gn-tbox:hover:not(.busy) { border-color: var(--line-3); }
+.gn-tbox:has(.gn-text:focus) { border-style: solid; border-color: var(--cyan); box-shadow: var(--ring); }
+/* 那一行小字：左边是这一块的名字，右边是清空 / 字数 / 放大。它在文字框上方、不压在文字框上 —— 长文滚到中间时字不会从它底下透出来 */
+.gn-text-h { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; padding: 0 4px 0 12px; font-size: 11px; color: var(--text-3); }
+.gn-text-l { flex: none; font-weight: 500; white-space: nowrap; }
+.gn-text-t { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.gn-text-t .gf-ib-plain { margin-left: -4px; }
 .gn-text {
-  display: block; width: 100%; height: 100%; margin: 0; padding: 10px 12px 30px; border: 0; outline: 0; resize: none;
-  background: var(--well); color: var(--text); font: inherit; font-size: 12px; line-height: 1.6;
+  display: block; width: 100%; height: 100%; margin: 0; padding: 10px 12px; outline: 0; resize: none;
+  border: 1px solid var(--line-2); border-radius: 10px; background: none;
+  color: var(--text); font: inherit; font-size: 12px; line-height: 1.6;
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
 }
+.gn-tbox > .gn-text { flex: 1 1 auto; min-height: 0; height: auto; padding: 0 12px 10px; border: 0; border-radius: 0; }
 .gn-text::placeholder { color: var(--text-3); opacity: 1; }
-.gn-text:disabled { opacity: .6; }
-.gn-text:focus { box-shadow: 0 0 0 1px var(--cyan) inset; }
-.gn-text.ro { padding-bottom: 10px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: var(--text-2); cursor: default; }
+.gn-text:disabled { color: var(--text-2); }
+.gn-text.ro { overflow: auto; white-space: pre-wrap; word-break: break-word; color: var(--text-2); cursor: default; }
 .gn-text.ro.ph { color: var(--text-3); }
-.gn-b .gn-text.ro { overflow: hidden; font-size: 11px; line-height: 1.55; padding: 8px 12px; }
-.gn-text-f {
-  position: absolute; left: 12px; right: 8px; bottom: 5px; display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; color: var(--text-3); pointer-events: none;
-}
-.gn-text-f > * { pointer-events: auto; }
-.gn-text-f > span { display: inline-flex; align-items: center; gap: 4px; }
+/* 紧凑节点：这里只是一段预览（改在属性面板里），不画成输入框 */
+.gn-b .gn-media.m-text { padding: 0; overflow: hidden; }
+.gn-b .gn-text.ro { overflow: hidden; font-size: 11px; line-height: 1.55; padding: 8px 12px; border: 0; border-radius: 0; background: none; }
 
 /* 运行中：压暗 + 扫光 + 进度环 */
 .gn-rov { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(var(--c-scrim) / .58); overflow: hidden; pointer-events: none; }
@@ -146,8 +161,18 @@
 .gn-ring.s { width: 36px; height: 36px; font-size: 10px; }
 .gn-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .gn-ring circle { fill: none; stroke-width: 3; }
-.gn-ring .bg { stroke: var(--line-2); }
-.gn-ring .fg { stroke: var(--cyan); stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; transition: stroke-dashoffset .4s ease; }
+/* 压在画面上：环、数字都用「压在画面上」的那组令牌（两套主题同值）—— 主题的强调色在浅色主题里是深青，压在压暗的画面上看不清 */
+.gn-ring .bg { stroke: var(--on-scrim-line); }
+.gn-ring .fg { stroke: var(--on-scrim-accent); stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; transition: stroke-dashoffset .4s ease; }
+/* 底下没有画面（还没有结果 / 文本类节点）：不压暗 —— 浅色主题里那会是白卡片上一整块深灰。
+   只在占位框 / 文字框的范围里蒙一层主题自己的面、扫光、转圈；占位里的图标和那句话让位给进度环 */
+.gn-media.is-empty .gn-rov, .gn-media.m-text .gn-rov { inset: 0 8px; border-radius: 10px; background: rgb(var(--c-glass) / .5); }
+.gn-c .gn-media.is-empty .gn-rov, .gn-c .gn-media.m-text .gn-rov { inset: 0 12px; }
+.gn-b .gn-media.is-empty .gn-rov, .gn-b .gn-media.m-text .gn-rov { inset: 0; border-radius: 0; }
+.gn-media.is-empty .gn-ring, .gn-media.m-text .gn-ring { color: var(--text); }
+.gn-media.is-empty .gn-ring .bg, .gn-media.m-text .gn-ring .bg { stroke: var(--line-2); }
+.gn-media.is-empty .gn-ring .fg, .gn-media.m-text .gn-ring .fg { stroke: var(--cyan); }
+.gn-media.is-empty.is-run .gn-ph > *, .gn-media.m-text.is-run .gn-text.ph { visibility: hidden; }
 /* 上游没报进度：一段弧转圈，不写数字 */
 .gn-ring.indet .fg { stroke-dashoffset: 80; }
 .gn-ring.indet svg { animation: gn-spin 1.2s linear infinite; }
@@ -167,7 +192,7 @@
 }
 .gn-zoom svg { width: 14px; height: 14px; }
 .gn-zoom:hover { background: rgb(var(--c-scrim) / .9); }
-.gn-zoom:focus-visible { opacity: 1; outline: none; box-shadow: var(--ring); }
+.gn-zoom:focus-visible { opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .gn:hover .gn-zoom, .gn.selected .gn-zoom { opacity: 1; }
 .gn-ov-bl { position: absolute; left: 8px; bottom: 8px; z-index: 2; max-width: calc(100% - 16px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .gn-a .gn-ov-bl { opacity: 0; transition: opacity .15s ease; }
@@ -178,6 +203,9 @@
 .gn-strip::-webkit-scrollbar { display: none; }
 .gn-strip button { flex: none; width: 28px; height: 28px; padding: 0; border-radius: 6px; border: 1px solid transparent; background: var(--media-bg); overflow: hidden; cursor: pointer; }
 .gn-strip button.on { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
+/* 节点上的这一排压在画面上：当前这张的描边用「压在画面上」的强调色（属性面板里的那一排垫的是面板，仍用主题色） */
+.gn-ov-bl .gn-strip button.on { border-color: var(--on-scrim-accent); box-shadow: 0 0 0 1px var(--on-scrim-accent); }
+.gn-ov-bl .gn-strip button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .gn-strip img, .gn-strip video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .gn-hover-run { position: absolute; right: 8px; bottom: 8px; z-index: 2; opacity: 0; transition: opacity .15s ease; }
 .gn:hover .gn-hover-run, .gn-hover-run:focus-visible { opacity: 1; }
@@ -202,11 +230,21 @@
 .gn-a .gn-foot { gap: 6px; height: 32px; padding: 0 12px; font-size: 11px; color: var(--text-3); }
 .gn-a .gn-foot > b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--text-2); }
 .gn-a .gn-foot > span { flex: none; }
+/* 运行中那一行的空隙：上一条把它也定成了不伸缩，「取消」就贴在模型名后面而不是靠右 */
+.gn-a .gn-foot > .gn-sp { flex: 1 1 auto; }
 .gn-a .gn-foot > i { flex: none; font-style: normal; opacity: .6; }
 .gn-a .gn-foot .rn { color: var(--cyan-soft); }
 .gn-a .gn-foot .er { color: var(--err); font-weight: 500; }
 .gn-a .gn-foot .gn-foot-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--alert-err-fg); }
 .gn-a .gn-foot .gf-cost b { font-weight: 400; }
+/* 模型名优先（见 GenShellA）：参数和「成本未知」在一个只露一行的换行容器里。整行放不下时先收缩的是这个容器，
+   容器里放不下的那一块整块换到第二行（被裁掉，看不见）—— 先走「成本未知」，再走参数；只剩参数一块还放不下才截成省略号。
+   容器让到没有了，模型名才开始收缩（收缩是按「系数 × 自身宽度」分的：系数差得不够大的话模型名也会被分走零点几像素，
+   那就足够让它冒出省略号了，所以差七个数量级）。 */
+.gn-a .gn-foot > .gn-foot-rest { flex: 0 10000000 auto; min-width: 0; height: 32px; display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 6px; overflow: hidden; }
+.gn-a .gn-foot-rest > span { flex: none; min-width: 0; max-width: 100%; height: 32px; display: flex; align-items: center; gap: 6px; }
+.gn-a .gn-foot-rest i { flex: none; font-style: normal; opacity: .6; }
+.gn-a .gn-foot-rest .gn-foot-p > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gn-lk { flex: none; height: 22px; padding: 0 6px; margin-right: -6px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; }
 .gn-lk:hover { color: var(--err-soft); background: rgb(var(--c-film) / .1); }
 .gn-b .gn-foot { gap: 8px; height: 40px; padding: 0 6px 0 12px; font-size: 11px; color: var(--text-2); }
@@ -232,16 +270,25 @@
 .gn-crefs-r { margin-left: auto; flex: none; }
 .gn-chint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .gn-chint > span { display: inline-flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* 放不下（视频节点多一颗「模式」）就折成两行：成本和运行落到第二行，成本不被截断 */
-.gn-crow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.gn-crow .gf-model { flex: 0 1 auto; min-width: 0; }
-.gn-crow .gf-chip { flex: 0 1 auto; min-width: 0; }
+/* 永远一行：成本和运行不让位；放不下时 GenShellC 按顺序压缩：
+   .fit-1 收紧留白 → .fit-2 再收紧一档 → .fit-3 参数收成「第一项 +N」 → .fit-4 模型名收缩成省略号。
+   运行钮在这一行里只有字、不带三角（每个节点都一样），所以不参与压缩，只是内边距跟着收一点 */
+.gn-crow { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; height: 28px; }
+.gn-crow .gf-model, .gn-crow .gf-chip { flex: none; }
+.gn-crow .chip-select .chip { min-width: 0; }
+.gn .gn-crow:not(.fit-0) { gap: 4px; }
+.gn .gn-crow:not(.fit-0) .chip-select .chip { padding: 0 6px; }
+.gn .gn-crow:not(.fit-0) .gf-cost { margin-left: 0; }
+.gn .gn-crow:not(.fit-0) .gf-run.md { padding: 0 10px; }
+.gn .gn-crow:not(.fit-0):not(.fit-1) { gap: 3px; }
+.gn .gn-crow:not(.fit-0):not(.fit-1) .chip-select .chip { padding: 0 5px; }
+.gn .gn-crow:not(.fit-0):not(.fit-1) .gf-run.md { padding: 0 8px; }
+.gn-crow.fit-4 .gf-model { flex: 0 1 auto; min-width: 44px; }
 .gn-crow .gf-cost { flex: none; margin-left: 2px; font-size: 11px; color: var(--text-3); }
 .gn-crow .gf-cost b { font-weight: 400; }
 .gn-crow .gf-run { margin-left: auto; }
 .gn-crow .gf-prog { flex: 1; }
-.gn-crow .gf-hint { flex: 1 1 auto; min-width: 0; }
-.gn-c.is-text .gn-media { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.gn-crow .gf-hint { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 文本类节点的放大查看 */
 .gn-tmodal { width: min(1040px, 100%); }
@@ -376,12 +423,19 @@
 .gf-run:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--cyan); }
 .gf-run svg { width: 12px; height: 12px; fill: currentColor; }
 .gf-run.lg { height: 32px; padding: 0 16px; font-size: 13px; }
-.gf-run.md { padding: 0 10px; }
+/* 节点里的那一颗只有字（不带三角）：两边多留一点，两个字的「运行」也有按钮的样子 */
+.gf-run.md { padding: 0 14px; }
 .gf-run.icon { width: 28px; padding: 0; }
 /* 压在画面 / 占位上的小胶囊：描边，不抢结果的视线 */
 .gf-run.chip { height: 24px; padding: 0 8px; gap: 4px; border-radius: 7px; border: 1px solid var(--line-2); background: rgb(var(--c-glass) / .82); color: var(--text); font-size: 11px; font-weight: 400; box-shadow: none; }
 .gf-run.chip:hover { border-color: var(--cyan); background: rgb(var(--c-panel-3) / .95); }
 .gf-run.chip svg { width: 10px; height: 10px; color: var(--text-3); }
+.gf-run.chip:focus-visible { box-shadow: var(--ring); border-color: var(--cyan); }
+/* 同一颗胶囊压在结果画面上（布局 a 悬停时的「重新运行」）：和画面上别的小件一样，恒暗的垫底 + 浅字，不跟主题变 */
+.gf-run.chip.gn-hover-run { border-color: var(--on-scrim-line); background: rgb(var(--c-scrim) / .66); color: var(--on-scrim); }
+.gf-run.chip.gn-hover-run:hover { border-color: var(--on-scrim-line-2); background: rgb(var(--c-scrim) / .9); }
+.gf-run.chip.gn-hover-run svg { color: var(--on-scrim-dim); }
+.gf-run.chip.gn-hover-run:focus-visible { box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .gf-ib { flex: none; width: 28px; height: 28px; display: inline-grid; place-items: center; padding: 0; border-radius: 8px; border: 1px solid var(--line-2); background: rgb(var(--c-film) / .06); color: var(--text-2); cursor: pointer; }
 .gf-ib:hover:not(:disabled) { color: var(--err-soft); border-color: var(--line-3); }
 .gf-ib:disabled { opacity: .5; cursor: default; }
@@ -424,14 +478,43 @@
   border: 1px solid transparent; background: rgb(var(--c-scrim) / .66); color: var(--on-scrim); font: 400 11px/1 var(--f-mono); cursor: pointer;
 }
 .gf-vers button i { font-style: normal; opacity: .7; }
-.gf-vers button:hover { border-color: var(--line-3); }
-.gf-vers button.on { border-color: var(--cyan); }
+/* 压在画面上：悬停 / 当前这一版的描边用「压在画面上」的令牌，不用主题的线色和强调色（浅色主题里它们是深色，压在深底上看不清） */
+.gf-vers button:hover { border-color: var(--on-scrim-line-2); }
+.gf-vers button.on { border-color: var(--on-scrim-accent); color: var(--on-scrim-max); }
+.gf-vers button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .gf-vth { display: flex; flex-wrap: wrap; gap: 8px; }
 .gf-vth button { position: relative; width: 64px; height: 48px; padding: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--media-bg); cursor: pointer; }
 .gf-vth button:hover { border-color: var(--line-3); }
 .gf-vth button.on { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
 .gf-vth img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .gf-vth em { position: absolute; left: 4px; bottom: 4px; padding: 1px 4px; border-radius: 4px; background: rgb(var(--c-scrim) / .66); color: var(--on-scrim); font: normal 400 10px/1.3 var(--f-mono); }
+
+/* ---------- 只读（只看不改）：字段是字，不是控件 ----------
+   别人正在编辑、只有查看权、丢了锁时，模型和参数写成一段字（不摆点不开的 chip / 分段按钮），运行钮不出现；
+   提示词框还是那个框，只是 readonly —— 字能选中、复制、滚动。见 useGenNode 的 viewOnly。 */
+.gf-ro { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.gf-ro.m { display: inline-flex; align-items: center; gap: 6px; }
+.gf-ro b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--text); }
+.gf-ro.chip-sm { font-size: 11px; }
+/* 一行里模型后面跟着参数：中间一个点，和节点页脚那句摘要同一种写法 */
+.gf-ro + .gf-ro::before { content: '·'; margin-right: 8px; opacity: .6; }
+.gn-crow .gf-ro + .gf-ro::before { margin-right: 6px; }
+.gn-crow .gf-ro.m { flex: 0 1 auto; }
+.gn-crow .gf-ro:not(.m) { flex: 0 10 auto; }
+/* 属性面板里：模型一行带类型徽标；参数是「名字 值」的一张小表 */
+.gf-ro.field { display: flex; min-height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: rgb(var(--c-well) / .3); font-size: 13px; }
+.gf-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 16px; margin: 0; font-size: 12px; }
+.gf-kv dt { color: var(--text-2); white-space: nowrap; }
+.gf-kv dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* 「查看大图 / 播放」：占着可编辑时「重新运行」的位置。悬停、选中、键盘聚焦时出现；触屏上没有悬停，一直在 */
+.gn.selected .gn-view, .gn-view:focus-visible { opacity: 1; }
+@media (hover: none) { .gn-view { opacity: 1; } }
+.gf-run.chip.gn-view.ic { width: 24px; padding: 0; }
+.gn-b .gn-view { right: 6px; bottom: 6px; }
+.gn-b .gn-media.m-video .gn-view { right: auto; left: 6px; }
+/* 左下角那一排（多张 / 历史版本）给它让出地方 */
+.gn.is-view .gn-ov-bl { max-width: calc(100% - 112px); }
+.gn.is-view { cursor: default; }
 
 /* ---------- 放大编辑 ---------- */
 .gf-expand {
@@ -461,15 +544,16 @@
 .gc-bar .gf-hint { flex: 0 1 auto; }
 /* 快捷键提示：垫一小块底，压在别的节点上也读得清 */
 .gc-keys { width: fit-content; max-width: 100%; margin: 8px auto 0; padding: 3px 10px; border-radius: 9px; background: rgb(var(--c-chrome-0) / .72); font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gc.flipped { display: flex; flex-direction: column-reverse; }
-.gc.flipped .gc-keys { margin: 0 auto 8px; }
 .gc-keys span + span { margin-left: 12px; }
 .gc-keys kbd { display: inline-block; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line-2); font: 400 10px/1.4 var(--f-mono); color: var(--text-2); background: rgb(var(--c-chrome-0) / .6); }
 .gc-grip { display: none; }
 /* 手机宽度：贴底的抽屉，工具栏折行，运行通栏 */
-.gc.sheet { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-width: none; z-index: 41; transform: none !important; animation: gc-up .2s ease-out; }
+/* 高度封顶在编辑区的 56%（不是视口的 72%），而且和顶上那几排（标题块、工具面板的一横条、只读提示条 —— 它们到哪儿为止
+   是画布量出来放在 --ed-top 里的）之间至少留 150px：窗口矮的时候抽屉上面要给它正在编辑的那个节点留出看得见的一块 ——
+   以前在 560 高的窗口里抽屉从工具面板底下一直铺到底，节点整个压在下面。再矮也留 132px 给抽屉自己。内容多了在抽屉里面滚 */
+.gc.sheet { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-width: none; max-height: max(132px, min(56%, 560px, calc(100% - var(--ed-top, 110px) - 150px))); display: flex; flex-direction: column; z-index: 41; transform: none !important; animation: gc-up .2s ease-out; }
 @keyframes gc-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-.gc.sheet .gc-card { max-height: min(calc(72 * var(--lc-vh)), 560px); overflow-y: auto; padding: 4px 16px 16px; border-radius: 20px 20px 0 0; border-width: 1px 0 0; border-color: var(--line-3); background: var(--panel-solid); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--sh-2); }
+.gc.sheet .gc-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 4px 16px 16px; border-radius: 20px 20px 0 0; border-width: 1px 0 0; border-color: var(--line-3); background: var(--panel-solid); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--sh-2); }
 .gc.sheet .gc-grip { display: flex; align-items: center; justify-content: center; position: relative; height: 24px; }
 .gc.sheet .gc-grip::before { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--line-3); }
 .gc.sheet .gc-grip button { position: absolute; right: -8px; top: 0; }
@@ -502,7 +586,7 @@
 .gi .gf-strip-row .gn-strip { flex-wrap: wrap; }
 .gi .gf-strip-row .gn-strip button { width: 40px; height: 40px; border-color: var(--line); border-radius: 7px; }
 .gi .gf-strip-row .gn-strip button.on { border-color: var(--cyan); }
-.gi.sheet { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: min(76%, 620px); z-index: 41; border-radius: 20px 20px 0 0; border-width: 1px 0 0; border-color: var(--line-3); background: var(--panel-solid); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--sh-2); animation: gc-up .2s ease-out; }
+.gi.sheet { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: max(160px, min(56%, 620px, calc(100% - var(--ed-top, 110px) - 150px))); z-index: 41; border-radius: 20px 20px 0 0; border-width: 1px 0 0; border-color: var(--line-3); background: var(--panel-solid); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--sh-2); animation: gc-up .2s ease-out; }
 .gi.sheet .gi-f .gf-run, .gi.sheet .gi-f .gf-prog { height: 40px; font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) {

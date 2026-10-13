@@ -1,9 +1,9 @@
 <template>
   <div v-if="open" class="lc-mask lc-sheet bd-mask" @click.self="close">
-    <div class="lc-dialog bd-modal">
+    <div v-dialog="close" class="lc-dialog bd-modal" role="dialog" aria-modal="true" :aria-label="t('dialogs.download.title')">
       <div class="lc-dialog-head">
         <span class="bd-title">{{ t('dialogs.download.title') }}<span class="bd-count">{{ t('dialogs.download.selected', { n: selected.size, total: items.length }) }}</span></span>
-        <button class="lc-x" :title="t('common.close')" @click="close">×</button>
+        <button class="lc-x" :aria-label="t('common.close')" @click="close">×</button>
       </div>
 
       <div v-if="items.length" class="bd-filters">
@@ -61,6 +61,7 @@
 </template>
 
 <script setup lang="ts">
+import { vDialog } from '@/directives/dialog'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { collectCanvasMedia, canvasImageThumb, canvasVideoPoster, type CanvasMediaItem } from '@/utils/canvasMedia'

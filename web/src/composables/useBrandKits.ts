@@ -1,6 +1,8 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { brandKitApi } from '@/utils/canvasBackend'
 import { t } from '@/locales'
+import { useSpaceStore } from '@/stores/space'
+import { currentEmbed } from '@/embed/context'
 
 /**
  * 品牌包：加载、解析「这个节点用哪一个」、以及运行时到底往请求里加了什么。
@@ -24,6 +26,27 @@ export interface BrandKit {
   /** 有几张画布在用它（只有列表接口带） */
   usedBy?: number
   updatedAt?: string
+  /** 团队的品牌包（全队共用）；个人空间里是 false */
+  shared?: boolean
+  /** 是不是调用者自己建的 */
+  mine?: boolean
+  /** 调用者能不能改、删、设默认。团队里只有团长和管理员可以；老后端和自己写的适配器不给这一项，按「可以」算 */
+  canManage?: boolean
+}
+
+/**
+ * 调用者在当前空间里能不能新建 / 修改品牌包。
+ * 个人空间：能。团队：只有团长和管理员（brandkit:manage）。
+ * 只嵌编辑器时没有「空间」这回事（由适配器定）：看列表里的条目自己怎么说，没说就按能。
+ */
+export function canManageBrandKits(kits: BrandKit[] = []): boolean {
+  if (currentEmbed().mode === 'editor') return !kits.some((k) => k.canManage === false)
+  return useSpaceStore().can('brandkit:manage')
+}
+/** 这一个品牌包调用者能不能改 */
+export function canManageBrandKit(kit: BrandKit | null | undefined, kits: BrandKit[] = []): boolean {
+  if (kit && typeof kit.canManage === 'boolean') return kit.canManage
+  return canManageBrandKits(kits)
 }
 
 /** 节点的 brandKitOverride 取这个值 = 这个节点不套用品牌包 */
@@ -83,7 +106,10 @@ export function useBrandKits() {
     }
   }
 
-  return { kits, loading, loaded, failed, load }
+  /** 能不能新建、修改、删除、设默认（见 canManageBrandKits）。成员只能选用 */
+  const canManage = computed(() => canManageBrandKits(kits.value))
+
+  return { kits, loading, loaded, failed, load, canManage }
 }
 
 /** 一句话说清这个品牌包里有什么（卡片、选择器共用） */
@@ -150,4 +176,32 @@ export function composeBrandKit(
   else if (!skipReason) skipReason = 'full'
 
   return { prompt, imageUrls: [...own, ...addedImages], prefix, suffix, addedImages, skippedImages, skipReason }
+}
+
+/**
+ * 一个节点这次运行和品牌包的关系 —— 节点表头的标记、改提示词处的那一行都按它说话，不各自判断：
+ *
+ *   none      没有品牌包要套用（画布没选，节点也没有例外）
+ *   off       节点自己定了「不套用」
+ *   missing   节点单独选的那个品牌包已经被删了，于是不套用
+ *   applied   会套用，品牌包里的东西全都发得出去
+ *   textOnly  会套用，但只有文字发得出去：参考图一张都不会发（首尾帧模式 / 模型不接收参考图 / 名额已满）
+ *   partial   会套用，参考图只发得出去一部分（模型的名额不够）
+ *   noEffect  选了品牌包，可这次运行什么都加不上：它只有参考图，而参考图一张都发不出去
+ *   empty     选了品牌包，但它本身是空的
+ *
+ * 「选了」和「起作用」是两回事：只写「已套用」会让人以为参考图也跟着发出去了。
+ */
+export type KitRunState = 'none' | 'off' | 'missing' | 'applied' | 'textOnly' | 'partial' | 'noEffect' | 'empty'
+
+export function kitRunState(choice: NodeKitChoice, effect: BrandKitEffect | null | undefined): KitRunState {
+  if (!choice.kit) return choice.missing ? 'missing' : choice.own ? 'off' : 'none'
+  // 查不到会加什么（执行器不在场）：只能说选了，不替它说没起作用
+  if (!effect) return 'applied'
+  const text = !!(effect.prefix || effect.suffix)
+  const added = effect.addedImages.length
+  const skipped = effect.skippedImages.length
+  if (!text && !added) return skipped ? 'noEffect' : 'empty'
+  if (!skipped) return 'applied'
+  return added ? 'partial' : 'textOnly'
 }

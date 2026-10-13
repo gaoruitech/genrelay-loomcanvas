@@ -25,7 +25,7 @@
       type="button"
       class="cv-edge-cut nodrag nopan"
       :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
-      :title="t('nodeui.edge.remove')"
+      v-tip="t('nodeui.edge.remove')"
       :aria-label="t('nodeui.edge.remove')"
       @mousedown.stop
       @click.stop="onCut"

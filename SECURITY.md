@@ -16,7 +16,7 @@ Only the latest minor release receives security fixes.
 The full hardening guide is [docs/security.md](docs/security.md). In short:
 完整的部署加固说明见 [docs/security.zh-CN.md](docs/security.zh-CN.md)。要点：
 
-- Set a strong `SECRET_KEY` and keep it private. It encrypts provider API keys at rest. 设置足够强的 `SECRET_KEY` 并妥善保管，它用于加密保存的上游 API Key。
+- Set a strong `SECRET_KEY` and keep it private. It encrypts the provider API keys and the saved S3 secret at rest. 设置足够强的 `SECRET_KEY` 并妥善保管，它用于加密保存的上游 API Key 和 S3 密钥。
 - The super admin account is created by the server at the first start. Set `ADMIN_PASSWORD` before that start (or sign in and replace the generated password at once), and serve the instance over HTTPS. 超级管理员账号由服务端在第一次启动时自动创建：请在那次启动之前设好 `ADMIN_PASSWORD`（或者登录后立刻换掉自动生成的密码），并使用 HTTPS。
 - Registration is open by default. If the instance is reachable from the internet and strangers should not have accounts, the super admin should close it (Settings → Site). Every account has its own data and API keys, but accounts are not a hardened multi-tenant boundary. 注册默认开放。实例对公网开放、又不希望陌生人注册时，请由超级管理员关闭注册（「设置 → 站点」）。每个账号有自己的数据和 API Key，但账号之间不是加固过的多租户边界。
 - Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front (usually `1`), and send `Strict-Transport-Security` from the proxy: the app does not set it. 在反向代理后面运行时，把 `TRUST_PROXY` 设成前面代理的层数（一般是 `1`），并在代理上发送 `Strict-Transport-Security`，应用自己不设这个头。

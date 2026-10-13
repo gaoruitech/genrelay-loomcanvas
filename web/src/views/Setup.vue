@@ -3,7 +3,9 @@
     <header class="su-nav">
       <LcLogo />
       <span class="lc-sp" />
+      <!-- 语言、主题两个开关：集成方关了（features.localeSwitch / themeSwitch）就不出 -->
       <LcSelect
+        v-if="$feat.localeSwitch"
         class="su-lang"
         size="sm"
         auto-width
@@ -12,14 +14,20 @@
         :aria-label="t('shell.language')"
         @update:model-value="app.setLocale"
       />
-      <ThemeSwitch />
+      <ThemeSwitch v-if="$feat.themeSwitch" />
     </header>
 
     <main class="su-body">
       <section class="su-card lc-glass lc-gb">
         <span class="su-kick"><i />{{ t('setup.step') }}</span>
         <h1>{{ t('setup.title') }}</h1>
-        <p class="su-lead">{{ t('setup.lead') }}</p>
+        <p class="su-lead">{{ space.isTeam ? t('setup.leadTeam') : t('setup.lead') }}</p>
+        <div v-if="space.isTeam" class="lc-alert info su-team" data-role="team-note">
+          <LcIcon name="shield" size="s" />
+          <i18n-t keypath="setup.teamNote" tag="span" scope="global">
+            <template #team><b>{{ space.name }}</b></template>
+          </i18n-t>
+        </div>
 
         <div v-if="loading" class="su-loading" aria-hidden="true">
           <div class="su-skel-row"><i v-for="n in 3" :key="n" class="su-skel card" /></div>
@@ -36,7 +44,7 @@
           <form v-if="selected" class="su-form" @submit.prevent="submit">
             <div class="su-form-title">
               <span>{{ t('setup.formTitle', { name: vendorLabel(selected) }) }}</span>
-              <a v-if="selected.keyUrl" :href="selected.keyUrl" target="_blank" rel="noopener noreferrer" class="su-get-key">
+              <a v-if="selected.keyUrl && $feat.externalLinks" :href="selected.keyUrl" target="_blank" rel="noopener noreferrer" class="su-get-key">
                 {{ t('setup.getKey') }}<LcIcon name="external" size="s" />
               </a>
             </div>
@@ -56,7 +64,7 @@
 
         <p class="su-skip">
           <button class="lc-btn text sm" :disabled="busy" @click="skip">{{ t('setup.skip') }}</button>
-          <span>{{ t('setup.skipHint') }}</span>
+          <span>{{ space.isTeam ? t('setup.skipHintTeam') : t('setup.skipHint') }}</span>
         </p>
       </section>
     </main>
@@ -71,6 +79,9 @@
  * 流程是「保存 → 连通性测试 → 进入工作台」。后端的测试接口挂在已保存的实例上
  * （POST /api/admin/providers/:id/test），所以先建后测；测试没过就把刚建的删掉，
  * 不留一个不能用的服务商在库里。
+ *
+ * 团队空间里也会来这里（团队还没有服务商，而且来的人能管理服务商 —— 路由守卫查过 provider:manage）：
+ * 这时加的是团队的服务商，Key 归团队，文字要说清楚这一点。
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -79,6 +90,7 @@ import { MessagePlugin } from '@/utils/feedback'
 import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
 import { loadModels } from '@/utils/canvasModels'
 import { useAppStore } from '@/stores/app'
+import { useSpaceStore } from '@/stores/space'
 import { skipSetup } from '@/router'
 import { LOCALE_OPTIONS } from '@/locales'
 import LcSelect from '@/components/LcSelect.vue'
@@ -95,6 +107,7 @@ import type { Vendor } from '@/types'
 const { t } = useI18n()
 const router = useRouter()
 const app = useAppStore()
+const space = useSpaceStore()
 
 const vendors = ref<Vendor[]>([])
 const loading = ref(true)
@@ -106,6 +119,11 @@ const busyText = ref('')
 const error = ref('')
 
 async function load() {
+  // 守卫只把能配服务商的人带到这里；成员自己敲地址进来的，这一页对他没有用（保存会被拒绝）：回团队首页
+  if (space.isTeam && !space.can('provider:manage')) {
+    router.replace({ name: 'home' })
+    return
+  }
   loading.value = true
   loadError.value = ''
   try {
@@ -183,6 +201,9 @@ function skip() {
 .su-kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgb(var(--g-cyan)); }
 h1 { font: 600 26px/1.3 var(--f-disp); color: var(--text); margin-top: 16px; }
 .su-lead { color: var(--text-2); line-height: 1.75; margin-top: 8px; max-width: 620px; }
+
+.su-team { margin-top: 16px; }
+.su-team b { font-weight: 600; color: var(--text); }
 
 .su-vendors { margin-top: 28px; }
 .su-form { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }

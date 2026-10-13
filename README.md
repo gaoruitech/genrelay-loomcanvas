@@ -12,18 +12,19 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 
 ## Features
 
-- **Canvas editor.** Source nodes (text, image, image set, video), generation nodes (image generation, image edit, video generation, video edit, language model, video analysis), an output node, and groups. Typed connections, undo/redo, copy and paste, auto layout, node search.
+- **Canvas editor.** Source nodes (text, image, image set, video), generation nodes (image generation, image edit, video generation, video edit, language model, video analysis), an output node, and groups. Typed connections, undo/redo, copy and paste, auto layout, node search. Three layouts for the generation nodes (result first, compact with a side panel, everything on the node), and a toolbar to align, group and run several selected nodes at once.
 - **Local tool nodes.** Slice, collage, resize, watermark and multi-platform export run on your own server and cost nothing.
 - **Run orchestration.** Run a single node, a branch or the whole canvas; batch runs over a set of source images. Runs are queued with a concurrency limit and hard timeouts. After a server restart, queued runs and runs that already have an upstream task carry on.
 - **Bring your own models.** Pick a provider and enter your own API key. Built in: Gaorui (one key for image, video and chat models), OpenAI (chat, image generation and editing) and Google Gemini (image and chat), the last two through their official APIs. Which models each provider supports is listed explicitly; a model that is not listed can be added as a custom model.
 - **Cost, not credits.** An estimate per run from a price table you maintain, shown as "Cost unknown" until you enter prices, plus usage records by day and by model.
 - **Your files stay with you.** Results are copied into your own storage: the local disk by default, or an S3-compatible bucket (AWS S3, Cloudflare R2, Aliyun OSS, MinIO), configured under **Settings → Storage**. The bucket can stay private. See [Storage](docs/storage.md) for what has been tested.
 - **Templates, brand kits, asset library, share links.** Read-only share links with expiry and revocation.
-- **Workbench, history, model management.** A start page with your recent canvases, templates, the queue and this month's usage; a History page with every run, filters and CSV export; a Models page for providers, models and prices.
+- **Workbench, history, model management.** A start page with your recent canvases, templates, the queue and this month's usage; a History page with every run, filters, run details, CSV export and the results of several runs as one ZIP; a Models page for providers, models and prices.
 - **Can be built into your own product.** Your developers mount the whole app inside their own page (your own sign-in, optional shell, pages and features switched one by one), or embed only the canvas editor behind an adapter backed by your own server. See [Integration](docs/integration.md) and [`examples/`](examples/README.md).
-- **Chinese and English** interface and server messages. Dark and light themes, or follow the system.
-- **Accounts.** People register and sign in; each account has its own canvases, files, providers and API keys. The super admin account is built in: the server creates it at the first start. It manages the site and the list of accounts and can close registration.
-- **No teams.** Accounts do not share canvases or workspaces, and the separation between them is not a hardened multi-tenant boundary. See [Security](docs/security.md).
+- **Chinese and English** interface and server messages. Dark and light themes, or follow the system. The landing page, the app and the editor rearrange themselves for a phone-sized screen.
+- **Accounts.** People register and sign in; each account has its own personal space: its own canvases, files, providers and API keys. The super admin account is built in: the server creates it at the first start. It manages the site and the list of accounts and can close registration.
+- **Teams.** Several accounts share one team space: canvases, assets, brand kits, templates and run history are kept together. The owner and admins set up providers and keys once; members use them and never see a key. Canvases have three levels of visibility (only me, team can view, team can edit); people join with an invite link; monthly limits in runs and in estimated amount, per member and per team; usage figures and an activity log. Creating a team needs the super admin's authorisation. See the [user guide](docs/user-guide.md#teams).
+- **What teams are not.** Not real-time collaboration: one person edits a canvas at a time, the others see it read-only and can take over. No email: an invite is a link you pass on yourself. Amounts are estimates from the prices you entered, not bills. And the separation between accounts and between teams is not a hardened multi-tenant boundary. See [Security](docs/security.md).
 
 ## Screenshots
 
@@ -34,6 +35,9 @@ LoomCanvas does not sell credits and ships no models. You bring your own API key
 | ![Editor](docs/images/04-editor.png) Editor (Chinese interface) | ![English interface](docs/images/11-editor-en.png) Editor (English interface) |
 | ![Image to video template](docs/images/09-editor-dark.png) The built-in "Image to video" template | ![A finished run](docs/images/06-editor-result.png) Results on the canvas |
 | ![Models and prices](docs/images/08-settings-models.png) Models: providers, models and prices (none are shipped; you enter your own) | ![History](docs/images/15-history.png) History: every run, with totals |
+| ![The space switcher](docs/images/16-space-switcher.png) The space switcher: personal space and teams | ![Team home](docs/images/17-team-home.png) Team home |
+| ![Team members](docs/images/18-team-members.png) Team: members and invite links | ![Read-only, with Take over](docs/images/24-editor-readonly.png) While somebody else is editing: read-only, with Take over |
+| ![The workbench in the light theme](docs/images/14-workbench-light.png) Light theme: the workbench | ![The editor in the light theme](docs/images/04-editor-light.png) Light theme: the editor |
 
 ## Quick start
 

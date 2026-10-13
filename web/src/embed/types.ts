@@ -70,6 +70,13 @@ export interface LoomCanvasFeatures {
   account: boolean
   /** Links that leave the product (documentation, source code). */
   externalLinks: boolean
+  /**
+   * The space switcher in the top bar (personal space / teams, "create a team", "join with an invite").
+   * Off: the user stays in the space the app started in (see the `space` option).
+   */
+  spaceSwitch: boolean
+  /** The Team page (members, usage, activity, team settings) and its entry points. Off when the host manages membership itself. */
+  teamAdmin: boolean
   // ---- editor chrome ----
   /** The tool palette (add nodes). The context menu on the pane still adds nodes when this is off. */
   palette: boolean
@@ -127,6 +134,8 @@ export interface LoomCanvasAppEvents {
   /** After every navigation. `name` is the page name (see `LoomCanvasPage`), `path` the in-app path. */
   route: { name: string; path: string; params: Record<string, string> }
   'canvas:saved': { canvasId: string; updatedAt: string }
+  /** The user entered a space: `id` is `'personal'` or a team id; `role` is their role in it (`'owner'` in the personal space). */
+  space: { id: string; kind: 'personal' | 'team'; name: string; role: 'owner' | 'admin' | 'member' }
   'run:started': RunEventPayload
   'run:finished': RunEventPayload
   'run:failed': RunEventPayload
@@ -141,6 +150,12 @@ export interface LoomCanvasEditorEvents {
   change: { canvasId: string; document: CanvasDocument }
   /** The document was written through the adapter. */
   saved: { canvasId: string; updatedAt: string }
+  /**
+   * The editor stored its document as a NEW canvas through `adapter.createCanvas` ("make a copy",
+   * "save my version as a copy" after a save conflict or a lost lock). The editor keeps showing
+   * `fromCanvasId`; pass `canvasId` to `setCanvasId()` to open the copy.
+   */
+  created: { canvasId: string; fromCanvasId: string }
   'run:started': RunEventPayload
   'run:finished': RunEventPayload
   'run:failed': RunEventPayload
@@ -175,6 +190,50 @@ export interface AdapterCapabilities {
   maxUploadMb?: number
   /** Whether the model provider can fetch stored files by URL (public address). */
   upstreamByUrl?: boolean
+  /**
+   * `false` while the backend cannot store new files: uploads and image / video runs would be
+   * refused, and the editor says so on those nodes before a run. Leave it out when unknown.
+   */
+  storageWritable?: boolean
+}
+
+/** Somebody the editor shows by name (the holder of an edit lock, the last editor). */
+export interface CanvasPerson {
+  id: string
+  /** Name to show. */
+  name: string
+}
+
+/**
+ * The edit lock of a canvas: one editing session (one open editor - a browser tab) edits at a time,
+ * everybody else sees it read-only. That includes the same person in a second tab.
+ */
+export interface CanvasLockInfo {
+  by: CanvasPerson
+  /** When the lock was taken, ISO time. */
+  at?: string
+  expiresAt?: string
+  /** This very editor holds it. */
+  mine: boolean
+  /**
+   * The holder is the caller's own account. With `mine: false` that is "you, in another tab": the
+   * editor then says so instead of "<name> is editing". Leave it out when your backend locks per account.
+   */
+  sameUser?: boolean
+}
+
+/** What the caller may do with one canvas. A missing field means "allowed" (that is today's behaviour). */
+export interface CanvasAccessInfo {
+  /** false: the editor opens read-only and never asks for the lock. */
+  canEdit?: boolean
+  /** Offer "Take over" when somebody else holds the lock. */
+  canTakeOver?: boolean
+  /** Offer "Overwrite with my version" on a save conflict. */
+  canOverwrite?: boolean
+  /** Offer the public share link. */
+  canShare?: boolean
+  /** Offer the "who can see this" choice (team spaces of the stock server). */
+  canSetVisibility?: boolean
 }
 
 /** A canvas as the adapter stores it: the document plus identity and timestamps. */
@@ -183,6 +242,91 @@ export interface StoredCanvas {
   document: CanvasDocument
   updatedAt?: string
   createdAt?: string
+  /**
+   * Version counter of the content. When given, the editor sends it back as `baseRevision` with the
+   * next content save, and expects the new value in the answer. Without it saves are "last write wins".
+   */
+  revision?: number
+  /**
+   * Counter of renames. Never part of a conflict; it only lets an open editor notice that the name
+   * it shows is out of date (see `AcquireLockResult.metaRevision`).
+   */
+  metaRevision?: number
+  /** What the caller may do with this canvas. Without it everything is allowed. */
+  access?: CanvasAccessInfo
+  /** Who holds the edit lock right now, if anybody. */
+  lock?: CanvasLockInfo | null
+  /** Stock server, team spaces: `'private'`, `'team_view'` or `'team_edit'`; `''` in a personal space. */
+  visibility?: string
+  /** Stock server: `'personal'` or the team id the canvas lives in. */
+  spaceId?: string
+  /** Who saved the content last, and when. */
+  lastEditedBy?: CanvasPerson | null
+  lastEditedAt?: string | null
+}
+
+/** Options of a content save (see `EditorAdapter.saveCanvas`). */
+export interface SaveCanvasOptions {
+  /** The revision the editor's document is based on. Reject with `code: 'canvas.conflict'` when the stored one is newer. */
+  baseRevision?: number
+  /** Skip the revision check: the user chose "overwrite with my version". */
+  force?: boolean
+}
+
+/** Answer of `EditorAdapter.acquireLock`. */
+export interface AcquireLockResult {
+  /** The lock the caller now holds; `null` when this canvas needs none (single-user storage). */
+  lock: CanvasLockInfo | null
+  /** Current revision of the content, when the backend keeps one. */
+  revision?: number
+  /** How often to call `acquireLock` again to keep the lock, in milliseconds. Default 12000. */
+  heartbeatMs?: number
+  /** The same in seconds, for adapters written before `heartbeatMs`. `heartbeatMs` wins. */
+  heartbeatSeconds?: number
+  /**
+   * What the call did, when the backend says: `'acquired'`, `'renewed'`, `'reacquired'` (this editor's
+   * own lock had run out - a tab in the background - and nobody took the canvas in between) or
+   * `'taken_over'`. The editor does not branch on it; it compares `revision`.
+   */
+  state?: string
+  /** The canvas's current name and rename counter: how an open editor follows a rename made elsewhere. */
+  name?: string
+  metaRevision?: number
+}
+
+/** Answer of `EditorAdapter.peekLock`: the lock as it is right now, without taking or renewing it. */
+export interface LockPeek {
+  /** `null`: nobody is editing. */
+  lock: CanvasLockInfo | null
+  revision?: number
+  name?: string
+  metaRevision?: number
+  /** May the caller edit / take over now (rights can change while the editor is open). */
+  canEdit?: boolean
+  canTakeOver?: boolean
+  /** How often to ask again, in milliseconds. Default 5000. */
+  pollMs?: number
+}
+
+/**
+ * An `Error` an adapter may reject with. Two codes change what the editor does:
+ *
+ * - `code: 'canvas.locked'` (from `acquireLock` or `saveCanvas`): another editing session holds the edit lock.
+ *   `data: { lock: CanvasLockInfo, canTakeOver?: boolean, lost?: 'taken_over' | 'expired' | null }`. The editor
+ *   turns read-only and says who is editing - or, with `lock.sameUser`, that the canvas is open in another tab.
+ *   `lost` tells an editor that used to hold the lock how it lost it.
+ * - `code: 'canvas.conflict'` (from `saveCanvas`): the stored content is newer than `baseRevision`; nothing was
+ *   written. `data: { revision, lastEditedBy?: CanvasPerson, lastEditedAt?: string, canOverwrite?: boolean }`.
+ *   The editor stops saving and asks the user what to do.
+ *
+ * The stock HTTP adapter rejects with the HTTP client's error; the editor reads `code` and `data` from
+ * either place (`error.code` / `error.data`, or the response body).
+ */
+export interface AdapterError extends Error {
+  /** HTTP-like status: 4xx is shown to the user even for background saves. */
+  status?: number
+  code?: string
+  data?: Record<string, unknown>
 }
 
 /**
@@ -197,10 +341,18 @@ export interface EditorAdapter {
   /** Load one canvas. Reject when it does not exist. */
   loadCanvas(id: string): Promise<StoredCanvas>
   /**
-   * Save a canvas. `document` may be partial: a viewport-only save sends just `{ viewport }`.
-   * Resolve with the new `updatedAt`.
+   * Save a canvas. `document` is partial, and what it carries says what kind of save it is:
+   *
+   * - a **content** save carries `nodes`, `edges`, `settings`, `brandKitId` (and the viewport along with
+   *   them). The editor sends ONE at a time per canvas and passes `options.baseRevision` when `loadCanvas`
+   *   gave a `revision`; resolve with the new `revision`. It never carries `name`.
+   * - a **metadata** save carries only `name` (a rename), `viewport` (panning is not an edit) or
+   *   `legacyLayout: false`. It comes without `options`, must not be refused because of a lock or a
+   *   revision, and must not move `revision`: the editor lets people rename a canvas somebody else is editing.
+   *
+   * Resolve with the new `updatedAt`. An adapter that ignores `options` keeps "last write wins".
    */
-  saveCanvas(id: string, document: Partial<CanvasDocument>): Promise<{ updatedAt: string }>
+  saveCanvas(id: string, document: Partial<CanvasDocument>, options?: SaveCanvasOptions): Promise<{ updatedAt: string; revision?: number }>
   /** Models the user may pick. */
   listModels(): Promise<ModelSpec[]>
   /** Start an image / video run. */
@@ -220,6 +372,33 @@ export interface EditorAdapter {
   resolveFileUrl(url: string): string
 
   // ---- optional ----
+  /**
+   * Edit lock: take it (or renew it: the editor calls this again every `heartbeatMs`, and at once when
+   * its tab becomes visible again), or take it over from whoever holds it with `{ takeover: true }`.
+   * Reject with `code: 'canvas.locked'` (see `AdapterError`) while another editing session holds it.
+   * Without this member the editor never locks.
+   *
+   * The lock belongs to one editor (one tab), not to one account: an adapter instance stands for one
+   * editing session. `createHttpAdapter` makes up a session id per instance and sends it by itself.
+   */
+  acquireLock?(id: string, options?: { takeover?: boolean }): Promise<AcquireLockResult>
+  /**
+   * Give the lock back. Best effort; errors are ignored. `unloading: true` means the page itself is
+   * going away (`pagehide`): an ordinary request may never leave the browser then, so use something
+   * that does (`navigator.sendBeacon`, or `fetch` with `keepalive`) and do not wait for an answer.
+   */
+  releaseLock?(id: string, options?: { unloading?: boolean }): Promise<void>
+  /**
+   * Look at the lock without taking it. A read-only editor asks every few seconds while its tab is
+   * visible, so that it can offer "Start editing" the moment the canvas is free, and follow a rename.
+   * Without this member it loads the canvas again instead (`loadCanvas`), less often.
+   */
+  peekLock?(id: string): Promise<LockPeek>
+  /**
+   * Store a document as a NEW canvas and return its id. Used for "save my version as a copy" after a
+   * save conflict or a lost lock; without it that choice is not offered.
+   */
+  createCanvas?(document: Partial<CanvasDocument>, options?: { visibility?: string }): Promise<{ id: string }>
   capabilities?(): AdapterCapabilities | Promise<AdapterCapabilities>
   /** Cost estimate for a run. Needed for `features.cost`. */
   estimate?(req: EstimateRequest): Promise<CostEstimate>
@@ -248,6 +427,13 @@ export interface EditorAdapter {
   templates?: {
     listCanvasTemplates(): Promise<unknown[]>
     listTextTemplates(lang: 'zh' | 'en'): Promise<unknown>
+    /** Save a group of nodes as a template of the space. Without it "save as template" is not offered. */
+    createCanvasTemplate?(data: { title: string; description?: string; cover?: string; graph: Record<string, unknown> }): Promise<unknown>
+    /** Delete a saved template (items the stock server marks `canDelete`). */
+    removeCanvasTemplate?(key: string): Promise<unknown>
+    /** Save a text snippet. Without it "new snippet" is not offered. */
+    createTextTemplate?(data: { title: string; content: string; category?: string; lang?: 'zh' | 'en' }): Promise<unknown>
+    removeTextTemplate?(id: string): Promise<unknown>
   }
   /** Asset library. Needed for `features.assetLibrary`. Shapes follow the stock server. */
   assets?: {
@@ -257,6 +443,8 @@ export interface EditorAdapter {
     create(data: Record<string, unknown>): Promise<unknown>
     remove(id: string): Promise<unknown>
     registerOutput(data: Record<string, unknown>): Promise<unknown>
+    /** Rename / move an asset. */
+    update?(id: string, data: Record<string, unknown>): Promise<unknown>
   }
   /** Share links. Needed for `features.share`. */
   share?: {
@@ -282,6 +470,11 @@ export interface HttpAdapterOptions {
   locale?: () => LoomCanvasLocale
   /** Request timeout in ms. Default 320000. */
   timeoutMs?: number
+  /**
+   * The space every request of this adapter acts in: `'personal'` (default) or a team id, sent as the
+   * `X-Space` header. In a team the canvases, models, keys, assets and run records are the team's.
+   */
+  space?: string
 }
 
 export interface MemoryAdapterOptions {
@@ -333,7 +526,7 @@ export interface CommonOptions {
 
 /** Page names for `pages`, `navigate()` and the `route` event. */
 export type LoomCanvasPage =
-  | 'home' | 'canvases' | 'canvas' | 'assets' | 'brand-kits' | 'models' | 'history' | 'settings' | 'setup' | 'share'
+  | 'home' | 'canvases' | 'canvas' | 'assets' | 'brand-kits' | 'models' | 'history' | 'team' | 'settings' | 'setup' | 'share' | 'join'
 
 export interface HostUser {
   /** Stable id of the user in your system. Default `'host'`. */
@@ -345,6 +538,20 @@ export interface HostUser {
   avatarUrl?: string
   /** `'owner'` shows the site-management settings sections (they call owner-only endpoints). Default `'user'`. */
   role?: 'owner' | 'user'
+}
+
+/** `brand` of `mountLoomCanvas`: your product's name and logo in the shell. */
+export interface LoomCanvasBrand {
+  /** Product name. Default: the site name of the server's settings, else "LoomCanvas". */
+  name?: string
+  /** Logo image, shown 28px tall and at most 132px wide. Default: LoomCanvas' own mark. */
+  logoUrl?: string
+  /**
+   * Write the name next to the logo. Default `true`. `false`: the logo stands alone (a wordmark that
+   * already spells the name); the name stays its text alternative. Without `logoUrl` the name is
+   * always written. The same rule as the site setting "Show the site name next to the logo".
+   */
+  showName?: boolean
 }
 
 export interface LoomCanvasAppOptions extends CommonOptions {
@@ -384,7 +591,12 @@ export interface LoomCanvasAppOptions extends CommonOptions {
   /** Node layout of generation nodes when the user has no stored preference. Default `'a'`. */
   nodeLayout?: LoomCanvasNodeLayout
   /** Product name and logo shown in the shell. `false`: no brand block. Default: the server's site settings. */
-  brand?: { name?: string; logoUrl?: string } | false
+  brand?: LoomCanvasBrand | false
+  /**
+   * Pin the app to one space: `'personal'` or a team id. The space switcher is not shown and links into
+   * other spaces are not followed. Default: the user switches between the personal space and their teams.
+   */
+  space?: string
 }
 
 export interface LoomCanvasAppHandle {

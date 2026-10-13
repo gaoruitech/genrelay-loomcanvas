@@ -15,6 +15,9 @@ const templateSchema = new mongoose.Schema({
   // template is private to the account in userId.
   userId: { type: String, default: SYSTEM_USER, index: true },
   key: { type: String, required: true, maxlength: 60 },
+  // The account that made it. `userId` is the SPACE it belongs to (an account's personal
+  // space, or a team); rows from before teams have no createdBy and read as userId.
+  createdBy: { type: String, default: '' },
   title: { type: String, required: true, maxlength: 80 },
   description: { type: String, default: '', maxlength: 500 },
   cover: { type: String, default: '' },

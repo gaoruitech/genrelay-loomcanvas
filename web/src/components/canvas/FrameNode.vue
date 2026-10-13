@@ -4,16 +4,20 @@
       标题栏也是拖拽把手：不加 nodrag，正是要让 vue-flow 的拖拽在这里生效，
       只有输入框自己用 nodrag 挡住。组身本来就能拖，这里只是给一个明确的抓手。
     -->
-    <div class="fr-bar" :title="t('nodeui.frame.dragTip')">
-      <svg class="fr-grip" viewBox="0 0 10 16" aria-hidden="true">
+    <div v-tip="ro ? '' : t('nodeui.frame.dragTip')" class="fr-bar" :class="{ ro }">
+      <svg v-if="!ro" class="fr-grip" viewBox="0 0 10 16" aria-hidden="true">
         <circle cx="3" cy="4" r="1.1" /><circle cx="7" cy="4" r="1.1" />
         <circle cx="3" cy="8" r="1.1" /><circle cx="7" cy="8" r="1.1" />
         <circle cx="3" cy="12" r="1.1" /><circle cx="7" cy="12" r="1.1" />
       </svg>
+      <!-- 只读：组名是一段字（没起名字就不写），不是输入框 -->
+      <span v-if="ro && label" class="fr-title fr-title-ro">{{ label }}</span>
       <input
+        v-else-if="!ro"
         v-model="label"
         class="fr-title nodrag"
         maxlength="40"
+        :aria-label="t('nodeui.frame.namePlaceholder')"
         :placeholder="t('nodeui.frame.namePlaceholder')"
         @mousedown.stop
         @click.stop
@@ -39,6 +43,7 @@
 import { computed } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
+import { useCanvasReadOnly } from '@/composables/nodeLayout'
 
 const props = defineProps<{
   id: string
@@ -52,9 +57,12 @@ const { updateNodeData, getNodes } = useVueFlow()
 const w = computed(() => Number(props.data.w) || 320)
 const h = computed(() => Number(props.data.h) || 240)
 
+/** 只读（别人正在编辑、只有查看权）：组名不能改，组也拖不动（画布那边关了拖动） */
+const ro = useCanvasReadOnly()
+
 const label = computed<string>({
   get: () => props.data.label || '',
-  set: (v) => updateNodeData(props.id, { label: v }),
+  set: (v) => { if (!ro.value) updateNodeData(props.id, { label: v }) },
 })
 
 const childCount = computed(
@@ -116,6 +124,11 @@ const childCount = computed(
 .fr-title::placeholder { font-weight: 400; color: var(--text-3); }
 .fr-title:hover { background: rgb(var(--c-film) / .1); }
 .fr-title:focus { background: var(--well); border-color: var(--cyan); }
+
+/* 只读：不是把手（拖不动）、名字不是输入框 */
+.fr-bar.ro, .fr-bar.ro:active { cursor: default; }
+.fr-title-ro { min-width: 0; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-title-ro:hover { background: transparent; }
 
 .fr-count {
   font-size: 11px; white-space: nowrap;

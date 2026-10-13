@@ -22,6 +22,8 @@ export default {
       placeholder: '左侧连接「视频」和「提示词文本」（可选接「参考图」）后点分析，按你的提示词输出分析结果（也可手动编辑）',
       run: '分析',
       modalTitle: '视频分析结果',
+      // 节点上结果那一块左上角的小字：这一块是输出（可以手改），下面那一块才是输入
+      result: '分析结果',
       videoIn: '视频输入',
     },
     text: {
@@ -57,6 +59,17 @@ export default {
       noResult: '暂无产物',
       modelUnlisted: '未注明模型',
     },
+    // 工具节点只读时把设置写成一项一行的字；另有几个输入框的无障碍名字
+    ro: {
+      expand: '放大查看',
+      grid: '网格',
+      cols: '列数',
+      rows: '行数',
+      group: '平台',
+      logo: '水印图',
+      noLogo: '还没有水印图',
+      noLimit: '不限',
+    },
     frame: {
       dragTip: '拖这里（或组内任意空白处）移动整个组',
       namePlaceholder: '给这组起个名字',
@@ -89,6 +102,7 @@ export default {
       placeholder: 'Connect a video and a prompt on the left (reference images are optional), then click Analyze. The result appears here and can be edited.',
       run: 'Analyze',
       modalTitle: 'Video analysis result',
+      result: 'Result',
       videoIn: 'Video input',
     },
     text: {
@@ -123,6 +137,17 @@ export default {
       noImage: 'No image',
       noResult: 'No result yet',
       modelUnlisted: 'Model not listed',
+    },
+    // Tool nodes in read-only mode list their settings as text; plus accessible names for a few inputs
+    ro: {
+      expand: 'Expand to read',
+      grid: 'Grid',
+      cols: 'Columns',
+      rows: 'Rows',
+      group: 'Platforms',
+      logo: 'Logo',
+      noLogo: 'No logo yet',
+      noLimit: 'No limit',
     },
     frame: {
       dragTip: 'Drag here (or any empty area inside) to move the whole group',

@@ -38,6 +38,9 @@ const DEFINITIONS = {
       return s
     },
   },
+  // With a logo set: is the site name written next to it? `false` lets a logo that already
+  // spells the name (a wordmark) stand alone. Without a logo the name is always shown.
+  showSiteName: { default: true, parse: bool() },
   defaultLocale: { default: 'zh-CN', parse: oneOf('zh-CN', 'en') },
   // May people create accounts themselves? REGISTRATION_OPEN seeds it once, see seed().
   registrationOpen: { default: true, parse: bool() },
@@ -54,6 +57,14 @@ const DEFINITIONS = {
   maxRetries: { default: 2, parse: int(0, 5) },
   // 0 = keep generated files forever
   retentionDays: { default: 0, parse: int(0, 3650) },
+  // Teams. How many teams one authorised account may create (and hold), how many members a
+  // team may have, how many runs of one team may be in flight at once (a team's own value,
+  // set by the super admin, wins over the last two), and for how many days a team's activity
+  // log is kept (0 = for ever).
+  teamMaxPerUser: { default: 3, parse: int(1, 100) },
+  teamMaxMembers: { default: 50, parse: int(1, 1000) },
+  teamConcurrency: { default: 4, parse: int(1, 32) },
+  teamActivityDays: { default: 365, parse: int(0, 3650) },
 }
 
 const cache = new Map()

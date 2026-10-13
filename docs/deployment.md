@@ -43,11 +43,12 @@ Compose reads the `.env` file next to `docker-compose.yml` and passes these on t
 | `PORT` | `3000` | Port published on the host. Inside the container the server always listens on 3000. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
 | `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under **Settings → Storage** takes precedence. |
-| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_KEY_PREFIX`, `S3_PUBLIC_BASE_URL`, `S3_DELIVERY`, `S3_ACL` | empty | S3-compatible storage (AWS S3, Cloudflare R2, Aliyun OSS, MinIO…). See [Storage](storage.md#environment-variable-reference). |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_KEY_PREFIX`, `S3_PUBLIC_BASE_URL`, `S3_PRESIGN_ENDPOINT`, `S3_DELIVERY`, `S3_ACL` | empty | S3-compatible storage (AWS S3, Cloudflare R2, Aliyun OSS, MinIO…). The bucket they describe is also read whatever `STORAGE_DRIVER` says and whatever is saved under **Settings → Storage**. See [Storage](storage.md#environment-variable-reference). |
 | `TRUST_PROXY` | empty | Number of reverse proxies in front, or their addresses. |
 | `CORS_ORIGIN` | empty | Extra browser origins allowed to call the API. |
 | `SSRF_ALLOW_HOSTS` | empty | Hosts exempt from the private-address download block. |
 | `BILLING_HOOK` | empty | Path of a billing hook module inside the container. |
+| `BUDGET_CHAT_RESERVE_OUTPUT_TOKENS` | empty (`8192`) | Teams with an amount limit only: the output tokens assumed for the reserve a chat run priced per token holds while it runs. See [Configuration](configuration.md#network-and-integration). |
 
 These are fixed by the Compose file: `MONGODB_URI=mongodb://mongodb:27017/loomcanvas`, `STORAGE_LOCAL_DIR=/app/data/files`, `WEB_DIST=/app/web-dist`.
 
@@ -192,9 +193,9 @@ It is optional. Leave it empty for local or LAN use; the stock `docker-compose.y
 **It is used for reference media sent to upstream models.** When a node sends a reference image or a source video to a model, the upstream has to read it. For a file on the local disk:
 
 - If `PUBLIC_URL` is a public address, the upstream receives `<PUBLIC_URL>/files/<key>`.
-- If it is empty, or points at `localhost` or a private address, images are sent inline as base64 to providers that accept that. Inputs that must be a URL (reference images for the Gaorui image models, the source video of a video edit, a video given to a chat model, reference images for some video models) fail with a message asking you to set `PUBLIC_URL` or switch to object storage.
+- If it is empty, or points at `localhost`, a container name such as `app` or a private address, images are sent inline as base64 to providers that accept that. Inputs that must be a URL (reference images for the Gaorui image models, the source video of a video edit, a video given to a chat model, reference images for some video models) fail with a message asking you to set `PUBLIC_URL` or switch to object storage.
 
-A file in a bucket is handed to the upstream straight from the bucket instead: its public address, or a presigned URL that is valid for one hour. `PUBLIC_URL` is only the fallback when neither is publicly reachable. So with a bucket on the internet, `PUBLIC_URL` is not needed for reference media. See [Storage](storage.md#reference-media-for-upstream-models).
+A file in a bucket is handed to the upstream straight from the bucket instead: its public address, or a presigned URL that is valid for one hour. `PUBLIC_URL` is only the fallback when neither is publicly reachable - which is the case for a bucket whose endpoint only works inside your network, such as `http://minio:9000`: its address is never given to an upstream. So with a bucket on the internet, `PUBLIC_URL` is not needed for reference media; with a bucket inside your network it is, unless you publish the bucket's S3 API and set `S3_PRESIGN_ENDPOINT`. See [Storage](storage.md#reference-media-for-upstream-models).
 
 Share links are built by the browser from the address in the address bar, not from `PUBLIC_URL`.
 
@@ -213,7 +214,7 @@ Signing in is always required. Accounts are stored in the database. The super ad
   - With `ADMIN_PASSWORD` set, the account is created with that password and the log says `[auth] created the super admin account "admin" with the password from ADMIN_PASSWORD`. This is the recommended way with Compose: set it in `.env` before the first `docker compose up -d`.
   - Without it, a random 16-character password is generated and printed **once** in the start-up log:
 
-    ```
+    ```text
     =======================================================================
     | LoomCanvas created the super admin account.                       |
     |                                                                     |
@@ -240,7 +241,7 @@ Signing in is always required. Accounts are stored in the database. The super ad
   ```
 
   Existing accounts keep signing in. Open it again for as long as it takes someone to register, then close it. `REGISTRATION_OPEN` (`true` or `false`; any other value stops the server at start-up) only gives the setting its first value: it is applied while the setting has never been saved, and ignored from then on, whether it was saved by this variable, on the settings page or through the API.
-- **Managing accounts.** Under **Settings → Users** the super admin can disable or enable an account, delete it and reset its password. Disabling signs the account out at once and keeps its data. Deleting removes the account together with everything it owns, including its stored files, and cannot be undone.
+- **Managing accounts.** Under **Settings → Users** the super admin can disable or enable an account, delete it and reset its password. Disabling signs the account out at once and keeps its data; its queued runs are canceled and the edit locks it held on team canvases are released at once. Deleting removes the account together with everything in its personal space, including its stored files, and cannot be undone; what the account made in a team stays with the team, and an account that still owns a team cannot be deleted until the team is handed over or removed. The same page is where an account is authorised to create teams (**Allow creating teams**); the teams themselves are under **Settings → Teams**, see [Configuration](configuration.md#teams).
 - **Limits.** `userConcurrency` and `userQueueLimit` bound what one account can occupy of the queue. The super admin sets them under **Settings → Run limits** (**Concurrent runs per account**, **Queue limit per account**); see [Configuration](configuration.md#admin-settings). There is no storage quota per account.
 
 No email is sent by LoomCanvas, so no mail server is needed and addresses are not verified.

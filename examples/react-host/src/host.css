@@ -1,0 +1,57 @@
+/* The host product's own stylesheet. Nothing here is needed by LoomCanvas. */
+:root { color-scheme: light; }
+html, body, #root { height: 100%; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f2f4f8; color: #1b2434; }
+
+.host { display: flex; flex-direction: column; min-height: 100%; }
+.host-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 18px; background: #14213d; color: #fff; }
+.host-head b { font-size: 16px; letter-spacing: .01em; }
+.host-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.host-tabs button { font: inherit; color: #c9d3e6; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.host-tabs button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+.host-tabs button.on { color: #14213d; background: #fca311; font-weight: 600; }
+.host-tabs button:focus-visible, .host-bar :focus-visible, .host-sign :focus-visible, .host-flags :focus-visible { outline: 2px solid #fca311; outline-offset: 2px; }
+.host-version { margin-left: auto; font-size: 12px; color: #9fb0cf; }
+.host-out { font: inherit; font-size: 13px; color: #fff; background: transparent; border: 1px solid #5b6b8c; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.host-out:hover { background: rgba(255, 255, 255, .08); }
+.host-out:focus-visible { outline: 2px solid #fca311; outline-offset: 2px; }
+
+.host-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 18px; background: #fff; border-bottom: 1px solid #d8deea; }
+.host-bar label { display: inline-flex; align-items: center; gap: 6px; color: #55617a; font-size: 13px; }
+.host-bar select, .host-bar button, .host-sign input, .host-sign button { font: inherit; color: #1b2434; background: #fff; border: 1px solid #b9c3d6; border-radius: 6px; padding: 4px 10px; }
+.host-bar button, .host-sign button { cursor: pointer; }
+.host-bar button:hover:not(:disabled), .host-sign button:hover { background: #eef2f9; }
+.host-bar button:disabled, .host-bar select:disabled { color: #9aa5b8; cursor: default; }
+.host-sep { width: 1px; height: 22px; background: #d8deea; }
+.check { display: inline-flex; align-items: center; gap: 5px; }
+
+.host-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 16px 18px 18px; min-height: 0; }
+.host-box { position: relative; height: calc(100vh - 132px); min-height: 480px; border: 1px solid #b9c3d6; border-radius: 8px; overflow: hidden; background: #fff; }
+.host-empty { margin: 0; padding: 40px 24px; color: #55617a; }
+.host-sign { padding: 32px 28px; max-width: 560px; }
+.host-sign h2 { margin: 0 0 8px; font-size: 20px; }
+.host-sign p { margin: 0 0 12px; color: #55617a; }
+.host-sign input { margin-right: 8px; width: 170px; }
+.host-sign code { background: #eef2f9; border-radius: 4px; padding: 1px 5px; color: #1b2434; }
+.host-error { color: #b3261e !important; min-height: 1.5em; }
+
+.host-side { display: flex; flex-direction: column; min-height: 0; height: calc(100vh - 132px); }
+.host-side h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #55617a; }
+.host-side h3 small { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.host-state { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 14px; padding: 10px 12px; background: #fff; border: 1px solid #d8deea; border-radius: 8px; }
+.host-state dt { color: #55617a; }
+.host-state dd { margin: 0; font: 13px/1.6 ui-monospace, Consolas, monospace; }
+.host-flags { margin-bottom: 14px; padding: 8px 12px 10px; background: #fff; border: 1px solid #d8deea; border-radius: 8px; }
+.host-flags fieldset { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; padding: 0; border: 0; }
+.host-flags fieldset + fieldset { margin-top: 8px; }
+.host-flags legend { padding: 0; margin-bottom: 2px; font-size: 12px; color: #55617a; }
+.host-flags label { font: 12px/1.7 ui-monospace, Consolas, monospace; }
+.host-log { flex: 1; min-height: 80px; margin: 0; padding: 10px 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #fff; border: 1px solid #d8deea; border-radius: 8px; font: 12px/1.5 ui-monospace, Consolas, monospace; }
+
+@media (max-width: 900px) {
+  .host-main { grid-template-columns: minmax(0, 1fr); }
+  .host-box { height: 620px; }
+  .host-side { height: auto; }
+  .host-log { max-height: 220px; }
+  .host-version { margin-left: 0; }
+}

@@ -48,7 +48,8 @@ export function useCanvasCreate() {
     try {
       const res = await workflowApi.create({ name, nodes, edges })
       if (res.data.result === 0 && res.data.data) {
-        router.push(`/canvas/${res.data.data.id}`)
+        // 按名字跳：留在当前空间（团队里新建的画布在团队里，可见范围用团队的默认值）
+        router.push({ name: 'canvas', params: { id: res.data.data.id } })
         return true
       }
       MessagePlugin.error(res.data.message || t('views.list.createFailed'))

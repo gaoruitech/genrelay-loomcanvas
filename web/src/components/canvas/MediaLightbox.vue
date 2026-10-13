@@ -1,7 +1,8 @@
 <template>
   <Teleport :to="$lcPortal">
-    <div v-if="open" class="ml-mask" @click.self="emit('close')" @mousedown.self.stop @wheel.stop>
-      <button class="ml-close" :title="t('common.close')" @click="emit('close')"><LcIcon name="x" /></button>
+    <!-- data-lc-popup：开在弹窗上面时，弹窗的焦点圈（useDialogFocus）不把焦点从这里拉回去，Esc 也先归它 -->
+    <div v-if="open" class="ml-mask" data-lc-popup @click.self="emit('close')" @mousedown.self.stop @wheel.stop>
+      <button class="ml-close" v-tip="t('common.close')" :aria-label="t('common.close')" @click="emit('close')"><LcIcon name="x" /></button>
       <video
         v-if="type === 'video'"
         :src="$src(url)"

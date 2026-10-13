@@ -1,9 +1,9 @@
 <template>
   <div v-if="batch.open.value" class="lc-mask lc-sheet br-mask" @click.self="requestClose">
-    <div class="lc-dialog br-modal">
+    <div v-dialog="requestClose" class="lc-dialog br-modal" role="dialog" aria-modal="true" :aria-label="t('dialogs.batch.title')">
       <div class="lc-dialog-head">
         <span class="br-title">{{ t('dialogs.batch.title') }}<span class="br-sub">{{ t('dialogs.batch.subtitle') }}</span></span>
-        <button class="lc-x" :title="t('common.close')" @click="requestClose">×</button>
+        <button class="lc-x" :aria-label="t('common.close')" @click="requestClose">×</button>
       </div>
 
       <!-- ========== 配置阶段 ========== -->
@@ -57,21 +57,30 @@
           <div v-if="batch.sources.value.length" class="br-srcgrid">
             <div v-for="s in batch.sources.value" :key="s.url" class="br-src">
               <img :src="canvasImageThumb(s.url, 96)" :alt="s.name" />
-              <button class="br-src-x" :title="t('common.remove')" @click="batch.removeSource(s.url)">×</button>
+              <button type="button" class="br-src-x" v-tip="t('common.remove')" :aria-label="t('common.remove')" @click="batch.removeSource(s.url)">×</button>
             </div>
           </div>
         </div>
 
         <div class="br-cost">
-          <div class="br-cost-main">
-            <span class="br-cost-u">{{ t('cost.estimate') }}</span>
-            <span class="br-cost-n">{{ totalText }}</span>
-          </div>
-          <div v-if="batch.costIsPartial.value" class="br-cost-hint">{{ t('dialogs.batch.costUnknownHint') }}</div>
-          <div class="br-cost-sub">{{ breakdownText }}</div>
+          <!-- 集成方关了成本显示（features.cost）：只留「几份素材、每轮重跑几个节点」那一句 -->
+          <template v-if="$feat.cost">
+            <div class="br-cost-main">
+              <span class="br-cost-u">{{ t('cost.estimate') }}</span>
+              <span class="br-cost-n">{{ totalText }}</span>
+            </div>
+            <div v-if="batch.costIsPartial.value" class="br-cost-hint">{{ t('dialogs.batch.costUnknownHint') }}</div>
+          </template>
+          <div class="br-cost-sub" :class="{ only: !$feat.cost }">{{ breakdownText }}</div>
         </div>
 
         <div v-if="problem" class="lc-alert warn br-warn">{{ problem }}</div>
+        <!-- 团队的每月上限现在就会拦下这一批：开跑之前说清楚是哪一项、找谁 -->
+        <BudgetNotice
+          v-if="budgetBlock" class="br-budget" tone="warn" :refusal="budgetBlock" data-testid="batch-preflight"
+          :can-set-limits="budget?.canSetLimits.value" :can-set-prices="budget?.canSetPrices.value"
+          :limits-to="budget?.limitsTo.value" :prices-to="budget?.pricesTo.value"
+        />
       </div>
 
       <!-- ========== 运行 / 结果阶段 ========== -->
@@ -92,6 +101,15 @@
 
         <p v-if="batch.running.value" class="br-tip">{{ t('dialogs.batch.runningTip') }}</p>
 
+        <!-- 被团队的每月上限拦停了：哪一项、数字、什么时候重新计数、找谁；后面几份没有再去碰 -->
+        <BudgetNotice
+          v-if="batch.refusal.value" class="br-budget" :refusal="batch.refusal.value.refusal" data-testid="batch-refusal"
+          :can-set-limits="budget?.canSetLimits.value" :can-set-prices="budget?.canSetPrices.value"
+          :limits-to="budget?.limitsTo.value" :prices-to="budget?.pricesTo.value"
+        >
+          <span class="br-budget-n">{{ t('dialogs.batch.refusedAt', { n: batch.refusal.value.at + 1, left: batch.refusal.value.left }) }}</span>
+        </BudgetNotice>
+
         <div class="br-rows">
           <div
             v-for="(it, i) in batch.items.value"
@@ -103,7 +121,7 @@
             <div class="br-row-mid">
               <div class="br-row-top">
                 <span class="br-row-n">#{{ i + 1 }}</span>
-                <span class="br-row-st">{{ statusText(it.status) }}</span>
+                <span class="br-row-st">{{ batch.refusal.value?.at === i ? t('spaces.refusal.status') : statusText(it.status) }}</span>
                 <span v-if="it.cost" class="br-row-pt">{{ formatCost(it.cost) }}</span>
               </div>
               <div v-if="it.error" class="br-row-err">{{ it.error }}</div>
@@ -111,8 +129,10 @@
                 <button
                   v-for="(o, k) in it.outputs"
                   :key="o.url + k"
+                  type="button"
                   class="br-out"
-                  :title="t('dialogs.batch.downloadItem')"
+                  v-tip="t('dialogs.batch.downloadItem')"
+                  :aria-label="t('dialogs.batch.downloadItem')"
                   @click="downloadOne(o, i, k)"
                 >
                   <img v-if="o.kind === 'image'" :src="canvasImageThumb(o.url, 96)" alt="" />
@@ -167,6 +187,7 @@
  * 和执行器走同一个模式（画布持有、组件消费），免得这里再 useVueFlow 一次
  * 拿到另一个 store 实例。
  */
+import { vDialog } from '@/directives/dialog'
 import { ref, computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin, DialogPlugin } from '@/utils/feedback'
@@ -175,11 +196,30 @@ import { uploadCanvasImage } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { MAX_BATCH_SOURCES, type CanvasBatch, type BatchOutput, type BatchItem } from '@/composables/useCanvasBatch'
 import { CANVAS_PICKER_KEY } from '@/composables/canvasPickerKey'
+import { CANVAS_BUDGET_KEY } from '@/composables/canvasBudgetKey'
+import { preflight } from '@/utils/budget'
+import { effectiveModelId } from '@/utils/canvasModels'
+import BudgetNotice from '@/components/space/BudgetNotice.vue'
 import { formatCost, formatEstimate } from '@/utils/cost'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const props = defineProps<{ batch: CanvasBatch }>()
+
+/** 团队的每月上限（个人空间没有）：上限已经用完，或者这一批要用的某个模型因为价格跑不了 —— 都是服务端给的答案 */
+const budget = inject(CANVAS_BUDGET_KEY, undefined)
+const budgetBlock = computed(() => {
+  void locale.value
+  const limits = budget?.limits.value
+  if (!limits) return null
+  // 这一批会提交任务的每个节点（出图出片的，还有大语言模型、视频分析），按它「眼下会用的模型」查：
+  // 没选过模型的节点用的是默认模型（文本类节点不选就一直是空的），它也可能因为价格跑不了
+  for (const n of props.batch.affectedPaidNodes.value) {
+    const hit = preflight(limits, effectiveModelId(String(n.type || ''), n.data))
+    if (hit) return hit
+  }
+  return preflight(limits)
+})
 const batch = props.batch
 
 const picker = inject(CANVAS_PICKER_KEY, undefined)
@@ -207,7 +247,7 @@ const breakdownText = computed(() => {
   const nodes = batch.affectedGenNodes.value.length
   const unit = batch.unitCost.value
   // 单价未知时不把「成本未知」再拼进算式里，上面一行已经说明了
-  return unit && !unit.unknown
+  return unit && !unit.unknown && formatCost(unit)
     ? t('dialogs.batch.costBreakdown', { n, unit: formatCost(unit), nodes })
     : t('dialogs.batch.costBreakdownNoUnit', { n, nodes })
 })
@@ -353,7 +393,10 @@ async function downloadAll() {
 .br-cost-u { font-size: 13px; color: var(--text-2); }
 .br-cost-hint { margin-top: 4px; font-size: 12px; color: var(--text-3); }
 .br-cost-sub { margin-top: 4px; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.br-cost-sub.only { margin-top: 0; }
 .br-warn { margin-top: 12px; }
+.br-budget { margin: 12px 0; }
+.br-budget-n { font-weight: 500; }
 
 /* ── 运行 / 结果 ── */
 .br-progress { margin-bottom: 14px; }

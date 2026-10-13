@@ -2,19 +2,31 @@
   <div class="pf">
     <div class="lc-field">
       <label :for="uid + '-key'">
-        {{ t('modelsPage.provider.apiKey') }}<span v-if="!existing?.hasKey" class="lc-required">*</span>
+        {{ t('modelsPage.provider.apiKey') }}<span v-if="!existing?.hasKey || keyRequired" class="lc-required">*</span>
       </label>
       <input
         :id="uid + '-key'"
         v-model="form.apiKey"
         class="lc-input"
+        :class="{ 'is-err': keyRequired && !form.apiKey.trim() }"
         type="password"
         autocomplete="new-password"
         :placeholder="keyPlaceholder"
         :disabled="disabled"
+        :required="keyRequired"
+        :aria-required="keyRequired || !existing?.hasKey"
+        :aria-invalid="keyRequired && !form.apiKey.trim()"
+        :aria-describedby="uid + '-key-help'"
+        data-field="api-key"
       />
-      <span v-if="existing?.hasKey" class="lc-help">{{ t('modelsPage.provider.secretKeep') }}</span>
-      <span v-else-if="vendor.keyUrl && !compact" class="lc-help">
+      <span v-if="keyRequired" :id="uid + '-key-help'" class="lc-help key-again" :class="{ err: !form.apiKey.trim() }" role="status" data-role="key-again">
+        {{ keyError || t('modelsPage.provider.keyAgain') }}
+      </span>
+      <!-- 存着一把、但服务端解不开了（SECRET_KEY 变了）：不能再说「留空表示不修改」 -->
+      <span v-else-if="keyLost" :id="uid + '-key-help'" class="lc-help key-lost" data-role="key-lost">{{ t('modelsPage.provider.keyLost') }}</span>
+      <span v-else-if="existing?.hasKey" :id="uid + '-key-help'" class="lc-help">{{ t('modelsPage.provider.secretKeep') }}</span>
+      <!-- 去服务商网站拿 Key 的链接会离开本产品：集成方关了站外链接（features.externalLinks）就不出 -->
+      <span v-else-if="vendor.keyUrl && !compact && $feat.externalLinks" :id="uid + '-key-help'" class="lc-help">
         <a :href="vendor.keyUrl" target="_blank" rel="noopener noreferrer">{{ t('modelsPage.provider.getKey') }}</a>
       </span>
     </div>
@@ -63,13 +75,16 @@
  *
  * Key 只写不读：后端从不返回明文，已保存过的只给 hasKey / keyTail，
  * 这里显示成「已设置 ····1234」的占位；留空提交表示不修改。
+ *
+ * 例外：改了接口地址（包括从自定义地址改回官方地址）。已保存的 Key 只会发往保存时的那个地址，
+ * 所以这时 Key 变成必填，占位和说明也跟着换，不再说「留空表示不修改」。
  */
 import { computed, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ProviderInstance, Vendor } from '@/types'
 import { vendorLabel } from '@/utils/providerMeta'
 import LcIcon from '@/components/LcIcon.vue'
-import type { ProviderFormState } from './providerForm'
+import { keyNeededForAddress, type ProviderFormState } from './providerForm'
 
 const props = withDefaults(defineProps<{
   vendor: Vendor
@@ -78,7 +93,9 @@ const props = withDefaults(defineProps<{
   /** 精简模式（引导页）：不显示名称；「获取 API Key」的链接由引导页自己放在标题旁 */
   compact?: boolean
   disabled?: boolean
-}>(), { existing: null, compact: false, disabled: false })
+  /** 后端说「改地址要重新填 Key」时的原话（别人刚改过这个服务商，本地看不出地址变了） */
+  keyError?: string
+}>(), { existing: null, compact: false, disabled: false, keyError: '' })
 
 const form = defineModel<ProviderFormState>({ required: true })
 
@@ -90,14 +107,24 @@ const isCustomAddress = computed(() => !!trim(form.value.baseUrl) && trim(form.v
 // 已经改过地址的实例，打开时直接展开，免得人找不到那个非官方地址在哪
 const advanced = ref(isCustomAddress.value)
 
+/** 改了地址而存着 Key，或者后端这么说了：Key 必须重新填 */
+const keyRequired = computed(() => !!props.keyError || keyNeededForAddress(props.vendor, form.value, props.existing))
+
+/** 存着的 Key 读不出来了：留空保存不会让它恢复 */
+const keyLost = computed(() => !!props.existing?.hasKey && props.existing.keyUnreadable === true)
+
 const keyPlaceholder = computed(() => {
   if (!props.existing?.hasKey) return ''
+  if (keyRequired.value) return t('modelsPage.provider.keyAgainPlaceholder')
+  if (keyLost.value) return t('modelsPage.provider.keyLostPlaceholder')
   const tail = props.existing.keyTail
   return tail ? t('modelsPage.provider.secretSetTail', { tail }) : t('modelsPage.provider.secretSet')
 })
 </script>
 
 <style scoped>
+.key-again { display: block; }
+.key-lost { color: var(--warn); }
 .adv { margin-bottom: 16px; }
 .adv-toggle {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 0;

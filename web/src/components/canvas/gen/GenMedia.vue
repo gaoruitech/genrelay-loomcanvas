@@ -9,25 +9,33 @@
     <!-- 文本类节点：结果就是一段可以手改的文字，作为 text-out 喂给下游 -->
     <template v-if="g.isText">
       <div v-if="layout === 'b' || g.readonly" class="gn-text ro nowheel" :class="{ ph: !g.text }" @wheel.stop>{{ g.text || (g.readonly ? t('nodeui.share.emptyText') : t('gen.empty.text')) }}</div>
-      <template v-else>
+      <!-- 这一块是「输出」：不带底色的一块面，左上角一行小字写明它是结果（可以手改），右边是清空 / 字数 / 放大。
+           下面带底色的那个框才是输入（提示词）—— 两块长得不一样，一眼分得出哪个是写的、哪个是出的。
+           还没有结果时是虚线框，和出图 / 出片节点「结果出现在这里」的占位同一种说法。
+           那一行在文字框外面（上方），长文滚动时字不会从它底下透出来 -->
+      <div v-else class="gn-tbox" :class="{ busy: g.isRunning, empty: !g.text }" data-testid="gen-result">
+        <div class="gn-text-h">
+          <span :id="labelId" class="gn-text-l">{{ resultLabel }}</span>
+          <span class="gn-text-t">
+            <button v-if="g.text && !g.viewOnly" type="button" class="gf-link nodrag" :disabled="g.isRunning" data-testid="gen-text-clear" @click.stop="g.text = ''" @mousedown.stop>{{ t('common.clear') }}</button>
+            <span v-if="g.text" class="gf-count">{{ g.text.length }} / {{ PROMPT_MAX }}</span>
+            <button type="button" class="gf-ib-plain nodrag" v-tip="t(g.viewOnly ? 'nodeui.ro.expand' : 'nodes.action.expand')" :aria-label="t(g.viewOnly ? 'nodeui.ro.expand' : 'nodes.action.expand')" data-testid="gen-text-expand" @click.stop="emit('expand')" @mousedown.stop><GenIconExpand /></button>
+          </span>
+        </div>
+        <!-- 只读：同一个框，字只能选中、复制、滚动（readonly 而不是 disabled：disabled 的框选不了字、Tab 也停不上去） -->
         <textarea
           v-model="g.text"
           class="gn-text nodrag nowheel"
-          :placeholder="g.isRunning ? g.runningPlain : g.placeholder"
-          :disabled="g.isRunning"
+          :placeholder="g.isRunning ? g.runningPlain : g.viewOnly ? t('nodeui.share.noResult') : g.placeholder"
+          :aria-labelledby="labelId"
+          :disabled="g.isRunning && !g.viewOnly"
+          :readonly="g.viewOnly"
           :maxlength="PROMPT_MAX"
           data-testid="gen-text"
           @mousedown.stop
           @wheel.stop
         />
-        <div class="gn-text-f">
-          <button type="button" class="gf-link nodrag" :disabled="!g.text || g.isRunning" @click.stop="g.text = ''" @mousedown.stop>{{ t('common.clear') }}</button>
-          <span>
-            <span class="gf-count">{{ g.text.length }} / {{ PROMPT_MAX }}</span>
-            <button type="button" class="gf-ib-plain nodrag" :title="t('nodes.action.expand')" :aria-label="t('nodes.action.expand')" data-testid="gen-text-expand" @click.stop="emit('expand')" @mousedown.stop><GenIconExpand /></button>
-          </span>
-        </div>
-      </template>
+      </div>
     </template>
 
     <!-- 出图 / 出片：有结果 -->
@@ -53,7 +61,7 @@
     <!-- 还没有结果：虚线占位，写着这次会用的提示词的头一句（没过校验 / 失败了就写原因） -->
     <div v-else class="gn-ph" :class="{ err: !!phError }" data-testid="gen-empty">
       <LcIcon :name="phError ? 'warn' : g.icon" />
-      <span class="gn-ph-t" :title="phError || undefined">{{ phError || (layout === 'c' || g.readonly ? '' : promptLine) || emptyHint }}</span>
+      <span v-tip="{ text: phError, clipped: true }" class="gn-ph-t">{{ phError || (layout === 'c' || g.readonly ? '' : promptLine) || emptyHint }}</span>
       <GenRunButton v-if="layout === 'a' && !g.readonly && !g.isRunning" variant="chip" />
     </div>
 
@@ -66,10 +74,10 @@
     </span>
 
     <!-- 已经有结果、最近一次又没跑成：原因压在画面底边，不把结果挤走 -->
-    <div v-if="g.displayError && !g.isRunning && layout !== 'c' && (g.isText || g.mediaUrl)" class="gn-err-ov" :title="g.displayError" data-testid="gen-error-line">{{ g.displayError }}</div>
+    <div v-if="g.displayError && !g.isRunning && layout !== 'c' && (g.isText || g.mediaUrl)" v-tip="{ text: g.displayError, clipped: true }" class="gn-err-ov" data-testid="gen-error-line">{{ g.displayError }}</div>
 
     <template v-if="g.mediaUrl && !g.isText">
-      <button v-if="!g.readonly" type="button" class="gn-zoom nodrag" :title="t('nodes.action.detail')" :aria-label="t('nodes.action.detail')" data-testid="gen-detail" @click.stop="emit('detail')" @mousedown.stop>
+      <button v-if="!g.readonly" type="button" class="gn-zoom nodrag" v-tip="t('nodes.action.detail')" :aria-label="t('nodes.action.detail')" data-testid="gen-detail" @click.stop="emit('detail')" @mousedown.stop>
         <GenIconExpand />
       </button>
       <div v-if="!g.readonly && layout !== 'b' && (g.mediaList.length > 1 || g.versions.length > 1)" class="gn-ov-bl">
@@ -78,7 +86,7 @@
           <button
             v-for="(url, i) in g.mediaList" :key="url + i" type="button"
             :class="{ on: url === g.mediaUrl }"
-            :title="t(g.media === 'video' ? 'gen.node.nthVideo' : 'gen.node.nthImage', { n: i + 1 })"
+            v-tip="t(g.media === 'video' ? 'gen.node.nthVideo' : 'gen.node.nthImage', { n: i + 1 })" :aria-label="t(g.media === 'video' ? 'gen.node.nthVideo' : 'gen.node.nthImage', { n: i + 1 })"
             @click.stop="g.selectMedia(url)"
           ><img v-if="thumbOf(url)" :src="thumbOf(url)" alt="" /><video v-else :src="url" preload="metadata" muted /></button>
         </div>
@@ -86,6 +94,13 @@
       </div>
       <!-- 没选中也能直接跑：悬停在结果上出一颗「重新运行」 -->
       <GenRunButton v-if="layout === 'a' && !selected && !g.readonly" variant="chip" class="gn-hover-run" />
+      <!-- 只读：同一个位置换成「查看大图 / 播放」—— 看的人要的是把结果看清楚（三种布局都有；键盘 Tab 走得到） -->
+      <button
+        v-if="g.viewOnly && viewer" type="button" class="gf-run chip gn-hover-run gn-view nodrag"
+        :class="{ ic: layout === 'b' }"
+        v-tip="layout === 'b' ? viewLabel : ''" :aria-label="viewLabel" data-testid="gen-view"
+        @click.stop="viewer(g.mediaUrl, g.media === 'video' ? 'video' : 'image')" @mousedown.stop @dblclick.stop
+      ><LcIcon :name="g.media === 'video' ? 'play' : 'eye'" size="s" /><span v-if="layout !== 'b'">{{ viewLabel }}</span></button>
     </template>
   </div>
 </template>
@@ -98,7 +113,8 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGenNodeState, PROMPT_MAX } from '@/composables/useGenNode'
-import type { NodeLayout } from '@/composables/nodeLayout'
+import { useCanvasViewer, type NodeLayout } from '@/composables/nodeLayout'
+import { timecode } from '@/utils/duration'
 import { canvasImageThumb, canvasVideoPoster } from '@/utils/canvasMedia'
 import LcIcon from '@/components/LcIcon.vue'
 import GenIconExpand from './GenIconExpand.vue'
@@ -109,8 +125,14 @@ const props = defineProps<{ layout: NodeLayout; selected?: boolean }>()
 const emit = defineEmits<{ (e: 'detail'): void; (e: 'expand'): void }>()
 const { t } = useI18n()
 const g = useGenNodeState()
+/** 画布根上的大图预览（分享页没有画布上下文：null） */
+const viewer = useCanvasViewer()
+const viewLabel = computed(() => t(g.media === 'video' ? 'gen.view.video' : 'gen.view.image'))
 
 const isEmpty = computed(() => !g.isText && !g.mediaUrl)
+/** 文本类节点结果那一块左上角的小字，也是文字框的无障碍名字 */
+const resultLabel = computed(() => t(g.kind === 'video-analysis' ? 'nodeui.analysis.result' : 'nodeui.llm.result'))
+const labelId = computed(() => `gn-result-${g.id}`)
 const thumbOf = (url: string) => (g.media === 'video' ? canvasVideoPoster(url, 96) : canvasImageThumb(url, 96))
 
 /* ── 高度 ──
@@ -142,10 +164,8 @@ const height = computed(() => {
   if (!r || r > 1.15) return b.base
   return Math.max(b.min, Math.min(b.max, Math.round(b.w / r)))
 })
-const durText = computed(() => {
-  const s = Math.round(duration.value)
-  return s > 0 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : ''
-})
+// 压在画面上的是时间码（0:08），不是「8 秒」那种时长的说法：见 utils/duration.ts
+const durText = computed(() => (Math.round(duration.value) > 0 ? timecode(duration.value) : ''))
 
 /* ── 占位里的那句话 ── */
 // 布局 c 的报错在节点下半部分的说明里（带重试），占位里不再写一遍
@@ -154,7 +174,8 @@ const promptLine = computed(() => {
   const text = (g.effectivePrompt || '').trim()
   return text.split('\n')[0] || ''
 })
-const emptyHint = computed(() => (g.readonly ? t('nodeui.share.noResult') : t(g.media === 'video' ? 'gen.empty.video' : 'gen.empty.image')))
+// 只读的人运行不了：不写「写好提示词后运行」，只说现在没有结果
+const emptyHint = computed(() => (g.viewOnly ? t('nodeui.share.noResult') : t(g.media === 'video' ? 'gen.empty.video' : 'gen.empty.image')))
 
 /* ── 进度环：周长 2πr = 113.1 ── */
 const ringStyle = computed(() => (g.progress ? { strokeDashoffset: String(113.1 * (1 - Math.min(100, g.progress) / 100)) } : undefined))

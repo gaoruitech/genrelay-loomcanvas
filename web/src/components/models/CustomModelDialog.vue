@@ -1,9 +1,10 @@
 <template>
-  <div class="lc-mask" @click.self="close" @keydown.esc="close">
-    <form class="lc-dialog" role="dialog" aria-modal="true" :aria-labelledby="uid + '-title'" @submit.prevent="submit">
+  <Teleport :to="$lcPortal">
+  <div class="lc-mask lc-sheet" @mousedown="downOnMask = $event.target === $event.currentTarget" @click.self="downOnMask && close()">
+    <form v-dialog="{ onEscape: close, busy: saving }" class="lc-dialog cm" role="dialog" aria-modal="true" :aria-labelledby="uid + '-title'" novalidate data-testid="custom-model-dialog" @submit.prevent="submit">
       <div class="lc-dialog-head">
         <span :id="uid + '-title'">{{ existing ? t('modelsPage.custom.edit') : t('modelsPage.custom.add') }}</span>
-        <button type="button" class="lc-x" :aria-label="t('common.close')" @click="close">×</button>
+        <button type="button" class="lc-x" :aria-label="t('common.close')" :disabled="saving" @click="close">×</button>
       </div>
 
       <div class="lc-dialog-body">
@@ -16,7 +17,6 @@
           <label :for="uid + '-model'">{{ t('modelsPage.custom.name') }}<span v-if="!existing" class="lc-required">*</span></label>
           <input
             :id="uid + '-model'"
-            ref="nameEl"
             v-model.trim="model"
             class="lc-input mono"
             maxlength="120"
@@ -67,6 +67,7 @@
       </div>
     </form>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -76,12 +77,13 @@
  * 类型没有默认值，必须由人选 —— 这是整个功能的前提：模型是什么类型，只听用户说的，
  * 不从名字里猜。服务商的官方接口做不了的类型不在选项里，并在下面说明。
  */
-import { computed, onMounted, ref, useId, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminApi, unwrap, apiErrorMessage } from '@/utils/api'
+import { adminApi, unwrap, apiErrorMessage, apiErrorCode } from '@/utils/api'
 import { capsSummary } from '@/utils/modelCaps'
 import { vendorLabel, isVendorDefaultName } from '@/utils/providerMeta'
 import LcSelect from '@/components/LcSelect.vue'
+import { vDialog } from '@/directives/dialog'
 import type { CustomModel, ModelKind, ProviderInstance, Vendor } from '@/types'
 
 const props = defineProps<{
@@ -93,6 +95,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved', provider: ProviderInstance): void
+  /** 后端说调用者已经不能管理服务商了（团队里被降成了成员）：交给页面去刷新权限 */
+  (e: 'forbidden', message: string): void
 }>()
 
 const { t } = useI18n()
@@ -105,8 +109,9 @@ const label = ref(props.existing?.label || '')
 const saving = ref(false)
 const error = ref('')
 
-const nameEl = ref<HTMLInputElement | null>(null)
-onMounted(() => { if (!props.existing) nameEl.value?.focus() })
+// 打开时焦点落在第一个能填的框上（添加：模型名；编辑：模型名改不了，落在类型上），由 v-dialog 管
+/** 按下和松开都在遮罩上才算「点外面」：在输入框里拖选文字、松手时滑到外面不算 */
+const downOnMask = ref(false)
 
 const kindOptions = computed(() => props.vendor.customKinds.map(k => ({ value: k, label: t('modelsPage.kinds.' + k) })))
 const missingKinds = computed(() => ALL_KINDS
@@ -142,6 +147,11 @@ async function submit() {
       : unwrap(await adminApi.addCustomModel(props.provider.id, { model: model.value, kind: kind.value, label: label.value }))
     emit('saved', saved)
   } catch (err) {
+    if (apiErrorCode(err) === 'team.forbidden') {
+      saving.value = false
+      emit('forbidden', apiErrorMessage(err, t('common.operationFailed')))
+      return
+    }
     error.value = apiErrorMessage(err, t('common.operationFailed'))
   } finally {
     saving.value = false

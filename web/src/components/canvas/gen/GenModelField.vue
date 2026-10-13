@@ -1,5 +1,9 @@
 <template>
-  <div v-if="g.modelOpts.length" class="gf-model nodrag" :class="variant" data-testid="gen-model" @click.stop @mousedown.stop>
+  <!-- 只读：一段字，不是下拉（不摆一颗点不开的 chip） -->
+  <span v-if="g.viewOnly" v-tip="{ text: g.modelLabel || g.modelNoneText, clipped: true }" class="gf-ro m" :class="variant" data-testid="gen-model">
+    <span v-if="variant === 'field' && g.modelLabel" class="lc-bd" :class="g.badgeKind">{{ g.badge }}</span><b>{{ g.modelLabel || g.modelNoneText }}</b>
+  </span>
+  <div v-else-if="g.modelOpts.length" class="gf-model nodrag" :class="variant" data-testid="gen-model" @click.stop @mousedown.stop>
     <ChipSelect
       v-if="variant === 'field'"
       field

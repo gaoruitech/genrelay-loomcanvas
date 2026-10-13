@@ -16,6 +16,8 @@ import assetsPage from './modules/assetsPage'
 import account from './modules/account'
 import queue from './modules/queue'
 import brandKit from './modules/brandKit'
+import spaces from './modules/spaces'
+import team from './modules/team'
 
 export default {
   common: {
@@ -45,6 +47,7 @@ export default {
     add: 'Add',
     create: 'New',
     search: 'Search',
+    noMatch: 'No matching options',
     empty: 'Nothing here yet',
     more: 'More',
     back: 'Back',
@@ -85,6 +88,14 @@ export default {
     free: 'Local, free',
   },
 
+  // One way to write a length of time, used only by utils/duration.ts (clip length, time taken, elapsed, remaining)
+  duration: {
+    sec: '{s}s',
+    minSec: '{m}m {s}s',
+    hourMin: '{h}h {m}m',
+    under: '<1s',
+  },
+
   models: {
     catalogDesc: {
       'nano-banana-pro': 'High-quality image generation and editing',
@@ -98,7 +109,6 @@ export default {
       'grok-imagine-1.0-video': 'Text to video with reference images, 6 / 10 / 15 s, 480p',
     },
     auto: 'Auto',
-    seconds: '{n}s',
     imgModeFrames: 'First & last frame',
     imgModeMulti: 'Reference images',
     none: 'No models available yet',
@@ -190,6 +200,7 @@ export default {
     runFailed: 'Run failed',
     allFailed: 'All runs failed',
     partialFailed: '{n} run(s) failed: {reason}',
+    partialSubmit: 'Only {ok} of {total} were submitted; the rest did not run. {reason}',
     pollTimeout: 'Timed out waiting for the result',
     queryFailed: 'Couldn’t check the status',
     emptyResult: 'The result was empty',
@@ -250,4 +261,6 @@ export default {
   brandKit: brandKit.en,
   account: account.en,
   queue: queue.en,
+  spaces: spaces.en,
+  team: team.en,
 }

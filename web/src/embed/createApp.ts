@@ -5,14 +5,13 @@
  */
 import { createApp as createVueApp, type App as VueApp } from 'vue'
 import { createPinia, type Pinia } from 'pinia'
-import { RouterLink, type Router } from 'vue-router'
-import { computed, defineComponent, h } from 'vue'
+import type { Router } from 'vue-router'
 import App from '@/App.vue'
 import { createAppRouter } from '@/router'
 import { useAppStore } from '@/stores/app'
 import { loadModels } from '@/utils/canvasModels'
 import { installCommon } from './mount'
-import { isPageAllowed, pageOfRoute } from './options'
+import { guardedLink } from './links'
 import type { EmbedContext } from './context'
 
 export interface LoomApp {
@@ -37,26 +36,9 @@ export interface LoomAppOptions {
   beforeStart?: (store: ReturnType<typeof useAppStore>) => void | Promise<void>
 }
 
-/**
- * `<router-link>` for a restricted page set: a link to a page the host did not open is not rendered.
- * Registered only when `pages` is given, so the stand-alone app keeps vue-router's own component.
- */
-function restrictedLink(ctx: EmbedContext, router: Router) {
-  return defineComponent({
-    name: 'RouterLink',
-    inheritAttrs: false,
-    props: { to: { type: [String, Object], required: true } },
-    setup(props, { attrs, slots }) {
-      const allowed = computed(() => {
-        try { return isPageAllowed(ctx.pages, pageOfRoute(router.resolve(props.to as any).name)) } catch { return false }
-      })
-      return () => (allowed.value ? h(RouterLink as any, { ...attrs, to: props.to }, slots) : null)
-    },
-  })
-}
-
 export function createLoomApp(opts: LoomAppOptions): LoomApp {
   const { ctx } = opts
+  ctx.routerMode = opts.routerMode
   const app = createVueApp(App)
   // vue-i18n wraps app.unmount to dispose the (page-wide) i18n instance; keep the original.
   const rawUnmount = app.unmount.bind(app)
@@ -77,7 +59,7 @@ export function createLoomApp(opts: LoomAppOptions): LoomApp {
     .then(async () => {
       if (opts.routerMode === 'memory') await router.replace(opts.initial || '/').catch(() => undefined)
       app.use(router)
-      if (ctx.pages) app.component('RouterLink', restrictedLink(ctx, router))
+      if (ctx.embedded) app.component('RouterLink', guardedLink(ctx, router))
       app.mount(opts.el)
       await router.isReady().catch(() => undefined)
     })

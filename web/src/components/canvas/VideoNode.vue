@@ -6,8 +6,9 @@
     </div>
     <div class="cv-body">
       <div v-if="videoUrl" class="cv-image-wrap">
-        <video :src="$src(videoUrl)" class="cv-video" controls preload="metadata" />
-        <button class="cv-image-clear nodrag" :title="t('common.remove')" @click.stop="clearVideo"><LcIcon name="x" size="s" /></button>
+        <!-- 播放 / 暂停 / 拖进度是播放器自己的控件：只读时照常能用（nodrag：拖进度条不该拖动节点） -->
+        <video :src="$src(videoUrl)" class="cv-video nodrag" controls playsinline preload="metadata" @mousedown.stop />
+        <button v-if="!ro" class="cv-image-clear nodrag" v-tip="t('common.remove')" :aria-label="t('common.remove')" @click.stop="clearVideo"><LcIcon name="x" size="s" /></button>
       </div>
 
       <div v-else-if="uploading" class="cv-placeholder">
@@ -16,6 +17,9 @@
         </svg>
         <span>{{ uploadPct > 0 ? t('nodeui.video.uploadingPct', { pct: uploadPct }) : t('common.uploading') }}</span>
       </div>
+
+      <!-- 只读：没有视频就是一句话，不摆上传区 -->
+      <div v-else-if="ro" class="cv-placeholder">{{ t('nodeui.share.noResult') }}</div>
 
       <template v-else>
         <label class="cv-upload-zone nodrag" @mousedown.stop>
@@ -51,6 +55,7 @@ import { uploadCanvasVideo } from '@/utils/canvasUpload'
 import { registerThumb } from '@/utils/canvasMedia'
 import { apiErrorMessage } from '@/utils/api'
 import LcIcon from '@/components/LcIcon.vue'
+import { useCanvasReadOnly } from '@/composables/nodeLayout'
 
 const props = defineProps<{
   id: string
@@ -61,6 +66,8 @@ const props = defineProps<{
 const { t } = useI18n()
 const { updateNodeData } = useVueFlow()
 const picker = inject(CANVAS_PICKER_KEY)
+/** 只读（别人正在编辑、只有查看权）：能播放，不能换、不能移除 */
+const ro = useCanvasReadOnly()
 
 const videoUrl = computed(() => props.data.videoUrl || '')
 const uploading = ref(false)
@@ -75,7 +82,8 @@ async function handleSelect(e: Event) {
   uploadPct.value = 0
   try {
     const url = await uploadCanvasVideo(file, (pct) => { uploadPct.value = Math.round(pct) })
-    updateNodeData(props.id, { videoUrl: url })
+    // 传到一半丢了编辑权：不往节点里写
+    if (!ro.value) updateNodeData(props.id, { videoUrl: url })
   } catch (err: any) {
     MessagePlugin.error(apiErrorMessage(err, t('upload.failed')))
   } finally {
@@ -84,13 +92,13 @@ async function handleSelect(e: Event) {
 }
 
 function clearVideo() {
-  updateNodeData(props.id, { videoUrl: '' })
+  if (!ro.value) updateNodeData(props.id, { videoUrl: '' })
 }
 
 async function pickFromLibrary() {
-  if (!picker) return
+  if (!picker || ro.value) return
   const items = await picker.open({ mediaType: 'video', multiSelect: false })
-  if (items.length > 0) {
+  if (items.length > 0 && !ro.value) {
     registerThumb(items[0].fileUrl, items[0].thumbnailUrl)
     updateNodeData(props.id, { videoUrl: items[0].fileUrl })
   }

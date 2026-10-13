@@ -1,16 +1,16 @@
 <template>
   <Teleport :to="$lcPortal">
     <div v-if="open" class="lc-mask lc-sheet cp-mask" @click.self="cancel">
-      <div class="lc-dialog cp-box">
+      <div v-dialog="cancel" class="lc-dialog cp-box" role="dialog" aria-modal="true" :aria-label="mediaTypeLabel">
         <header class="lc-dialog-head">
           <div class="cp-title">
             <div class="lc-seg">
-              <button :class="{ on: source === 'mine' }" @click="switchSource('mine')">{{ t('library.picker.mine') }}</button>
+              <button :class="{ on: source === 'mine' }" @click="switchSource('mine')">{{ inTeam ? t('library.picker.team') : t('library.picker.mine') }}</button>
               <button :class="{ on: source === 'material' }" @click="switchSource('material')">{{ t('library.picker.material') }}</button>
             </div>
             <span class="cp-sub">{{ mediaTypeLabel }}{{ multiSelect ? ' · ' + t('library.picker.multi') : '' }}</span>
           </div>
-          <button class="lc-x" :title="t('common.close')" @click="cancel">×</button>
+          <button class="lc-x" :aria-label="t('common.close')" @click="cancel">×</button>
         </header>
 
         <div class="lc-dialog-body cp-body">
@@ -29,7 +29,9 @@
                 <img v-if="item.type === 'image'" :src="$src(item.thumbnailUrl || item.fileUrl)" alt="" loading="lazy" />
                 <video v-else :src="$src(item.fileUrl)" :poster="$src(item.thumbnailUrl) || undefined" muted preload="metadata" />
               </div>
-              <div class="cp-prompt" :title="item.name">{{ item.name || t('library.picker.unnamed') }}</div>
+              <div class="cp-prompt" v-tip="{ text: item.name, clipped: true }">{{ item.name || t('library.picker.unnamed') }}</div>
+              <!-- 团队里：谁加的 -->
+              <div v-if="uploaders[item.id]" class="cp-by" v-tip="{ text: uploaders[item.id], clipped: true }">{{ uploaders[item.id] }}</div>
               <span v-if="selected.has(item.id)" class="lc-cb on cp-check" />
             </div>
           </div>
@@ -61,10 +63,14 @@
  * 素材选择器：从本地素材库里挑图片 / 视频填进节点。
  * 两个来源 —— 「我的资产」（自己上传和登记的成品）与「素材库」（内置素材）。
  */
+import { vDialog } from '@/directives/dialog'
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { canvasAssetApi, userAssetApi } from '@/utils/canvasBackend'
+import { useEmbed } from '@/embed/context'
+import { useSpaceStore } from '@/stores/space'
 import { registerThumb } from '@/utils/canvasMedia'
+import { personTitle } from '@/utils/person'
 import type { PickerItem, PickerOptions } from '@/composables/canvasPickerKey'
 
 const { t } = useI18n()
@@ -82,6 +88,20 @@ const page = ref(1)
 const hasMore = ref(false)
 
 let resolver: ((items: PickerItem[]) => void) | null = null
+
+/**
+ * 是不是在团队里（「我的资产」就是团队的库）。只嵌编辑器时没有空间这回事：只看取回来的条目自己怎么说
+ * （scope === 'team'），适配器不给就和以前一样。别的形态下再加上当前空间，库是空的时候叫法也对。
+ */
+const spaceIsTeam = useEmbed().mode === 'editor' ? () => false : (() => { const s = useSpaceStore(); return () => s.isTeam })()
+const sawTeamScope = ref(false)
+const inTeam = computed(() => sawTeamScope.value || spaceIsTeam())
+/** 团队资产是谁加的：素材 id → 「周屿」/「我添加的」 */
+const uploaders = ref<Record<string, string>>({})
+function uploaderOf(it: any): string {
+  if (it.mine) return t('library.team.byMe')
+  return personTitle(it.createdBy || { name: it.uploaderName || '' })
+}
 
 const mediaTypeLabel = computed(() =>
   mediaType.value === 'image' ? t('nodes.title.image') : t('nodes.title.video'))
@@ -130,6 +150,13 @@ async function fetchMyAssetPage(): Promise<FetchedPage> {
   const res = await userAssetApi.list({ pageSize: 100 })
   if (res.data.result !== 0 || !res.data.data) return { items: [], total: 0 }
   const want = mediaType.value === 'video' ? 'VIDEO' : 'IMAGE'
+  const who: Record<string, string> = {}
+  for (const it of res.data.data.list || []) {
+    if (it?.scope !== 'team') continue
+    sawTeamScope.value = true
+    who[it._id || it.id] = uploaderOf(it)
+  }
+  uploaders.value = who
   const items = (res.data.data.list || [])
     .filter((it: any) => (it.nodeType || 'IMAGE') === want && it.mediaUrl)
     .map((it: any): PickerItem => ({
@@ -244,6 +271,7 @@ defineExpose({ show })
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.cp-by { margin-top: -4px; padding: 0 10px 8px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp-check { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 6px; }
 .cp-more { text-align: center; padding: 16px 0 0; color: var(--text-3); font-size: 13px; }
 .cp-footer { justify-content: space-between; align-items: center; }

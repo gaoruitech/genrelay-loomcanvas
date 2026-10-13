@@ -1,19 +1,23 @@
 <template>
   <div class="cv-node cv-tool" :class="{ selected, 'is-running': status === 'running', 'has-runtime-error': status === 'error' }">
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" :title="t('tools.input.hero')" />
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" v-tip="{ text: t('tools.input.hero'), placement: 'left' }" />
 
     <div class="cv-head">
       <LcIcon name="share" />
       <span class="cv-title">{{ t('nodes.title.platformExport') }}</span>
-      <span class="cv-help" :title="t('tools.platformExport.help')">?</span>
+      <span class="cv-help" tabindex="0" role="note" v-tip="t('tools.platformExport.help')" :aria-label="t('tools.platformExport.help')">?</span>
       <span v-if="status === 'running'" class="cv-tag running">{{ t('tools.platformExport.running') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
       <span v-else-if="items.length" class="cv-tag done">{{ t('tools.platformExport.count', { n: items.length }) }}</span>
-      <span class="cv-head-x" :title="t('cost.free')">{{ t('cost.free') }}</span>
+      <span v-tip="{ text: t('cost.free'), clipped: true }" class="cv-head-x">{{ t('cost.free') }}</span>
     </div>
 
     <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
-      <div class="cv-group">
+      <!-- 只读：换组会改节点数据（把另一组的结果收起来），所以只写现在是哪一组 -->
+      <dl v-if="ro" class="cv-ro" data-testid="tool-ro">
+        <div><dt>{{ t('nodeui.ro.group') }}</dt><dd>{{ GROUPS.find((g) => g.value === group)?.label }}</dd></div>
+      </dl>
+      <div v-else class="cv-group">
         <button
           v-for="g in GROUPS" :key="g.value"
           class="cv-gbtn" :class="{ on: group === g.value }"
@@ -26,29 +30,29 @@
       <div v-if="items.length" class="cv-grid">
         <button
           v-for="it in items" :key="it.key"
-          class="cv-cell" :title="`${itemLabel(it)} · ${it.width}×${it.height}`"
+          class="cv-cell" v-tip="`${itemLabel(it)} · ${it.width}×${it.height} · ${t('common.download')}`" :aria-label="`${itemLabel(it)} · ${it.width}×${it.height} · ${t('common.download')}`"
           @click="download(it)"
         >
           <img :src="canvasImageThumb(it.url, 120)" :alt="itemLabel(it)" />
           <span class="cv-cap">{{ itemLabel(it) }}</span>
         </button>
       </div>
-      <div v-else class="cv-empty">{{ t('tools.platformExport.empty') }}</div>
+      <div v-else class="cv-empty">{{ ro ? t('nodeui.share.noResult') : t('tools.platformExport.empty') }}</div>
 
       <div v-if="whiteBgCheck" class="cv-white" :class="{ bad: !whiteBgCheck.pure }">
         <template v-if="whiteBgCheck.pure">{{ t('tools.platformExport.whiteOk') }}</template>
         <template v-else>{{ t('tools.platformExport.whiteBad', { pct: Math.round((whiteBgCheck.score || 0) * 100) }) }}</template>
       </div>
 
-      <div class="cv-actions">
-        <button class="cv-run" :disabled="status === 'running'" @click="run">
+      <div v-if="!ro || items.length" class="cv-actions" :class="{ ro }">
+        <button v-if="!ro" class="cv-run" :disabled="status === 'running'" @click="run">
           {{ status === 'running' ? t('tools.platformExport.runningBtn') : t('tools.platformExport.run') }}
         </button>
         <button v-if="items.length" class="cv-dl" @click="downloadAll">{{ t('tools.downloadAll') }}</button>
       </div>
     </div>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" :title="t('tools.platformExport.output')" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" v-tip="{ text: t('tools.platformExport.output'), placement: 'right' }" />
   </div>
 </template>
 
@@ -73,6 +77,7 @@ import {
   switchGroupPatch,
   type ExportItem, type ExportGroup, type GroupSnapshot,
 } from '@/composables/platformExportGroups'
+import { useCanvasReadOnly } from '@/composables/nodeLayout'
 
 const props = defineProps<{
   id: string
@@ -106,6 +111,8 @@ const GROUPS = computed(() => [
 
 const { updateNodeData } = useVueFlow()
 const executor = inject(CANVAS_EXECUTOR_KEY)
+/** 只读（别人正在编辑、只有查看权）：能看结果、能下载，不能换组、不能导出 */
+const ro = useCanvasReadOnly()
 
 const status = computed(() => props.data.status || 'idle')
 const items = computed<ExportItem[]>(() => props.data.exportItems || [])
@@ -122,13 +129,14 @@ const group = computed<ExportGroup>({
    * 现在切走时把当前这组收起来，切回来再放出来 —— 见 platformExportGroups.ts。
    */
   set: (v) => {
+    if (ro.value) return
     const patch = switchGroupPatch(props.data, v)
     if (patch) updateNodeData(props.id, patch)
   },
 })
 
 function run() {
-  void executor?.runNode(props.id)
+  if (!ro.value) void executor?.runNode(props.id)
 }
 
 function download(it: ExportItem) {

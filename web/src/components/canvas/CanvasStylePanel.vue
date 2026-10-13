@@ -1,6 +1,9 @@
 <template>
+  <!-- 贴着菜单弹出的小面板，不挡画布（modal: false）：打开时焦点进来、Tab 在里面转、Esc 收起；点了别处焦点就留在别处 -->
   <div
     v-if="open"
+    ref="panelRef"
+    v-dialog="{ onEscape: () => emit('close'), modal: false, initialFocus: () => panelRef }"
     class="cs-panel"
     :style="{ left: x + 'px', top: y + 'px' }"
     role="dialog"
@@ -11,7 +14,7 @@
   >
     <div class="cs-head">
       <span>{{ t('dialogs.bg.title') }}</span>
-      <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="$emit('close')">
+      <button v-tip="t('common.close')" type="button" class="lc-tb sm" :aria-label="t('common.close')" @click="emit('close')">
         <LcIcon name="x" size="s" />
       </button>
     </div>
@@ -25,7 +28,8 @@
           class="cs-sw"
           :class="{ auto: p.value === 'auto', on: bg.color === p.value }"
           :style="p.value === 'auto' ? undefined : { background: p.value }"
-          :title="presetLabel(p)"
+          v-tip="presetLabel(p)"
+          type="button"
           :aria-label="presetLabel(p)"
           :aria-pressed="bg.color === p.value"
           @click="setColor(p.value)"
@@ -80,9 +84,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
+import { vDialog } from '@/directives/dialog'
 import {
   CANVAS_BG_PRESETS,
   CANVAS_BG_PATTERNS,
@@ -109,6 +114,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+// 打开时焦点落在面板自己身上，不落在取色器上
+const panelRef = ref<HTMLElement | null>(null)
 
 const isDefault = computed(() => isDefaultCanvasBg(props.bg))
 
@@ -159,6 +166,7 @@ function reset() {
   color: var(--text-2);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
+.cs-panel:focus { outline: none; }
 .cs-head {
   display: flex;
   align-items: center;
@@ -171,7 +179,8 @@ function reset() {
 .cs-field { margin-bottom: 16px; }
 .cs-field.disabled { opacity: .45; }
 .cs-label { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
-.cs-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 一行排得下就排一行，两端对齐：不留一个色块孤零零地掉到第二行 */
+.cs-swatches { display: grid; grid-template-columns: repeat(auto-fill, 24px); justify-content: space-between; gap: 8px 6px; }
 .cs-sw {
   width: 24px;
   height: 24px;

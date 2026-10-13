@@ -1,6 +1,15 @@
 <template>
   <div class="lc-page"><div class="lc-page-inner wb">
-    <header class="lc-page-head wb-head">
+    <!-- 团队空间：团队是谁、四个数字、新团队的三步引导 -->
+    <TeamOverview
+      v-if="space.isTeam"
+      ref="overview"
+      :running="runningCount"
+      :queued="queuedCount"
+      :queue-state="recState"
+      @create="nameOpen = true"
+    />
+    <header v-else class="lc-page-head wb-head">
       <div class="wb-hello">
         <h1 class="lc-ph1">{{ greeting }}</h1>
         <p class="lc-ph-sub">{{ subLine }}</p>
@@ -14,7 +23,11 @@
     <div class="wb-grid">
       <div class="wb-main">
         <!-- 最近的画布 -->
-        <div class="lc-sec-h wb-first">
+        <div v-if="space.isTeam" class="lc-sec-h wb-first">
+          <h2>{{ t('workbench.team.canvases') }}</h2>
+          <router-link v-if="canvases.length" :to="teamTo('canvas-list')" class="more wb-all">{{ t('workbench.team.allCanvases', { n: canvases.length }) }}<LcIcon name="chev" size="s" /></router-link>
+        </div>
+        <div v-else class="lc-sec-h wb-first">
           <h2>{{ t('workbench.canvases.title') }}</h2>
           <span v-if="canvases.length" class="lc-chip">{{ t('workbench.canvases.total', { n: canvases.length }) }}</span>
           <router-link to="/canvases" class="more">{{ t('workbench.canvases.viewAll') }}</router-link>
@@ -24,13 +37,26 @@
         </div>
         <div v-else-if="canvasState === 'error'" class="lc-card wb-state">
           <p>{{ t('workbench.canvases.loadFailed') }}</p>
-          <button class="lc-btn sm" @click="loadCanvases">{{ t('common.retry') }}</button>
+          <button class="lc-btn sm" @click="loadCanvases()">{{ t('common.retry') }}</button>
         </div>
         <div v-else-if="!canvases.length" class="lc-card wb-state">
           <span class="wb-state-ic"><LcIcon name="canvas" size="l" /></span>
-          <b>{{ t('workbench.canvases.empty') }}</b>
-          <p>{{ t('workbench.canvases.emptyHint') }}</p>
+          <b>{{ space.isTeam ? t('workbench.team.canvasesEmpty') : t('workbench.canvases.empty') }}</b>
+          <p>{{ $feat.templates ? t('workbench.canvases.emptyHint') : t('workbench.canvases.emptyHintBlank') }}</p>
           <button class="lc-btn" @click="nameOpen = true"><LcIcon name="plus" />{{ t('workbench.newCanvas') }}</button>
+        </div>
+        <!-- 团队空间：和画布列表是同一张卡片（可见范围、创建人、谁正在编辑、右下角的操作） -->
+        <div v-else-if="space.isTeam" class="wb-cvs team">
+          <CanvasCard
+            v-for="w in recentCanvases"
+            :key="w.id"
+            :canvas="w"
+            team
+            :menu-items="acts?.itemsOf(w)"
+            :now="now.getTime()"
+            @open="openCanvas(w.id)"
+            @action="acts?.run($event, w)"
+          />
         </div>
         <div v-else class="wb-cvs">
           <router-link
@@ -50,13 +76,14 @@
               <span v-if="w.thumbnailType === 'image' || w.thumbnailType === 'video'" class="lc-bd tag" :class="w.thumbnailType">{{ t(`workbench.kind.${w.thumbnailType}`) }}</span>
             </div>
             <div class="wb-cv-meta">
-              <h3 :title="w.name">{{ w.name }}</h3>
+              <h3 v-tip="{ text: w.name, clipped: true }">{{ w.name }}</h3>
               <small>{{ updatedText(w.updatedAt || w.createdAt) }}</small>
             </div>
           </router-link>
         </div>
 
-        <!-- 从模板开始 -->
+        <!-- 从模板开始（集成方关了模板 features.templates：整块不出，也不去取） -->
+        <template v-if="$feat.templates">
         <div class="lc-sec-h">
           <h2>{{ t('workbench.templates.title') }}</h2>
           <button class="more wb-linkbtn" @click="libraryOpen = true">{{ t('workbench.templates.all') }}</button>
@@ -75,7 +102,7 @@
             :key="tpl.key"
             class="lc-card wb-tpl"
             :disabled="creating"
-            :title="t('workbench.templates.use', { name: tpl.title })"
+            v-tip="t('workbench.templates.use', { name: tpl.title })"
             @click="useTemplate(tpl)"
           >
             <div class="lc-thumb wb-tpl-thumb">
@@ -86,6 +113,7 @@
             <small v-if="tpl.description">{{ tpl.description }}</small>
           </button>
         </div>
+        </template>
 
         <!-- 最近生成 -->
         <div class="lc-sec-h">
@@ -108,7 +136,7 @@
               <span v-else-if="progressOf(r) > 0" class="lc-ring sm" :style="{ '--p': progressOf(r) }"><span>{{ progressOf(r) }}%</span></span>
               <span v-else class="lc-ring sm spin" />
             </div>
-            <div v-else-if="r.status === 'failed'" class="lc-thumb wb-gen-thumb fail" :title="r.error || ''">
+            <div v-else-if="r.status === 'failed'" class="lc-thumb wb-gen-thumb fail" v-tip="r.error || ''">
               <LcIcon name="warn" size="s" />
               <span v-if="r.error" class="wb-gen-err">{{ r.error }}</span>
             </div>
@@ -118,12 +146,12 @@
                 <video v-else :src="previewOf(r)!.video" preload="metadata" muted @error="onPreviewError(r.id)" />
                 <span v-if="previewOf(r)!.isVideo" class="play"><LcIcon name="play" /></span>
               </template>
-              <span v-else class="wb-ph" :title="r.kind === 'chat' ? t('workbench.recent.textResult') : t('workbench.recent.noPreview')">
+              <span v-else class="wb-ph" v-tip="r.kind === 'chat' ? t('workbench.recent.textResult') : t('workbench.recent.noPreview')">
                 <LcIcon :name="r.kind === 'chat' ? 'chat' : r.kind === 'video' ? 'video' : 'image'" size="l" />
               </span>
             </div>
             <div class="wb-gen-cap">
-              <span :title="r.modelLabel || r.model">{{ r.modelLabel || r.model }}</span>
+              <span v-tip="{ text: r.modelLabel || r.model, clipped: true }">{{ r.modelLabel || r.model }}</span>
               <span class="lc-st" :class="stClass(r.status)">{{ t(`workbench.status.${r.status}`) }}</span>
             </div>
           </router-link>
@@ -132,7 +160,8 @@
 
       <!-- 右侧窄栏 -->
       <aside class="wb-rail">
-        <section class="lc-card lc-glass wb-rc">
+        <!-- 团队空间里用量在上面那一排数字里 -->
+        <section v-if="!space.isTeam" class="lc-card lc-glass wb-rc">
           <div class="lc-row"><h2>{{ t('workbench.usage.title') }}</h2><span class="lc-sp" /><span class="lc-chip">{{ t('workbench.usage.thisMonth') }}</span></div>
           <div v-if="usageState === 'loading'" class="wb-rc-body" aria-hidden="true">
             <i class="wb-skel line w60 tall" /><i class="wb-skel wb-bars-skel" /><i class="wb-skel line w80 tall" /><i class="wb-skel line w60 tall" />
@@ -145,32 +174,58 @@
             <div class="wb-rc-body">
               <div class="wb-ustat"><span>{{ t('workbench.usage.runs') }}</span><b>{{ month.runs }}<small v-if="runsUnit">{{ runsUnit }}</small></b></div>
               <div class="wb-bars" role="img" :aria-label="t('workbench.usage.bars')">
-                <i v-for="d in bars" :key="d.key" :class="{ zero: !d.runs }" :style="{ height: d.h + '%' }" :title="t('workbench.usage.barTip', { date: d.label, n: d.runs })" />
+                <i v-for="d in bars" :key="d.key" :class="{ zero: !d.runs }" :style="{ height: d.h + '%' }" v-tip="t('workbench.usage.barTip', { date: d.label, n: d.runs })" />
               </div>
               <div class="lc-help wb-bars-cap">{{ t('workbench.usage.bars') }}</div>
               <div class="wb-ustat"><span>{{ t('workbench.usage.successRate') }}</span><b v-if="month.rate !== null">{{ month.rate }}<small>%</small></b><span v-else class="wb-dash">—</span></div>
-              <div class="wb-ustat mid">
+              <div v-if="$feat.cost" class="wb-ustat mid">
                 <span>{{ t('workbench.usage.cost') }}</span>
                 <span v-if="!month.cost" class="wb-dash">—</span>
                 <span v-else-if="month.cost.unknown" class="lc-unk wb-unk">{{ t('cost.unknown') }}</span>
                 <b v-else class="wb-money">{{ formatCost(month.cost) }}</b>
               </div>
             </div>
-            <div v-if="unpriced > 0" class="lc-alert info wb-unpriced">
+            <div v-if="$feat.cost && $feat.modelManagement && unpriced > 0" class="lc-alert info wb-unpriced">
               <LcIcon name="key" />
               <span>{{ t('workbench.usage.unpriced', { n: unpriced }) }} <router-link to="/models">{{ t('workbench.usage.setPrices') }}</router-link></span>
             </div>
           </template>
         </section>
 
+        <!-- 团队空间没有上面那张用量卡片；「还有模型没填价格」这句提醒留给能填价格的人 -->
+        <div v-if="$feat.cost && $feat.modelManagement && space.isTeam && space.can('provider:manage') && unpriced > 0" class="lc-alert info wb-unpriced" data-testid="team-unpriced">
+          <LcIcon name="key" />
+          <span>{{ t('workbench.usage.unpriced', { n: unpriced }) }} <router-link :to="{ name: 'models' }">{{ t('workbench.usage.setPrices') }}</router-link></span>
+        </div>
+
         <section class="lc-card lc-glass wb-rc">
-          <div class="lc-row"><h2>{{ t('workbench.queue.title') }}</h2><span class="lc-sp" /><span v-if="active.length" class="lc-chip">{{ t('workbench.queue.active', { n: active.length }) }}</span></div>
+          <div v-if="space.isTeam" class="lc-row"><h2>{{ t('workbench.team.running') }}</h2><span class="lc-sp" /><span v-if="queueScope" class="lc-chip">{{ t(`workbench.team.scope.${queueScope}`) }}</span></div>
+          <div v-else class="lc-row"><h2>{{ t('workbench.queue.title') }}</h2><span class="lc-sp" /><span v-if="active.length" class="lc-chip">{{ t('workbench.queue.active', { n: active.length }) }}</span></div>
           <div v-if="recState === 'loading'" class="wb-rc-body" aria-hidden="true"><i class="wb-skel line w80 tall" /><i class="wb-skel line w60 tall" /></div>
           <div v-else-if="recState === 'error'" class="wb-rc-state">
             <p>{{ t('workbench.recent.loadFailed') }}</p>
             <button class="lc-btn sm" @click="loadRecords()">{{ t('common.retry') }}</button>
           </div>
           <p v-else-if="!active.length" class="wb-rc-empty">{{ t('workbench.queue.empty') }}</p>
+          <!-- 团队空间：谁发起的、哪个模型、在哪张画布上、进度。名字只在接口给了的时候才有 -->
+          <div v-else-if="space.isTeam" class="wb-rc-body">
+            <router-link v-for="r in active.slice(0, 5)" :key="r.id" :to="genLink(r)" class="wb-trow">
+              <div class="wb-trow-top">
+                <template v-if="r.createdBy">
+                  <b class="wb-trow-who"><PersonName :person="r.createdBy" :avatar="22" /></b>
+                </template>
+                <span class="wb-trow-model" v-tip="{ text: r.modelLabel || r.model, clipped: true }">{{ r.modelLabel || r.model }}</span>
+                <span class="wb-trow-st" :class="r.status === 'queued' ? 'wait' : 'run'">{{ t(`workbench.status.${r.status}`) }}</span>
+              </div>
+              <div class="wb-trow-sub">
+                <small v-tip="{ text: canvasName(r), clipped: true }">{{ canvasName(r) || queueSpec(r) || t(`workbench.kind.${r.kind}`) }}</small>
+                <i class="wb-pbar" :class="{ idle: r.status === 'queued', busy: r.status !== 'queued' && !progressOf(r) }" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progressOf(r)" :aria-label="t(`workbench.status.${r.status}`)">
+                  <i :style="{ width: progressOf(r) + '%' }" />
+                </i>
+              </div>
+            </router-link>
+            <router-link v-if="activeTotal > 5" to="/history" class="wb-more">{{ t('workbench.team.moreActive', { n: activeTotal - 5 }) }}</router-link>
+          </div>
           <div v-else class="wb-rc-body">
             <router-link v-for="r in active.slice(0, 5)" :key="r.id" :to="genLink(r)" class="wb-qrow">
               <span v-if="r.status === 'queued'" class="lc-ring sm q"><LcIcon name="history" size="s" /></span>
@@ -184,20 +239,37 @@
           </div>
         </section>
 
-        <section class="lc-card lc-glass wb-rc">
-          <div class="lc-row"><h2>{{ t('workbench.providers.title') }}</h2><span class="lc-sp" /><router-link to="/models" class="wb-manage">{{ t('workbench.providers.manage') }}</router-link></div>
+        <!-- 服务商是「模型管理」的一部分：集成方关了它（features.modelManagement，服务商由宿主的后端配）就不出这张卡片 -->
+        <section v-if="$feat.modelManagement" class="lc-card lc-glass wb-rc">
+          <div class="lc-row">
+            <h2>{{ space.isTeam ? t('workbench.team.providers') : t('workbench.providers.title') }}</h2><span class="lc-sp" />
+            <!-- 团队里只有能配置服务商的人（团长、管理员）才有「管理」 -->
+            <router-link v-if="!space.isTeam" to="/models" class="wb-manage">{{ t('workbench.providers.manage') }}</router-link>
+            <router-link v-else-if="canManageProviders" :to="teamTo('models')" class="lc-btn sm wb-manage-btn">{{ t('workbench.providers.manage') }}</router-link>
+          </div>
           <div v-if="provState === 'loading'" class="wb-rc-body" aria-hidden="true"><i class="wb-skel line w80 tall" /><i class="wb-skel line w60 tall" /></div>
           <div v-else-if="provState === 'error'" class="wb-rc-state">
             <p>{{ t('workbench.providers.loadFailed') }}</p>
             <button class="lc-btn sm" @click="loadProviders">{{ t('common.retry') }}</button>
           </div>
           <div v-else-if="!providers.length" class="wb-rc-state">
-            <p>{{ t('workbench.providers.empty') }}</p>
-            <router-link to="/models" class="lc-btn sm"><LcIcon name="plus" size="s" />{{ t('workbench.providers.add') }}</router-link>
+            <p>{{ canManageProviders ? t('workbench.providers.empty') : t('workbench.team.providersWait') }}</p>
+            <router-link v-if="canManageProviders" to="/models" class="lc-btn sm"><LcIcon name="plus" size="s" />{{ t('workbench.providers.add') }}</router-link>
+          </div>
+          <div v-else-if="space.isTeam" class="wb-rc-body">
+            <div v-for="p in providers" :key="p.id" class="wb-tprow">
+              <SpaceAvatar :name="p.name" :seed="p.id" :size="30" />
+              <div class="wb-tp-t">
+                <b v-tip="{ text: p.name, clipped: true }">{{ p.name }}</b>
+                <small v-if="modelCounts">{{ t('workbench.team.modelCount', { n: modelCounts[p.id]?.total || 0, on: modelCounts[p.id]?.enabled || 0 }) }}</small>
+              </div>
+              <span class="lc-tag" :class="provTag(p)">{{ t(provStatus(p).key) }}</span>
+            </div>
+            <p v-if="!canManageProviders" class="lc-help wb-keynote">{{ t('workbench.team.keyNote') }}</p>
           </div>
           <div v-else class="wb-rc-body">
             <div v-for="p in providers" :key="p.id" class="wb-prow">
-              <span :title="p.name">{{ p.name }}</span>
+              <span v-tip="{ text: p.name, clipped: true }">{{ p.name }}</span>
               <span class="lc-st" :class="provStatus(p).cls">{{ t(provStatus(p).key) }}</span>
             </div>
           </div>
@@ -216,12 +288,16 @@
 
     <!-- 「全部模板」：和画布列表用的是同一个弹窗，选中的东西落到一个新画布里 -->
     <LibraryDialog
+      v-if="$feat.templates"
       v-model="libraryOpen"
       initial-tab="canvas-template"
       @add-asset="onLibraryAsset"
       @apply-template="onLibraryTemplate"
       @add-text="onLibraryText"
     />
+
+    <!-- 团队画布卡片右下角「…」里的操作和它们的弹窗（和画布列表是同一套） -->
+    <CanvasActions v-if="space.isTeam" ref="acts" @changed="onCanvasesChanged" @patched="onCanvasPatched" />
   </div></div>
 </template>
 
@@ -232,18 +308,28 @@
  * 每一块各自取数、各自有加载 / 空 / 出错三种状态，一块挂了不拖累别的。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   adminApi, runsApi, workflowApi, canvasTemplateApi, unwrap, type WorkflowSummary,
 } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
+import { useSpaceStore, spaceParam } from '@/stores/space'
 import { ensureHttps } from '@/utils/mediaUrl'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { formatCost, sumCosts } from '@/utils/cost'
+import { clipLength } from '@/utils/duration'
+import { featureOn } from '@/utils/canvasBackend'
 import LcIcon from '@/components/LcIcon.vue'
 import LibraryDialog from '@/components/canvas/LibraryDialog.vue'
 import CanvasNameDialog from '@/components/workbench/CanvasNameDialog.vue'
 import GraphMini from '@/components/workbench/GraphMini.vue'
+import TeamOverview from '@/components/workbench/TeamOverview.vue'
+import SpaceAvatar from '@/components/space/SpaceAvatar.vue'
+import CanvasCard from '@/components/canvaslist/CanvasCard.vue'
+import CanvasActions from '@/components/canvaslist/CanvasActions.vue'
+import { mergeList, useCanvasLocks } from '@/components/canvaslist/useCanvasLocks'
+import PersonName from '@/components/PersonName.vue'
 import { useCanvasCreate, type TemplateLike } from '@/components/workbench/useCanvasCreate'
 import type { AdminModel, Cost, ProviderInstance, Run, RunStatus, UsageRecord, UsageSummaryRow } from '@/types'
 
@@ -254,6 +340,10 @@ interface Tpl extends TemplateLike { key: string; title: string; description?: s
 
 const { t, locale } = useI18n()
 const app = useAppStore()
+const router = useRouter()
+const space = useSpaceStore()
+/** 团队里的页面地址带着空间那一段，链接在新标签页里打开也还在这个团队 */
+const teamTo = (name: string, params: Record<string, string> = {}) => ({ name, params: { ...params, space: spaceParam(space.currentId) } })
 const { createAndOpen, createFromTemplate, createFromAsset, createFromText } = useCanvasCreate()
 
 /* ===== 问候 ===== */
@@ -271,16 +361,41 @@ const canvases = ref<WorkflowSummary[]>([])
 const canvasState = ref<LoadState>('loading')
 const recentCanvases = computed(() => canvases.value.slice(0, 6))
 
-async function loadCanvases() {
-  canvasState.value = 'loading'
+/** 最近改动的在前 */
+const canvasTs = (w: WorkflowSummary) => new Date(w.updatedAt || w.createdAt).getTime() || 0
+const byRecent = (a: WorkflowSummary, b: WorkflowSummary) => canvasTs(b) - canvasTs(a)
+
+async function loadCanvases(quiet = false) {
+  if (!quiet) canvasState.value = 'loading'
   try {
     const list = unwrap(await workflowApi.list()) || []
-    const ts = (w: WorkflowSummary) => new Date(w.updatedAt || w.createdAt).getTime() || 0
-    canvases.value = [...list].sort((a, b) => ts(b) - ts(a))
+    // 没变的卡片留着原来的对象：安静地重取（轮询发现张数对不上时）不重绘没变的那些
+    canvases.value = mergeList(canvases.value, [...list].sort(byRecent))
     canvasState.value = 'ready'
   } catch {
-    canvasState.value = 'error'
+    if (!quiet) canvasState.value = 'error'
   }
+}
+
+// 团队空间：隔几秒问一次谁正在编辑、别人改的名字、新建 / 删掉 / 恢复的画布，变了的卡片就地换（见 useCanvasLocks）
+useCanvasLocks(canvases, {
+  enabled: () => space.isTeam && canvasState.value === 'ready',
+  onTick: () => { now.value = new Date() },
+  reload: () => loadCanvases(true),
+  order: byRecent,
+})
+
+/* 团队空间的画布卡片：点开、卡片上的操作 */
+const overview = ref<InstanceType<typeof TeamOverview> | null>(null)
+const acts = ref<InstanceType<typeof CanvasActions> | null>(null)
+const openCanvas = (id: string) => router.push({ name: 'canvas', params: { id } })
+function onCanvasPatched(canvas: WorkflowSummary) {
+  canvases.value = canvases.value.map((it) => (it.id === canvas.id ? { ...it, ...canvas } : it))
+}
+/** 多了一张 / 少了一张：列表重取；「新建画布」那一步引导做没做完也跟着变 */
+function onCanvasesChanged() {
+  void loadCanvases(true)
+  void overview.value?.reload(true)
 }
 
 /** 封面取不到（资源被清理过）时退回占位图，不让浏览器画破图标 */
@@ -355,18 +470,30 @@ const isActive = (r: Rec) => ACTIVE.includes(r.status)
 const recent = computed(() => records.value.slice(0, 6))
 /** 正在跑的排前面，排队的跟在后面（队列卡只列前几条） */
 const active = computed(() => {
-  const list = records.value.filter(isActive)
+  const list = space.isTeam ? teamActive.value : records.value.filter(isActive)
   return [...list.filter(r => r.status !== 'queued'), ...list.filter(r => r.status === 'queued')]
 })
-const runningCount = computed(() => active.value.filter(r => r.status !== 'queued').length)
-const queuedCount = computed(() => active.value.filter(r => r.status === 'queued').length)
+/**
+ * 团队空间：全队同时在跑的可能比「最近 30 条」多得多，所以没结束的按状态单独取，数字用接口给的总数。
+ * 谁看得到谁的由接口定（scope：all 全队 / own 只有自己的）。
+ */
+const teamActive = ref<Rec[]>([])
+const teamCounts = ref({ running: 0, queued: 0 })
+const queueScope = ref<'all' | 'own' | ''>('')
+const runningCount = computed(() => (space.isTeam ? teamCounts.value.running : active.value.filter(r => r.status !== 'queued').length))
+const queuedCount = computed(() => (space.isTeam ? teamCounts.value.queued : active.value.filter(r => r.status === 'queued').length))
+const activeTotal = computed(() => runningCount.value + queuedCount.value)
 
 async function loadRecords(quiet = false) {
   if (!quiet) recState.value = 'loading'
   try {
-    const data = unwrap(await adminApi.usageRecords({ page: 1, pageSize: 30 }))
+    const [data, ...byStatus] = await Promise.all([
+      adminApi.usageRecords({ page: 1, pageSize: 30 }).then(unwrap),
+      ...(space.isTeam ? ACTIVE.map(status => adminApi.usageRecords({ status, page: 1, pageSize: 20 }).then(unwrap)) : []),
+    ])
     const list: Rec[] = data?.list || []
-    const ids = [...new Set([...list.slice(0, 6), ...list.filter(isActive)].filter(r => r.kind !== 'chat').map(r => r.id))]
+    const teamList: Rec[] = byStatus.flatMap(d => d?.list || [])
+    const ids = [...new Set([...list.slice(0, 6), ...(space.isTeam ? teamList : list.filter(isActive))].filter(r => r.kind !== 'chat').map(r => r.id))]
     let map: Record<string, Run> = {}
     if (ids.length) {
       // 缩略图补不上不算整块失败：照样列出来，只是没有预览
@@ -376,10 +503,19 @@ async function loadRecords(quiet = false) {
     }
     const hadActive = active.value.length > 0
     records.value = list
+    if (space.isTeam) {
+      const total = (s: RunStatus) => byStatus[ACTIVE.indexOf(s)]?.total || 0
+      teamActive.value = teamList
+      teamCounts.value = { running: total('running') + total('archiving'), queued: total('queued') }
+      queueScope.value = data?.scope === 'own' ? 'own' : 'all'
+    }
     runs.value = map
     recState.value = 'ready'
     // 队列刚清空：用量数字跟着变了，悄悄刷一次
-    if (quiet && hadActive && !active.value.length) loadUsage(true)
+    if (quiet && hadActive && !active.value.length) {
+      loadUsage(true)
+      void overview.value?.reload(true)
+    }
   } catch {
     // 轮询失败不打扰：保留上一次的内容，下一轮再试
     if (!quiet) recState.value = 'error'
@@ -406,16 +542,22 @@ const stClass = (s: RunStatus) =>
 const genLink = (r: Rec) =>
   r.workflowId && canvases.value.some(w => w.id === r.workflowId) ? `/canvas/${r.workflowId}` : '/history'
 
-function queueSub(r: Rec) {
+function queueSpec(r: Rec) {
   const p = r.params || {}
-  const parts = [t(`workbench.status.${r.status}`)]
+  // 顺序和画布节点、队列、生成记录一致：比例 · 分辨率 · 时长
   const spec: string[] = []
-  if (Number(p.duration) > 0) spec.push(t('workbench.queue.seconds', { n: Number(p.duration) }))
-  if (p.resolution) spec.push(String(p.resolution))
   if (p.aspectRatio && p.aspectRatio !== 'auto') spec.push(String(p.aspectRatio))
-  if (spec.length) parts.push(spec.join(' | '))
-  return parts.join(' · ')
+  if (p.resolution) spec.push(String(p.resolution))
+  if (Number(p.duration) > 0) spec.push(clipLength(Number(p.duration)))
+  return spec.join(' | ')
 }
+function queueSub(r: Rec) {
+  const spec = queueSpec(r)
+  return [t(`workbench.status.${r.status}`), ...(spec ? [spec] : [])].join(' · ')
+}
+/** 这次生成是在哪张画布上跑的（只认我看得到的画布） */
+const canvasName = (r: Rec) => (r.workflowId && canvases.value.find(w => w.id === r.workflowId)?.name) || ''
+
 
 /* 有任务在跑、且页面看得见时，每 5 秒悄悄刷一次；跑完或切走就停 */
 let timer = 0
@@ -496,15 +638,35 @@ const unpriced = computed(() => models.value.filter(m => m.enabled && m.provider
 /* ===== 服务商 ===== */
 const providers = ref<ProviderInstance[]>([])
 const provState = ref<LoadState>('loading')
+/** 团队里能不能配置服务商（团长、管理员）；个人空间里总是能 */
+const canManageProviders = computed(() => space.can('provider:manage'))
+/** 每个服务商下面有几个模型、启用了几个（团队首页用）；模型清单取不到时为 null，那一行就不写 */
+const modelCounts = ref<Record<string, { total: number; enabled: number }> | null>(null)
 async function loadProviders() {
   provState.value = 'loading'
   try {
-    providers.value = unwrap(await adminApi.providers()) || []
+    const [list, all] = await Promise.all([
+      adminApi.providers(),
+      space.isTeam ? adminApi.models().then(r => unwrap(r) || [], () => null) : Promise.resolve(null),
+    ])
+    providers.value = unwrap(list) || []
+    if (all) {
+      const counts: Record<string, { total: number; enabled: number }> = {}
+      for (const m of all as AdminModel[]) {
+        const c = (counts[m.providerId] ||= { total: 0, enabled: 0 })
+        c.total++
+        if (m.enabled) c.enabled++
+      }
+      modelCounts.value = counts
+    } else {
+      modelCounts.value = null
+    }
     provState.value = 'ready'
   } catch {
     provState.value = 'error'
   }
 }
+const provTag = (p: ProviderInstance) => ({ ok: 'ok', warn: 'warn', wait: '' }[provStatus(p).cls] || '')
 /** 后端不保存连通性测试的结果，所以这里只说确定的事：停用了 / 没填 Key / 已启用 */
 function provStatus(p: ProviderInstance) {
   if (!p.enabled) return { cls: 'wait', key: 'workbench.providers.disabled' }
@@ -528,10 +690,10 @@ const subLine = computed(() => {
 
 onMounted(() => {
   loadCanvases()
-  loadTemplates()
+  if (featureOn('templates')) loadTemplates()
   loadRecords()
   loadUsage()
-  loadProviders()
+  if (featureOn('modelManagement')) loadProviders()
   schedule()
   document.addEventListener('visibilitychange', onVisible)
 })
@@ -568,6 +730,9 @@ onBeforeUnmount(() => {
   position: absolute; inset: 0; display: grid; place-items: center; color: rgb(var(--c-film-2) / .38);
   background: linear-gradient(135deg, rgb(var(--c-cyan) / .07), rgb(var(--c-violet) / .1));
 }
+
+.wb-cvs.team :deep(.cc-thumb) { aspect-ratio: auto; height: 168px; }
+.wb-all { display: inline-flex; align-items: center; gap: 2px; }
 
 /* 模板卡 */
 .wb-tpls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -629,6 +794,34 @@ onBeforeUnmount(() => {
 .wb-prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 36px; font-size: 13px; }
 .wb-prow > span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .wb-manage { font-size: 13px; }
+.wb-manage-btn { text-decoration: none; }
+
+/* 团队空间：正在运行 */
+.wb-trow { display: block; padding: 12px 0; border-top: 1px solid var(--line); color: inherit; min-width: 0; }
+.wb-trow:first-child { border-top: 0; padding-top: 4px; }
+.wb-trow:hover { text-decoration: none; }
+.wb-trow-top { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.wb-trow-top b { flex: 0 1 auto; min-width: 0; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-trow-model { flex: 1 1 0; min-width: 0; color: var(--text-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-trow-st { flex: none; font-size: 12px; color: var(--text-3); }
+.wb-trow-st.run { color: var(--cyan-soft); }
+.wb-trow-sub { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.wb-trow-sub small { flex: 1; min-width: 0; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-pbar { flex: none; display: block; width: 90px; height: 4px; border-radius: 2px; background: rgb(var(--c-film) / .16); overflow: hidden; }
+.wb-pbar > i { display: block; height: 100%; border-radius: 2px; background: var(--cyan); transition: width .3s; }
+/* 上游不报进度的任务：一截来回走的光条，表示「在跑」 */
+.wb-pbar.busy > i { width: 40% !important; animation: wb-slide 1.4s ease-in-out infinite alternate; }
+@keyframes wb-slide { from { transform: translateX(-20%); } to { transform: translateX(170%); } }
+@media (prefers-reduced-motion: reduce) { .wb-pbar.busy > i { animation: none; } }
+.wb-more { display: block; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+
+/* 团队空间：服务商 */
+.wb-tprow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); min-width: 0; }
+.wb-tprow:first-child { border-top: 0; }
+.wb-tp-t { flex: 1; min-width: 0; }
+.wb-tp-t b { display: block; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-tp-t small { display: block; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-keynote { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 
 /* 空 / 出错 */
 .wb-state { display: grid; justify-items: center; gap: 8px; padding: 36px 20px; text-align: center; color: var(--text-3); font-size: 13px; }
@@ -662,6 +855,7 @@ onBeforeUnmount(() => {
   .wb-new { width: 100%; }
   .wb-cvs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .wb-cv-thumb { height: 104px; }
+  .wb-cvs.team :deep(.cc-thumb) { height: 104px; }
   .wb-tpls { gap: 12px; }
   .wb-rc { padding: 16px; }
 }

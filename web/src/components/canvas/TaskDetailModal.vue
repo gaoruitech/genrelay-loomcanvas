@@ -3,20 +3,30 @@
     <div
       v-if="open"
       class="lc-mask lc-sheet td-mask"
-      @click.self="close"
       @mousedown.self="close"
     >
-      <div class="lc-dialog td-modal" @click.stop @mousedown.stop>
+      <!-- 只认按在遮罩上的那一下：在弹窗里拖选文字、松手落在遮罩上，不该把弹窗关掉。
+           键盘和焦点归 v-dialog：焦点进弹窗、Tab 在里面转、Esc 关掉、关掉后焦点还给打开它的那个元素 -->
+      <div
+        v-dialog="close"
+        class="lc-dialog td-modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('gen.detail.title', { type: typeLabel })"
+        tabindex="-1"
+        @click.stop
+        @mousedown.stop
+      >
         <div class="lc-dialog-head">
           <span>{{ t('gen.detail.title', { type: typeLabel }) }}</span>
-          <button class="lc-x" :title="t('common.close')" @click="close">×</button>
+          <button type="button" class="lc-x" :aria-label="t('common.close')" @click="close">×</button>
         </div>
 
         <div class="lc-dialog-body td-body">
           <div v-if="previewUrl" class="td-preview">
             <video v-if="isVideo" :src="$src(previewUrl)" controls playsinline class="td-media"></video>
             <img v-else :src="$src(previewUrl)" class="td-media" alt="" />
-            <button class="lc-btn sm td-dl" @click="onDownload"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
+            <button type="button" class="lc-btn sm td-dl" @click="onDownload"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
           </div>
           <div class="td-row">
             <span class="td-label">{{ t('gen.detail.status') }}</span>
@@ -30,14 +40,21 @@
             <span class="td-value">{{ modelText }}</span>
           </div>
 
+          <!-- 比例在前、分辨率在后：和节点摘要、参数 chip、队列、生成记录同一个顺序 -->
+          <div v-if="aspectRatioLabel" class="td-row">
+            <span class="td-label">{{ t('nodes.field.aspectRatio') }}</span>
+            <span class="td-value">{{ aspectRatioLabel }}</span>
+          </div>
+
           <div v-if="resolutionLabel" class="td-row">
             <span class="td-label">{{ t('nodes.field.resolution') }}</span>
             <span class="td-value">{{ resolutionLabel }}</span>
           </div>
 
-          <div v-if="aspectRatioLabel" class="td-row">
-            <span class="td-label">{{ t('nodes.field.aspectRatio') }}</span>
-            <span class="td-value">{{ aspectRatioLabel }}</span>
+          <!-- 片长：和节点摘要、参数 chip、队列、生成记录同一种写法（utils/duration.ts） -->
+          <div v-if="durationLabel" class="td-row" data-row="duration">
+            <span class="td-label">{{ t('nodes.field.duration') }}</span>
+            <span class="td-value">{{ durationLabel }}</span>
           </div>
 
           <div class="td-row">
@@ -53,7 +70,8 @@
             </span>
           </div>
 
-          <div class="td-row">
+          <!-- 集成方关了成本显示（features.cost）：这一行不出（不然是一个标签配一个空值） -->
+          <div v-if="$feat.cost" class="td-row">
             <span class="td-label">{{ actualCost ? t('cost.actual') : t('cost.estimate') }}</span>
             <span class="td-value">
               <template v-if="actualCost">{{ actualCost }}</template>
@@ -62,18 +80,21 @@
             </span>
           </div>
 
+          <!-- 提示词整段都给：长了就在这一格里滚，不截断（以前只给前 100 个字，剩下的要悬停才看得到） -->
           <div class="td-row">
             <span class="td-label">{{ promptLabel }}</span>
-            <span class="td-value td-prompt" :title="fullPromptText || ''">
-              {{ displayPromptText || t('gen.detail.empty') }}
+            <span v-if="fullPromptText" class="td-value td-prompt">
+              <span class="td-prompt-text" tabindex="0">{{ fullPromptText }}</span>
+              <button v-tip="t('common.copy')" type="button" class="lc-tb sm" :aria-label="t('common.copy')" @click="copy(fullPromptText)"><LcIcon name="copy" size="s" /></button>
             </span>
+            <span v-else class="td-value td-muted">{{ t('gen.detail.empty') }}</span>
           </div>
 
           <div v-if="taskId" class="td-row">
             <span class="td-label">{{ t('gen.detail.taskId') }}</span>
             <span class="td-value td-mono">
-              {{ taskId }}
-              <button class="lc-tb sm" :title="t('common.copy')" @click="copy(taskId)"><LcIcon name="copy" size="s" /></button>
+              <span class="td-id">{{ taskId }}</span>
+              <button v-tip="t('common.copy')" type="button" class="lc-tb sm" :aria-label="t('common.copy')" @click="copy(taskId)"><LcIcon name="copy" size="s" /></button>
             </span>
           </div>
 
@@ -89,12 +110,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { vDialog } from '@/directives/dialog'
 import { MessagePlugin } from '@/utils/feedback'
+import { refusalText, storedRefusal } from '@/utils/budget'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
 import { getAdapter } from '@/utils/canvasModels'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { formatCost, formatEstimate } from '@/utils/cost'
+import { clipLength } from '@/utils/duration'
 
 type NodeKind = 'image-gen' | 'image-edit' | 'video-gen' | 'video-edit'
 
@@ -127,13 +151,6 @@ const fullPromptText = computed(() => {
   if (typeof last === 'string' && last) return last
   return props.type === 'image-edit' ? (props.data?.instruction || '') : (props.data?.prompt || '')
 })
-const PROMPT_PREVIEW_MAX = 100
-const displayPromptText = computed(() => {
-  const text = fullPromptText.value
-  if (!text) return ''
-  return text.length > PROMPT_PREVIEW_MAX ? text.slice(0, PROMPT_PREVIEW_MAX) + '…' : text
-})
-
 const status = computed<string>(() => props.data?.status || 'idle')
 const statusText = computed(() => {
   switch (status.value) {
@@ -176,6 +193,10 @@ const aspectRatioLabel = computed(() =>
 
 const requestedCount = computed(() => Math.max(1, Number(props.data?.count) || 1))
 const isVideo = computed(() => props.type === 'video-gen' || props.type === 'video-edit')
+/** 视频生成的「时长」那一项：节点上存着的，没存就是模型固定的那一档 */
+const durationLabel = computed(() => (props.type === 'video-gen'
+  ? clipLength(Number(props.data?.duration) || adapter.value?.options.fixedDuration || 0)
+  : ''))
 const urlList = computed<string[]>(() => {
   if (isVideo.value) return props.data?.videoUrls || []
   return props.data?.imageUrls || []
@@ -186,7 +207,7 @@ const generatedCount = computed(() => urlList.value.length)
 const actualCost = computed(() => formatCost(props.data?.cost))
 const estimateText = computed(() => formatEstimate(props.data?.estimatedCost))
 const taskId = computed(() => props.data?.taskId || '')
-const errorMsg = computed(() => props.data?.errorMsg || '')
+const errorMsg = computed(() => (storedRefusal(props.data?.refusal) ? refusalText(storedRefusal(props.data?.refusal)!).full : props.data?.errorMsg || ''))
 const previewUrl = computed<string>(() => {
   if (isVideo.value) return props.data?.videoUrl || (props.data?.videoUrls || [])[0] || ''
   return props.data?.imageUrl || (props.data?.imageUrls || [])[0] || ''
@@ -209,8 +230,10 @@ async function copy(s: string) {
 <style scoped>
 .td-mask { z-index: 10000; }
 .td-modal { width: 560px; }
-.td-body { display: flex; flex-direction: column; gap: 12px; }
+/* 两列的小表：左边一列按最长的那个标签定宽，标签不换行（英文的「Aspect ratio」在手机上曾经折成两行），右边占剩下的 */
+.td-body { display: grid; grid-template-columns: minmax(72px, max-content) minmax(0, 1fr); gap: 12px; align-items: start; }
 
+.td-preview, .td-row-block > * { grid-column: 1 / -1; }
 .td-preview {
   position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
   background: var(--media-bg); display: grid; place-items: center; margin-bottom: 4px;
@@ -218,24 +241,28 @@ async function copy(s: string) {
 .td-media { max-width: 100%; max-height: 320px; object-fit: contain; display: block; }
 .td-dl { position: absolute; right: 8px; bottom: 8px; background: rgb(var(--c-glass) / .88); }
 
-.td-row { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; line-height: 1.7; }
-.td-row-block { flex-direction: column; gap: 6px; }
-.td-label { flex: 0 0 88px; color: var(--text-3); }
+.td-row { display: contents; font-size: 13px; line-height: 1.7; }
+.td-label { color: var(--text-3); white-space: nowrap; }
 .td-value {
-  flex: 1; min-width: 0; color: var(--text); word-break: break-word;
+  min-width: 0; color: var(--text); word-break: break-word;
   display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
-.td-prompt { color: var(--text-2); }
-.td-mono { font: 12px/1.9 var(--f-mono); color: var(--text-2); }
+.td-modal:focus { outline: none; }
+.td-prompt { align-items: flex-start; flex-wrap: nowrap; }
+.td-prompt-text {
+  flex: 1; min-width: 0; max-height: 132px; overflow-y: auto; white-space: pre-wrap; color: var(--text-2);
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--well);
+  scrollbar-width: thin; scrollbar-color: var(--line-3) transparent;
+}
+.td-prompt-text:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
+.td-mono { font: 12px/1.9 var(--f-mono); color: var(--text-2); flex-wrap: nowrap; }
+.td-id { min-width: 0; overflow-wrap: anywhere; }
 .td-warn { color: var(--warn); font-size: 12px; }
 .td-muted { color: var(--text-3); }
-.td-error { align-self: stretch; word-break: break-word; }
+.td-error { margin-top: -6px; word-break: break-word; }
 /* 状态点的四种取值沿用节点上的叫法 */
 .lc-st.done { color: var(--ok); }
 .lc-st.running { color: var(--cyan); }
 .lc-st.error { color: var(--err); }
 .lc-st.stale { color: var(--warn); }
-@media (max-width: 600px) {
-  .td-label { flex-basis: 72px; }
-}
 </style>

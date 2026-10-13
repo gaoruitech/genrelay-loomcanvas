@@ -10,7 +10,8 @@
  * settings page uses to pre-fill those options.
  */
 const crypto = require('crypto')
-const { badRequest } = require('../utils/http')
+const { ApiError } = require('../utils/http')
+const { msg } = require('../i18n')
 
 const PRESETS = ['aws', 'r2', 'oss', 'minio', 'custom']
 const DELIVERIES = ['proxy', 'redirect']
@@ -20,17 +21,44 @@ const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/
 const REGION_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
 const PREFIX_PART_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/
 
+/**
+ * A refusal about one field of the form. The message names the field in the
+ * reader's words (`storage.field.*`), never by its key in the API, and
+ * `data.field` says which input it belongs to - several fields share one
+ * rule (the endpoint and the endpoint for signed URLs), so the code alone
+ * does not say which of them is wrong.
+ */
+function refuse(key, field, params = {}) {
+  return new ApiError(400, key, { field: msg(FIELD_LABEL[field]), ...params }, -1, { field })
+}
+
+/** The fields of the form and the catalog entry that names each of them. */
+const FIELD_LABEL = {
+  preset: 'storage.field.preset',
+  endpoint: 'storage.field.endpoint',
+  region: 'storage.field.region',
+  bucket: 'storage.field.bucket',
+  accessKeyId: 'storage.field.accessKeyId',
+  secretAccessKey: 'storage.field.secretAccessKey',
+  forcePathStyle: 'storage.field.forcePathStyle',
+  keyPrefix: 'storage.field.keyPrefix',
+  publicBaseUrl: 'storage.field.publicBaseUrl',
+  presignEndpoint: 'storage.field.presignEndpoint',
+  delivery: 'storage.field.delivery',
+  acl: 'storage.field.acl',
+}
+
 function str(v, field, max) {
   if (v === undefined || v === null) return ''
-  if (typeof v !== 'string') throw badRequest('validation.string', { field })
+  if (typeof v !== 'string') throw refuse('validation.string', field)
   const s = v.trim()
-  if (s.length > max || /[\r\n\0]/.test(s)) throw badRequest('validation.bad_format', { field })
+  if (s.length > max || /[\r\n\0]/.test(s)) throw refuse('validation.bad_format', field)
   return s
 }
 
 function bool(v, field) {
   if (v === undefined || v === null) return false
-  if (typeof v !== 'boolean') throw badRequest('validation.boolean', { field })
+  if (typeof v !== 'boolean') throw refuse('validation.boolean', field)
   return v
 }
 
@@ -39,10 +67,10 @@ function httpUrl(v, field, { allowPath }) {
   const s = str(v, field, 500)
   if (!s) return ''
   let u
-  try { u = new URL(s) } catch { throw badRequest('validation.bad_url', { field }) }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw badRequest('validation.bad_url', { field })
-  if (u.username || u.password || u.search || u.hash) throw badRequest('validation.bad_url', { field })
-  if (!allowPath && u.pathname !== '/') throw badRequest('storage.endpoint_has_path')
+  try { u = new URL(s) } catch { throw refuse('validation.bad_url', field) }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw refuse('validation.bad_url', field)
+  if (u.username || u.password || u.search || u.hash) throw refuse('validation.bad_url', field)
+  if (!allowPath && u.pathname !== '/') throw refuse('storage.endpoint_has_path', field)
   return (u.origin + (allowPath ? u.pathname : '')).replace(/\/+$/, '')
 }
 
@@ -51,7 +79,7 @@ function keyPrefix(v) {
   const s = str(v, 'keyPrefix', 200).replace(/^\/+|\/+$/g, '')
   if (!s) return ''
   const parts = s.split('/')
-  if (parts.some((p) => !PREFIX_PART_RE.test(p) || p.includes('..'))) throw badRequest('storage.bad_key_prefix')
+  if (parts.some((p) => !PREFIX_PART_RE.test(p) || p.includes('..'))) throw refuse('storage.bad_key_prefix', 'keyPrefix')
   return parts.join('/') + '/'
 }
 
@@ -62,30 +90,33 @@ function keyPrefix(v) {
 function parseS3Config(input) {
   const b = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const preset = str(b.preset, 'preset', 20) || 'custom'
-  if (!PRESETS.includes(preset)) throw badRequest('validation.one_of', { field: 'preset', values: PRESETS.join(' / ') })
+  if (!PRESETS.includes(preset)) throw refuse('validation.one_of', 'preset', { values: PRESETS.join(' / ') })
 
   const endpoint = httpUrl(b.endpoint, 'endpoint', { allowPath: false })
   const bucket = str(b.bucket, 'bucket', 63)
-  if (!bucket) throw badRequest('validation.required', { field: 'bucket' })
-  if (!BUCKET_RE.test(bucket)) throw badRequest('storage.bad_bucket')
+  if (!bucket) throw refuse('validation.required', 'bucket')
+  if (!BUCKET_RE.test(bucket)) throw refuse('storage.bad_bucket', 'bucket')
   // The single most common mistake: pasting the bucket's own domain as the endpoint.
-  if (endpoint && new URL(endpoint).hostname.startsWith(`${bucket}.`)) throw badRequest('storage.endpoint_has_bucket')
+  if (endpoint && new URL(endpoint).hostname.startsWith(`${bucket}.`)) throw refuse('storage.endpoint_has_bucket', 'endpoint')
 
   const region = str(b.region, 'region', 40).toLowerCase() || 'us-east-1'
-  if (!REGION_RE.test(region)) throw badRequest('validation.bad_format', { field: 'region' })
+  if (!REGION_RE.test(region)) throw refuse('validation.bad_format', 'region')
 
   const accessKeyId = str(b.accessKeyId, 'accessKeyId', 200)
-  if (!accessKeyId) throw badRequest('validation.required', { field: 'accessKeyId' })
-  if (/\s/.test(accessKeyId)) throw badRequest('validation.bad_format', { field: 'accessKeyId' })
+  if (!accessKeyId) throw refuse('validation.required', 'accessKeyId')
+  if (/\s/.test(accessKeyId)) throw refuse('validation.bad_format', 'accessKeyId')
   const secretAccessKey = str(b.secretAccessKey, 'secretAccessKey', 500)
 
   const publicBaseUrl = httpUrl(b.publicBaseUrl, 'publicBaseUrl', { allowPath: true })
+  // Where signed addresses point: the same service as `endpoint`, under the name it has from outside.
+  const presignEndpoint = httpUrl(b.presignEndpoint, 'presignEndpoint', { allowPath: false })
+  if (presignEndpoint && new URL(presignEndpoint).hostname.startsWith(`${bucket}.`)) throw refuse('storage.endpoint_has_bucket', 'presignEndpoint')
   const delivery = str(b.delivery, 'delivery', 20) || (publicBaseUrl ? 'redirect' : 'proxy')
-  if (!DELIVERIES.includes(delivery)) throw badRequest('validation.one_of', { field: 'delivery', values: DELIVERIES.join(' / ') })
-  if (delivery === 'redirect' && !publicBaseUrl) throw badRequest('storage.redirect_needs_public_url')
+  if (!DELIVERIES.includes(delivery)) throw refuse('validation.one_of', 'delivery', { values: DELIVERIES.join(' / ') })
+  if (delivery === 'redirect' && !publicBaseUrl) throw refuse('storage.redirect_needs_public_url', 'publicBaseUrl')
 
   const acl = str(b.acl, 'acl', 20)
-  if (!ACLS.includes(acl)) throw badRequest('validation.one_of', { field: 'acl', values: ACLS.filter(Boolean).join(' / ') })
+  if (!ACLS.includes(acl)) throw refuse('validation.one_of', 'acl', { values: ACLS.filter(Boolean).join(' / ') })
 
   return {
     preset,
@@ -97,6 +128,7 @@ function parseS3Config(input) {
     forcePathStyle: bool(b.forcePathStyle, 'forcePathStyle'),
     keyPrefix: keyPrefix(b.keyPrefix),
     publicBaseUrl,
+    presignEndpoint,
     delivery,
     acl,
   }
@@ -118,4 +150,9 @@ function endpointHost(cfg) {
   try { return new URL(cfg.endpoint).host } catch { return '' }
 }
 
-module.exports = { PRESETS, DELIVERIES, ACLS, parseS3Config, backendId, endpointHost }
+/** A bucket as a log line or an error names it: where it is, never a credential. */
+function describePlace(cfg) {
+  return `${endpointHost(cfg)}/${cfg.bucket}${cfg.keyPrefix ? `/${String(cfg.keyPrefix).replace(/\/$/, '')}` : ''}`
+}
+
+module.exports = { PRESETS, DELIVERIES, ACLS, parseS3Config, refuse, backendId, endpointHost, describePlace }

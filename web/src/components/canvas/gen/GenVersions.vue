@@ -1,9 +1,9 @@
 <template>
   <!-- 压在画面上的一排 v3 v2 v1 -->
-  <div v-if="variant === 'chips'" class="gf-vers nodrag nowheel" :title="t('gen.history.hint', { n: g.versions.length })" @click.stop @mousedown.stop @wheel.stop>
+  <div v-if="variant === 'chips'" class="gf-vers nodrag nowheel" v-tip="t('gen.history.hint', { n: g.versions.length })" @click.stop @mousedown.stop @wheel.stop>
     <button
       v-for="v in g.versions" :key="v.index" type="button"
-      :class="{ on: v.active }" :title="v.title" data-testid="gen-version"
+      :class="{ on: v.active }" v-tip="v.title" data-testid="gen-version"
       @click.stop="g.selectVersion(v.index)"
     >v{{ v.n }}<i v-if="v.count > 1">×{{ v.count }}</i></button>
   </div>
@@ -12,7 +12,7 @@
   <div v-else class="gf-vth nodrag">
     <button
       v-for="v in g.versions" :key="v.index" type="button"
-      :class="{ on: v.active }" :title="v.title" data-testid="gen-version"
+      :class="{ on: v.active }" v-tip="v.title" data-testid="gen-version"
       @click.stop="g.selectVersion(v.index)"
     >
       <img v-if="thumbOf(v.thumb)" :src="thumbOf(v.thumb)" alt="" loading="lazy" />

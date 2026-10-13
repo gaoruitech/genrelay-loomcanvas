@@ -1,20 +1,59 @@
 <template>
-  <div ref="edRef" class="ed" :class="{ 'sheet-open': !!fly, 'insp-open': inspectorInset > 0, 'has-hint': noModels, 'read-only': readOnly, 'no-title': !feat.titleBar }" :data-node-layout="nodeLayout">
+  <div ref="edRef" class="ed" :class="{ 'sheet-open': !!fly, 'insp-open': inspectorInset > 0, 'mini-off': miniCramped, 'has-hint': noModels, 'read-only': readOnly, 'no-title': !feat.titleBar, 'panel-sheet': !!panelSheet }" :style="{ '--ed-top': edTop + 'px' }" :data-node-layout="nodeLayout">
     <!-- 素材库 / 我的分享 / 模板 / 教程 -->
-    <LibraryDialog v-if="libraryMenuItems.length" v-model="libraryOpen" :initial-tab="libraryInitialTab" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
-    <CanvasTemplateDialog v-if="feat.templates" v-model="templateDialogOpen" @apply="applyTemplate" />
+    <LibraryDialog v-if="libraryMenuItems.length" v-model="libraryOpen" :initial-tab="libraryInitialTab" :read-only="readOnly" @add-asset="onAddAsset" @apply-template="applyTemplate" @add-text="onAddText" />
+    <CanvasTemplateDialog v-if="feat.templates" v-model="templateDialogOpen" :current-graph="readOnly ? undefined : templateGraph" @apply="applyTemplate" />
     <CanvasGuide v-if="feat.guide" v-model="guideOpen" :section="guideSection" :empty="!loading && nodes.length === 0" @open-templates="openTemplates" />
 
     <!-- 创建分享链接弹窗：先填表，创建成功后同一个弹窗里换成链接 + 复制 -->
-    <div v-if="shareOpen" class="lc-mask" @click.self="closeShareDialog">
-      <div class="lc-dialog share-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.share.title')">
+    <div v-if="shareOpen" class="lc-mask lc-sheet" @click.self="closeShareDialog">
+      <div v-dialog="closeShareDialog" class="lc-dialog share-dialog" :class="{ team: teamCanvas }" role="dialog" aria-modal="true" :aria-label="shareTitle">
         <div class="lc-dialog-head">
-          <span>{{ t('canvas.share.title') }}</span>
+          <span class="share-h">{{ shareTitle }}</span>
           <button class="lc-x" :aria-label="t('common.close')" @click="closeShareDialog">×</button>
         </div>
-        <template v-if="!shareResult">
+        <!-- 团队里的画布：「团队内」是谁能看、谁能改；「对外链接」是原来的只读快照 -->
+        <div v-if="teamCanvas" class="share-tabs" role="tablist">
+          <button type="button" role="tab" :aria-selected="shareTab === 'team'" :class="{ on: shareTab === 'team' }" data-testid="share-tab-team" @click="shareTab = 'team'">
+            <LcIcon name="users" size="s" />{{ t('canvas.share.tabTeam') }}
+          </button>
+          <button v-if="feat.share" type="button" role="tab" :aria-selected="shareTab === 'link'" :class="{ on: shareTab === 'link' }" data-testid="share-tab-link" @click="shareTab = 'link'">
+            <LcIcon name="share" size="s" />{{ t('canvas.share.tabLink') }}
+          </button>
+        </div>
+        <template v-if="teamCanvas && shareTab === 'team'">
           <div class="lc-dialog-body">
-            <p class="lc-help share-tip">{{ t('canvas.share.tip') }}</p>
+            <CanvasAccessPanel v-model="accessDraft" :read-only="!canSetAccess" :lock="accessLock" />
+            <p v-if="accessError" class="lc-error-text share-err" role="alert">{{ accessError }}</p>
+          </div>
+          <div class="lc-dialog-foot">
+            <button class="lc-btn" :disabled="accessSaving" @click="closeShareDialog">{{ canSetAccess ? t('common.cancel') : t('common.close') }}</button>
+            <button v-if="canSetAccess" class="lc-btn primary" :disabled="accessSaving || accessDraft === teamVisibility" data-testid="share-access-save" @click="saveAccess">
+              {{ accessSaving ? t('common.saving') : t('common.save') }}
+            </button>
+          </div>
+        </template>
+        <!-- 不能给这张画布发对外链接（只读、没有编辑权，或团队设置成只有团长和管理员能分享） -->
+        <template v-else-if="teamCanvas && !canPublishShare">
+          <div class="lc-dialog-body" data-testid="share-readonly">
+            <div class="lc-alert info"><LcIcon name="info" /><span>{{ readOnly ? t('canvas.share.readOnlyNote') : t('canvas.share.cannotPublish') }}</span></div>
+            <!-- 已经有的对外链接照样能看、能复制；创建、换有效期、撤销都要能编辑才行 -->
+            <p v-if="shareExisting.state === 'loading'" class="lc-help share-ex">{{ t('common.loading') }}</p>
+            <div v-else-if="shareExisting.state === 'found'" class="lc-field share-last share-ex">
+              <label :for="uid + '-share-ex'">{{ t('canvas.share.existingLabel') }}</label>
+              <div class="share-link-row">
+                <input :id="uid + '-share-ex'" class="lc-input lc-mono" readonly :value="shareExisting.link" data-testid="share-existing-link" @focus="selectAllText" />
+                <button class="lc-btn primary quiet" data-testid="share-existing-copy" @click="copyShareLink(shareExisting.link)"><LcIcon name="copy" size="s" />{{ t('common.copy') }}</button>
+              </div>
+              <p class="lc-help">{{ shareExisting.expiresAt ? t('canvas.share.expiresAt', { time: formatTime(shareExisting.expiresAt) }) : t('canvas.share.neverExpires') }}</p>
+            </div>
+            <p v-else class="lc-help share-ex" data-testid="share-existing-none">{{ shareExisting.state === 'error' ? t('canvas.share.existingFailed') : t('canvas.share.existingNone') }}</p>
+          </div>
+          <div class="lc-dialog-foot"><button class="lc-btn" @click="closeShareDialog">{{ t('common.close') }}</button></div>
+        </template>
+        <template v-else-if="!shareResult">
+          <div class="lc-dialog-body">
+            <p class="lc-help share-tip">{{ teamCanvas ? t('canvas.share.tipTeam') : t('canvas.share.tip') }}</p>
             <div class="lc-field">
               <label :for="uid + '-share-title'">{{ t('canvas.share.titleLabel') }}</label>
               <input :id="uid + '-share-title'" v-model="shareForm.title" class="lc-input" maxlength="80" :placeholder="t('canvas.share.titlePlaceholder')" />
@@ -49,7 +88,7 @@
               <label :for="uid + '-share-link'">{{ t('canvas.share.linkLabel') }}</label>
               <div class="share-link-row">
                 <input :id="uid + '-share-link'" class="lc-input lc-mono" readonly :value="shareResult.link" @focus="selectAllText" />
-                <button class="lc-btn primary quiet" @click="copyShareLink"><LcIcon name="copy" size="s" />{{ t('common.copy') }}</button>
+                <button class="lc-btn primary quiet" @click="copyShareLink(shareResult.link)"><LcIcon name="copy" size="s" />{{ t('common.copy') }}</button>
               </div>
               <p class="lc-help">
                 {{ shareResult.expiresAt ? t('canvas.share.expiresAt', { time: formatTime(shareResult.expiresAt) }) : t('canvas.share.neverExpires') }}
@@ -67,7 +106,7 @@
     <!-- 加载其他画布到当前 -->
     <Teleport :to="$lcPortal">
       <div v-if="importPickerOpen" class="lc-mask" @click.self="importPickerOpen = false">
-        <div class="lc-dialog proj-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.project.importTitle')">
+        <div v-dialog="() => (importPickerOpen = false)" class="lc-dialog proj-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.project.importTitle')">
           <div class="lc-dialog-head">
             <span>{{ t('canvas.project.importTitle') }}</span>
             <button class="lc-x" :aria-label="t('common.close')" @click="importPickerOpen = false">×</button>
@@ -117,7 +156,7 @@
         :delete-key-code="null"
         :nodes-draggable="!readOnly"
         :nodes-connectable="!readOnly"
-        :elements-selectable="!readOnly"
+        :elements-selectable="true"
         :selection-mode="SelectionMode.Partial"
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
         @connect="onConnect"
@@ -144,16 +183,16 @@
           </template>
         </Background>
         <MiniMap
-          v-if="feat.minimap"
+          v-if="feat.minimap && !miniCramped"
           position="bottom-left"
           pannable
           zoomable
           :width="168"
           :height="104"
-          :node-color="miniNodeColor"
+          :node-color="vfMiniNode"
           :node-border-radius="3"
-          :mask-color="miniMaskColor"
-          :mask-stroke-color="miniStrokeColor"
+          :mask-color="vfMiniMask"
+          :mask-stroke-color="vfMiniStroke"
           :mask-stroke-width="1.5"
           :mask-border-radius="6"
           :aria-label="t('canvas.tools.minimap')"
@@ -217,50 +256,124 @@
       </div>
     </div>
 
+    <!-- 选中一个生成节点后候着输入法的那个看不见的框（见 armIme）；里面的输入框在挂载时放进 shadow root -->
+    <div ref="imeHostRef" class="ed-ime" :style="{ transform: `translate3d(${imeBox.x}px, ${imeBox.y}px, 0)`, height: imeBox.h + 'px' }" />
+    <!-- 输入法正在组的那一段字：写在提示词框里，下划线画在这儿（一行一条） -->
+    <div
+      v-for="(m, i) in imeMarks"
+      :key="'ime-' + i"
+      class="ed-ime-mark"
+      :style="{ transform: `translate3d(${m.x}px, ${m.y}px, 0)`, width: m.w + 'px', borderBottomColor: m.c }"
+      aria-hidden="true"
+    />
+
+    <!-- 多选工具条：选中两个及以上节点时贴着选区出现（三种节点布局都一样）。紧跟在画布后面：Tab 走完节点就到它 -->
+    <SelectionToolbar
+      v-if="selCount >= 2 && !readOnly && !loading"
+      :count="selCount"
+      :runnable="selRunnable.length"
+      :running="selRunBusy"
+      :blocked="selRunBlocked"
+      :busy="layout.running.value"
+      :merge="canMergeSelected"
+      :ungroup="selectedFrames >= 1 ? 'frame' : selectedInGroup >= 1 ? 'release' : ''"
+      :avoid="palAvoid"
+      @align="runAlign"
+      @distribute="runDistribute"
+      @group="groupSelection"
+      @ungroup="ungroupSelected"
+      @run="runSelected"
+      @delete="deleteSelection"
+    />
+
     <!-- ============ 悬浮玻璃块 ============ -->
 
     <!-- 左上：返回 + 画布名（就地改名）+ 保存状态 -->
-    <div v-if="feat.titleBar" class="fl ed-title">
-      <button v-if="canGoBack" class="lc-tb" :title="t('canvas.topbar.backToList')" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
+    <div v-if="feat.titleBar" ref="titleRef" class="fl ed-title">
+      <button v-if="canGoBack" v-tip="{ text: t('canvas.topbar.backToList'), placement: 'bottom' }" class="lc-tb" :aria-label="t('canvas.topbar.backToList')" @click="goToList">
         <LcIcon name="chev" class="flip" />
       </button>
-      <label class="ed-name" :title="t('canvas.topbar.rename')">
+      <!-- 改名不是改内容：有编辑权就能改，别人正在编辑（我是只读）时也一样；只有查看权的人改不了，悬停时说明 -->
+      <label v-tip="{ text: canRename ? '' : renameDenied, placement: 'bottom' }" class="ed-name" :class="{ fixed: !canRename }">
         <span class="ed-name-mirror" aria-hidden="true">{{ workflowName || t('canvas.untitled') }}</span>
         <input
           v-model="workflowName"
-          :readonly="readOnly"
+          :readonly="!canRename"
           maxlength="80"
           :placeholder="t('canvas.untitled')"
-          :aria-label="t('canvas.topbar.rename')"
+          :aria-label="canRename ? t('canvas.topbar.rename') : renameDenied"
+          data-testid="title-name"
           @keydown.enter="($event.target as HTMLInputElement).blur()"
+          @keydown.esc="cancelNameEdit($event)"
+          @blur="commitName"
         />
       </label>
-      <button v-if="!readOnly" class="ed-save lc-st" :class="saveState.cls" :disabled="saving" :title="t('canvas.save.saveNow')" @click="handleSave">
-        <span>{{ saveState.text }}</span>
+      <!-- 团队画布的可见范围：点开是「分享」弹窗的「团队内」页签（只读时也能看） -->
+      <button v-if="teamCanvas" v-tip="{ text: t('canvas.collab.accessTip'), placement: 'bottom' }" class="ed-vis" type="button" :aria-label="t('canvas.collab.accessTip')" data-testid="title-visibility" @click="openShareDialog('team')">
+        <VisibilityChip :value="teamVisibility" plain :title="false" />
+      </button>
+      <span v-if="collab.readOnly.value && collab.mode.value !== 'pending'" class="lc-tag warn ed-ro" data-testid="title-readonly">{{ t('canvas.collab.readOnlyTag') }}</span>
+      <button v-if="!readOnly" v-tip="{ text: t('canvas.save.saveNow'), placement: 'bottom' }" class="ed-save lc-st" :class="saveState.cls" :disabled="saving" @click="handleSave">
+        <!-- 几种状态的字叠在同一格里量宽：「未保存」和「已保存 · 12:30」换来换去时标题块不跟着变宽变窄，
+             贴着它摆的多选工具条、输入条也就不会跟着挪 -->
+        <span class="ed-save-box">
+          <span v-for="s in saveSizers" :key="s" class="ed-save-sz" aria-hidden="true">{{ s }}</span>
+          <span class="ed-save-t">{{ saveState.text }}</span>
+        </span>
       </button>
       <!-- 这张画布套用的品牌包：整张画布一处选，所有生成节点跟着用 -->
       <CanvasBrandKitChip
         v-if="!loading && feat.brandKit && !readOnly"
-        v-model="canvasKitId"
+        :model-value="canvasKitId"
         :kits="brandKits.kits.value"
         :loaded="brandKits.loaded.value"
+        :can-manage="brandKits.canManage.value"
         :exceptions="kitExceptionCount"
+        @update:model-value="setCanvasKit"
         @edit="openKitEditor"
         @create="openKitEditor(null)"
       />
     </div>
 
+    <!-- 只读提示条：别人正在编辑 / 被接管了 / 只有查看权。保存冲突是模态的，选完才继续 -->
+    <CollabBar
+      :mode="collab.mode.value"
+      :holder="collab.holder.value"
+      :lost-how="collab.lostHow.value"
+      :place="barPlace"
+      :can-take-over="collab.canTakeOver.value"
+      :can-copy="copyAvailable"
+      :unsaved="dirty"
+      :busy="collabBusy || collab.busy.value"
+      :error-message="collab.errorMessage.value"
+      @take-over="takeOverCanvas"
+      @copy="saveAsCopy('copy')"
+      @save-copy="saveAsCopy('mine')"
+      @reload="reloadLatest"
+      @retry="collab.retry()"
+    />
+    <ConflictDialog
+      v-if="collab.conflict.value"
+      :conflict="collab.conflict.value"
+      :can-copy="copyAvailable"
+      :busy="collabBusy"
+      :error="conflictError"
+      @copy="saveAsCopy('mine')"
+      @reload="reloadLatest"
+      @overwrite="overwriteWithMine"
+    />
+
     <!-- 工具面板：加节点（+ 是全部节点，下面按类别分）、素材库、分享、更多画布操作。
          默认竖排在左边；抓着把手（或面板空白处）可以拖到任何地方，把手旁边的开关切横排 / 竖排。
          手机上是标题块下面固定的一横条，不能拖。 -->
     <div
-      v-if="feat.palette && !readOnly"
+      v-if="feat.palette && (!readOnly || palReadOnly)"
       ref="palRef"
       class="fl ed-pal"
-      :class="[palOrient, { phone: palPhone, ready: palReady, drag: palDragging }]"
+      :class="[palOrient, { phone: palPhone, ready: palReady, drag: palDragging, compact: palFit.compact, ro: palReadOnly, under: palCovered }]"
       :style="palPhone ? undefined : { transform: `translate3d(${palXY.x}px, ${palXY.y}px, 0)` }"
       role="toolbar"
-      :aria-label="t('canvas.pal.label')"
+      :aria-label="palReadOnly ? t('canvas.readonly.palLabel') : t('canvas.pal.label')"
       :aria-orientation="palOrient === 'h' ? 'horizontal' : 'vertical'"
       data-testid="palette"
       @pointerdown="palDown"
@@ -273,10 +386,10 @@
     >
       <template v-if="!palPhone">
         <button
+          v-tip="{ text: t('canvas.pal.grip'), placement: palTipSide }"
           type="button"
           class="pal-grip"
           :class="{ on: palMenu.open }"
-          :title="t('canvas.pal.grip')"
           :aria-label="t('canvas.pal.grip')"
           aria-haspopup="menu"
           :aria-expanded="palMenu.open"
@@ -284,76 +397,35 @@
           @click="onGripClick"
         ><LcIcon name="grip" size="s" /></button>
         <button
+          v-tip="{ text: turnLabel, placement: palTipSide }"
           type="button"
           class="lc-tb pal-turn"
-          :title="turnLabel"
           :aria-label="turnLabel"
           data-pal="turn"
           @click="turnPalette"
         ><LcIcon :name="palOrient === 'v' ? 'turnh' : 'turnv'" size="s" /></button>
         <hr />
       </template>
-      <button
-        class="lc-tb"
-        :class="{ on: fly === 'all' }"
-        :title="t('canvas.rail.addNode')"
-        :aria-label="t('canvas.rail.addNode')"
-        :aria-expanded="fly === 'all'"
-        data-pal="all"
-        @click="toggleFly('all')"
-      ><LcIcon name="plus" /></button>
-      <hr />
-      <button
-        v-for="c in palCats"
-        :key="c.key"
-        class="lc-tb"
-        :class="{ on: fly === c.key }"
-        :title="c.title"
-        :aria-label="c.title"
-        :data-pal="c.key"
-        @click="onPalClick(c)"
-      ><LcIcon :name="c.icon" /></button>
-      <hr v-if="libraryMenuItems.length" />
-      <button
-        v-if="libraryMenuItems.length"
-        class="lc-tb"
-        :class="{ on: fly === 'lib' }"
-        :title="t('canvas.pal.library')"
-        :aria-label="t('canvas.pal.library')"
-        :aria-expanded="fly === 'lib'"
-        data-pal="lib"
-        @click="toggleFly('lib')"
-      ><LcIcon name="folder" /></button>
-      <hr />
-      <!-- 分享 + 更多：原来在右上角，现在跟着面板走 -->
-      <button
-        v-if="feat.share"
-        class="lc-tb"
-        :disabled="saving || publishing"
-        :title="t('canvas.topbar.share')"
-        :aria-label="t('canvas.topbar.share')"
-        data-pal="share"
-        @click="openShareFromPal"
-      ><LcIcon name="share" /></button>
-      <button
-        class="lc-tb"
-        :class="{ on: moreMenu.open }"
-        :title="t('canvas.topbar.more')"
-        :aria-label="t('canvas.topbar.more')"
-        aria-haspopup="menu"
-        :aria-expanded="moreMenu.open"
-        data-pal="more"
-        @click="toggleMoreMenu"
-      ><LcIcon name="more" /></button>
-      <!-- 沉浸式里没有外壳导航：留一颗看得见的退出钮 -->
-      <button
-        v-if="appStore.immersive && feat.immersive"
-        class="lc-tb"
-        :title="t('canvas.menu.exitImmersive')"
-        :aria-label="t('canvas.menu.exitImmersive')"
-        data-pal="exit"
-        @click="appStore.setImmersive(false)"
-      ><svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="MENU_ICONS.exitFull" /></button>
+      <!-- 加节点（+ 是全部，后面按类别）、素材库、分享、更多；放不下时靠后的几颗收进「更多工具」（见 palFit） -->
+      <template v-for="it in palShown" :key="it.key">
+        <hr v-if="it.hr" />
+        <button
+          v-else
+          v-tip="{ text: it.title, placement: palTipSide }"
+          type="button"
+          class="lc-tb"
+          :class="{ on: it.on, 'pal-ro': it.ro }"
+          :aria-label="it.title"
+          :aria-haspopup="it.popup"
+          :aria-expanded="it.popup ? !!it.on : undefined"
+          :disabled="it.disabled"
+          :data-pal="it.key"
+          @click="it.run()"
+        >
+          <LcIcon v-if="it.icon" :name="it.icon" />
+          <svg v-else class="lc-ic" :class="it.svgClass" viewBox="0 0 24 24" aria-hidden="true" v-html="it.svg" />
+        </button>
+      </template>
     </div>
 
     <!-- 把手的小菜单：换方向、复位 -->
@@ -370,7 +442,7 @@
     <div v-if="fly" ref="flyRef" class="fl ed-fly" :class="{ wide: fly === 'all' }" :style="flyStyle">
       <div class="ed-fly-h">
         <span>{{ flyTitle }}</span>
-        <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="fly = ''"><LcIcon name="x" size="s" /></button>
+        <button v-tip="t('common.close')" class="lc-tb sm" :aria-label="t('common.close')" @click="fly = ''"><LcIcon name="x" size="s" /></button>
       </div>
       <div class="ed-fly-b">
         <template v-for="(g, gi) in flyGroups" :key="'fg-' + gi">
@@ -381,13 +453,12 @@
               :key="item.key"
               class="ed-item"
               :disabled="item.disabled"
-              :title="item.label"
               :data-key="item.key"
               @click="runFlyItem(item)"
             >
               <LcIcon v-if="item.lc" :name="item.lc" />
               <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-              <span>{{ item.label }}</span>
+              <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
             </button>
           </div>
         </template>
@@ -431,25 +502,27 @@
     </div>
 
     <!-- 底部中间：缩放 / 撤销重做 / 自动整理 / 运行全部 -->
-    <div class="fl ed-tools" role="toolbar" :aria-label="t('canvas.tools.label')">
-      <button class="lc-tb" :disabled="zoomPct <= MIN_ZOOM * 100" :title="t('canvas.tools.zoomOut')" :aria-label="t('canvas.tools.zoomOut')" @click="zoomOut()"><LcIcon name="zout" /></button>
-      <button class="ed-zoom" :title="t('canvas.tools.zoomReset')" @click="zoomTo(1, { duration: 200 })">{{ zoomPct }}%</button>
-      <button class="lc-tb" :disabled="zoomPct >= MAX_ZOOM * 100" :title="t('canvas.tools.zoomIn')" :aria-label="t('canvas.tools.zoomIn')" @click="zoomIn()"><LcIcon name="zin" /></button>
-      <button class="lc-tb" :title="t('canvas.tools.fit')" :aria-label="t('canvas.tools.fit')" @click="fitFree({ duration: 200 })"><LcIcon name="fit" /></button>
+    <div ref="toolsRef" class="fl ed-tools" role="toolbar" :aria-label="t('canvas.tools.label')">
+      <button class="lc-tb" :disabled="zoomPct <= MIN_ZOOM * 100" v-tip="t('canvas.tools.zoomOut')" :aria-label="t('canvas.tools.zoomOut')" @click="zoomOut()"><LcIcon name="zout" /></button>
+      <button v-tip="t('canvas.tools.zoomReset')" class="ed-zoom" @click="zoomTo(1, { duration: 200 })">{{ zoomPct }}%</button>
+      <button class="lc-tb" :disabled="zoomPct >= MAX_ZOOM * 100" v-tip="t('canvas.tools.zoomIn')" :aria-label="t('canvas.tools.zoomIn')" @click="zoomIn()"><LcIcon name="zin" /></button>
+      <button class="lc-tb" v-tip="t('canvas.tools.fit')" :aria-label="t('canvas.tools.fit')" @click="fitFree({ duration: 200 })"><LcIcon name="fit" /></button>
       <template v-if="!readOnly">
       <hr />
       <!-- 撤销 / 重做：快捷键之外还是要给可见入口，不然只有知道 Ctrl+Z 的人能用 -->
-      <button class="lc-tb" :disabled="!hist.canUndo.value" :title="t('canvas.topbar.undoTip')" :aria-label="t('canvas.topbar.undo')" @click="doUndo"><LcIcon name="undo" /></button>
-      <button class="lc-tb" :disabled="!hist.canRedo.value" :title="t('canvas.topbar.redoTip')" :aria-label="t('canvas.topbar.redo')" @click="doRedo"><LcIcon name="redo" /></button>
+      <button class="lc-tb" :disabled="!hist.canUndo.value" v-tip="t('canvas.topbar.undoTip')" :aria-label="t('canvas.topbar.undo')" @click="doUndo"><LcIcon name="undo" /></button>
+      <button class="lc-tb" :disabled="!hist.canRedo.value" v-tip="t('canvas.topbar.redoTip')" :aria-label="t('canvas.topbar.redo')" @click="doRedo"><LcIcon name="redo" /></button>
       <hr />
-      <button class="lc-btn sm ed-arrange" :disabled="layout.running.value || nodes.length < 2" :title="t('canvas.menu.arrange')" @click="runArrange">
+      <button v-tip="t('canvas.menu.arrange')" class="lc-btn sm ed-arrange" :disabled="layout.running.value || nodes.length < 2" @click="runArrange">
         <LcIcon name="layout" size="s" /><span>{{ t('canvas.tools.arrange') }}</span>
       </button>
       <hr />
+      <!-- 团队空间：我本月的上限用到哪儿了（最紧的那一项）。到 80% 变提醒色，用完变错误色 -->
+      <span v-if="budgetChip" v-tip="budgetChip.title" class="ed-budget lc-mono" :class="budgetChip.state" data-testid="budget-chip">{{ budgetChip.text }}</span>
       <button
         class="lc-btn primary sm ed-run"
         :disabled="executor.running.value"
-        :title="executor.running.value ? t('canvas.topbar.running') : t('canvas.tools.runAllTip')"
+        v-tip="executor.running.value ? '' : t('canvas.tools.runAllTip')"
         @click="executor.runAll()"
       >
         <LcIcon name="play" size="s" /><span>{{ executor.running.value ? t('canvas.topbar.running') : t('canvas.topbar.runAll') }}</span>
@@ -458,16 +531,17 @@
     </div>
 
     <!-- 整理后的反悔入口：整理是一次性重排全部位置，没有撤销就不敢点 -->
-    <div v-if="layoutUndo.visible" class="fl ed-undo">
+    <div v-if="layoutUndo.visible" class="fl ed-undo" :style="undoStyle">
       <span>{{ layoutUndo.text }}</span>
       <button class="lc-btn text sm" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
     </div>
 
     <!-- 换了节点布局（或这张画布是在另一种布局下排的）之后节点互相压住：只提示，点了才整理 -->
-    <div v-if="layoutNote.visible && !layoutUndo.visible" class="fl ed-undo ed-note" role="status" data-testid="layout-note">
+    <div v-if="layoutNote.visible && !layoutUndo.visible" class="fl ed-undo ed-note" :style="undoStyle" role="status" data-testid="layout-note">
       <span>{{ layoutNote.text }}</span>
-      <button class="lc-btn text sm" data-testid="layout-note-arrange" @click="arrangeFromNote">{{ t('canvas.tools.arrange') }}</button>
-      <button class="lc-tb sm" :title="t('common.close')" :aria-label="t('common.close')" @click="dismissLayoutNote"><LcIcon name="x" size="s" /></button>
+      <!-- 只读：这句话照样说（看的人可以在「更多」里换回原来的布局），「自动整理」是改画布，不出现 -->
+      <button v-if="!readOnly" class="lc-btn text sm" data-testid="layout-note-arrange" @click="arrangeFromNote">{{ t('canvas.tools.arrange') }}</button>
+      <button v-tip="t('common.close')" class="lc-tb sm" :aria-label="t('common.close')" @click="dismissLayoutNote"><LcIcon name="x" size="s" /></button>
     </div>
 
     <!-- 生成节点的编辑面板，整张画布只有一个实例：布局 a 是跟着选中节点的输入条，布局 b 是右缘的属性面板。
@@ -478,7 +552,9 @@
       ref="genPanelRef"
       :node-id="panelNode.id"
       :kind="panelNode.kind"
+      :avoid="palAvoid"
       @close="closeGenPanel"
+      @sheet="panelSheet = $event"
     />
     <GenInspector
       v-else-if="nodeLayout === 'b' && panelNode"
@@ -487,6 +563,7 @@
       :node-id="panelNode.id"
       :kind="panelNode.kind"
       @close="closeGenPanel"
+      @sheet="panelSheet = $event"
     />
 
     <!-- 生成队列：一颗悬浮圆钮，默认在右下角，可以拖走；点开是贴着它的清单卡片 -->
@@ -494,10 +571,13 @@
       v-if="feat.queue"
       :nodes="nodes"
       :right-inset="inspectorInset"
-      :avoid="palAvoid"
+      :avoid="queueAvoid"
       :workflow-id="currentId"
       :title-of="nodeTypeLabel"
+      :budget="budget"
+      @open="loadBudget"
       :cancel-node="executor.cancelNode"
+      :read-only="readOnly"
       @focus="gotoNode"
     />
     <!-- 手机上节点面板抽屉后面的遮罩 -->
@@ -506,10 +586,13 @@
     <!-- 节点右键菜单 -->
     <div
       v-if="contextMenu.open"
+      ref="ctxMenuRef"
       class="ctx-menu lc-menu"
       role="menu"
+      :aria-label="t('canvas.ctx.label')"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
+      @keydown="onCtxMenuKey"
     >
       <template v-if="contextNodeInfo">
         <button class="lc-menu-item" role="menuitem" @click="viewOriginalFromContext">
@@ -520,11 +603,11 @@
           <LcIcon name="download" size="s" />
           {{ contextNodeInfo.mediaType === 'video' ? t('canvas.ctx.downloadVideo') : t('canvas.ctx.downloadImage') }}
         </button>
-        <button v-if="feat.assetLibrary" class="lc-menu-item" role="menuitem" @click="saveToAssetsFromContext">
+        <button v-if="feat.assetLibrary && !readOnly" class="lc-menu-item" role="menuitem" @click="saveToAssetsFromContext">
           <LcIcon name="folder" size="s" />
           {{ t('canvas.ctx.saveToAssets') }}
         </button>
-        <button v-if="contextImageUrl && feat.imageEditor" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
+        <button v-if="contextImageUrl && feat.imageEditor && !readOnly" class="lc-menu-item" role="menuitem" @click="editImageFromContext">
           <LcIcon name="edit" size="s" />
           {{ t('canvas.ctx.editImage') }}
         </button>
@@ -532,16 +615,18 @@
           <LcIcon name="info" size="s" />
           {{ t('canvas.ctx.taskDetail') }}
         </button>
-        <button v-if="contextCanFork" class="lc-menu-item" role="menuitem" @click="continueFromContext">
+        <button v-if="contextCanFork && !readOnly" class="lc-menu-item" role="menuitem" @click="continueFromContext">
           <LcIcon name="refresh" size="s" />
           {{ t('canvas.ctx.continue') }}
         </button>
-        <button v-if="contextCanFork" class="lc-menu-item" role="menuitem" @click="forkFromContext">
+        <button v-if="contextCanFork && !readOnly" class="lc-menu-item" role="menuitem" @click="forkFromContext">
           <LcIcon name="branch" size="s" />
           {{ t('canvas.ctx.fork') }}
         </button>
-        <hr />
+        <hr v-if="!readOnly" />
       </template>
+      <!-- 只读：右键菜单里只有上面「看」的那几项（看原图 / 下载 / 任务详情）；下面改画布的一概不出 -->
+      <template v-if="!readOnly">
       <!-- 生成节点：让这一个节点不跟随画布的品牌包 -->
       <template v-if="contextKitOptions">
         <div class="ed-sub">{{ t('brandKit.node.menuTitle') }}</div>
@@ -601,6 +686,7 @@
         <LcIcon name="trash" size="s" />
         {{ t('canvas.ctx.deleteNode') }}
       </button>
+      </template>
     </div>
 
     <!-- 画布空白处右键：添加节点菜单（在光标位置弹出） -->
@@ -614,10 +700,10 @@
       <!-- 导航（沉浸式 / 我的画布 / 使用教程）永远置顶 -->
       <template v-if="navMenuGroup">
         <div class="ed-grid">
-          <button v-for="item in navMenuGroup.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
+          <button v-for="item in navMenuGroup.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
             <LcIcon v-if="item.lc" :name="item.lc" />
             <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-            <span>{{ item.label }}</span>
+            <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
           </button>
         </div>
         <hr />
@@ -628,10 +714,10 @@
           <hr v-if="gi > 0" />
           <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
           <div class="ed-grid">
-            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
               <LcIcon v-if="item.lc" :name="item.lc" />
               <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-              <span>{{ item.label }}</span>
+              <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
             </button>
           </div>
         </template>
@@ -642,9 +728,9 @@
         <hr v-if="gi > 0" />
         <div class="ed-sub">{{ group.title }}</div>
         <div class="ed-grid">
-          <button v-for="item in group.items" :key="item.kind" class="ed-item" role="menuitem" :title="item.label" :data-key="item.kind" @click="addNodeFromMenu(item.kind)">
+          <button v-for="item in group.items" :key="item.kind" class="ed-item" role="menuitem" :data-key="item.kind" @click="addNodeFromMenu(item.kind)">
             <svg class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-            <span>{{ item.label }}</span>
+            <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
           </button>
         </div>
       </template>
@@ -653,10 +739,10 @@
           <hr />
           <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
           <div class="ed-grid">
-            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
+            <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
               <LcIcon v-if="item.lc" :name="item.lc" />
               <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-              <span>{{ item.label }}</span>
+              <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
             </button>
           </div>
         </template>
@@ -676,10 +762,10 @@
         <hr v-if="gi > 0" />
         <div v-if="grp.title" class="ed-sub">{{ grp.title }}</div>
         <div class="ed-grid">
-          <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :title="item.label" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
+          <button v-for="item in grp.items" :key="item.key" class="ed-item" role="menuitem" :disabled="item.disabled" :class="{ on: item.active }" :data-key="item.key" @click="runCanvasMenuItem(item)">
             <LcIcon v-if="item.lc" :name="item.lc" />
             <svg v-else class="lc-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon" />
-            <span>{{ item.label }}</span>
+            <span v-tip="{ text: item.label, clipped: true }">{{ item.label }}</span>
           </button>
         </div>
       </template>
@@ -726,7 +812,7 @@
           :placeholder="t('canvas.search.placeholder')"
           @keydown.escape="searchOpen = false"
         />
-        <button class="lc-inp-btn" :title="t('common.close')" :aria-label="t('common.close')" @click="searchOpen = false"><LcIcon name="x" size="s" /></button>
+        <button v-tip="t('common.close')" class="lc-inp-btn" :aria-label="t('common.close')" @click="searchOpen = false"><LcIcon name="x" size="s" /></button>
       </label>
       <div v-if="searchKw && !searchResults.length" class="nsearch-empty">{{ t('canvas.search.empty') }}</div>
       <div v-else-if="searchResults.length" class="nsearch-list">
@@ -762,8 +848,9 @@
 </template>
 
 <script setup lang="ts">
+import { vDialog } from '@/directives/dialog'
 import { lcLocal } from '@/utils/storage'
-import { ref, computed, onMounted, onBeforeUnmount, provide, watch, markRaw, type Ref, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, provide, reactive, watch, markRaw, type Ref, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureHttps } from '@/utils/mediaUrl'
@@ -782,10 +869,11 @@ import ImageCollectionNode from '@/components/canvas/ImageCollectionNode.vue'
 import GenNode from '@/components/canvas/gen/GenNode.vue'
 import GenComposer from '@/components/canvas/gen/GenComposer.vue'
 import GenInspector from '@/components/canvas/gen/GenInspector.vue'
+import SelectionToolbar from '@/components/canvas/SelectionToolbar.vue'
 import '@/components/canvas/gen/gen.css'
 import {
   CANVAS_NODE_UI_KEY, GEN_NODE_SIZE, INSPECTOR_GAP, INSPECTOR_WIDTH, NODE_LAYOUTS, genNodeSize, isGenNodeKind, normalizeNodeLayout,
-  type GenNodeKind, type NodeLayout,
+  type GenNodeKind, type NodeLayout, type NodePeek,
 } from '@/composables/nodeLayout'
 import OutputNode from '@/components/canvas/OutputNode.vue'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
@@ -802,10 +890,20 @@ import BatchDownloadDialog from '@/components/canvas/BatchDownloadDialog.vue'
 import BatchRunDialog from '@/components/canvas/BatchRunDialog.vue'
 import ImageEditorModal from '@/components/canvas/ImageEditorModal.vue'
 
-import { workflowApi, canvasShareApi, userAssetApi, apiErrorMessage } from '@/utils/canvasBackend'
+import { workflowApi, canvasShareApi, userAssetApi, apiErrorMessage, adapterError, canCreateCanvas } from '@/utils/canvasBackend'
+import { workflowApi as stockWorkflowApi, teamApi as stockTeamApi, unwrap as unwrapStock, SPACE_GONE_CODES, isTeamId } from '@/utils/api'
+import { useCanvasCollab, createSerialQueue } from '@/composables/useCanvasCollab'
+import CollabBar from '@/components/canvas/CollabBar.vue'
+import ConflictDialog from '@/components/canvas/ConflictDialog.vue'
+import CanvasAccessPanel from '@/components/space/CanvasAccessPanel.vue'
+import VisibilityChip from '@/components/space/VisibilityChip.vue'
+import type { CanvasLock, CanvasVisibility, LimitMeterState, LimitSide, TeamLimits } from '@/types'
 import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
 import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { useAppStore } from '@/stores/app'
+import { useSpaceStore, spaceParam } from '@/stores/space'
+import { CANVAS_BUDGET_KEY } from '@/composables/canvasBudgetKey'
+import { blockedText, meterText, preflight, refusalText, resetText, storedRefusal } from '@/utils/budget'
 import { useEmbed } from '@/embed/context'
 import { isPageAllowed, resolveNodeTypes } from '@/embed/options'
 import { CANVAS_SCHEMA_VERSION, type CanvasDocument } from '@/embed/document'
@@ -822,8 +920,10 @@ import {
 } from '@/utils/canvasModels'
 import { useAutoLayout, estimateNodeSize, LAYOUT_CONFIRM_THRESHOLD, type AlignMode, type DistributeAxis } from '@/composables/useAutoLayout'
 import { useCanvasHistory } from '@/composables/useCanvasHistory'
-import { usePaletteDock } from '@/composables/usePaletteDock'
-import { clampNum, type Rect } from '@/utils/floatSpot'
+import { usePaletteDock, fitPalette, palFloor, palLength, PAL_OVERFLOW, type PalFit, type PalPart } from '@/composables/usePaletteDock'
+import { clampNum, fitInArea, rectsIn, watchRects, type Rect } from '@/utils/floatSpot'
+import { libraryGroupLabelKey, shareButtonLabelKey } from '@/utils/canvasLabels'
+import { textareaRangeRects } from '@/utils/textareaRange'
 import { useCanvasBatch } from '@/composables/useCanvasBatch'
 import { migrateDocument } from '@/embed/document'
 import { useBrandKits, resolveNodeKit, KIT_NONE, BRAND_KIT_NODE_TYPES, type BrandKit } from '@/composables/useBrandKits'
@@ -841,8 +941,7 @@ import {
   planFrame, releaseFrame, planMerge, planRelease, frameNodeFrom, matchNode,
 } from '@/composables/useCanvasFrame'
 import {
-  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, hexToRgba,
-  miniNodeColorFor, miniStrokeColorFor, groundToneFor,
+  DEFAULT_CANVAS_BG, normalizeCanvasBg, patternColorFor, groundToneFor,
   type CanvasBgSettings,
 } from '@/utils/canvasBg'
 import { CANVAS_IMAGE_EDITOR_KEY, type ImageEditorResult } from '@/composables/canvasImageEditorKey'
@@ -869,6 +968,7 @@ interface Viewport { x: number; y: number; zoom: number }
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const spaceStore = useSpaceStore()
 const { t, locale } = useI18n()
 
 /* ==================== 这张画布是怎么挂上来的 ==================== */
@@ -880,7 +980,26 @@ const { t, locale } = useI18n()
 const embed = useEmbed()
 const host = embed.editor
 const feat = embed.features
-const readOnly = computed(() => !!host?.readOnly.value)
+/**
+ * 多人轮流改一张画布：编辑锁、带版本的保存、保存冲突（见 composables/useCanvasCollab.ts）。
+ * 后端没有这回事（没有锁的适配器、载入时不给版本）时它始终是「可编辑」，编辑器和以前一样。
+ */
+const collab = useCanvasCollab({
+  canvasId: () => currentId.value,
+  reload: (o) => reloadContent(!!o?.quiet),
+  hasUnsaved: () => dirty.value,
+  onEditable: () => resumeAfterLoad(),
+  onLost: () => { closeMenus() },
+  onRenamed: (name) => followRename(name),
+})
+/** 只读：宿主要求的，或者这张画布现在轮不到我改（别人在编辑、我只有查看权、丢了锁） */
+const readOnly = computed(() => !!host?.readOnly.value || collab.readOnly.value)
+/**
+ * 只读（别人正在编辑、我只有查看权、丢了锁）时工具面板换成「只读」的那一套：只留看得、拿得走的——
+ * 素材库（浏览、下载）、分享（看和复制已有的链接、团队权限）、更多（搜索、打包下载、教程……），不放任何会改画布的。
+ * 宿主要求的只读（只嵌编辑器）不出面板，和以前一样；正在拿锁的那一下也不出，免得闪一下再换。
+ */
+const palReadOnly = computed(() => collab.readOnly.value && collab.mode.value !== 'pending' && !host?.readOnly.value)
 /** 同一页上可能有不止一个编辑器：DOM id、SVG 渐变 id 都带上它 */
 const uid = 'lc' + Math.random().toString(36).slice(2, 8)
 /** 现在该显示哪张画布：路由里的 id，或者宿主给的 */
@@ -975,17 +1094,150 @@ watch(() => soleGenNode.value?.id || '', (id) => { if (id !== panelDismissedId.v
 onNodeClick(({ node }) => { if (node.id === panelDismissedId.value) panelDismissedId.value = '' })
 function closeGenPanel() {
   if (soleGenNode.value) panelDismissedId.value = soleGenNode.value.id
+  // 焦点刚从提示词框里出来：节点还选着，接着候着输入法（再打字就把面板唤回来）
+  void nextTick(armIme)
 }
-const genPanelRef = ref<{ focusPrompt: () => boolean; run: () => void } | null>(null)
+const genPanelRef = ref<{ focusPrompt: () => boolean; run: () => void; makeRoom?: () => boolean } | null>(null)
+/**
+ * 输入条 / 属性面板眼下是贴底的抽屉（手机宽度，或者桌面上编辑区放不下「节点 + 输入条」）时它占的矩形，相对编辑区；
+ * 不是抽屉就是 null。抽屉压在所有悬浮块上面，所以它开着的时候：
+ *   · 底部工具条、它上面的小条、小地图先收起来（被盖住一半比不出现更糟），抽屉一关就回来；
+ *   · 生成队列圆钮、工具面板把它当成占着的一块绕开（圆钮挪到它上面，面板挪到最近的空地），抽屉一关各回各位。
+ * 面板卸掉时它自己会报 null（见 GenComposer / GenInspector 的 sheet 事件）。
+ */
+const panelSheet = ref<Rect | null>(null)
+/**
+ * 顶上那几排（标题块；手机上还有工具面板的一横条；只读提示条；没有模型的提示）到哪儿为止，相对编辑区。
+ * 贴底的抽屉按它封顶（样式里的 --ed-top）：抽屉和这几排之间总要给正在看的那个节点留出一条 ——
+ * 560 高的手机上只读提示条折成两行，不这么算抽屉会一直顶到提示条底下，中间一点画布都不剩。
+ * 这几块各有各的变法（名字变长、提示条时有时无、折不折行），隔一会儿量一次。
+ */
+const edTop = ref(110)
+let stopTopRows: (() => void) | null = null
+onMounted(() => {
+  // 工具面板只算手机上那一横条（位置是样式写死的）。能拖动的那种不算：它自己要绕开贴底的抽屉，抽屉的高度又按这个数封顶 ——
+  // 把它算进来两边就互相追着跑（抽屉开着时横排的面板让到抽屉上面 → 算成「顶上一排」→ 抽屉变矮 → 面板跟着下去 →
+  // 不算了 → 抽屉变回去……）。量的结果不能取决于量完之后会变的东西
+  stopTopRows = watchRects(() => edRef.value, TOP_ROWS, (rects) => {
+    const next = topRowsBottom(rects)
+    if (next !== edTop.value) edTop.value = next
+  }, 500)
+})
+const TOP_ROWS = '.ed-title, .ed-pal.phone, .clb, .ed-hint'
+const topRowsBottom = (rects: Rect[]) => {
+  const rows = rects.filter((r) => r.t < 220 && r.r - r.l > r.b - r.t)
+  return rows.length ? Math.round(Math.max(...rows.map((r) => r.b))) : 60
+}
+onBeforeUnmount(() => { stopTopRows?.(); stopTopRows = null })
 /** 属性面板开着时占掉的右侧宽度；「适应屏幕」、新节点落点、队列圆钮都要让出来。手机上面板是底部抽屉，不占宽度 */
 const paneWidth = ref(1200)
+const paneHeight = ref(800)
 const inspectorInset = computed(() => (nodeLayout.value === 'b' && panelNode.value && paneWidth.value > 640 ? INSPECTOR_WIDTH + INSPECTOR_GAP : 0))
+/**
+ * 属性面板开着、窗口又不宽（1000–1100 那一档）时，底部工具条往左让，小地图和它之间就不够放了 —— 两块会叠在一起。
+ * 这时先收起小地图（面板一关就回来）：工具条是要点的，小地图只是看的。数 = 小地图那一条 + 工具条的常见宽度 + 两边的空。
+ */
+const miniCramped = computed(() => !!panelSheet.value || paneHeight.value < MINI_MIN_PANE_H || paneWidth.value - inspectorInset.value < toolsWidth.value + 2 * MINI_STRIP)
+/**
+ * 小地图那一条有多宽：左边距 16 + 小地图 168 + 和工具条之间的空 12。底部工具条是居中的（属性面板开着时在剩下的宽度里居中），
+ * 它的左边缘到不了这条线右边，两块就叠上了 —— 以前只在属性面板开着时才查，窗口 700–960 宽、面板没开时照样叠。
+ * 工具条的宽度是量出来的：语言、有没有「本月上限」那一小段、只读（只剩缩放那几颗）都会改它。
+ */
+const MINI_STRIP = 196
+const toolsRef = ref<HTMLElement | null>(null)
+const toolsWidth = ref(520)
+/**
+ * 编辑区矮到这个数以下（笔记本上开着开发者工具、嵌在别人页面里的一小条）也先收起小地图：它占着左下角 126 高的一截，
+ * 工具面板从标题块下面（76）排下来，收到最紧（小一号 + 只留「+」「更多工具」「更多」，155 高）也放不下，
+ * 只能被挤到小地图旁边去。面板是要点的，小地图只是看的。
+ */
+const MINI_MIN_PANE_H = 372
+
+/**
+ * 布局 b：属性面板停在画布右缘，窗口不宽（1000–1100）时它正好盖住右边那一列节点 —— 点中的那个节点
+ * 一选上就被自己的面板挡住了。面板一开，选中的节点要是落在它底下，就把画布横向平移到看得见的地方
+ * （带动画；只是换了个视野，不是改动，不进撤销）。只挪刚好够的距离，纵向不动；节点比空出来的那一段还宽时左边对齐。
+ * 等手松开再挪：按下节点可能是要拖它，拖到一半画布自己动起来会把节点甩出去。
+ */
+let pointerHeld = false
+let revealPending = ''
+let revealTimer: number | null = null
+/** 这个节点刚被「定位过去」（队列 / 搜索）：视野已经按面板开着的样子摆好了，不用再挪 */
+let revealSkipId = ''
+function revealNode(id: string) {
+  const n = findNode(id)
+  const pane = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
+  if (!n || !pane || inspectorInset.value <= 0) return
+  const W = pane.clientWidth
+  const ins = chromeInsets(W, pane.clientHeight)
+  const vp = viewport.value
+  const z = vp.zoom || 1
+  const est = estimateNodeSize(n.type, nodeLayout.value)
+  const x = vp.x + (n.computedPosition?.x ?? n.position.x) * z
+  const w = (measuredSize(id)?.width || est.w) * z
+  const left = ins.l, right = W - ins.r
+  // 没被面板盖住：不动（哪怕它有一截在别处出了视野 —— 那是用户自己摆的视野）
+  if (x + w <= W - inspectorInset.value) return
+  let dx = right - (x + w)
+  if (x + dx < left) dx = left - x
+  if (Math.abs(dx) < 1) return
+  const still = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  void setViewport({ x: vp.x + dx, y: vp.y, zoom: z }, { duration: still ? 0 : 260 })
+}
+function flushReveal() {
+  revealTimer = null
+  const id = revealPending
+  if (!id || pointerHeld) return
+  revealPending = ''
+  if (panelNode.value?.id !== id) return
+  if (nodeLayout.value === 'b') revealNode(id)
+  // 布局 a：节点四周放不下输入条（窗口矮、节点靠边）时，同样把画布挪一小段腾出地方，不让输入条盖住节点自己的端口
+  else if (nodeLayout.value === 'a') genPanelRef.value?.makeRoom?.()
+}
+function scheduleReveal(id: string, wait = 80) {
+  revealPending = id
+  if (revealTimer !== null) clearTimeout(revealTimer)
+  // 等一拍：面板这一拍才挂出来，工具面板也可能因为它让了位
+  revealTimer = window.setTimeout(flushReveal, wait)
+}
+/** 输入条要等节点端口旁的名字小签淡入、自己的高度量出来之后才知道放不放得下 */
+const ROOM_WAIT = 300
+function onRevealPointerDown(e: PointerEvent) {
+  pointerHeld = true
+  lastInput = { type: e.pointerType || 'mouse', at: Date.now() }
+}
+function onRevealPointerUp() {
+  pointerHeld = false
+  if (revealPending) scheduleReveal(revealPending, nodeLayout.value === 'a' ? ROOM_WAIT : 80)
+  // 点完 / 拖完之后（click 已经发完、选中已经更新）：该候着输入法就候着
+  window.setTimeout(armIme, 0)
+}
+watch(() => (nodeLayout.value === 'b' && inspectorInset.value > 0 && panelNode.value ? panelNode.value.id : ''), (id) => {
+  if (!id) { revealPending = ''; return }
+  if (id === revealSkipId) { revealSkipId = ''; return }
+  scheduleReveal(id)
+})
+watch(() => (nodeLayout.value === 'a' && panelNode.value ? panelNode.value.id : ''), (id) => {
+  if (!id) { if (nodeLayout.value === 'a') revealPending = ''; return }
+  // 刚被「定位过去」的节点：等那一下平移走完再看
+  scheduleReveal(id, id === revealSkipId ? ROOM_WAIT + 360 : ROOM_WAIT)
+})
 
 // 布局 c：节点把「聚焦自己的提示词框」登记上来
 const promptFocusers = new Map<string, () => void>()
+/**
+ * 只读时各节点「切换着看」到了哪一版 / 哪一张：只记在这里，不写进节点数据（存着的文档一个字节都不变）。
+ * 变回可编辑、换了画布就清空 —— 可编辑时看到的必须是文档里真存着的那一版。
+ */
+const nodePeek = reactive(new Map<string, NodePeek>())
 provide(CANVAS_NODE_UI_KEY, {
   layout: nodeLayout,
+  // 所有节点类型都看它：只读时「做事」的入口不出现，「看」的照常（见 composables/nodeLayout.ts）
+  readOnly,
   registerPromptFocus: (id, fn) => { if (fn) promptFocusers.set(id, fn); else promptFocusers.delete(id) },
+  viewMedia: (url, type) => { if (url) lightbox.value = { open: true, url, type } },
+  peek: nodePeek,
+  fillDefaults: fillNodeDefaults,
 })
 /** 画布上选中一个生成节点后直接打字：焦点落进它的提示词框（a 输入条 / b 属性面板 / c 节点里） */
 function focusGenPrompt(): boolean {
@@ -998,13 +1250,253 @@ function focusGenPrompt(): boolean {
     return true
   }
   if (!panelNode.value) {
-    // 面板被收起了：先打开，这一键只负责唤出它
+    // 面板被收起了（按过 Esc）：先打开，等它挂出来再把焦点放进去。这都发生在这一键的默认动作之前，
+    // 所以唤出面板的这个字符照常进到提示词框里，不会丢
     panelDismissedId.value = ''
     void nextTick(() => genPanelRef.value?.focusPrompt())
     return false
   }
   return genPanelRef.value?.focusPrompt() || false
 }
+
+/* ---------- 选中一个生成节点后，直接用输入法打字 ---------- */
+/**
+ * 浏览器只在「可编辑的元素」有焦点时才开着输入法。焦点在节点（一个普通 div）上时，第一个键是当作英文字母送进页面的，
+ * 等焦点挪进提示词框、输入法才接手 —— 想打「你好」，框里出来的是一个「n」再加上「ihao」拼出来的字。
+ *
+ * 所以选中一个生成节点之后（鼠标点的，或者键盘走到它身上选中的），把焦点悄悄放到一个看不见的输入框上等着
+ * （下面叫「候着的框」）：
+ *   · 它在一个 closed 的 shadow root 里：页面上别的按键处理（画布的快捷键、vue-flow 的空格平移 / Shift 框选）
+ *     看到的事件目标是外面那个 div，不是输入框 —— 它们照常工作，Delete 还是删节点，Ctrl+Z 还是撤销；
+ *   · 直接敲字母（没开输入法）：和以前一样，按下的那一刻把焦点挪进提示词框，这个字母照常进去；
+ *   · 输入法组字：就在候着的框里组。组的过程实时写在提示词框的末尾、底下画着下划线（和在框里直接组字一个样），
+ *     候着的框跟着这一段的末尾走 —— 输入法的候选窗是贴着它出的，所以就开在字旁边。上屏之后把焦点交给提示词框；
+ *   · 方向键、Esc 转给节点（vue-flow 用它们挪节点 / 取消选中），Tab 先把焦点还给节点再走：Tab 顺序和以前一样。
+ * 触屏、手写笔不这么做：聚焦一个输入框就会弹出软键盘 / 手写板，点一下节点不该这样 —— 要打字就点提示词框。
+ */
+const imeHostRef = ref<HTMLElement | null>(null)
+/** 候着的框在哪、多高（相对编辑区）：贴着提示词框里的光标 */
+const imeBox = ref({ x: 0, y: 0, h: 18 })
+/** 正在组的那一段字的下划线，一行一条（相对编辑区） */
+const imeMarks = ref<{ x: number; y: number; w: number; c: string }[]>([])
+let imeTa: HTMLTextAreaElement | null = null
+let imeComposing = false
+/** 这一次组字开始前提示词框里的字：组字过程中显示的是「它 + 正在组的那一段」 */
+let imeBase: { el: HTMLTextAreaElement; value: string } | null = null
+/** 这一次组字是给哪个节点的 */
+let imeNode = ''
+/** 最近一次是用什么操作的：mouse / touch / pen（指针按下），key（按键） */
+let lastInput = { type: '', at: 0 }
+/**
+ * 组字写进去的那个提示词框这会儿并没有焦点（焦点在候着的框上），但它得照「正在里面打字」的样子画：
+ * 布局 c 节点里的框没聚焦时收成两行，组的字一多就看不见了。所以组字期间告诉它一声（它只认 focus / blur 事件）。
+ */
+let imeLit: HTMLTextAreaElement | null = null
+function imeLight(el: HTMLTextAreaElement) {
+  if (imeLit === el || document.activeElement === el) return
+  imeUnlight()
+  imeLit = el
+  el.dispatchEvent(new FocusEvent('focus'))
+}
+function imeUnlight() {
+  const el = imeLit
+  imeLit = null
+  // 真的聚焦上去了就不用还原：它自己会收到真的 blur
+  if (el && el.isConnected && document.activeElement !== el) el.dispatchEvent(new FocusEvent('blur'))
+}
+/** Tab 交接的那一下：焦点先还给节点、再由浏览器往下走，这一下落在节点上不算「键盘走到了节点上」 */
+let imeHandoff = false
+let imeFrame = 0
+
+const selectedGenEl = () => {
+  const n = soleGenNode.value
+  return n ? edRef.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(n.id)}"]`) || null : null
+}
+/** 直接打字会落进去的那个框：和 focusGenPrompt 聚焦的是同一个（a 输入条 / b 属性面板 / c 节点里；没有提示词框的落到系统提示词） */
+function genPromptEl(): HTMLTextAreaElement | null {
+  if (!soleGenNode.value) return null
+  const scope = nodeLayout.value === 'c' ? selectedGenEl() : edRef.value?.querySelector('.gc, .gi')
+  return scope?.querySelector<HTMLTextAreaElement>('textarea.gf-textarea:not(:disabled)') || null
+}
+const imeFocused = () => !!imeHostRef.value && document.activeElement === imeHostRef.value
+/**
+ * 把候着的框摆到提示词框里的光标上 —— 没在组字时是字的末尾，正在组字时是这一段的末尾 —— 并画出这一段的下划线。
+ * 提示词框还没出来（面板收着、节点没画出来）就摆在节点左下角。
+ */
+function placeIme() {
+  const ed = edRef.value
+  if (!ed) return
+  const o = ed.getBoundingClientRect()
+  const el = genPromptEl()
+  if (el) {
+    const end = el.value.length
+    const from = imeComposing && imeBase?.el === el ? Math.min(imeBase.value.length, end) : end
+    const rects = textareaRangeRects(el, from, end)
+    const last = rects[rects.length - 1]
+    if (last) {
+      // 线的颜色就是框里字的颜色（各布局、聚焦与否不一样）
+      const c = from < end ? getComputedStyle(el).color : ''
+      imeMarks.value = from < end
+        ? rects.map((r) => ({ x: Math.round(r.left - o.left), y: Math.round(r.bottom - o.top) - 1, w: Math.max(1, Math.round(r.right - r.left)), c }))
+        : []
+      imeBox.value = { x: Math.round(last.right - o.left), y: Math.round(last.top - o.top), h: Math.max(12, Math.round(last.bottom - last.top)) }
+      return
+    }
+  }
+  imeMarks.value = []
+  const at = el || selectedGenEl()
+  if (!at) return
+  const r = at.getBoundingClientRect()
+  imeBox.value = { x: Math.round(r.left - o.left + 12), y: Math.round(r.bottom - o.top - 20), h: 18 }
+}
+/** 下一帧再摆一次（输入条的高度、位置这一拍可能刚变）；一帧里只摆一次 */
+function trackIme() {
+  if (imeFrame || typeof requestAnimationFrame === 'undefined') return
+  imeFrame = requestAnimationFrame(() => { imeFrame = 0; if (imeFocused()) placeIme() })
+}
+/** 该候着就候着：只选中了一个生成节点、焦点在画布上（不在任何控件里）、用的是鼠标或键盘 */
+function armIme() {
+  if (!imeTa || !soleGenNode.value || readOnly.value || anyOverlayOpen()) return
+  // 触屏 / 手写笔：聚焦输入框会弹出软键盘 / 手写板
+  if (lastInput.type !== 'mouse' && lastInput.type !== 'key') return
+  const active = document.activeElement
+  if (active && active !== document.body && active !== selectedGenEl()) return
+  // 刚拖着选了一段字（报错信息是可以选中复制的）：聚焦会把选区清掉
+  if (window.getSelection()?.toString()) return
+  placeIme()
+  imeTa.focus({ preventScroll: true })
+}
+function disarmIme() {
+  if (imeFocused()) imeTa?.blur()
+}
+/** 键盘把焦点带到了选中的那个生成节点上（Tab / Shift+Tab 走回来）：同样候着 */
+function onEdFocusIn(e: FocusEvent) {
+  if (imeHandoff || lastInput.type !== 'key') return
+  if (e.target && e.target === selectedGenEl()) armIme()
+}
+/** 把「组字前的字 + 这一段」写进提示词框（走它自己的 input，和手打的一样进节点数据） */
+function imeApply(text: string): HTMLTextAreaElement | null {
+  // 组到一半选中的节点换了（或没了）：这一段不写进别的节点里
+  if (!soleGenNode.value || soleGenNode.value.id !== imeNode) return null
+  const el = genPromptEl()
+  if (!el) return null
+  if (!imeBase || imeBase.el !== el) imeBase = { el, value: el.value }
+  if (imeComposing) imeLight(el)
+  const next = (imeBase.value + text).slice(0, el.maxLength > 0 ? el.maxLength : undefined)
+  if (el.value !== next) {
+    el.value = next
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  // 字是接在末尾的：框里的字多到要滚动时，滚到看得见这一段
+  el.scrollTop = el.scrollHeight
+  return el
+}
+function onImeStart() {
+  imeComposing = true
+  imeBase = null
+  imeNode = soleGenNode.value?.id || ''
+  // 面板被收起了（按过 Esc）：组字一开始就把它唤出来
+  if (soleGenNode.value && !panelNode.value && nodeLayout.value !== 'c') panelDismissedId.value = ''
+  placeIme()
+}
+function onImeUpdate(e: CompositionEvent) {
+  imeApply(e.data || '')
+  // 现在就摆（候选窗马上要用这个位置），下一帧、稍后再各摆一次：输入条会因为字多了一行而长高、挪位
+  placeIme()
+  trackIme()
+  window.setTimeout(() => { if (imeComposing) placeIme() }, 140)
+}
+function onImeEnd(e: CompositionEvent) {
+  imeComposing = false
+  imeMarks.value = []
+  const text = e.data || ''
+  const finish = () => {
+    const el = imeApply(text)
+    imeBase = null
+    if (imeTa) imeTa.value = ''
+    // 上屏了：后面的字直接打在提示词框里。组字是被「点了别处」打断的就不抢焦点
+    if (el && imeFocused()) {
+      el.focus({ preventScroll: true })
+      el.setSelectionRange(el.value.length, el.value.length)
+    }
+    imeUnlight()
+  }
+  // 面板这一拍才挂出来（刚被唤出）：等它
+  if (genPromptEl()) finish()
+  else void nextTick(finish)
+}
+function onImeInput() {
+  // 不是组字进来的字（粘贴、没接住的字符）：不留在这个看不见的框里
+  if (!imeComposing && imeTa) imeTa.value = ''
+}
+function onImeKeydown(e: KeyboardEvent) {
+  // 输入法的键：候选窗马上要出，先把位置摆准（输入条可能刚挪过）
+  if (e.isComposing || e.keyCode === 229) { if (!imeComposing) placeIme(); return }
+  const el = selectedGenEl()
+  if (!el) return
+  // Tab：从节点接着往下走，而不是从这个看不见的框
+  if (e.key === 'Tab') {
+    imeHandoff = true
+    el.focus({ preventScroll: true })
+    window.setTimeout(() => { imeHandoff = false }, 0)
+    return
+  }
+  // 回车在节点上本来就什么都不做（已经选中了）：别让它在这个看不见的框里换行
+  if (e.key === 'Enter') { e.preventDefault(); return }
+  // 方向键（挪节点）、Esc（取消选中）是 vue-flow 挂在节点自己身上的：转给它。
+  // 走到这儿的 Esc 是面板已经收起之后的那一下 —— 面板开着时的 Esc 在画布的捕获阶段就处理掉了
+  const arrow = e.key.startsWith('Arrow') && !e.ctrlKey && !e.metaKey && !e.altKey
+  if (arrow || e.key === 'Escape') {
+    if (arrow) e.preventDefault()
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, code: e.code, shiftKey: e.shiftKey, bubbles: true, cancelable: true }))
+  }
+}
+function onModalityKey() { lastInput = { type: 'key', at: Date.now() } }
+function onImeResize() { if (imeFocused()) trackIme() }
+onMounted(() => {
+  window.addEventListener('keydown', onModalityKey, true)
+  window.addEventListener('resize', onImeResize)
+  edRef.value?.addEventListener('focusin', onEdFocusIn)
+  const host = imeHostRef.value
+  if (!host || typeof host.attachShadow !== 'function') return
+  try {
+    const ta = document.createElement('textarea')
+    ta.tabIndex = -1
+    ta.rows = 1
+    ta.setAttribute('aria-label', t('canvas.typeHere'))
+    ta.setAttribute('autocomplete', 'off')
+    ta.setAttribute('autocapitalize', 'off')
+    ta.spellcheck = false
+    // 样式走 CSSOM（内容安全策略不许写 style 属性）；shadow root 里用不到外面的样式表
+    for (const [k, v] of Object.entries({ display: 'block', width: '2px', height: '100%', margin: '0', padding: '0', border: '0', outline: '0', resize: 'none', overflow: 'hidden', background: 'transparent', color: 'transparent', caretColor: 'transparent', font: '14px/18px sans-serif' })) {
+      ta.style.setProperty(k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), v)
+    }
+    ta.addEventListener('compositionstart', onImeStart)
+    ta.addEventListener('compositionupdate', onImeUpdate)
+    ta.addEventListener('compositionend', onImeEnd)
+    ta.addEventListener('input', onImeInput)
+    ta.addEventListener('keydown', onImeKeydown)
+    ta.addEventListener('blur', () => { imeMarks.value = []; if (!imeComposing) imeUnlight() })
+    host.attachShadow({ mode: 'closed' }).appendChild(ta)
+    imeTa = ta
+  } catch { /* 没有 shadow DOM 的环境：退回老办法，第一键按下时再聚焦 */ }
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onModalityKey, true)
+  window.removeEventListener('resize', onImeResize)
+  edRef.value?.removeEventListener('focusin', onEdFocusIn)
+  if (imeFrame) cancelAnimationFrame(imeFrame)
+  imeTa = null
+})
+watch(locale, () => { imeTa?.setAttribute('aria-label', t('canvas.typeHere')) })
+// 选中的换了（或没了）：该候着就候着，不该就放开
+watch(() => soleGenNode.value?.id || '', (id) => {
+  if (!id) { disarmIme(); return }
+  void nextTick(armIme)
+}, { flush: 'post' })
+watch(readOnly, (ro) => { if (ro) disarmIme() })
+// 候着的时候画布平移 / 缩放了：光标的位置跟着变
+watch(viewport, () => { if (imeFocused()) trackIme() })
 
 /**
  * 某个节点的实测宽高。生成节点量到的宽度和当前布局对不上，说明那是在另一种布局下量的
@@ -1025,10 +1517,17 @@ function measuredSize(id: string): { width: number; height: number } | null {
 const brandKits = useBrandKits()
 const canvasKitId = ref('')
 const resolveKit = (nodeData: any) => resolveNodeKit(brandKits.kits.value, canvasKitId.value, nodeData)
+/** 换这张画布套用的品牌包：记一笔历史，撤销一步回到原来那个、重做再套上（hist 的 extra 带着 canvasKitId 走） */
+function setCanvasKit(id: string) {
+  const next = id || ''
+  if (readOnly.value || next === canvasKitId.value) return
+  hist.record()
+  canvasKitId.value = next
+}
 /** 改一个节点的例外：'' = 跟随画布（把字段删掉，而不是存一个空串） */
 function setNodeKitOverride(nodeId: string, value: string) {
   const n = nodes.value.find((x) => x.id === nodeId)
-  if (!n || (n.data?.brandKitOverride || '') === value) return
+  if (readOnly.value || !n || (n.data?.brandKitOverride || '') === value) return
   hist.record()
   const { brandKitOverride: _drop, ...rest } = n.data || {}
   updateNode(nodeId, { data: value ? { ...rest, brandKitOverride: value } : rest })
@@ -1052,7 +1551,7 @@ async function onKitSaved(kit: BrandKit, created: boolean) {
   kitEditor.value.open = false
   await brandKits.load(true)
   // 在这张画布里新建的，多半就是要给这张画布用
-  if (created) canvasKitId.value = kit.id
+  if (created) setCanvasKit(kit.id)
 }
 function onKitRemoved() {
   kitEditor.value.open = false
@@ -1077,7 +1576,7 @@ function updateNodeDataTracked(id: string, patch: Record<string, any>) {
     runIds: [...new Set([d.taskId, ...(Array.isArray(d.taskIds) ? d.taskIds : [])].filter((x) => typeof x === 'string' && x))] as string[],
   }
   if (status === 'running') embed.emit('run:started', base)
-  else if (status === 'error') embed.emit('run:failed', { ...base, error: String(d.errorMsg || '') })
+  else if (status === 'error') embed.emit('run:failed', { ...base, error: storedRefusal(d.refusal) ? refusalText(storedRefusal(d.refusal)!).full : String(d.errorMsg || '') })
   else if (status === 'done') {
     embed.emit('run:finished', base)
     const outputs: { type: 'image' | 'video'; url: string }[] = []
@@ -1089,12 +1588,14 @@ function updateNodeDataTracked(id: string, patch: Record<string, any>) {
   }
 }
 
+/** 「运行所选」已经就整批问过一次「要不要重跑」：批里逐个节点发起运行的那一瞬间不再各问一遍（见 runSelected） */
+let rerunApproved = false
 const executor = useCanvasExecutor({
   nodes, edges, updateNodeData: updateNodeDataTracked,
   getNodeBrandKit: (nodeData) => resolveKit(nodeData).kit,
   getWorkflowId: () => currentId.value,
   persist: () => doSave(true),
-  confirmRerun,
+  confirmRerun: (info) => (rerunApproved ? Promise.resolve(true) : confirmRerun(info)),
 })
 provide(CANVAS_EXECUTOR_KEY, executor)
 // 切换界面语言：后端给出的运行失败原因跟着换
@@ -1103,7 +1604,11 @@ watch(locale, () => { void executor.refreshRunErrors() })
 /* ==================== 撤销 / 重做 ==================== */
 // 约定：每个会改变画布结构的操作，动手之前先调一次 hist.record()。
 // 为什么不挂 watch 自动记录，见 useCanvasHistory 顶部注释。
-const hist = useCanvasHistory({ nodes, edges })
+const hist = useCanvasHistory({
+  nodes, edges,
+  // 画布套用的品牌包不在节点里，但换它一样是「改了画布」：跟着快照一起记、一起还原
+  extra: { get: () => ({ kit: canvasKitId.value }), set: (v) => { canvasKitId.value = typeof v?.kit === 'string' ? v.kit : '' } },
+})
 
 /* ==================== 批量运行 ==================== */
 // 编排在 useCanvasBatch 里，这里只负责持有它 —— 与 executor 同一个模式：
@@ -1150,10 +1655,9 @@ const flowStyle = computed(() => (bgIsAuto.value ? {} : { background: bgSettings
 const bgVariant = computed(() => (bgSettings.value.pattern === 'dots' ? 'dots' : 'lines'))
 // 自定义底色时图案色跟着底色走（亮底加黑、暗底加白），而不是跟着主题走
 const flowPatternColor = computed(() => (bgIsAuto.value ? vfPattern.value : patternColorFor(bgSettings.value.color)))
-// 小地图：默认底下是设计稿那一套（令牌 --mini-*，跟主题）；自选底色时跟着底色的明暗走
-const miniMaskColor = computed(() => (bgIsAuto.value ? vfMiniMask.value : hexToRgba(bgSettings.value.color, 0.7)))
-const miniStrokeColor = computed(() => (bgIsAuto.value ? vfMiniStroke.value : miniStrokeColorFor(bgSettings.value.color)))
-const miniNodeColor = computed(() => (bgIsAuto.value ? vfMiniNode.value : miniNodeColorFor(bgSettings.value.color)))
+// 小地图：外框、遮罩、节点块、视口框都走「画布底」那组令牌（--mini-*），跟着底色的明暗走 —— 浅色主题里选了深底，
+// 小地图就是深色的一块。颜色由样式给（见下面 .vf-wrap 的几条）：传给组件的属性只是样式表到位之前的初值，
+// 属性里也解析不了画布容器上 [data-ground] 换过的取值。
 // 自选底色的明暗和主题相反时：直接画在底上的连线 / 组框 / 框选矩形按底色取值（见 design-tokens.css 的「画布底」）
 const groundTone = computed(() => groundToneFor(bgSettings.value, resolvedTheme.value))
 // 十字图案：画在 pattern 瓦片中心，瓦片边长 = gap × zoom
@@ -1175,6 +1679,7 @@ function openStylePanel() {
   stylePanelOpen.value = true
 }
 function onBgChange(v: CanvasBgSettings) {
+  if (readOnly.value) return
   bgSettings.value = normalizeCanvasBg(v)
 }
 
@@ -1183,6 +1688,8 @@ const layout = useAutoLayout({
   nodes, edges, getNodes, updateNode, fitView: fitFree,
   measure: measuredSize,
   nodeLayout: () => nodeLayout.value,
+  // 选中的全部节点：getNodes 只有视野里的那些，选区伸到视野外时不能漏
+  selected: () => getSelectedNodes.value,
 })
 const layoutUndo = ref({ visible: false, text: '' })
 let layoutUndoTimer: number | null = null
@@ -1227,6 +1734,7 @@ function confirmBigLayout(count: number): Promise<boolean> {
 // 这几个都是「先记一笔，没真动就把那笔丢掉」——
 // layout.* 返回 false 表示条件不满足什么也没做，留着空历史格会让 Ctrl+Z 空按一次
 async function runArrange() {
+  if (readOnly.value) return
   if (nodes.value.length < 2) { MessagePlugin.info(t('canvas.layout.needTwo')); return }
   if (nodes.value.length > LAYOUT_CONFIRM_THRESHOLD && !(await confirmBigLayout(nodes.value.length))) return
   hist.record()
@@ -1236,16 +1744,22 @@ async function runArrange() {
   else hist.drop()
 }
 async function runSnapToGrid() {
+  if (readOnly.value) return
   hist.record()
   if (await layout.snapToGrid()) showLayoutUndo(t('canvas.layout.snapped'))
   else { hist.drop(); MessagePlugin.info(t('canvas.layout.alreadySnapped')) }
 }
 async function runAlign(mode: AlignMode) {
+  if (readOnly.value || layout.running.value) return
   hist.record()
   if (await layout.alignSelected(mode)) showLayoutUndo(t('canvas.layout.aligned'))
-  else { hist.drop(); MessagePlugin.info(t('canvas.layout.alignNeedTwo')) }
+  else {
+    hist.drop()
+    MessagePlugin.info(t(layout.selectedCount.value >= 2 ? 'canvas.layout.alreadyAligned' : 'canvas.layout.alignNeedTwo'))
+  }
 }
 async function runDistribute(axis: DistributeAxis) {
+  if (readOnly.value || layout.running.value) return
   hist.record()
   if (await layout.distributeSelected(axis)) showLayoutUndo(t('canvas.layout.distributed'))
   else { hist.drop(); MessagePlugin.info(t('canvas.layout.distributeNeedThree')) }
@@ -1275,11 +1789,14 @@ const arrangedLayout = ref<NodeLayout | ''>('')
 const layoutNote = ref({ visible: false, text: '' })
 function dismissLayoutNote() {
   layoutNote.value = { visible: false, text: '' }
+  // 只读：只是把这句话收起来，不记「看过了」—— 那一笔是跟着画布存的
+  if (readOnly.value) return
   // 看过了：这张画布就算是在当前布局下排的，下次打开不再提（跟着画布存下去）
   arrangedLayout.value = nodeLayout.value
   scheduleAutoSave()
 }
 async function arrangeFromNote() {
+  if (readOnly.value) return
   dismissLayoutNote()
   await runArrange()
 }
@@ -1304,14 +1821,16 @@ async function checkLayoutFit(kind: 'switch' | 'open') {
   layoutNote.value = { visible: false, text: '' }
   if (!id) return
   if (kind === 'open' && arrangedLayout.value === nodeLayout.value) return
-  if (nodes.value.length < 2) { arrangedLayout.value = nodeLayout.value; return }
+  // 「在哪种布局下排的」这一笔是编辑器记的，不是人改的（ownWrite）：打开一张画布后检查完再记，人这时多半已经点过画布了
+  const noteArranged = () => ownWrite(() => { arrangedLayout.value = nodeLayout.value })
+  if (nodes.value.length < 2) { noteArranged(); return }
   if (kind === 'open') await waitForMeasured()
   else { await nextTick(); await waitForRelayout() }
   if (seq !== layoutCheckSeq || currentId.value !== id) return
   if (layout.hasOverlap()) {
     layoutNote.value = { visible: true, text: t(kind === 'switch' ? 'canvas.nodeLayout.overlapSwitched' : 'canvas.nodeLayout.overlapOpened') }
   } else {
-    arrangedLayout.value = nodeLayout.value
+    noteArranged()
     if (kind === 'switch') MessagePlugin.success(t('canvas.nodeLayout.switched', { name: t(`canvas.nodeLayout.${nodeLayout.value}`) }))
   }
 }
@@ -1327,7 +1846,10 @@ const MENU_ICONS = {
   grid:     '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
   alignL:   '<path d="M4 3v18"/><rect x="8" y="6" width="9" height="4" rx="1"/><rect x="8" y="14" width="13" height="4" rx="1"/>',
   alignC:   '<path d="M12 3v18"/><rect x="6" y="6" width="12" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/>',
+  alignR:   '<path d="M20 3v18"/><rect x="7" y="6" width="9" height="4" rx="1"/><rect x="3" y="14" width="13" height="4" rx="1"/>',
   alignT:   '<path d="M3 4h18"/><rect x="6" y="8" width="4" height="9" rx="1"/><rect x="14" y="8" width="4" height="13" rx="1"/>',
+  alignM:   '<path d="M3 12h18"/><rect x="6" y="6" width="4" height="12" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/>',
+  alignB:   '<path d="M3 20h18"/><rect x="6" y="7" width="4" height="9" rx="1"/><rect x="14" y="3" width="4" height="13" rx="1"/>',
   distH:    '<path d="M4 3v18M20 3v18"/><rect x="10" y="8" width="4" height="8" rx="1"/>',
   distV:    '<path d="M3 4h18M3 20h18"/><rect x="8" y="10" width="8" height="4" rx="1"/>',
   style:    '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/>',
@@ -1377,7 +1899,23 @@ const libraryMenuItems = computed<CanvasMenuItem[]>(() => ([
   { key: 'library', label: t('canvas.rail.library'), lc: 'folder', run: openLibrary },
   { key: 'templates', label: t('canvas.rail.templates'), lc: 'layout', run: openTemplates },
   { key: 'my-shares', label: t('canvas.rail.myShares'), lc: 'share', run: goToMyShares },
-] as CanvasMenuItem[]).filter((i) => (i.key === 'library' ? feat.assetLibrary : i.key === 'templates' ? feat.templates : feat.share)))
+  // 只读时没有「套用模板」这回事（那是往画布里加节点）
+] as CanvasMenuItem[]).filter((i) => (i.key === 'library' ? feat.assetLibrary : i.key === 'templates' ? feat.templates && !readOnly.value : feat.share)))
+
+/**
+ * 素材那一组入口叫什么：按真开着的那几项说。素材库和画布模板都在才叫「素材与模板」；只剩一项时就是那一项的名字
+ * —— 只开了模板的集成方不该在按钮上读到「素材」，反过来也一样。
+ */
+const libraryGroupLabel = computed(() => {
+  const items = libraryMenuItems.value
+  const key = libraryGroupLabelKey(items.map((i) => i.key))
+  return key ? t(key) : items[0]?.label || ''
+})
+/** 菜单里这一组的小标题：只有一项时不用再写一遍 */
+const libraryGroupTitle = computed(() => (libraryMenuItems.value.length > 1 ? libraryGroupLabel.value : ''))
+
+/** 只读时「更多」里还留着的：都是看的、拿走的、只影响我自己这边显示的 */
+const READ_ONLY_MENU_KEYS = new Set(['immersive', 'list', 'switch-proj', 'guide', 'shortcuts', 'download', 'search', 'library', 'my-shares'])
 
 /** 菜单项对应哪个功能开关；关掉的功能整项不出（没列在这里的项不受开关管） */
 const MENU_ITEM_FEATURE: Record<string, () => boolean> = {
@@ -1395,6 +1933,8 @@ const MENU_ITEM_FEATURE: Record<string, () => boolean> = {
 function offeredMenu(groups: { title: string; items: CanvasMenuItem[] }[]) {
   return groups
     .map((g) => ({ ...g, items: g.items.filter((i) => (MENU_ITEM_FEATURE[i.key] ? MENU_ITEM_FEATURE[i.key]() : !i.key.startsWith('node-layout-') || feat.nodeLayoutSwitch)) }))
+    // 只读：改画布的那些项整项不出，不是摆着置灰
+    .map((g) => (readOnly.value ? { ...g, title: g.items.some((i) => READ_ONLY_MENU_KEYS.has(i.key) || i.key.startsWith('node-layout-')) ? g.title : '', items: g.items.filter((i) => READ_ONLY_MENU_KEYS.has(i.key) || i.key.startsWith('node-layout-')) } : g))
     .filter((g) => g.items.length)
 }
 
@@ -1463,7 +2003,10 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
     const items: CanvasMenuItem[] = [
       { key: 'align-left', label: t('canvas.menu.alignLeft'), icon: MENU_ICONS.alignL, disabled: busy, run: () => runAlign('left') },
       { key: 'align-hcenter', label: t('canvas.menu.alignHCenter'), icon: MENU_ICONS.alignC, disabled: busy, run: () => runAlign('hcenter') },
+      { key: 'align-right', label: t('canvas.menu.alignRight'), icon: MENU_ICONS.alignR, disabled: busy, run: () => runAlign('right') },
       { key: 'align-top', label: t('canvas.menu.alignTop'), icon: MENU_ICONS.alignT, disabled: busy, run: () => runAlign('top') },
+      { key: 'align-vcenter', label: t('canvas.menu.alignVCenter'), icon: MENU_ICONS.alignM, disabled: busy, run: () => runAlign('vcenter') },
+      { key: 'align-bottom', label: t('canvas.menu.alignBottom'), icon: MENU_ICONS.alignB, disabled: busy, run: () => runAlign('bottom') },
     ]
     if (sel >= 3) {
       items.push(
@@ -1494,7 +2037,7 @@ const canvasMenuGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(
     })),
   })
 
-  groups.push({ title: t('canvas.pal.library'), items: libraryMenuItems.value })
+  groups.push({ title: libraryGroupTitle.value, items: libraryMenuItems.value })
 
   return offeredMenu(groups)
 })
@@ -1559,7 +2102,8 @@ function openImageEditor(url: string, nodeId: string): Promise<ImageEditorResult
   editorState.value = { open: true, url, nodeId }
   return new Promise((resolve) => { editorResolve = resolve })
 }
-provide(CANVAS_IMAGE_EDITOR_KEY, { open: (opts) => openImageEditor(opts.url, opts.nodeId) })
+// 功能关着（features.imageEditor）就不 provide：图片节点上那颗「裁剪 / 旋转」按 inject 到没有决定出不出
+if (feat.imageEditor) provide(CANVAS_IMAGE_EDITOR_KEY, { open: (opts) => openImageEditor(opts.url, opts.nodeId) })
 
 function closeEditor(result: ImageEditorResult | null) {
   editorState.value = { ...editorState.value, open: false }
@@ -1574,7 +2118,7 @@ function closeEditor(result: ImageEditorResult | null) {
  */
 function applyEditReplace(nodeId: string, url: string) {
   const n = nodes.value.find((x) => x.id === nodeId)
-  if (!n) return
+  if (!n || readOnly.value) return
   // 裁剪/旋转也要能撤。注意对生成节点这一记是白记的 —— 那种节点的 imageUrl
   // 是产物，撤销时刻意保留现场（见 useCanvasHistory 顶部），回退得靠下面
   // 这份 editHistory。输入类图片节点才是这一记真正管用的地方，也是常见情形。
@@ -1600,6 +2144,8 @@ function applyEditAsNewNode(nodeId: string, url: string) {
 }
 
 function onEditorDone(payload: ImageEditorResult) {
+  // 编辑器开着的时候丢了编辑权：结果不往画布上写
+  if (readOnly.value) { closeEditor(null); return }
   const nodeId = editorState.value.nodeId
   if (payload.mode === 'replace') applyEditReplace(nodeId, payload.url)
   else applyEditAsNewNode(nodeId, payload.url)
@@ -1610,8 +2156,8 @@ function onEditorDone(payload: ImageEditorResult) {
 /* ==================== 工具面板 ==================== */
 // 「+」是全部节点；下面按类别各一颗按钮，点开是这一类的节点；再往后是素材库那组入口、分享和「更多」。
 // 只有一种节点的类别（文本）点一下直接加。手机上展开层变成底部抽屉。
-type FlyKey = '' | 'all' | 'lib' | 'text' | 'image' | 'video' | 'chat' | 'tools'
-const PAL_CATS: { key: Exclude<FlyKey, '' | 'all' | 'lib'>; icon: string; kinds: NodeKind[] }[] = [
+type FlyKey = '' | 'all' | 'lib' | 'over' | 'text' | 'image' | 'video' | 'chat' | 'tools'
+const PAL_CATS: { key: Exclude<FlyKey, '' | 'all' | 'lib' | 'over'>; icon: string; kinds: NodeKind[] }[] = [
   { key: 'text', icon: 'text', kinds: ['text'] },
   { key: 'image', icon: 'image', kinds: ['image', 'image-collection', 'image-gen', 'image-edit'] },
   { key: 'video', icon: 'video', kinds: ['video', 'video-gen', 'video-edit'] },
@@ -1659,30 +2205,158 @@ const edRef = ref<HTMLElement | null>(null)
 const palRef = ref<HTMLElement | null>(null)
 const palMenuRef = ref<HTMLElement | null>(null)
 const palMenu = ref<{ open: boolean; style: Record<string, string> }>({ open: false, style: {} })
-let gripTapAt = 0
 const {
   xy: palXY, rect: palRect, orient: palOrient, phone: palPhone, ready: palReady, dragging: palDragging, isDefault: palIsDefault,
-  layout: layoutPal, onDown: palDown, onMove: palMove, onUp: palUp, nudge: nudgePal, toggleOrient, reset: resetPal,
+  budget: palBudget, layout: layoutPal, onDown: palDown, onMove: palMove, onUp: palUp, nudge: nudgePal, toggleOrient, reset: resetPal,
 } = usePaletteDock({
   host: edRef,
   el: palRef,
   // 属性面板有入场动画，从 DOM 量会偏：按它的固定尺寸算（右 12、上下 12、宽 INSPECTOR_WIDTH）
   extraObstacles: () => {
     const host = edRef.value
-    if (!host || inspectorInset.value <= 0) return []
+    // 贴底的抽屉开着：面板要是正好在它底下（横排贴在底边、竖排伸到底），挪到最近的空地；抽屉关了回到记着的位置
+    const sheet = panelSheet.value ? [panelSheet.value] : []
+    if (!host || inspectorInset.value <= 0) return sheet
     const W = host.clientWidth
-    return [{ l: W - 12 - INSPECTOR_WIDTH, t: 12, r: W - 12, b: host.clientHeight - 12 }]
+    return [...sheet, { l: W - 12 - INSPECTOR_WIDTH, t: 12, r: W - 12, b: host.clientHeight - 12 }]
   },
+  // 眼下这些按钮一颗不收时有多长（palGroups 在下面才定义；这里只在摆放的时候才读）
+  lengths: () => ({ full: palLength(palGroups.value, false), compact: palLength(palGroups.value, true), floor: palFloor(palGroups.value) }),
   onDragStart: () => closeMenus(),
-  // 把手上点一下开小菜单；紧接着再点一下（双击）= 复位
-  onGripTap: () => {
-    const now = Date.now()
-    if (now - gripTapAt < 350) { gripTapAt = 0; resetPalette(); return }
-    gripTapAt = now
-    togglePalMenu()
-  },
+  // 把手上点一下开小菜单；鼠标紧接着再点一下（双击）= 复位
+  onGripTap: () => togglePalMenu(),
+  onGripDouble: () => resetPalette(),
 })
+
+/* ---- 面板上摆哪些按钮 ---- */
+// 分组的顺序就是排布的顺序，组与组之间一条分隔线。面板在它该待的地方真放不下时（usePaletteDock 的 planBudget / fitPalette）：
+// 先换小一号，再按 fold 从大到小收进「更多工具」：工具 → 对话 → 视频 → 图片 → 文本 → 素材库 → 分享。
+// 各类节点先收：「+」一直留在面板上，里面有全部节点，收掉的只是少点一下的捷径；素材库和分享是各自唯一的入口，最后才收。
+const PAL_FOLD: Record<string, number> = { tools: 7, chat: 6, video: 5, image: 4, text: 3, lib: 2, share: 1 }
+// 团队画布（有可见范围）也出分享钮；这里比 teamCanvas 的定义早，直接读它背后的那一项
+const palShare = computed(() => feat.share || (!host && !!collab.meta.value.visibility))
+/**
+ * 那颗按钮叫什么，要和点开之后看到的对得上：个人画布只有「创建分享链接」；团队画布是「分享与权限」两个页签；
+ * 对外链接关着（features.share）的团队画布上只剩「团队权限」—— 这时不能还叫「创建分享链接」。
+ */
+const shareButtonLabel = computed(() => t(shareButtonLabelKey({ share: feat.share, team: !host && !!collab.meta.value.visibility, readOnly: palReadOnly.value })))
+const palExit = computed(() => appStore.immersive && feat.immersive)
+const palGroups = computed<PalPart[][]>(() => [
+  palPhone.value ? [] : [{ key: 'grip', kind: 'grip' }, { key: 'turn', kind: 'turn' }],
+  // 只读：加节点的那几颗换成一枚「只读」标记，后面只留素材库、分享、更多
+  palReadOnly.value ? [{ key: 'ro' }] : [{ key: 'all' }],
+  palReadOnly.value ? [] : palCats.value.map((c) => ({ key: c.key, fold: PAL_FOLD[c.key] })),
+  libraryMenuItems.value.length ? [{ key: 'lib', fold: PAL_FOLD.lib }] : [],
+  [...(palShare.value ? [{ key: 'share', fold: PAL_FOLD.share }] : []), { key: 'more' }, ...(palExit.value ? [{ key: 'exit' }] : [])],
+])
+const palFit = computed<PalFit>(() => (palPhone.value ? { compact: false, folded: [] } : fitPalette(palGroups.value, palBudget.value)))
+const palFolded = computed(() => new Set(palFit.value.folded))
+/** 提示朝哪边出：竖排朝右（贴着右边时指令自己会翻到左边），横排 / 手机朝下 */
+const palTipSide = computed(() => (palOrient.value === 'v' ? 'right' as const : 'bottom' as const))
+
+interface PalItem {
+  key: string
+  hr?: boolean
+  title?: string
+  /** LcIcon 的图标名；没有就用 svg（<svg> 里面那一段） */
+  icon?: string
+  svg?: string
+  svgClass?: string
+  on?: boolean
+  popup?: 'menu' | 'true'
+  disabled?: boolean
+  /** 只读标记：不是工具，点了说明现在能做什么 */
+  ro?: boolean
+  run: () => void
+}
+const PAL_OVER_ICON = '<polyline points="7 6 12 11 17 6"/><polyline points="7 13 12 18 17 13"/>'
+/** 把手和方向开关之后的那一串：按钮和分隔线，已经去掉收起来的 */
+const palShown = computed<PalItem[]>(() => {
+  const gone = palFolded.value
+  const cats = palCats.value
+  const def = (key: string): PalItem | null => {
+    if (key === 'all') return { key, title: t('canvas.rail.addNode'), icon: 'plus', on: fly.value === 'all', popup: 'true', run: () => toggleFly('all') }
+    if (key === 'ro') return { key, title: t('canvas.readonly.palTip'), icon: 'eye', ro: true, run: explainReadOnly }
+    if (key === 'lib') {
+      const items = libraryMenuItems.value
+      const title = palReadOnly.value && items.some((i) => i.key === 'library') ? t('canvas.readonly.library') : libraryGroupLabel.value
+      // 只剩一项：点一下直接开它，不再多弹一层只有一行的清单
+      if (items.length === 1) return { key, title, icon: items[0].lc || 'folder', run: () => { closeMenus(); items[0].run() } }
+      return { key, title, icon: 'folder', on: fly.value === 'lib', popup: 'true', run: () => toggleFly('lib') }
+    }
+    if (key === 'share' && palReadOnly.value) return { key, title: shareButtonLabel.value, icon: 'share', run: openShareFromPal }
+    if (key === PAL_OVERFLOW) {
+      return {
+        key, title: t('canvas.pal.overflow'), svg: PAL_OVER_ICON, svgClass: palOrient.value === 'h' ? 'pal-over-h' : '',
+        on: fly.value === 'over', popup: 'true', run: () => toggleFly('over'),
+      }
+    }
+    if (key === 'share') return { key, title: shareButtonLabel.value, icon: 'share', disabled: saving.value || publishing.value, run: openShareFromPal }
+    if (key === 'more') return { key, title: t('canvas.topbar.more'), icon: 'more', on: moreMenu.value.open, popup: 'menu', run: toggleMoreMenu }
+    // 沉浸式里没有外壳导航：留一颗看得见的退出钮
+    if (key === 'exit') return { key, title: t('canvas.menu.exitImmersive'), svg: MENU_ICONS.exitFull, run: () => appStore.setImmersive(false) }
+    const c = cats.find((x) => x.key === key)
+    return c ? { key, title: c.title, icon: c.icon, on: fly.value === c.key, popup: c.kinds.length > 1 ? 'true' : undefined, run: () => onPalClick(c) } : null
+  }
+  const out: PalItem[] = []
+  palGroups.value.slice(1).forEach((group, gi) => {
+    const keys = group.map((p) => p.key).filter((k) => !gone.has(k))
+    // 展开钮接在类别那一组的末尾
+    if (gi === 1 && gone.size) keys.push(PAL_OVERFLOW)
+    const items = keys.map(def).filter((x): x is PalItem => !!x)
+    if (!items.length) return
+    if (out.length) out.push({ key: 'hr-' + gi, hr: true, run: () => {} })
+    out.push(...items)
+  })
+  return out
+})
+// 收起 / 展开的那一刻：开着的展开层对着的按钮可能已经不在面板上了，收掉
+watch(() => palFit.value.folded.join(), () => { if (fly.value) fly.value = '' })
 const turnLabel = computed(() => (palOrient.value === 'v' ? t('canvas.pal.toHorizontal') : t('canvas.pal.toVertical')))
+/**
+ * 只读提示条放哪：标题块右边剩下的那一段里居中；剩得不够宽（窄窗口、长句子）就换到第二行，
+ * 手机上再让开标题块下面那一横条工具面板。标题块的宽度跟着名字、标签变，所以量着来。
+ */
+const titleRef = ref<HTMLElement | null>(null)
+const barPlace = ref<{ top: number; left: number; right: number }>({ top: 16, left: 16, right: 16 })
+const BAR_MIN_ROOM = 460
+function placeBar() {
+  const ed = edRef.value
+  if (!ed) return
+  const title = titleRef.value
+  const left = title ? title.offsetLeft + title.offsetWidth + 12 : 16
+  // 属性面板（布局 b）开着：右边那一条是它的，提示条不伸到它底下去（按钮会被盖住）
+  const right = 16 + inspectorInset.value
+  let next: { top: number; left: number; right: number }
+  if (ed.clientWidth - left - right >= BAR_MIN_ROOM) next = { top: title ? title.offsetTop : 16, left, right }
+  else {
+    const row2 = title ? title.offsetTop + title.offsetHeight + 8 : 16
+    // 手机：工具面板是标题块下面固定的一横条，提示条排在它下面；桌面：面板默认竖在左边，让开那一列
+    const pal = palPhone.value ? palRef.value : null
+    next = palPhone.value
+      ? { top: pal ? pal.offsetTop + pal.offsetHeight + 8 : row2, left: 8, right: 8 }
+      : { top: row2, left: feat.palette ? 76 : 16, right }
+  }
+  const cur = barPlace.value
+  if (cur.top !== next.top || cur.left !== next.left || cur.right !== next.right) barPlace.value = next
+}
+// 属性面板开合：提示条的右边界跟着变
+watch(inspectorInset, () => { void nextTick(placeBar) }, { flush: 'post' })
+let barObserver: ResizeObserver | null = null
+watch([titleRef, edRef, palRef, palPhone, toolsRef], () => {
+  barObserver?.disconnect()
+  if (typeof ResizeObserver === 'undefined') { placeBar(); return }
+  barObserver = new ResizeObserver(() => { placeBar(); syncPaneWidth() })
+  for (const el of [titleRef.value, edRef.value, palRef.value, toolsRef.value]) if (el) barObserver.observe(el)
+  placeBar()
+}, { flush: 'post', immediate: true })
+onBeforeUnmount(() => { barObserver?.disconnect(); barObserver = null })
+
+/** 只读标记点一下：说清楚现在能做什么、不能做什么（触屏上没有悬停提示） */
+function explainReadOnly() {
+  closeMenus()
+  MessagePlugin.info(t('canvas.readonly.explain'))
+}
 function turnPalette() {
   closeMenus()
   toggleOrient()
@@ -1735,10 +2409,15 @@ function popNear(key: string, w: number, h: number): { x: number; y: number; max
   if (palOrient.value === 'v') {
     const roomR = W - P.r - GAP - EDGE, roomL = P.l - GAP - EDGE
     const right = roomR >= w || roomR >= roomL
-    const maxH = H - EDGE * 2
+    const x = clampNum(right ? P.r + GAP : P.l - GAP - w, EDGE, W - w - EDGE)
+    // 编辑区矮、弹出层长的时候它会往上顶：顶到标题块下面为止，不盖住画布的名字和保存状态
+    let top = EDGE
+    const title = titleRef.value
+    if (title && x < title.offsetLeft + title.offsetWidth + GAP && x + w > title.offsetLeft - GAP) top = Math.max(top, title.offsetTop + title.offsetHeight + GAP)
+    const maxH = Math.max(120, H - EDGE - top)
     return {
-      x: clampNum(right ? P.r + GAP : P.l - GAP - w, EDGE, W - w - EDGE),
-      y: clampNum(by - 6, EDGE, H - EDGE - Math.min(h, maxH)),
+      x,
+      y: clampNum(by - 6, top, Math.max(top, H - EDGE - Math.min(h, maxH))),
       maxH,
     }
   }
@@ -1753,10 +2432,54 @@ function popNear(key: string, w: number, h: number): { x: number; y: number; max
 }
 // 面板挪了 / 换了方向 / 窗口变了：开着的弹出层跟过去
 watch([palRect, palOrient, palPhone], () => { void nextTick(() => { placeFly(); placeMore(); placePalMenu() }) })
-// 属性面板开合、提示条出现 / 消失：面板重新找位置（它们不改编辑区的尺寸，ResizeObserver 不会报）
-watch([inspectorInset, () => noModels.value], () => { void nextTick(layoutPal) }, { flush: 'post' })
-/** 生成队列圆钮要绕开的矩形 */
-const palAvoid = computed<Rect[]>(() => (palRect.value ? [palRect.value] : []))
+// 属性面板开合、提示条出现 / 消失、贴底的抽屉开合、只读提示条出现 / 消失：面板重新找位置
+// （它们不改编辑区的尺寸，ResizeObserver 不会报）
+watch([inspectorInset, () => noModels.value, miniCramped, panelSheet, () => collab.mode.value, barPlace], () => { void nextTick(layoutPal) }, { flush: 'post' })
+/**
+ * 生成节点的面板开着（贴底的抽屉，或布局 b 右缘的属性面板）、编辑区又小：工具面板找不到放得下的空地（顶上是标题块，
+ * 下面 / 右边是面板），只能留在原位，被面板压住、或者被挤到底部工具条上。这时先把它收起来 —— 人正在面板里改这个节点，
+ * 面板一关（Esc）工具面板就回来。收起来的时候它不算占地方（别的悬浮块不用绕它）。
+ * 没有面板开着时不收：那时放不下靠的是把面板收紧（fitPalette）。
+ */
+const hitRect = (a: Rect, b: Rect) => Math.min(a.r, b.r) - Math.max(a.l, b.l) > 1 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 1
+const palCovered = computed(() => {
+  const p = palRect.value, ed = edRef.value
+  if (!p || !ed || palPhone.value) return false
+  const blocks: Rect[] = []
+  if (panelSheet.value) blocks.push(panelSheet.value)
+  if (inspectorInset.value > 0) blocks.push({ l: ed.clientWidth - 12 - INSPECTOR_WIDTH, t: 12, r: ed.clientWidth - 12, b: ed.clientHeight - 12 })
+  if (!blocks.length) return false
+  // 面板开着时底部工具条会往左让、标题块会收窄：工具面板要是找不到空地、压在它们身上也算
+  return [...blocks, ...rectsIn(ed, '.ed-tools, .ed-title, .clb')].some((b) => hitRect(p, b))
+})
+/** 输入条、多选工具条要绕开的矩形：工具面板眼下的位置 */
+const palAvoid = computed<Rect[]>(() => (palRect.value && !palCovered.value ? [palRect.value] : []))
+/**
+ * 「撤销整理」/「节点互相压住了」那条小条默认浮在底部工具条上面。工具面板要是正好停在那儿（横排拖到了底边），
+ * 小条升到面板上面去：它是临时出现的那一个，不让常驻的面板为它跳开。
+ */
+const undoStyle = computed(() => {
+  if (palPhone.value) return undefined
+  const H = paneHeight.value, room = paneWidth.value - inspectorInset.value, mid = room / 2
+  let bottom = 0
+  // 小地图开着（只读时底部工具条很短，窄窗口里小地图也在）而编辑区不够宽：小条居中、最宽五百多，会伸到小地图上面去 ——
+  // 升到小地图上面（小地图：离底 20、高 104）
+  if (feat.minimap && !miniCramped.value && room < 580 + 2 * MINI_STRIP) bottom = 20 + 104 + 12
+  const p = palCovered.value ? null : palRect.value
+  if (p) {
+    // 小条：离底 80（或者上面算出来的那个数）、高 36、居中
+    const base = bottom || 80
+    const band: Rect = { l: mid - 290, r: mid + 290, t: H - base - 36 - 8, b: H - base + 8 }
+    if (hitRect(p, band)) {
+      const above = Math.round(H - p.t + 12)
+      // 面板很高（竖排横在中间）：升上去就顶到标题块了，那就不动
+      if (H - above - 36 > 76) bottom = above
+    }
+  }
+  return bottom ? { bottom: bottom + 'px' } : undefined
+})
+/** 生成队列圆钮要绕开的：工具面板，加上贴底的抽屉（开着的话） */
+const queueAvoid = computed<Rect[]>(() => [...palAvoid.value, ...(panelSheet.value ? [panelSheet.value] : [])])
 
 /* ---- 面板的键盘：方向键在按钮之间走（竖排上下、横排左右），Tab 只停一次 ---- */
 const palButtons = () => Array.from(palRef.value?.querySelectorAll<HTMLButtonElement>('button') || [])
@@ -1789,7 +2512,8 @@ function onPalKeydown(e: KeyboardEvent) {
   list[to].scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 // 按钮的数量会变（手机上没有把手、沉浸式多一颗退出钮）：重新定 Tab 停在哪
-watch([palPhone, () => appStore.immersive, palOrient], () => { void nextTick(() => syncPalTabStops()) }, { flush: 'post' })
+// （不直接看 palShown：它里面读的 saving / publishing 定义在后面，这里一建监听就会去读）
+watch([palPhone, () => appStore.immersive, palOrient, () => palFit.value.folded.join(), () => palGroups.value.flat().length], () => { void nextTick(() => syncPalTabStops()) }, { flush: 'post' })
 onMounted(() => syncPalTabStops())
 
 /**
@@ -1799,17 +2523,25 @@ onMounted(() => syncPalTabStops())
  */
 function chromeInsets(W: number, H: number): { l: number; t: number; r: number; b: number } {
   layoutPal()
-  const p = palRect.value
+  // 被面板挤得收起来的工具面板不占地方
+  const p = palCovered.value ? null : palRect.value
+  // 顶上那几排实际到哪儿为止（edTop：标题块、手机上面板那一横条，加上只读提示条 / 没有模型的提示 —— 窄窗口里提示条
+  // 排在第二行，有人正在编辑时还会折成三行）。以前只按标题块和面板算：只读的人在手机上从搜索 / 队列跳到一个节点，
+  // 节点的上半截和输出端口正好压在提示条底下。
+  // 这里现量，不用 edTop 记着的那个数：它半秒才量一次，提示条刚出现 / 刚折成三行的那半秒里（载入后拿不到锁的那一下、
+  // 对方刚开始编辑）记着的还是旧的，这时候「适应屏幕」「定位到节点」照旧数算，节点就又压到提示条底下去了
+  const top = edRef.value ? topRowsBottom(rectsIn(edRef.value, TOP_ROWS)) : edTop.value
   // 手机：顶上是标题块 + 面板那一横条；底边除了工具条，还有它上面右角的生成队列圆钮
-  if (palPhone.value) return { l: 12, t: Math.max(60, (p ? p.b : 102) + 6), r: 12, b: 126 }
+  if (palPhone.value) return { l: 12, t: Math.max(60, (p ? p.b : 102) + 6, top + 6), r: 12, b: 126 }
   // 顶上让给标题块；底边多让一截：左下角的小地图比工具条高（右下角的圆钮也在这一条里）；
   // 右边：属性面板开着时把它的宽度让出来
-  const ins = { l: 24, t: 76, r: 24 + inspectorInset.value, b: 140 }
+  const ins = { l: 24, t: Math.max(76, top + 16), r: 24 + inspectorInset.value, b: 140 }
   if (!p) return ins
   if (palOrient.value === 'v') {
     if (p.l <= 18) ins.l = p.r + 24
     else if (p.r >= W - inspectorInset.value - 18) ins.r = W - p.l + 24
-  } else if (p.t <= 78) {
+  } else if (p.t <= Math.max(78, top + 18)) {
+    // 横排在顶上那一带：贴着上边，或者被标题块 / 提示条挤到它们下面那一行
     ins.t = Math.max(ins.t, p.b + 16)
   } else if (p.b >= H - 142) {
     ins.b = Math.max(ins.b, H - p.t + 16)
@@ -1821,7 +2553,8 @@ const nodeMenuItem = (kind: NodeKind): CanvasMenuItem => ({
 })
 const flyTitle = computed(() => {
   if (fly.value === 'all') return t('canvas.addPanel.title')
-  if (fly.value === 'lib') return t('canvas.pal.library')
+  if (fly.value === 'lib') return libraryGroupLabel.value
+  if (fly.value === 'over') return t('canvas.pal.overflow')
   return fly.value ? t(PAL_TITLE_KEYS[fly.value]) : ''
 })
 const flyGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
@@ -1829,31 +2562,65 @@ const flyGroups = computed<{ title: string; items: CanvasMenuItem[] }[]>(() => {
     return [
       ...NODE_MENU_LAYOUT.map((g) => ({ title: t(g.titleKey), items: g.kinds.filter((k) => offeredKinds.value.has(k)).map(nodeMenuItem) })),
       { title: t('canvas.menu.groupTitle'), items: [frameMenuItem.value] },
-      { title: t('canvas.pal.library'), items: libraryMenuItems.value },
+      { title: libraryGroupTitle.value, items: libraryMenuItems.value },
     ].filter((g) => g.items.length)
   }
   if (fly.value === 'lib') return [{ title: '', items: libraryMenuItems.value }]
+  const catItems = (cat: { key: string; kinds: NodeKind[] }) => {
+    const items = cat.kinds.map(nodeMenuItem)
+    // 「组」不是往画布上加一个节点，而是把选中的节点圈起来 —— 归在工具里
+    if (cat.key === 'tools') items.push(frameMenuItem.value)
+    return items
+  }
+  // 「更多工具」：面板上放不下、收起来的那几颗，按它们原来的顺序一组一组列出来
+  if (fly.value === 'over') {
+    const gone = palFolded.value
+    const groups = palCats.value.filter((c) => gone.has(c.key)).map((c) => ({ title: c.title, items: catItems(c) }))
+    if (gone.has('lib')) groups.push({ title: libraryGroupTitle.value, items: libraryMenuItems.value })
+    if (gone.has('share')) {
+      groups.push({ title: '', items: [{ key: 'share', label: shareButtonLabel.value, lc: 'share', disabled: saving.value || publishing.value, run: openShareFromPal }] })
+    }
+    return groups
+  }
   const cat = palCats.value.find((c) => c.key === fly.value)
-  if (!cat) return []
-  const items = cat.kinds.map(nodeMenuItem)
-  // 「组」不是往画布上加一个节点，而是把选中的节点圈起来 —— 归在工具里
-  if (cat.key === 'tools') items.push(frameMenuItem.value)
-  return [{ title: '', items }]
+  return cat ? [{ title: '', items: catItems(cat) }] : []
 })
 function runFlyItem(item: CanvasMenuItem) {
   if (item.disabled) return
+  // 展开层马上要收起：焦点先回到打开它的那颗面板按钮上——这一项要是开了弹窗（素材库、画布模板），弹窗关掉后焦点回到那儿
+  const active = document.activeElement
+  if (active && flyRef.value?.contains(active)) flyRef.value.ownerDocument.querySelector<HTMLElement>('.ed-pal .lc-tb.on')?.focus({ preventScroll: true })
   fly.value = ''
   item.run()
 }
 
 // 右键菜单
 const contextMenu = ref({ open: false, x: 0, y: 0, nodeId: '' })
+const ctxMenuRef = ref<HTMLElement | null>(null)
+/** 这一次是键盘叫出来的（菜单键 / Shift+F10）：焦点进菜单，收起后还给节点 */
+let ctxByKey = false
+const ctxItems = () => Array.from(ctxMenuRef.value?.querySelectorAll<HTMLElement>('button:not(:disabled)') || [])
+/** 菜单里 ↑ ↓ Home End 在各项之间走；Tab 走出去就收起 */
+function onCtxMenuKey(e: KeyboardEvent) {
+  const list = ctxItems()
+  if (!list.length) return
+  if (e.key === 'Tab') { e.preventDefault(); closeContextMenuToNode(); return }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+  e.preventDefault(); e.stopPropagation()
+  const i = list.indexOf(document.activeElement as HTMLElement)
+  const to = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length
+  list[to].focus()
+}
+/** Esc / Tab 收起右键菜单（焦点怎么还，见 closeContextMenu） */
+function closeContextMenuToNode() { closeContextMenu() }
 
 /**
  * 右键一个生成节点时的「品牌包」几项：跟随画布 / 此节点不套用 / 单独用某一个。
  * 一个品牌包都没有、节点也没有例外时不出这一组。
  */
 const contextKitOptions = computed<{ value: string; label: string; on: boolean }[] | null>(() => {
+  // 品牌包整个关着（features.brandKit）、或者只读（换品牌包是改画布）：不出这一组
+  if (!feat.brandKit || readOnly.value) return null
   const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
   if (!n || !BRAND_KIT_NODE_TYPES.includes(n.type as string)) return null
   const kits = brandKits.kits.value
@@ -1937,27 +2704,44 @@ const nodeMenuGroups = computed<{ title: string; items: NodeMenuItem[] }[]>(() =
   })).filter((g) => g.items.length))
 
 function onNodeContextMenu({ event, node }: { event: any; node: Node }) {
+  // 只读：菜单里只有「看」的那几项（看原图 / 下载 / 任务详情）。这个节点一项都没有就不弹空菜单，
+  // 也不拦浏览器自己的右键菜单 —— 选中的字要能右键复制、图片要能右键另存
+  if (readOnly.value && !viewableInfo(node.id)) { closeMenus(); return }
   event.preventDefault?.()
   closeAddMenu()
   // 右键一个还没选中的组，先把它选上：「合并为一组」「移出组」都是按选中集合
   // 干活的，不选上这几项就永远是灰的。已经在选中集里就别动，免得把用户
   // 辛苦框好的一片给清了。
-  if (node.type === 'frame') {
+  if (node.type === 'frame' && !readOnly.value) {
     const g = getNodes.value.find((n: any) => n.id === node.id)
     // removeSelectedNodes 要显式传要取消的那批，没有无参重载
     if (g && !g.selected) { removeSelectedNodes(getSelectedNodes.value); addSelectedNodes([g]) }
   }
   // 夹进视口：在屏幕右边 / 底边右键时菜单别开到外面去
-  if (readOnly.value) return
   const fr = frame()
-  const x = Math.max(8, Math.min((event.clientX ?? event.touches?.[0]?.clientX ?? 0) - fr.x, fr.w - 288))
-  const y = Math.max(8, Math.min((event.clientY ?? event.touches?.[0]?.clientY ?? 0) - fr.y, fr.h - 380))
+  /**
+   * 键盘叫出来的（菜单键 / Shift+F10，焦点在节点上）：这个事件没有鼠标按键（button 不是 2），坐标是浏览器按焦点元素估的、
+   * 有的环境干脆是 (0, 0)。菜单贴着节点的左上角开，焦点进菜单的第一项 —— 不然菜单开在别处、键盘也走不进去。
+   * 触屏长按也是没有右键的 contextmenu，但它带着手指的位置（pointerType 是 touch / pen，或者有 touches）。
+   */
+  const byTouch = !!event.touches || event.pointerType === 'touch' || event.pointerType === 'pen'
+  ctxByKey = !byTouch && event.button !== 2
+  let cx = event.clientX ?? event.touches?.[0]?.clientX ?? 0
+  let cy = event.clientY ?? event.touches?.[0]?.clientY ?? 0
+  if (ctxByKey) {
+    const el = edRef.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(node.id)}"]`)
+    const r = el?.getBoundingClientRect()
+    if (r) { cx = r.left + Math.min(28, r.width / 2); cy = r.top + Math.min(40, r.height / 2) }
+  }
+  const x = Math.max(8, Math.min(cx - fr.x, fr.w - 288))
+  const y = Math.max(8, Math.min(cy - fr.y, fr.h - 380))
   contextMenu.value = {
     open: true,
     x,
     y,
     nodeId: node.id,
   }
+  if (ctxByKey) void nextTick(() => ctxItems()[0]?.focus({ preventScroll: true }))
 }
 
 // ===== 右键菜单里的「查看原图 / 下载原图 / 任务详情」（仅对有产物的生成节点显示）=====
@@ -1965,20 +2749,31 @@ const GEN_MEDIA_TYPES = ['image-gen', 'image-edit', 'video-gen', 'video-edit']
 /** 输出文字的任务节点：没有媒体产物，但同样有任务号和失败原因 */
 const TEXT_TASK_TYPES = ['llm', 'video-analysis']
 // 右键目标若是带产物的生成节点，解析出媒体信息；否则返回 null（不显示这几项）
-const contextNodeInfo = computed(() => {
-  const n = nodes.value.find((x) => x.id === contextMenu.value.nodeId)
+function viewableInfo(nodeId: string) {
+  const n = nodes.value.find((x) => x.id === nodeId)
   if (!n || !GEN_MEDIA_TYPES.includes(n.type as string)) return null
   const isVideo = n.type === 'video-gen' || n.type === 'video-edit'
-  const url = isVideo ? (n.data?.videoUrl || '') : (n.data?.imageUrl || '')
+  let data: Record<string, any> = n.data || {}
+  // 只读时「切换着看」到的那一版（见 nodePeek）：右键出来的原图 / 下载 / 详情是他眼前的这一张
+  const pk = readOnly.value ? nodePeek.get(n.id) : undefined
+  if (pk) {
+    const list = Array.isArray(data.results) ? data.results : []
+    const r = typeof pk.resultIndex === 'number' ? list[pk.resultIndex] : null
+    const urls: string[] = r ? (r.urls || []).filter(Boolean) : (isVideo ? data.videoUrls : data.imageUrls) || []
+    const url = pk.url && urls.includes(pk.url) ? pk.url : r ? urls[0] : ''
+    if (url) data = { ...data, ...(isVideo ? { videoUrl: url, videoUrls: urls } : { imageUrl: url, imageUrls: urls }), ...(r ? { cost: r.cost ?? null } : {}) }
+  }
+  const url = isVideo ? (data.videoUrl || '') : (data.imageUrl || '')
   if (!url) return null
   return {
     mediaType: (isVideo ? 'video' : 'image') as 'image' | 'video',
     url: url as string,
     // 详情弹窗类型与各节点自身用法保持一致（视频编辑也按 video-gen 展示）
     detailType: (n.type === 'video-edit' ? 'video-gen' : n.type) as NodeKind,
-    data: n.data,
+    data,
   }
-})
+}
+const contextNodeInfo = computed(() => viewableInfo(contextMenu.value.nodeId))
 
 // 右键目标节点上可编辑的图片地址（图片 / 成品 / 出图类节点的主显图）
 const contextImageUrl = computed(() => {
@@ -2051,7 +2846,14 @@ function onPaneContextMenu(event: MouseEvent) {
 }
 
 function closeContextMenu() {
-  if (contextMenu.value.open) contextMenu.value.open = false
+  if (!contextMenu.value.open) return
+  // 键盘叫出来的那一次、焦点还在菜单里（按了 Esc，或者回车选了一项）：菜单一没，焦点会掉回页面开头 —— 还给它的节点。
+  // 选的那一项要是开了弹窗，弹窗关掉后焦点也就回到这个节点上
+  const back = ctxByKey && contextMenu.value.nodeId && ctxMenuRef.value?.contains(document.activeElement)
+    ? edRef.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(contextMenu.value.nodeId)}"]`) || null
+    : null
+  contextMenu.value.open = false
+  back?.focus({ preventScroll: true })
 }
 
 function closeAddMenu() {
@@ -2075,7 +2877,7 @@ function addNodeFromMenu(kind: NodeKind) {
 
 // 右键菜单和 Delete / Ctrl+D 走同一份实现 —— 分两份迟早只有一边记了历史
 function deleteNodesById(ids: string[]) {
-  if (!ids.length) return
+  if (!ids.length || readOnly.value) return
   hist.record()
   /**
    * 删画框之前先把框里的节点放出来。
@@ -2200,6 +3002,73 @@ const canMergeSelected = computed(
   () => getSelectedNodes.value.length >= 2 && selectedGrouped.value >= 1
 )
 
+/* ==================== 多选工具条（已选 N 个 · 对齐 · 编组 · 运行所选） ==================== */
+const selCount = computed(() => getSelectedNodes.value.length)
+/** 编组：和 Ctrl+G 是同一件事 —— 选中的里面已经有组就合并，全是散节点就圈一个新组 */
+function groupSelection() {
+  if (selectedGrouped.value >= 1 && getSelectedNodes.value.length >= 2) mergeIntoGroup()
+  else groupIntoFrame()
+}
+/** 能运行的节点：生成类、本机处理的工具类、成品（成品 = 把它的上游跑出来） */
+const RUNNABLE_TYPES = new Set<string>(['platform-export', 'slice', 'collage', 'watermark', 'fit-size', 'output'])
+const isRunnable = (type: unknown) => isGenNodeKind(type) || RUNNABLE_TYPES.has(type as string)
+const selRunnable = computed(() => getSelectedNodes.value.filter((n: any) => isRunnable(n.type)))
+const selRunBusy = ref(false)
+/**
+ * 运行所选：选中的每个可运行节点都跑一次（和逐个点它们的运行钮一样，已有结果的也重跑），它们各自需要重跑的上游一并带上。
+ *
+ * 选中的节点之间有先后关系时按先后来：上游的先跑完、下游再发起，下游拿到的才是这一次的新结果
+ * （各自同时发起的话，下游会直接用上游的旧结果）。没有先后关系的照常并发，名额由执行器管。
+ * 「已有结果、要再花一次钱」的确认整批只问一次。
+ */
+async function runSelected() {
+  if (readOnly.value || selRunBusy.value) return
+  const targets = selRunnable.value.map((n: any) => n.id as string)
+  if (!targets.length) { MessagePlugin.info(t('canvas.sel.runNone')); return }
+  // 每月上限已经用完：整批都会被拒，不发
+  if (selRunBlocked.value) { MessagePlugin.warning(selRunBlocked.value); return }
+  const picked = new Set(targets)
+  const upstream = (id: string) => {
+    const seen = new Set<string>()
+    const walk = (x: string) => { for (const e of edges.value) if (e.target === x && !seen.has(e.source)) { seen.add(e.source); walk(e.source) } }
+    walk(id)
+    return seen
+  }
+  const upOf = new Map(targets.map((id) => [id, upstream(id)]))
+  // 这一批里已经有结果、又会重新提交的付费节点：选中的那些，加上它们上游被标成「过期」要跟着重跑的
+  const holdsPaid = (n: any) => (GEN_MEDIA_TYPES.includes(n.type) ? !!(n.data?.imageUrl || n.data?.videoUrl) : TEXT_TASK_TYPES.includes(n.type) && !!n.data?.text)
+  const reruns = new Set<string>()
+  for (const id of targets) { const n = findNode(id); if (n && holdsPaid(n)) reruns.add(id) }
+  for (const ups of upOf.values()) {
+    for (const id of ups) { const n = findNode(id); if (n && !picked.has(id) && n.data?.status === 'stale' && holdsPaid(n)) reruns.add(id) }
+  }
+  if (reruns.size) {
+    const textCount = [...reruns].filter((id) => TEXT_TASK_TYPES.includes(findNode(id)?.type as string)).length
+    if (!(await confirmRerun({ count: reruns.size, textCount }))) return
+  }
+  selRunBusy.value = true
+  const started = new Map<string, Promise<void>>()
+  // stack：正在等的这条链，误连成环时用它断开，不互相等死
+  const run = (id: string, stack: Set<string>): Promise<void> => {
+    const had = started.get(id)
+    if (had) return had
+    const next = new Set(stack).add(id)
+    const deps = [...(upOf.get(id) || [])].filter((d) => picked.has(d) && !next.has(d))
+    const p = Promise.all(deps.map((d) => run(d, next))).then(() => {
+      // 执行器在发起的那一瞬间（同步）问要不要重跑：整批已经问过了
+      rerunApproved = true
+      try { return executor.runSubtree(id) } finally { rerunApproved = false }
+    }).catch(() => { /* 失败写在节点上，这里不用再报 */ })
+    started.set(id, p)
+    return p
+  }
+  try {
+    await Promise.all(targets.map((id) => run(id, new Set())))
+  } finally {
+    selRunBusy.value = false
+  }
+}
+
 // 右键组时菜单里的入口，都是先关菜单再干活
 function groupFromContext() { closeContextMenu(); groupIntoFrame() }
 function mergeFromContext() { closeContextMenu(); mergeIntoGroup() }
@@ -2249,6 +3118,7 @@ function deleteGroupFromContext() {
 
 // 复制节点：复制节点本身（含内容，剥离运行时状态），位置稍作偏移；不复制连线
 function duplicateNodesById(ids: string[]) {
+  if (readOnly.value) return
   const srcList = ids
     .map((id) => nodes.value.find((n) => n.id === id))
     .filter(Boolean) as Node[]
@@ -2312,7 +3182,7 @@ function appendEdges(conns: { source: string; sourceHandle?: string | null; targ
 /** 把剪贴板里的节点贴回画布：每贴一次往右下多错开一格，贴完选中新节点 */
 function pasteNodes(): boolean {
   const clip = nodeClipboard
-  if (!clip || !clip.nodes.length) return false
+  if (readOnly.value || !clip || !clip.nodes.length) return false
   hist.record()
   pasteRound++
   const shift = 40 * pasteRound
@@ -2367,7 +3237,7 @@ const contextCanFork = computed(() => {
 function forkFromContext() {
   const src = nodes.value.find((n) => n.id === contextMenu.value.nodeId)
   closeContextMenu()
-  if (!src) return
+  if (!src || readOnly.value) return
   hist.record()
   const newId = genId()
   const data = JSON.parse(JSON.stringify(stripNodeData(src.data)))
@@ -2407,7 +3277,7 @@ function forkFromContext() {
 function continueFromContext() {
   const src = nodes.value.find((n) => n.id === contextMenu.value.nodeId)
   closeContextMenu()
-  if (!src) return
+  if (!src || readOnly.value) return
   const url = src.data?.imageUrl
   if (!url) { MessagePlugin.warning(t('canvas.fork.noResult')); return }
 
@@ -2478,9 +3348,16 @@ const saveFailed = ref(false)
 const saveState = computed<{ cls: string; text: string }>(() => {
   if (autoSaving.value || saving.value) return { cls: 'run', text: t('common.saving') }
   if (saveFailed.value) return { cls: 'err', text: t('canvas.save.failed') }
+  // 画布还没载入：不是「未保存」（以前每次打开都先闪一下这三个字）
+  if (!dirty.value && !lastSavedAt.value && (loading.value || !currentId.value)) return { cls: 'run', text: t('common.loading') }
   if (dirty.value || !lastSavedAt.value) return { cls: 'warn', text: t('canvas.save.unsaved') }
   return { cls: 'ok', text: t('canvas.save.savedAt', { time: formatSavedTime(lastSavedAt.value) }) }
 })
+/** 保存状态可能出现的几句话（见模板里 .ed-save-box）：占位用，不显示 */
+const saveSizers = computed(() => [...new Set([
+  t('common.saving'), t('canvas.save.failed'), t('canvas.save.unsaved'),
+  t('canvas.save.savedAt', { time: formatSavedTime(lastSavedAt.value) || '00:00' }),
+])])
 const loading = ref(false)
 
 // 自动保存：去抖 + 指纹去重
@@ -2491,13 +3368,27 @@ const AUTO_SAVE_MAX_WAIT = 5000
 let autoSaveTimer: number | null = null
 let autoSaveDueBy = 0
 let lastFingerprint: string | null = null
+/** 上次保存时「人画的那部分」的指纹（见 printOf 的 forEdit）：和它一样 = 这次变的只是编辑器自己算出来的东西 */
+let lastEditPrint: string | null = null
 let suppressAutoSave = false  // 加载 / 重置时临时关闭以避免误触发
+/**
+ * 载入这张画布之后人动过手没有（指针按下、按键、拖放、粘贴 —— 改画布的每一种办法都要先经过其中一样）。
+ * 没动过之前画布上的变化都是编辑器自己补的：生成节点挂上来时把默认模型、对齐后的参数、预估成本写进节点（接口 / 模板建的
+ * 画布里没有这些），布局检查把「在哪种布局下排的」记下来。这些要存，但不是「未保存的改动」—— 以前一张没碰过的画布
+ * 打开两秒后会跳成「未保存」，再跳「保存中」「已保存」。
+ */
+let touchedSinceLoad = false
+const markTouched = () => { touchedSinceLoad = true }
+const TOUCH_EVENTS = ['pointerdown', 'keydown', 'drop', 'paste', 'cut'] as const
+onMounted(() => { for (const e of TOUCH_EVENTS) window.addEventListener(e, markTouched, true) })
+onBeforeUnmount(() => { for (const e of TOUCH_EVENTS) window.removeEventListener(e, markTouched, true) })
 
 // taskId 要保留，否则刷新后无法恢复轮询；
 // errorMsg 也要保留 —— 否则失败的任务回来还会被 resumeIncompleteTasks 当作"未完成"再轮一次。
 // status/progress 是 UI 瞬时态可以扔（load 时根据 imageUrl/errorMsg 重新推导）。
 // validationError/validationStamp 也是瞬时态：刷新后不该残留"必填项缺失"的红框。
-const RUNTIME_FIELDS = ['status', 'progress', 'validationError', 'validationStamp']
+// refusal：被团队每月上限拦下的说明，说的是「这个人此刻」的事，不进画布数据
+const RUNTIME_FIELDS = ['status', 'progress', 'validationError', 'validationStamp', 'refusal', 'cancelNote']
 
 function stripNodeData(d: any) {
   if (!d || typeof d !== 'object') return d
@@ -2532,10 +3423,12 @@ function buildDocument(): CanvasDocument {
   return JSON.parse(JSON.stringify({ schemaVersion: CANVAS_SCHEMA_VERSION, ...buildContent(), viewport: { ...viewport.value } }))
 }
 
-/** 画布的内容：名字、节点、连线、外观。「改没改过」只看这些 */
-function buildContent() {
+/**
+ * 画布里画的东西：节点、连线、外观、品牌包。「改没改过」只看这些，内容保存也只发这些——
+ * 名字不在里面：改名是另一回事（commitName），不要锁、不带版本，别人正在编辑时也能改。
+ */
+function buildDrawing() {
   return {
-    name: workflowName.value?.trim() || t('canvas.untitled'),
     nodes: nodes.value.map(nodeForSave),
     edges: edges.value.map(edgeForSave),
     // 画布外观。后端 PUT 是显式白名单透传，那边不加对应的一行这里存了也白存
@@ -2545,13 +3438,108 @@ function buildContent() {
     brandKitId: canvasKitId.value,
   }
 }
+/** 整张画布：名字加上面那些。给文档（宿主的 getDocument / change 事件）、另存为副本、存成模板用 */
+function buildContent() {
+  return { name: workflowName.value?.trim() || t('canvas.untitled'), ...buildDrawing() }
+}
 
 /**
- * 视口（平移 / 缩放）跟着每次保存一起落库，但不进指纹：看画布不算改画布，
- * 挪一下视野不该让标题旁边跳成「未保存」。
+ * 一份内容的指纹：「和上次存的一样不一样」只看它。
+ *  - 视口（平移 / 缩放）跟着每次保存一起落库，但不进指纹：看画布不算改画布，挪一下视野不该让标题旁边跳成「未保存」。
+ *  - 节点量出来的尺寸（dimensions）也不进：那是渲染的结果，换一种节点布局、提示词框长高一行都会变，每次打开还会重新量一遍。
+ *    它照样跟着下一次保存落库（buildDrawing 里有），只是不为它单独存一次。组除外：组的大小是人拉出来的。
+ *  - forEdit：再去掉预估成本。它是按模型、参数、价格表算出来的，算回来的时候写进节点 —— 要存（只读的人看的是存着的那个数），
+ *    但不是人改的（见 isOwnFill）。
  */
-function buildFingerprint() {
-  return JSON.stringify(buildContent())
+function printOf(drawing: ReturnType<typeof buildDrawing>, forEdit = false) {
+  return JSON.stringify({
+    ...drawing,
+    nodes: drawing.nodes.map((n) => {
+      let out = n
+      if (out.type !== 'frame' && out.dimensions !== undefined) { const { dimensions: _d, ...rest } = out; out = rest }
+      if (forEdit && out.data && typeof out.data === 'object' && 'estimatedCost' in out.data) { const { estimatedCost: _c, ...data } = out.data; out = { ...out, data } }
+      return out
+    }),
+  })
+}
+function buildFingerprint(forEdit = false) {
+  return printOf(buildDrawing(), forEdit)
+}
+/** 眼下的内容就是存着的那一份（刚载入、刚存完、刚另存成副本）：两个指纹一起记 */
+function markSaved(drawing = buildDrawing()) {
+  lastFingerprint = printOf(drawing)
+  lastEditPrint = printOf(drawing, true)
+}
+/**
+ * 眼下和上次存的不一样的地方是不是编辑器自己补的：载入之后人还没动过手，或者人画的那部分没变（只多了预估成本）。
+ * 是的话照样存，但不标「未保存」、保存时状态也不闪「保存中」。
+ */
+function isOwnFill() {
+  return !touchedSinceLoad || buildFingerprint(true) === lastEditPrint
+}
+/**
+ * 编辑器自己补的写入都从这里过：按来源认，不靠「人还没动过手」。现在有两处 —— 生成节点补默认值（默认模型、按模型对齐的
+ * 参数，见 useGenNode 的 fill），打开画布后的布局检查记下「在哪种布局下排的」（checkLayoutFit 的 open）。
+ * 它们都可能来得很晚：模型清单慢、节点还没量完，人已经点过画布（选中、平移）了，那时再按「没动过手」就认不出来。
+ * 所以写之前看一眼有没有人改的东西等着存：没有的话，写完把「人画的那部分」的基准挪到写完的样子，之后的比较（isOwnFill）
+ * 里它就不算改动；照样会悄悄存一次（lastFingerprint 没动）。有人改的东西在等，就不挪 —— 本来就该标「未保存」。
+ */
+function ownWrite(write: () => void) {
+  const own = !dirty.value && isOwnFill()
+  write()
+  if (own) lastEditPrint = buildFingerprint(true)
+}
+function fillNodeDefaults(id: string, patch: Record<string, any>) {
+  ownWrite(() => updateNodeData(id, patch))
+}
+
+/* ---------- 画布的名字：元数据，不是内容 ---------- */
+/** 服务端现在存着的名字；workflowName 是标题框里的字，两者不一样 = 正在改、还没提交 */
+const savedName = ref('')
+/**
+ * 能不能改名：对这张画布有编辑权就行。别人正在编辑、我是只读时也能改（服务端的改名不要锁）；
+ * 只有查看权的人、宿主要求只读的编辑器不能。
+ */
+const canRename = computed(() => !host?.readOnly.value && collab.mode.value !== 'view' && collab.meta.value.access?.canEdit !== false)
+const renameDenied = computed(() => (host?.readOnly.value ? t('canvas.rename.deniedReadOnly') : t('canvas.rename.deniedView')))
+/** 标题框失去焦点 / 回车 / 标签页被切走：名字变了就单独存一次（PATCH …/meta），不动内容的版本，也不要编辑锁 */
+async function commitName() {
+  const id = currentId.value
+  if (!id) return
+  if (!canRename.value) { workflowName.value = savedName.value; return }
+  const name = workflowName.value?.trim() || savedName.value || t('canvas.untitled')
+  workflowName.value = name
+  if (name === savedName.value) return
+  const before = savedName.value
+  savedName.value = name
+  try {
+    const res = await workflowApi.update(id, { name })
+    if (currentId.value !== id) return
+    if (res.data.data?.updatedAt) lastSavedAt.value = res.data.data.updatedAt
+    embed.emit('change', { canvasId: id, document: buildDocument() })
+    embed.emit('saved', { canvasId: id, updatedAt: res.data.data?.updatedAt || lastSavedAt.value || '' })
+  } catch (err) {
+    if (currentId.value !== id) return
+    // 没改成：标题退回原来的名字（这期间又改了别的字就不动它）
+    if (savedName.value === name) savedName.value = before
+    if (workflowName.value === name) workflowName.value = before
+    // 编辑权被收回了：换成只读（提示条会说明）
+    if (adapterError(err).code === 'team.forbidden') collab.saveFailed(err)
+    if (!(SPACE_GONE_CODES as readonly string[]).includes(adapterError(err).code)) MessagePlugin.error(apiErrorMessage(err, t('canvas.rename.failed')))
+  }
+}
+/** Esc：放弃这次改名 */
+function cancelNameEdit(e: Event) {
+  workflowName.value = savedName.value
+  ;(e.target as HTMLInputElement | null)?.blur()
+}
+/** 画布在别处被改了名（列表里、另一个人的编辑器里）：标题跟着变。我自己正改到一半就不打断，等我提交 */
+function followRename(name: string) {
+  if (name === savedName.value) return
+  const editing = workflowName.value !== savedName.value
+  savedName.value = name
+  if (!editing) workflowName.value = name
+  MessagePlugin.info(t('canvas.rename.followed', { name }))
 }
 
 const viewportKey = (v: Viewport) => `${Math.round(v.x)}|${Math.round(v.y)}|${(v.zoom || 1).toFixed(3)}`
@@ -2647,6 +3635,8 @@ function freeSpot(): { x: number; y: number } {
 }
 
 function addNode(kind: NodeKind, dataOverride?: Record<string, any>, position?: { x: number; y: number }) {
+  // 往画布上加节点的所有入口（面板、右键、素材库、拖文件、粘贴、宿主的 addNode）都汇到这里：只读时一个都不加
+  if (readOnly.value) return ''
   hist.record()
   const id = genId()
   const node: Node = {
@@ -2726,13 +3716,15 @@ function dtHasFiles(e: DragEvent): boolean {
 function onDragEnter(e: DragEvent) {
   if (!dtHasFiles(e)) return
   e.preventDefault()
+  // 只读：不收文件 —— 不亮「松手添加」的高亮，松手也不上传（上传是一次写请求）
+  if (readOnly.value) return
   dragDepth++
   dragActive.value = true
 }
 function onDragOver(e: DragEvent) {
   if (!dtHasFiles(e)) return
-  e.preventDefault()  // 必须阻止默认，drop 才会触发
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  e.preventDefault()  // 必须阻止默认，drop 才会触发（只读时也要拦：不然浏览器会直接打开这个文件、离开页面）
+  if (e.dataTransfer) e.dataTransfer.dropEffect = readOnly.value ? 'none' : 'copy'
 }
 function onDragLeave(e: DragEvent) {
   if (!dtHasFiles(e)) return
@@ -2745,6 +3737,7 @@ function onCanvasDrop(e: DragEvent) {
   const files = Array.from(e.dataTransfer?.files || [])
   if (files.length === 0) return
   e.preventDefault()
+  if (readOnly.value) { explainReadOnly(); return }
   const pos = screenToFlowCoordinate({ x: e.clientX, y: e.clientY })
   addMediaFiles(files, pos)
 }
@@ -2805,6 +3798,7 @@ function isValidConnection(conn: Connection | Edge): boolean {
 //  - 多张图片端口（gen 节点 + image-collection 的 image-in）允许多条
 //  - 其它端口（text-in / video-in / output 的 image-in）单条，新连替换旧的
 function onConnect(conn: Connection) {
+  if (readOnly.value) return
   if (!isValidConnection(conn)) {
     MessagePlugin.warning(t('canvas.connect.typeMismatch'))
     return
@@ -3048,13 +4042,25 @@ function onNodeDragStop() {
   }
 }
 
-async function doSave(silent: boolean): Promise<boolean> {
+/**
+ * 同一张画布的内容保存一次只发一个（手动、自动、离开页面时补存的、宿主调的都排在同一条队上）：
+ * 两个保存同时在路上，后一个带的版本号正要被前一个替换，会被自己的前一次保存判成冲突。
+ * 排到的时候才取内容，所以排队期间的改动会一起存上。
+ */
+const saveQueue = createSerialQueue()
+function doSave(silent: boolean, force = false): Promise<boolean> {
+  return saveQueue.run(() => doSaveNow(silent, force))
+}
+
+async function doSaveNow(silent: boolean, force: boolean): Promise<boolean> {
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
   autoSaveDueBy = 0
   // 只读：什么都不往外写（视口也不存）
   if (readOnly.value) return false
-  const content = buildContent()
-  const fp = JSON.stringify(content)
+  // 有一个保存冲突还没处理：用户选完之前不再保存（「用我的版本覆盖」走 force）
+  if (collab.blocked.value && !force) return false
+  const content = buildDrawing()
+  const fp = printOf(content)
   const vp = { ...viewport.value }
   // 改版前排的画布查过一遍之后，随这次保存把标记清掉（见 checkLegacyLayout）
   const clearLegacy = legacyLayoutChecked
@@ -3064,17 +4070,23 @@ async function doSave(silent: boolean): Promise<boolean> {
       return false
     }
     if (viewportTimer) { clearTimeout(viewportTimer); viewportTimer = null }
-    const res = await workflowApi.update(currentId.value, { ...content, viewport: vp, ...(clearLegacy ? { legacyLayout: false as const } : {}) })
+    const savingId = currentId.value
+    const res = await workflowApi.update(savingId, { ...content, viewport: vp, ...(clearLegacy ? { legacyLayout: false as const } : {}) }, collab.saveOptions(force))
+    // 请求在路上的时候换了画布：这次保存是上一张的，和现在这张无关
+    if (currentId.value !== savingId) return true
 
     if (res.data.result === 0 && res.data.data) {
+      collab.saved(res.data.data)
       lastSavedAt.value = res.data.data.updatedAt
-      lastFingerprint = fp
+      markSaved(content)
       savedViewportKey = viewportKey(vp)
       embed.emit('saved', { canvasId: currentId.value, updatedAt: res.data.data.updatedAt })
       if (clearLegacy) legacyLayoutChecked = false
       dirty.value = false
       saveFailed.value = false
       if (!silent) MessagePlugin.success(t('common.saved'))
+      // 保存期间又改了东西：这一次没带上，再排一次
+      if (buildFingerprint() !== fp) scheduleAutoSave()
       return true
     }
     saveFailed.value = true
@@ -3083,8 +4095,16 @@ async function doSave(silent: boolean): Promise<boolean> {
     return false
   } catch (err: any) {
     saveFailed.value = true
+    // 冲突、丢了锁、编辑权被收回：状态已经换好（冲突弹窗 / 只读提示条会说明），不弹「保存失败」，也不重试
+    const why = collab.saveFailed(err)
+    if (why) {
+      if (why === 'forbidden') MessagePlugin.error(apiErrorMessage(err, t('canvas.save.failed')))
+      return false
+    }
+    // 这个空间对我已经不存在了（被移出团队等）：全局会把人带回个人空间并说明原因
+    if ((SPACE_GONE_CODES as readonly string[]).includes(adapterError(err).code)) return false
     const msg = apiErrorMessage(err, t('canvas.save.failed'))
-    const status = err?.response?.status
+    const status = err?.response?.status ?? err?.status
     // 4xx 业务/校验错误，自动保存也要提示；网络/5xx 类只记日志，避免反复打扰
     if (!silent || (typeof status === 'number' && status >= 400 && status < 500)) {
       MessagePlugin.error(msg)
@@ -3107,7 +4127,9 @@ async function handleSave() {
 async function autoSave() {
   autoSaveTimer = null
   autoSaveDueBy = 0
-  if (saving.value || autoSaving.value) return
+  // 已经有一次保存在路上：它存完会自己检查「期间又改了没有」，不用再排一个
+  if (saving.value || autoSaving.value || saveQueue.busy) return
+  if (readOnly.value || collab.blocked.value) return
   // 空画布且未持久化过 → 不创建
   if (!currentId.value && nodes.value.length === 0) return
   const fp = buildFingerprint()
@@ -3115,7 +4137,8 @@ async function autoSave() {
     dirty.value = false
     return
   }
-  autoSaving.value = true
+  // 没标「未保存」的那些（编辑器自己补的默认值、预估成本，见 isOwnFill）悄悄存：状态不闪「保存中」
+  autoSaving.value = dirty.value
   try {
     // 先告诉宿主「内容变了」（change 事件 / onChange），再存
     embed.emit('change', { canvasId: currentId.value || '', document: buildDocument() })
@@ -3127,7 +4150,11 @@ async function autoSave() {
 
 function scheduleAutoSave() {
   if (suppressAutoSave || readOnly.value) return
-  dirty.value = true
+  // 这个监听是深度的：选中一下节点、节点在跑时的进度、量出来的尺寸也会走到这里。人画的那部分真变了才标「未保存」；
+  // 编辑器自己补的（isOwnFill）照样排一次保存，悄悄存。已经标上了就不再比（拖动时每一帧都会来）
+  if (!dirty.value && !isOwnFill()) dirty.value = true
+  // 冲突没处理完：改动先留在页面上（标着「未保存」），不往外发
+  if (collab.blocked.value) return
   const now = Date.now()
   // 只嵌编辑器时停手多久算「改完了」由宿主定（changeDebounceMs）
   const delay = host ? host.changeDebounceMs : AUTO_SAVE_DELAY
@@ -3153,7 +4180,8 @@ async function saveViewport() {
   const id = currentId.value
   const vp = { ...viewport.value }
   const key = viewportKey(vp)
-  if (!id || key === savedViewportKey) return
+  // 只读（停手之后才变成只读的也算）：视口也不存
+  if (!id || key === savedViewportKey || readOnly.value) return
   try {
     await workflowApi.update(id, { viewport: vp })
     if (currentId.value === id) savedViewportKey = key
@@ -3164,7 +4192,6 @@ async function saveViewport() {
 // viewport（平移/缩放高频变化）不走这条路，见上面的 scheduleViewportSave。
 watch([nodes, edges], scheduleAutoSave, { deep: true })
 watch(viewport, scheduleViewportSave)
-watch(workflowName, scheduleAutoSave)
 watch(bgSettings, scheduleAutoSave, { deep: true })
 watch(canvasKitId, scheduleAutoSave)
 
@@ -3203,6 +4230,7 @@ function importCanvas(w: any) {
 // 避免和已有节点冲突/重叠；组的父子关系一并重映射；带上结果图/参考图（引用），
 // 但去掉在途轮询句柄 taskId，避免跨画布重复轮询。
 async function loadOtherCanvasInto(id: string) {
+  if (readOnly.value) return
   try {
     const r = await workflowApi.detail(id)
     if (r.data.result !== 0 || !r.data.data) { MessagePlugin.error(r.data.message || t('common.loadFailed')); return }
@@ -3287,6 +4315,12 @@ function goToMyShares() {
 
 // 画布模板弹窗
 const templateDialogOpen = ref(false)
+/** 「把当前画布存为模板」要的节点图；空画布没什么可存 */
+function templateGraph(): { nodes: any[]; edges: any[]; viewport?: any } | null {
+  if (!nodes.value.length) return null
+  const c = buildContent()
+  return { nodes: JSON.parse(JSON.stringify(c.nodes)), edges: JSON.parse(JSON.stringify(c.edges)), viewport: { ...viewport.value } }
+}
 const guideOpen = ref(false)
 // 教程打开时先跳到哪一节（'' = 从头看）；「快捷键」入口用它直达那一节
 const guideSection = ref('')
@@ -3300,6 +4334,7 @@ function openTemplates() {
 
 // 应用模板：把预设节点图重新生成 id、偏移到当前视口，插入现有画布（不清空已有内容）
 function applyTemplate(tpl: { title?: string; graph?: { nodes?: any[]; edges?: any[] } }) {
+  if (readOnly.value) return
   const g = tpl?.graph
   if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0) {
     MessagePlugin.warning(t('canvas.tpl.emptyContent'))
@@ -3384,6 +4419,59 @@ const shareForm = ref<{ title: string; description: string; expiresInDays: Share
   title: '', description: '', expiresInDays: 7,
 })
 const shareResult = ref<{ link: string; expiresAt: string | null } | null>(null)
+/** 团队画布的「分享」弹窗有两个页签：团队内（可见范围）、对外链接 */
+const shareTab = ref<'team' | 'link'>('link')
+const shareTitle = computed(() => (teamCanvas.value ? t('canvas.share.titleNamed', { name: workflowName.value?.trim() || t('canvas.untitled') }) : t('canvas.share.title')))
+const accessDraft = ref<CanvasVisibility>('team_view')
+const accessSaving = ref(false)
+const accessError = ref('')
+const canSetAccess = computed(() => !!collab.meta.value.access?.canSetVisibility)
+/** 能不能发对外链接：要能编辑这张画布（团队设成「只有团长和管理员能分享」时成员不行），而且此刻不是只读 */
+const canPublishShare = computed(() => feat.share && collab.meta.value.access?.canShare !== false && !readOnly.value)
+/** 「团队内」页签里那一行「谁正在编辑」 */
+const accessLock = computed<CanvasLock | null>(() => {
+  const who = (name: string, id: string, mine: boolean): CanvasLock => ({ by: { id, username: name, name }, at: '', expiresAt: '', mine })
+  if (collab.mode.value === 'mine') return who(appStore.user?.username || '', appStore.user?.id || '', true)
+  const h = collab.holder.value
+  return h && (collab.mode.value === 'held' || collab.mode.value === 'lost' || collab.mode.value === 'view') ? who(h.by.name, h.by.id, false) : null
+})
+
+/** 不能发链接的人（只读、没有分享权）在「对外链接」页签里看到的：这张画布已经有的那条链接（我看得到的话） */
+const shareExisting = ref<{ state: 'loading' | 'found' | 'none' | 'error'; link: string; expiresAt: string | null }>({ state: 'none', link: '', expiresAt: null })
+async function loadExistingShare() {
+  const id = currentId.value
+  shareExisting.value = { state: 'loading', link: '', expiresAt: null }
+  try {
+    const res = await canvasShareApi.mine()
+    if (currentId.value !== id) return
+    const body: any = res.data.data
+    const list: any[] = Array.isArray(body) ? body : body?.list || []
+    const now = Date.now()
+    const hit = list.find((s) => s && s.workflowId === id && !s.revoked && s.token && (!s.expiresAt || new Date(s.expiresAt).getTime() > now))
+    shareExisting.value = hit
+      ? { state: 'found', link: shareLinkFor(hit.token, defaultShareLink(hit.token)), expiresAt: hit.expiresAt || null }
+      : { state: 'none', link: '', expiresAt: null }
+  } catch {
+    if (currentId.value === id) shareExisting.value = { state: 'error', link: '', expiresAt: null }
+  }
+}
+
+async function saveAccess() {
+  const id = currentId.value
+  if (!id || accessSaving.value || !canSetAccess.value) return
+  accessSaving.value = true
+  accessError.value = ''
+  try {
+    const out = unwrapStock(await stockWorkflowApi.setAccess(id, accessDraft.value))
+    collab.meta.value = { ...collab.meta.value, visibility: out.visibility || accessDraft.value, access: out.access || collab.meta.value.access }
+    MessagePlugin.success(t('spaces.access.saved', { level: t(`spaces.visibility.${accessDraft.value}.label`) }))
+    shareOpen.value = false
+  } catch (err) {
+    accessError.value = apiErrorMessage(err, t('common.operationFailed'))
+  } finally {
+    accessSaving.value = false
+  }
+}
 
 const shareExpiryOptions = computed<{ value: ShareExpiry; label: string }[]>(() => [
   { value: 1, label: t('canvas.share.expiry1') },
@@ -3397,15 +4485,19 @@ function defaultShareLink(token: string): string {
   try { return new URL(router.resolve({ name: 'share', params: { token } }).href, location.href).href }
   catch { return `${location.origin}/share/${token}` }
 }
-function openShareDialog() {
+function openShareDialog(tab?: 'team' | 'link') {
   if (!currentId.value) {
     MessagePlugin.warning(t('canvas.share.notLoaded'))
     return
   }
-  if (nodes.value.length === 0) {
+  // 空画布没什么可对外分享的；团队画布照样能打开弹窗改可见范围
+  if (nodes.value.length === 0 && !teamCanvas.value) {
     MessagePlugin.warning(t('canvas.share.empty'))
     return
   }
+  shareTab.value = teamCanvas.value ? (tab === 'link' && feat.share ? 'link' : 'team') : 'link'
+  accessDraft.value = teamVisibility.value
+  accessError.value = ''
   shareForm.value = {
     title: workflowName.value?.trim() || t('canvas.untitled'),
     description: '',
@@ -3413,15 +4505,17 @@ function openShareDialog() {
   }
   shareResult.value = null
   shareOpen.value = true
+  if (teamCanvas.value && feat.share && !canPublishShare.value) void loadExistingShare()
 }
 
 function closeShareDialog() {
-  if (publishing.value) return
+  if (publishing.value || accessSaving.value) return
   shareOpen.value = false
 }
 
 async function handlePublish() {
   if (!currentId.value) return
+  if (nodes.value.length === 0) { MessagePlugin.warning(t('canvas.share.empty')); return }
   publishing.value = true
   try {
     // 先把最新改动落库，确保分享的是当前画布；没存上就别发链接，否则分享出去的是旧内容
@@ -3457,8 +4551,7 @@ function selectAllText(e: FocusEvent) {
   (e.target as HTMLInputElement | null)?.select()
 }
 
-async function copyShareLink() {
-  const link = shareResult.value?.link
+async function copyShareLink(link: string | undefined) {
   if (!link) return
   try {
     await navigator.clipboard.writeText(link)
@@ -3539,7 +4632,8 @@ function waitForMeasured(timeout = 1500): Promise<void> {
 
 async function checkLegacyLayout() {
   const id = currentId.value
-  if (!id) return
+  // 只读时不替别人整理、也不往外存
+  if (!id || readOnly.value) return
   const before = { ...viewport.value }
   const hadViewport = !!(before.x || before.y || (before.zoom || 1) !== 1)
   fitFree({ maxZoom: 1 })
@@ -3606,9 +4700,13 @@ function fitFree(opts: { nodes?: string[]; maxZoom?: number; duration?: number }
   const minX = Math.min(...boxes.map((b) => b.left)), maxX = Math.max(...boxes.map((b) => b.right))
   const minY = Math.min(...boxes.map((b) => b.top)), maxY = Math.max(...boxes.map((b) => b.bottom))
   const zoom = Math.max(MIN_ZOOM, Math.min(opts.maxZoom ?? 2, freeW / (maxX - minX), freeH / (maxY - minY)))
+  // 缩到头（MIN_ZOOM）还是比空着的那块大 —— 手机上一张大画布、顶上又是折成三行的只读提示条：不居中。
+  // 居中是把多出来的一半分到上边 / 左边，最上面那排节点就伸到标题块、提示条底下去了（360×560 上压进去近 40px）。
+  // 从空地的左上角排起，放不下的在右边 / 下面，往那边拖着看
+  const padX = Math.max(0, (freeW - (maxX - minX) * zoom) / 2), padY = Math.max(0, (freeH - (maxY - minY) * zoom) / 2)
   setViewport({
-    x: inset.l + (freeW - (maxX - minX) * zoom) / 2 - minX * zoom,
-    y: inset.t + (freeH - (maxY - minY) * zoom) / 2 - minY * zoom,
+    x: inset.l + padX - minX * zoom,
+    y: inset.t + padY - minY * zoom,
     zoom,
   }, { duration: opts.duration || 0 })
 }
@@ -3628,28 +4726,251 @@ function insertOrigin(): { x: number; y: number } {
 async function loadWorkflow(id: string) {
   loading.value = true
   if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  // 换到另一张画布：先把上一张的锁还回去
+  if (currentId.value && currentId.value !== id) collab.end()
   suppressAutoSave = true
   try {
     const res = await workflowApi.detail(id)
     if (res.data.result === 0 && res.data.data) {
       applyWorkflow(res.data.data)
+      // 这张画布现在轮不轮得到我改：拿编辑锁，或者落到只读
+      await collab.begin(res.data.data.meta)
+      void loadBudget()
       if (!readyAnnounced) { readyAnnounced = true; embed.emit('ready', { canvasId: currentId.value || id }) }
     } else {
       MessagePlugin.error(res.data.message || t('common.loadFailed'))
       leaveBrokenCanvas(res.data.message || t('common.loadFailed'))
     }
   } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
+    // 这个空间里没有这张画布：也许链接是另一个空间的（不带空间前缀的老链接、别人发来的）。在我能进的别的空间里找一下
+    if (adapterError(err).status === 404 && await openInOtherSpace(id)) return
+    // 当前这个空间对我已经不存在了：全局会把人带回个人空间并说明原因，这里不再多弹一条
+    if (!(SPACE_GONE_CODES as readonly string[]).includes(adapterError(err).code)) MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
     leaveBrokenCanvas(apiErrorMessage(err, t('common.loadFailed')), err)
   } finally {
     loading.value = false
     setTimeout(() => { suppressAutoSave = false }, 0)
   }
 }
+
+/**
+ * 画布不在当前空间里时：到我所在的别的空间里找。找到了就换到那个空间打开它，并说一声。
+ * 只在用户能自己换空间的时候做（独立应用、没被集成方定死空间的整站嵌入）。
+ */
+async function openInOtherSpace(id: string): Promise<boolean> {
+  if (host || !spaceStore.canSwitch) return false
+  const others = spaceStore.spaces
+    .map((s) => ({ id: s.kind === 'team' ? s.id : '', name: s.kind === 'team' ? s.name : t('spaces.personal'), open: s.kind !== 'team' || (s.status || 'active') === 'active' }))
+    .filter((s) => s.open && s.id !== spaceStore.currentId)
+  for (const s of others) {
+    try {
+      if (!(await stockWorkflowApi.findIn(id, s.id || 'personal'))) continue
+    } catch { continue }
+    MessagePlugin.info(t('canvas.collab.inOtherSpace', { space: s.name }))
+    await router.replace(s.id ? { name: 'canvas', params: { id, space: spaceParam(s.id) } } : { name: 'canvas', params: { id }, query: { space: 'personal' } })
+    return true
+  }
+  return false
+}
 let readyAnnounced = false
 
-/** 把一份画布（接口返回的，或宿主直接给的文档）铺到编辑器里 */
-function applyWorkflow(w: any) {
+/**
+ * 只把内容重新取一遍（不重新拿锁）：拿到锁之后发现载入的已经不是最新的一版时用。返回取到的版本。
+ * quiet：人正只读看着，对方又保存了——换成新内容，但不动他的视野，出错也不打扰（下一轮再取）。
+ */
+async function reloadContent(quiet = false): Promise<number | undefined> {
+  const id = currentId.value
+  if (!id) return undefined
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  suppressAutoSave = true
+  try {
+    const res = await workflowApi.detail(id)
+    if (res.data.result !== 0 || !res.data.data || currentId.value !== id) return undefined
+    applyWorkflow(res.data.data, { keepView: quiet })
+    collab.meta.value = res.data.data.meta || {}
+    return res.data.data.meta?.revision
+  } catch (err) {
+    if (!quiet) MessagePlugin.error(apiErrorMessage(err, t('common.loadFailed')))
+    return undefined
+  } finally {
+    setTimeout(() => { suppressAutoSave = false }, 0)
+  }
+}
+
+/** 载入（或拿到锁）之后：接着轮询刷新前还在跑的任务。每次载入只做一次；只读时不做 */
+let loadSeq = 0
+let resumedSeq = -1
+function resumeAfterLoad() {
+  if (readOnly.value || resumedSeq === loadSeq) return
+  resumedSeq = loadSeq
+  executor.resumeIncompleteTasks()
+  // 存着的失败原因是当时界面语言的一句话，按现在的语言重取
+  void executor.refreshRunErrors()
+}
+
+/* ==================== 团队画布：可见范围、接管、另存为副本、冲突 ==================== */
+/** 这张画布在团队空间里（有可见范围这回事）。只嵌编辑器时没有：适配器不讲可见范围 */
+const teamVisibility = computed<CanvasVisibility>(() => (collab.meta.value.visibility || 'team_view') as CanvasVisibility)
+const teamCanvas = computed(() => !host && !!collab.meta.value.visibility)
+/** 能不能把一份文档另存成新画布（「复制一份」「把我的版本另存为副本」都靠它） */
+const copyAvailable = computed(() => canCreateCanvas())
+const collabBusy = ref(false)
+const conflictError = ref('')
+
+function openCanvas(id: string) {
+  void router.push({ name: 'canvas', params: { id } })
+}
+
+/**
+ * 把编辑器里现在的内容另存成一张新画布（团队里默认「仅自己」），然后打开它。
+ * mine：我的改动没存上（冲突、丢了锁），存到副本里就不会丢；copy：只读的人想拿一份去改。
+ */
+async function saveAsCopy(kind: 'mine' | 'copy') {
+  if (collabBusy.value) return
+  collabBusy.value = true
+  conflictError.value = ''
+  try {
+    const content = buildContent()
+    const name = t('common.copyName', { name: content.name })
+    const res = await workflowApi.create(
+      { ...content, name, viewport: { ...viewport.value } },
+      collab.meta.value.visibility ? { visibility: 'private' } : undefined,
+    )
+    const id = res.data.data?.id
+    if (!id) throw new Error(t('common.operationFailed'))
+    // 我的改动已经在副本里了：这张画布上不再有「没保存的东西」，离开时不要再提示、也不要再存
+    markSaved()
+    dirty.value = false
+    collab.clearConflict()
+    MessagePlugin.success(t(kind === 'mine' ? 'canvas.collab.savedAsCopy' : 'canvas.collab.copied', { name }))
+    if (host) {
+      // 只嵌编辑器：开哪张画布是宿主的事。告诉它副本的 id；这边留在原来那张上，换成最新保存的内容
+      embed.emit('created', { canvasId: id, fromCanvasId: currentId.value || '' })
+      if (kind === 'mine' && currentId.value) await loadWorkflow(currentId.value)
+    } else {
+      openCanvas(id)
+    }
+  } catch (err) {
+    const msg = apiErrorMessage(err, t('common.operationFailed'))
+    if (collab.conflict.value) conflictError.value = msg
+    else MessagePlugin.error(msg)
+  } finally {
+    collabBusy.value = false
+  }
+}
+
+/** 放弃我这次的改动，看最新保存的那一版 */
+async function reloadLatest() {
+  const id = currentId.value
+  if (!id || collabBusy.value) return
+  collabBusy.value = true
+  conflictError.value = ''
+  try {
+    await loadWorkflow(id)
+  } finally {
+    collabBusy.value = false
+  }
+}
+
+/** 冲突时「用我的版本覆盖」：只有服务端说可以（canOverwrite）才摆得出这个按钮 */
+async function overwriteWithMine() {
+  if (collabBusy.value) return
+  collabBusy.value = true
+  conflictError.value = ''
+  try {
+    const ok = await doSave(true, true)
+    if (ok) MessagePlugin.success(t('canvas.conflict.overwritten'))
+    else if (collab.conflict.value) conflictError.value = t('canvas.save.failed')
+  } finally {
+    collabBusy.value = false
+  }
+}
+
+/* ---------- 团队里的每月上限：在「运行」旁边和队列清单里让人看得到自己还剩多少 ---------- */
+const budget = shallowRef<TeamLimits | null>(null)
+async function loadBudget() {
+  const teamId = collab.meta.value.spaceId
+  // 只在团队空间里有；只嵌编辑器时没有团队这回事
+  if (host || !isTeamId(teamId)) { budget.value = null; return }
+  try {
+    const out = unwrapStock(await stockTeamApi.limits(teamId))
+    if (collab.meta.value.spaceId === teamId) budget.value = out
+  } catch { /* 取不到就不显示；被拒绝时服务端的提示里有具体数字 */ }
+}
+/** 一批节点同时动的时候只取一次 */
+let budgetTimer: number | null = null
+function scheduleBudgetReload() {
+  if (budgetTimer != null) return
+  budgetTimer = window.setTimeout(() => { budgetTimer = null; void loadBudget() }, 400)
+}
+onBeforeUnmount(() => { if (budgetTimer != null) window.clearTimeout(budgetTimer) })
+provide(CANVAS_BUDGET_KEY, {
+  limits: budget,
+  canSetLimits: computed(() => !host && spaceStore.isTeam && spaceStore.can('limits:manage')),
+  canSetPrices: computed(() => !host && spaceStore.isTeam && spaceStore.can('provider:manage')),
+  limitsTo: computed(() => (budget.value && !host ? { name: 'team', params: { tab: 'settings', space: spaceParam(collab.meta.value.spaceId || '') } } : null)),
+  pricesTo: computed(() => (budget.value && !host ? { name: 'models', params: { space: spaceParam(collab.meta.value.spaceId || '') } } : null)),
+  reload: () => { void loadBudget() },
+})
+/**
+ * 「运行所选」现在会不会被每月上限整批拦下（我的 / 团队的次数、金额用完了）—— 和单个节点运行前的提醒是同一份判断。
+ * 会的话给出那一句话：按钮置灰、提示里写原因，不让一批节点各发一次必然被拒的请求。
+ * 只是某个模型没填价格的那种不在这里拦：那是一个一个节点的事，照常由各节点自己说明。
+ */
+const selRunBlocked = computed(() => {
+  void locale.value
+  const b = budget.value
+  if (!b?.member?.effective?.blockedBy) return ''
+  const pre = preflight(b)
+  return pre ? refusalText(pre, { canSetLimits: !host && spaceStore.isTeam && spaceStore.can('limits:manage') }).full : ''
+})
+/**
+ * 「运行」旁边那一小句：最要紧的一项上限（先看会不会被拦，再看哪一项离上限最近）。
+ * 状态取服务端给的 effective，不在这里按比例再判；都没设上限就不出。
+ */
+const budgetChip = computed<{ text: string; title: string; state: string } | null>(() => {
+  void locale.value
+  const b = budget.value
+  if (!b) return null
+  const RANK = { unlimited: 0, ok: 1, near: 2, reached: 3 } as const
+  const all: { mine: boolean; unit: 'runs' | 'amount'; m: LimitMeterState }[] = []
+  const add = (side: LimitSide | undefined, mine: boolean) => {
+    if (!side) return
+    for (const unit of ['runs', 'amount'] as const) if (side.effective[unit].limit != null) all.push({ mine, unit, m: side.effective[unit] })
+  }
+  add(b.member, true)
+  add(b.team, false)
+  const blocked = b.member.effective.blockedBy
+  if (!all.length && !blocked) return null
+  const ratio = (x: LimitMeterState) => (x.limit && x.limit > 0 ? x.used / x.limit : 1)
+  const top = all.length ? all.reduce((a, c) => (RANK[c.m.state] > RANK[a.m.state] || (RANK[c.m.state] === RANK[a.m.state] && ratio(c.m) > ratio(a.m)) ? c : a)) : null
+  const reset = t('spaces.limits.resetsAt', { when: resetText(b.resetsAt, b.timezone) })
+  if (blocked) {
+    const pre = preflight(b)
+    return { text: blockedText(b.member), title: pre ? refusalText(pre).full : reset, state: 'reached' }
+  }
+  if (!top) return null
+  const who = top.mine ? t('spaces.limits.mine') : t('spaces.limits.team')
+  const label = t(top.unit === 'amount' ? 'spaces.limits.amountLabel' : 'spaces.limits.runsLabel')
+  return {
+    text: t('canvas.budget.month', { text: meterText(top.m, top.unit, b.currency) }),
+    title: [`${who} · ${label}`, top.m.state === 'near' ? t('spaces.limits.near') : '', t('spaces.limits.definition'), reset].filter(Boolean).join(t('spaces.refusal.join')),
+    state: top.m.state,
+  }
+})
+
+async function takeOverCanvas() {
+  const from = collab.holder.value?.by.name || ''
+  const self = !!collab.holder.value?.sameUser
+  if (await collab.takeOver()) MessagePlugin.success(self ? t('canvas.collab.tookOverSelf') : t('canvas.collab.tookOver', { name: from }))
+  else if (collab.mode.value === 'view') MessagePlugin.error(t('canvas.collab.cannotTakeOver'))
+}
+
+/**
+ * 把一份画布（接口返回的，或宿主直接给的文档）铺到编辑器里。
+ * keepView：只换内容，视野留在人正看着的地方（只读时对方又保存了）。
+ */
+function applyWorkflow(w: any, o: { keepView?: boolean } = {}) {
     {
       // 剥离瞬时字段，避免还原出"运行中"等历史状态；
       // 但 gen 节点要根据持久化的产物/错误推导出最终展示态：
@@ -3689,31 +5010,31 @@ function applyWorkflow(w: any) {
         // 一个节点都没有的画布无所谓在哪种布局下排的：记成当前的
         if (!nodes.value.length) arrangedLayout.value = nodeLayout.value
       }
-      const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
-      fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
       legacyLayoutPending = !!w.legacyLayout && nodes.value.length > 1
       legacyLayoutChecked = false
       layoutCheckPending = !legacyLayoutPending && nodes.value.length > 1 && arrangedLayout.value !== nodeLayout.value
-      savedViewportKey = viewportKey(vp)
-      viewport.value = vp
-      // 把 zoom 钳制在 [0.2, 2]，防止历史脏数据把节点撑爆
-      setViewport({ x: vp.x, y: vp.y, zoom: Math.min(2, Math.max(0.2, vp.zoom || 1)) })
-      workflowName.value = w.name
+      if (!o.keepView) {
+        const vp = w.viewport || { x: 0, y: 0, zoom: 1 }
+        fitOnInit = nodes.value.length > 0 && !vp.x && !vp.y && (vp.zoom || 1) === 1
+        savedViewportKey = viewportKey(vp)
+        viewport.value = vp
+        // 把 zoom 钳制在 [0.2, 2]，防止历史脏数据把节点撑爆
+        setViewport({ x: vp.x, y: vp.y, zoom: Math.min(2, Math.max(0.2, vp.zoom || 1)) })
+      }
+      // 我正在标题框里改名、还没提交：不打断
+      if (!o.keepView || workflowName.value === savedName.value) workflowName.value = w.name
+      savedName.value = w.name
       currentId.value = w.id
       lastSavedAt.value = w.updatedAt
-      lastFingerprint = buildFingerprint()
+      markSaved()
+      touchedSinceLoad = false
       dirty.value = false
       saveFailed.value = false
       // 换画布要清历史，否则能「撤销」到上一张画布的内容
       hist.reset()
-      // 对刷新前还在跑的 task，自动恢复轮询拉结果
-      setTimeout(() => {
-        // 只读：不接着轮询，也不改节点上的东西
-        if (readOnly.value) return
-        executor.resumeIncompleteTasks()
-        // 存着的失败原因是当时界面语言的一句话，按现在的语言重取
-        void executor.refreshRunErrors()
-      }, 100)
+      // 对刷新前还在跑的 task，自动恢复轮询拉结果（只读时不做；之后拿到编辑锁的那一刻会补上）
+      loadSeq++
+      setTimeout(resumeAfterLoad, 100)
     }
 }
 
@@ -3733,6 +5054,26 @@ function formatSavedTime(iso: string | null) {
   const pad = (n: number) => String(n).padStart(2, '0')
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`
   return d.toDateString() === new Date().toDateString() ? time : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`
+}
+
+/**
+ * 页面被关掉 / 刷新 / 跳到别的网站：把编辑锁还回去。这时候普通请求不保证发得出去，所以走 sendBeacon
+ * （适配器的 releaseLock({ unloading: true })），别人不用等锁过期。真没发出去（进程被杀、断网）锁也会自己过期。
+ * 从往返缓存里回来（persisted）时页面还是原样，要重新拿锁。
+ */
+function onPageHide() { collab.end({ unloading: true }) }
+/**
+ * 标签页被切到后台、最小化、或者马上要关：把没存的先存上——后台页的定时器会被浏览器放慢，等自动保存的那个定时器就晚了；
+ * 关页面时这也是最后一个靠得住的时机（pagehide 时再发的保存不一定发得出去）。回到前台的那一下由 useCanvasCollab 续锁。
+ */
+function onVisibilityChange() {
+  if (document.visibilityState !== 'hidden' || !currentId.value) return
+  if (document.activeElement instanceof HTMLElement && document.activeElement.closest('.ed-name')) void commitName()
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; void autoSave() }
+  else if (viewportTimer) void saveViewport()
+}
+function onPageShow(e: PageTransitionEvent) {
+  if (e.persisted && currentId.value) void loadWorkflow(currentId.value)
 }
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -3796,7 +5137,8 @@ const searchResults = computed(() => {
 
 function openSearch() {
   searchOpen.value = true
-  nextTick(() => searchInputRef.value?.focus())
+  // 上一次搜的词还留着（接着找下一个）；整段选中，直接打字就是换一个词
+  nextTick(() => { searchInputRef.value?.focus(); searchInputRef.value?.select() })
 }
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
@@ -3805,10 +5147,18 @@ function gotoNode(id: string) {
   // 而从队列 / 搜索点过来的恰恰多半是看不见的那个
   const n = findNode(id)
   if (!n) return
-  fitFree({ nodes: [id], maxZoom: 1, duration: 300 })
   // 只留这一个选中：从队列或搜索点过来，要的是「就是它」
   removeSelectedNodes(getSelectedNodes.value)
   addSelectedNodes([n as any])
+  // 它的输入条 / 属性面板要是被收起过（按过 Esc），定位过来就重新打开 —— 和再点一下这个节点一样。
+  // （它本来就选着的话，上面这一退一选在同一拍里，选中没「变」，靠选中变化来复位的那条监听不会走到）
+  if (panelDismissedId.value === id) panelDismissedId.value = ''
+  // 先选中、等一拍再框：布局 b 下选中会打开属性面板，框的时候要把它那一条宽度让出来
+  revealSkipId = id
+  void nextTick(() => {
+    fitFree({ nodes: [id], maxZoom: 1, duration: 300 })
+    window.setTimeout(() => { if (revealSkipId === id) revealSkipId = '' }, 0)
+  })
 }
 
 /* ==================== 键盘快捷键 ==================== */
@@ -3847,11 +5197,11 @@ function anyOverlayOpen(): boolean {
 }
 
 function doUndo() {
-  if (!hist.undo()) return
+  if (readOnly.value || !hist.undo()) return
   closeMenus()
 }
 function doRedo() {
-  if (!hist.redo()) return
+  if (readOnly.value || !hist.redo()) return
   closeMenus()
 }
 
@@ -3884,31 +5234,113 @@ function onWindowBlur() { boxSelecting.value = false }
 function syncPaneWidth() {
   const pane = edRef.value?.querySelector('.vf-wrap') as HTMLElement | null
   if (pane?.clientWidth) paneWidth.value = pane.clientWidth
+  if (pane?.clientHeight) paneHeight.value = pane.clientHeight
+  // 底部工具条眼下有多宽（收起来的时候量到 0，不算）
+  const tw = toolsRef.value?.offsetWidth || 0
+  if (tw > 0 && Math.abs(tw - toolsWidth.value) > 1) toolsWidth.value = tw
 }
+
+/**
+ * 布局 b 在手机宽度下，属性面板是贴底的抽屉（最高占到 76%）：选中的节点多半就在它底下。抽屉一开，把节点摆进
+ * 抽屉上面剩下的那一块 —— 放不下就把画布缩小到刚好放得下（utils/floatSpot.ts 的 fitInArea）。只是换了视野，不进撤销。
+ * 布局 a 的输入条自己做同一件事（GenComposer 的 revealAbove：它还要顾节点四周放不放得下）。
+ */
+let sheetRevealTimer: number | null = null
+function revealAboveSheet() {
+  sheetRevealTimer = null
+  const sheet = panelSheet.value, ed = edRef.value
+  const sel = panelNode.value
+  const n = sel ? findNode(sel.id) : null
+  if (!sheet || !ed || !n || nodeLayout.value !== 'b' || pointerHeld) return
+  const vp = viewport.value, z = vp.zoom || 1
+  const est = estimateNodeSize(n.type, nodeLayout.value)
+  const size = measuredSize(n.id) || { width: est.w, height: est.h }
+  const fx = n.computedPosition?.x ?? n.position.x, fy = n.computedPosition?.y ?? n.position.y
+  // 端口的圆点一半在节点外面：两边各多算一点
+  const PAD = 12
+  const rect = { l: vp.x + fx * z - PAD, t: vp.y + fy * z, r: vp.x + (fx + size.width) * z + PAD, b: vp.y + (fy + size.height) * z }
+  // 顶上那几排（标题块、工具面板的一横条、只读提示条、没有模型的提示）下面起算。只算横着的：竖排在左边的工具面板
+  // 不是「一排」（把它算进去，它的底边会把这一块压没）—— 它交给找空地那一步去绕
+  const rows = rectsIn(ed, '.ed-title, .ed-pal, .clb, .ed-hint')
+  const tops = rows.filter((r) => r.t < 160 && r.r - r.l > r.b - r.t)
+  const bottom = sheet.t - 12
+  let top = Math.max(8, ...tops.map((r) => r.b + 8))
+  // 它们下面连一小条都不剩（很矮的窗口里只读提示条折成了两三行）：按整块算，压着顶上那几排也比压在抽屉底下强
+  if (bottom - top < 48) top = 8
+  const area = { l: 8, t: top, r: ed.clientWidth - 8, b: bottom }
+  const fit = fitInArea(rect, area, [...rectsIn(ed, '.qf'), ...rows.filter((r) => !tops.includes(r))], { gap: 8, minScale: MIN_ZOOM / z })
+  if (!fit) return
+  const nz = z * fit.scale
+  const still = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  void setViewport({ x: Math.round(fit.x + PAD * fit.scale - fx * nz), y: Math.round(fit.y - fy * nz), zoom: nz }, { duration: still ? 0 : 240 })
+}
+// 抽屉出现、换了大小：等它和挪到它上面去的生成队列圆钮都落定再摆
+watch(panelSheet, (s) => {
+  if (sheetRevealTimer !== null) { clearTimeout(sheetRevealTimer); sheetRevealTimer = null }
+  if (s && nodeLayout.value === 'b') sheetRevealTimer = window.setTimeout(revealAboveSheet, 520)
+})
 
 /**
  * 选中一个生成节点时的两个键，要抢在 vue-flow 前面（捕获阶段）处理：
  *   Ctrl / ⌘ + Enter  运行它。vue-flow 把聚焦节点上的 Enter 当成「点一下节点」，而 Ctrl 又是它的
  *                     多选键 —— 不拦的话这一下会把节点取消选中。
- *   Esc               收起它的输入条 / 属性面板，节点保持选中。vue-flow 的 Esc 是取消选中。
- *                     有菜单开着时不拦，先让菜单收掉。
+ *   Esc               一次只收最里面的一层，从里到外：
+ *                       大图预览 > 弹窗 > 菜单 / 弹出层 > 输入条 / 属性面板 > 选中
+ *                     前三层各管各的（它们自己监听 Esc），这里只做一件事：别抢。按键落在弹窗 / 菜单 / 气泡里面、
+ *                     或者落在一颗展开着弹出层的按钮上，都是那一层的；节点自己开的弹窗（任务详情、放大编辑、
+ *                     成品大图）画布这边没有状态可查，所以看的是 DOM 里有没有开着的遮罩。
+ *                     画布自己的菜单（右键、添加节点、更多、面板展开层、外观、搜索）在这里收，并且到此为止 ——
+ *                     不然 vue-flow 会在同一下里把节点也取消选中（输入条跟着没了）。
+ *                     只读时也一样：只读也能选中节点、开着只读的输入条 / 属性面板。
  */
+const ESC_LAYER = '[role="dialog"], [role="alertdialog"], .lc-mask, .cp-pop, [data-lc-popup]'
+/** 画布自己的几种菜单：它们的 Esc 归这里收；别的 .lc-menu（节点上的下拉、品牌包面板）归各自的组件 */
+const OWN_MENU = '.ctx-menu, .ed-menu, .ed-palmenu'
+function escBelongsElsewhere(el: Element | null): boolean {
+  if (el?.closest) {
+    if (el.closest(ESC_LAYER)) return true
+    if (el.closest('.lc-menu') && !el.closest(OWN_MENU)) return true
+    // 焦点还在打开弹出层的那颗按钮上（节点上的下拉、生成队列的圆钮、品牌包标记）
+    const trigger = el.closest('[aria-expanded="true"]')
+    if (trigger && !trigger.closest('.ed-pal')) return true
+  }
+  // 开着的遮罩 / 模态层：焦点不一定在里面（大图预览不抢焦点）
+  return !!embed.root.querySelector('.lc-mask, .ml-mask, [aria-modal="true"]')
+}
+const canvasMenuOpen = () => contextMenu.value.open || addMenu.value.open || moreMenu.value.open || palMenu.value.open
+  || !!fly.value || projMenuOpen.value || stylePanelOpen.value || searchOpen.value
 function onCanvasKeydownCapture(e: KeyboardEvent) {
-  if (readOnly.value || !ownsKeyEvent(e, embed.root)) return
-  if (isTypingTarget(e.target) || anyOverlayOpen()) return
+  if (!ownsKeyEvent(e, embed.root)) return
+  // 输入法正在组字（在候着的那个框里）：回车是上屏、Esc 是取消组字，都不是给画布的
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.key === 'Escape') {
+    const el = e.target as Element | null
+    if (escBelongsElsewhere(el) || anyOverlayOpen()) return
+    // 输入框里的 Esc 是那个输入框的（提示词框：失焦并收起面板；搜索框：关搜索；标题：放弃改名）
+    if (isTypingTarget(el)) return
+    if (canvasMenuOpen()) {
+      e.preventDefault()
+      e.stopPropagation()
+      closeContextMenuToNode()
+      closeMenus()
+      stylePanelOpen.value = false
+      searchOpen.value = false
+      return
+    }
+    if (panelNode.value) {
+      e.preventDefault()
+      e.stopPropagation()
+      closeGenPanel()
+    }
+    return
+  }
+  if (readOnly.value || isTypingTarget(e.target) || anyOverlayOpen()) return
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     const n = soleGenNode.value
     if (!n) return
     e.preventDefault()
     e.stopPropagation()
     void executor.runSubtree(n.id)
-    return
-  }
-  if (e.key === 'Escape' && panelNode.value) {
-    if (contextMenu.value.open || addMenu.value.open || moreMenu.value.open || palMenu.value.open || fly.value || stylePanelOpen.value || searchOpen.value) return
-    e.preventDefault()
-    e.stopPropagation()
-    closeGenPanel()
   }
 }
 
@@ -3916,10 +5348,24 @@ function onCanvasKeydown(e: KeyboardEvent) {
   // 嵌在别人的页面里：按键不是冲着这块画布来的就不管（宿主自己的输入框、别的嵌入实例）
   if (!ownsKeyEvent(e, embed.root)) return
   if (isTypingTarget(e.target)) return
-  if (readOnly.value) return
   if (anyOverlayOpen()) return
   const mod = e.ctrlKey || e.metaKey
   const key = (e.key || '').toLowerCase()
+  // 只读：只留「看」的那几个键 —— 找节点、适应屏幕、Esc 收菜单。改画布的键一个都不接
+  if (readOnly.value) {
+    if (e.isComposing || e.keyCode === 229) return
+    if (mod && key === 'f' && feat.search) { e.preventDefault(); openSearch(); return }
+    if (mod && key === '0') { e.preventDefault(); fitFree(); return }
+    if (key === 'escape') { closeMenus(); stylePanelOpen.value = false; searchOpen.value = false }
+    return
+  }
+
+  // 输入法的键（正在组字，或者这一键被输入法拿走了）：不是快捷键 —— 组字时的退格、回车、空格都是输入法的。
+  // 焦点已经在候着的那个框上：就在那儿组；否则（少数环境下不可编辑的地方也开着输入法）把焦点放进提示词框
+  if (e.isComposing || e.keyCode === 229 || e.key === 'Process') {
+    if (!imeFocused() && !mod && !e.altKey && soleGenNode.value) focusGenPrompt()
+    return
+  }
 
   if (mod && key === 'z') {
     e.preventDefault()
@@ -3929,7 +5375,8 @@ function onCanvasKeydown(e: KeyboardEvent) {
   }
   // Ctrl+Y：Windows 上重做的另一套习惯
   if (mod && key === 'y') { e.preventDefault(); doRedo(); return }
-  if (mod && key === 'a') { e.preventDefault(); addSelectedNodes(getNodes.value); return }
+  // 全选是全部节点：getNodes 只有视野里的那些（only-render-visible-elements），照它选会漏掉看不见的
+  if (mod && key === 'a') { e.preventDefault(); addSelectedNodes(nodes.value.map((n) => findNode(n.id)).filter(Boolean) as any); return }
   // Ctrl+C：页面上选着文字时让浏览器照常复制文字，否则复制选中的节点（粘贴走 paste 事件）
   if (mod && key === 'c') {
     if (window.getSelection()?.toString()) return
@@ -3945,20 +5392,20 @@ function onCanvasKeydown(e: KeyboardEvent) {
   // 顶掉浏览器的「保存网页」
   if (mod && key === 's') { e.preventDefault(); void handleSave(); return }
   if (mod && key === '0') { e.preventDefault(); fitFree(); return }
-  if (mod && key === 'f') { e.preventDefault(); openSearch(); return }
+  // 搜索关着（features.search）就不接：Ctrl+F 留给浏览器 / 宿主页面自己的查找
+  if (mod && key === 'f' && feat.search) { e.preventDefault(); openSearch(); return }
   // Ctrl+G 成组：选中的里面已经有组就走合并，全是散节点就直接圈一个新组
   if (mod && key === 'g') {
     e.preventDefault()
     if (e.shiftKey) ungroupSelected()
-    else if (selectedGrouped.value >= 1 && getSelectedNodes.value.length >= 2) mergeIntoGroup()
-    else groupIntoFrame()
+    else groupSelection()
     return
   }
   if (key === 'delete' || key === 'backspace') { e.preventDefault(); deleteSelection(); return }
   if (key === 'escape') { closeMenus(); stylePanelOpen.value = false; searchOpen.value = false; return }
   // 选中一个生成节点后直接打字：焦点落进它的提示词框，这一键照常进到框里。
-  // 空格留给画布（按住拖动平移）；输入法组字的第一键 key 是 Process。
-  if (!mod && !e.altKey && soleGenNode.value && e.key !== ' ' && (e.key.length === 1 || e.key === 'Process')) {
+  // 空格留给画布（按住拖动平移）。输入法的键在上面已经分出去了。
+  if (!mod && !e.altKey && soleGenNode.value && e.key !== ' ' && e.key.length === 1) {
     focusGenPrompt()
   }
 }
@@ -3968,11 +5415,42 @@ watch(wantedCanvasId, (id) => {
   if (id && id !== currentId.value) loadWorkflow(id)
 })
 
+// 有节点开始跑、跑完或被拒绝之后把上限的数字刷新一下：次数、金额都变了（进行中的也占着名额）
+watch(() => nodes.value.filter((n: any) => n.data?.status === 'running' || n.data?.status === 'queued').length, (now, before) => {
+  if (budget.value && now !== before) scheduleBudgetReload()
+})
+watch(() => nodes.value.filter((n: any) => n.data?.refusal).length, (now, before) => {
+  if (now > before) scheduleBudgetReload()
+})
+
 // 只读开着的时候什么都不存。关掉的那一刻如果内容和上次存的不一样（比如只读期间有一次运行跑完了），补存一次
 watch(readOnly, (ro) => {
   if (ro) { closeMenus(); return }
   if (currentId.value && buildFingerprint() !== lastFingerprint) scheduleAutoSave()
 })
+/**
+ * 变成只读的那一刻（丢了锁、被接管、编辑权被收回）：
+ *  - 正在里面打字的那个框退出来 —— 节点里的、输入条 / 属性面板里的、放大编辑里的。框本身这一拍已经变成 readonly，
+ *    光标还留在里面的话，人会接着打、却一个字都进不去。标题框不算（改名不要编辑锁）；
+ *  - 只为「改」开着的层收掉：单图编辑器、画布模板、载入其他画布、外观面板、批量运行、品牌包编辑。
+ *    它们的结果本来也写不进去（各入口都有只读判断），留着只会让人白忙。
+ * 变回可编辑：只读期间「切换着看」的记录清掉，画面回到文档里真存着的那一版。
+ * 节点层不再整个 inert：只读的人要能点开大图、放视频、选字、Tab 到这些「看」的控件上（各节点自己看 readOnly）。
+ */
+const EDIT_FIELD_HOSTS = '.vue-flow__nodes, .gc, .gi, .gf-expand, .gn-tmodal, .cv-prompt-popover'
+watch(readOnly, (ro) => {
+  if (!ro) { nodePeek.clear(); return }
+  const active = document.activeElement
+  if (active instanceof HTMLElement && isTypingTarget(active) && embed.root.contains(active) && active.closest(EDIT_FIELD_HOSTS)) active.blur()
+  if (editorState.value.open) closeEditor(null)
+  templateDialogOpen.value = false
+  importPickerOpen.value = false
+  stylePanelOpen.value = false
+  kitEditor.value.open = false
+  if (batch.open.value && !batch.running.value) batch.open.value = false
+}, { flush: 'post' })
+// 换了一张画布：上一张「切换着看」的记录不带过来
+watch(() => currentId.value, () => nodePeek.clear())
 
 /* ==================== 给宿主的事件和方法（只嵌编辑器时） ==================== */
 // 监听的是拼出来的一个字符串：选中集合真的变了才发，不会因为数组换了个新的就重复发
@@ -4004,12 +5482,18 @@ onMounted(async () => {
   document.addEventListener('mousedown', onDocClick)
   document.addEventListener('paste', onCanvasPaste)
   window.addEventListener('beforeunload', onBeforeUnload)
+  window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pageshow', onPageShow)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('keydown', onCanvasKeydown)
   window.addEventListener('keydown', onCanvasKeydownCapture, true)
   window.addEventListener('keydown', onShiftDown)
   window.addEventListener('keyup', onShiftUp)
   window.addEventListener('blur', onWindowBlur)
   window.addEventListener('resize', syncPaneWidth)
+  window.addEventListener('pointerdown', onRevealPointerDown, true)
+  window.addEventListener('pointerup', onRevealPointerUp, true)
+  window.addEventListener('pointercancel', onRevealPointerUp, true)
   syncPaneWidth()
   // 品牌包列表：拉不到不影响画布使用（useBrandKits 内部已吞掉异常）
   if (feat.brandKit) void brandKits.load()
@@ -4032,34 +5516,55 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   // 离开画布页复位，恢复其他页面的外壳
   appStore.setImmersive(false)
+  // 标题框里改到一半的名字：走之前提交（改名不要锁，不用排在还锁之前）
+  void commitName()
   document.removeEventListener('mousedown', onDocClick)
   document.removeEventListener('paste', onCanvasPaste)
   window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('pagehide', onPageHide)
+  window.removeEventListener('pageshow', onPageShow)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('keydown', onCanvasKeydown)
   window.removeEventListener('keydown', onCanvasKeydownCapture, true)
   window.removeEventListener('keydown', onShiftDown)
   window.removeEventListener('keyup', onShiftUp)
   window.removeEventListener('blur', onWindowBlur)
   window.removeEventListener('resize', syncPaneWidth)
+  window.removeEventListener('pointerdown', onRevealPointerDown, true)
+  window.removeEventListener('pointerup', onRevealPointerUp, true)
+  window.removeEventListener('pointercancel', onRevealPointerUp, true)
+  if (revealTimer !== null) { clearTimeout(revealTimer); revealTimer = null }
+  if (sheetRevealTimer !== null) { clearTimeout(sheetRevealTimer); sheetRevealTimer = null }
   if (layoutUndoTimer) { clearTimeout(layoutUndoTimer); layoutUndoTimer = null }
   if (guidesHideTimer) { clearTimeout(guidesHideTimer); guidesHideTimer = null }
+  let lastSave: Promise<unknown> = Promise.resolve()
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
     autoSaveTimer = null
-    // 离开页面时若有未保存修改，立即触发一次（best-effort，不阻塞）
-    if (dirty.value && currentId.value) {
-      autoSave().catch(() => {})
+    // 离开页面时若有未保存修改，立即触发一次（best-effort，不阻塞）。
+    // 和自动保存同一个顺序：先告诉宿主「内容变了」（change / onChange），再存 —— 只给文档、自己不存的宿主
+    // 只认这个事件，少了这一下，卸载前最后那一小段（还在防抖里）的改动它就永远收不到
+    if (dirty.value && !readOnly.value && !collab.blocked.value && buildFingerprint() !== lastFingerprint) {
+      embed.emit('change', { canvasId: currentId.value || '', document: buildDocument() })
+      if (currentId.value) lastSave = doSave(true).catch(() => {})
     }
   }
   // 刚挪过视野还没来得及存：走之前补一次
   if (viewportTimer) void saveViewport()
+  // 停心跳、把编辑锁还回去。等补存的那一次先到（保存会顺带续锁，后到的话画布要白白再「正在编辑」一分钟）
+  void lastSave.then(() => collab.end())
 })
 </script>
 
 <style scoped>
-/* 只读（只嵌编辑器时的 readOnly）：节点整个不接鼠标，画布照样能平移缩放 */
-.ed.read-only :deep(.vue-flow__node), .ed.read-only :deep(.vue-flow__edge) { pointer-events: none !important; }
-.ed.read-only :deep(.vue-flow__handle) { visibility: hidden; }
+/* 只读（别人正在编辑、只有查看权、只嵌编辑器时的 readOnly）。
+   节点照常接鼠标和键盘：点开大图、放视频、选字复制、展开长文、切换查看版本都要能用 —— 哪些入口出、哪些不出由各节点自己看
+   readOnly 决定（composables/nodeLayout.ts 的 useCanvasReadOnly、useGenNode 的 viewOnly），这里不再靠样式整片盖住。
+   这里只管两样没有组件可问的：连线不能点（选中一条线只为了删它），端口还在（线要有个头）但不是拖线的把手 */
+.ed.read-only :deep(.vue-flow__edge) { pointer-events: none !important; }
+.ed.read-only :deep(.vue-flow__handle) { cursor: default; }
+.ed.read-only :deep(.vue-flow__handle:hover) { box-shadow: none; }
+.ed.read-only :deep(.vue-flow__node) { cursor: default; }
 
 /* 编辑器：画布铺满外壳给的整块区域，所有控件都是浮在上面的玻璃块。 */
 .ed {
@@ -4101,8 +5606,16 @@ onBeforeUnmount(() => {
   pointer-events: none;
   z-index: 4;
 }
-/* 小地图：左下角的玻璃块（皮肤在 vue-flow-theme.css，这里只管摆位） */
+/* 小地图：左下角的玻璃块（外框的皮肤在 vue-flow-theme.css）。遮罩 / 视口框 / 节点块的颜色在这里按令牌给：
+   组件把颜色写成 SVG 属性，属性不解析 var()，样式的优先级比属性高 */
 .vf-wrap :deep(.vue-flow__minimap) { left: 16px; bottom: 20px; }
+.vf-wrap :deep(.vue-flow__minimap-mask) { fill: var(--mini-mask); stroke: var(--mini-stroke); }
+.vf-wrap :deep(.vue-flow__minimap-node) { fill: var(--mini-node); }
+
+/* 候着输入法的那个框：看不见、点不到，只占一个位置（输入法的候选窗跟着它出） */
+.ed-ime { position: absolute; left: 0; top: 0; z-index: 1; width: 2px; height: 18px; overflow: hidden; opacity: 0; pointer-events: none; }
+/* 正在组的那一段字的下划线：和浏览器在输入框里画的一样，一条字色的细线。盖在输入条 / 属性面板 / 抽屉上面 */
+.ed-ime-mark { position: absolute; left: 0; top: 0; z-index: 42; height: 0; border-bottom: 1px solid var(--text); pointer-events: none; }
 
 /* 拖动节点时的智能对齐参考线 */
 .vf-align-guides {
@@ -4186,24 +5699,40 @@ onBeforeUnmount(() => {
 /* 属性面板（布局 b）开着：标题块别伸到它底下去 */
 .ed.insp-open .ed-title { max-width: calc(100% - 32px - 332px); }
 /* 画布名：镜像文字撑开宽度，输入框叠在上面 —— 名字多长块就多宽，超了就截断 */
-.ed-name { position: relative; display: block; min-width: 40px; max-width: 320px; flex: 0 1 auto; overflow: hidden; height: 30px; border-radius: 8px; }
+/* 上限跟着窗口走：窄窗口 320，1280 起到 480 —— 宽屏上旁边明明空着，名字不该在 320 就截。标题块自己还有一道
+   「不超出编辑器」的上限（.ed-title 的 max-width），名字是可收缩的那一项，放不下时照样在这里截成省略号 */
+.ed-name { position: relative; display: block; min-width: 40px; max-width: clamp(320px, 37.5vw, 480px); flex: 0 1 auto; overflow: hidden; height: 30px; border-radius: 8px; }
+/* 两个的盒子和字必须是同一套：以前镜像没有边框、输入框有 1px 边框，输入框里能放字的地方就比镜像量出来的窄 2px ——
+   名字再短、旁边再空，也总是被截成省略号。字距等也写死成一样的（输入框不继承外面的 letter-spacing，span 会）。 */
+.ed-name-mirror, .ed-name input {
+  box-sizing: border-box; padding: 0 8px; border: 1px solid transparent;
+  font: 600 14px/28px var(--f-disp); letter-spacing: normal; word-spacing: normal; text-indent: 0; text-transform: none;
+  font-kerning: auto; font-feature-settings: normal; font-variant-ligatures: normal;
+}
 .ed-name-mirror {
-  display: block; visibility: hidden; white-space: pre; padding: 0 8px;
-  font: 600 14px/30px var(--f-disp); overflow: hidden; text-overflow: ellipsis;
+  display: block; visibility: hidden; white-space: pre; overflow: hidden; text-overflow: ellipsis;
+  /* 输入框里的字是另一套排版（内部的编辑区），宽度按整像素取；镜像多留 1px，免得正好差零点几像素又截掉最后一个字 */
+  padding-right: 9px;
 }
 .ed-name input {
-  position: absolute; inset: 0; width: 100%; height: 100%; padding: 0 8px;
-  border: 1px solid transparent; border-radius: 8px; background: transparent; outline: none;
-  font: 600 14px/28px var(--f-disp); color: var(--text); text-overflow: ellipsis;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border-radius: 8px; background: transparent; outline: none;
+  color: var(--text); text-overflow: ellipsis;
 }
 .ed-name input::placeholder { color: var(--text-3); font-weight: 400; }
 .ed-name input:hover { background: rgb(var(--c-film) / .08); }
+/* 不能改名（只有查看权）：就是一行字，不摆出「点了能改」的样子 */
+.ed-name.fixed input { cursor: default; }
+.ed-name.fixed input:hover, .ed-name.fixed input:focus { background: none; border-color: transparent; }
 .ed-name input:focus { background: var(--well); border-color: var(--cyan); }
 .ed-save {
   border: 0; background: none; padding: 4px 2px; border-radius: 6px; font-size: 12px; flex: none;
   font-variant-numeric: tabular-nums;
 }
-.ed-save:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.ed-save-box { display: inline-grid; justify-items: start; }
+.ed-save-box > * { grid-area: 1 / 1; }
+.ed-save-sz { visibility: hidden; }
+.ed-save:hover:not(:disabled) .ed-save-t { text-decoration: underline; text-underline-offset: 3px; }
 .ed-save:disabled { cursor: default; }
 .ed-save:focus-visible { outline: none; box-shadow: var(--ring); }
 
@@ -4219,6 +5748,18 @@ onBeforeUnmount(() => {
 .ed-pal.h { flex-direction: row; align-items: center; height: 48px; }
 .ed-pal.v hr { height: 1px; margin: 2px 4px; }
 .ed-pal.h hr { width: 1px; height: 20px; margin: 0 2px; }
+/* 编辑区太矮放不下整条时的小一号（和 usePaletteDock 里 PAL_METRICS.compact 是同一组数） */
+.ed-pal.compact { padding: 4px; gap: 2px; }
+.ed-pal.compact.v { width: 40px; }
+.ed-pal.compact.h { height: 40px; }
+.ed-pal.compact .lc-tb { width: 30px; height: 30px; border-radius: 8px; }
+.ed-pal.compact.v hr { margin: 1px 4px; }
+.ed-pal.compact.h hr { height: 16px; margin: 0 1px; }
+.ed-pal .pal-over-h { transform: rotate(-90deg); }
+/* 只读时的面板：一圈提醒色的边，最前面一枚「只读」标记（不是工具，是说明），后面只有看的、拿走的 */
+.ed-pal.ro { border-color: rgb(var(--c-warn) / .45); }
+.ed-pal .pal-ro { color: var(--warn); background: var(--warning-dim); }
+.ed-pal .pal-ro:hover { background: rgb(var(--c-warn) / .22); color: var(--warn); }
 /* 松手吸边、复位、窗口变化时滑过去；拖着的时候必须跟手，不能有过渡 */
 .ed-pal.ready { transition: transform .24s cubic-bezier(.2, .8, .2, 1), box-shadow .15s; }
 .ed-pal.drag { transition: none; box-shadow: var(--sh-2); border-color: var(--line-3); cursor: grabbing; }
@@ -4238,6 +5779,10 @@ onBeforeUnmount(() => {
 .ed-pal .pal-turn { color: var(--text-3); }
 .ed-pal.v .pal-turn { height: 24px; }
 .ed-pal.h .pal-turn { width: 24px; }
+.ed-pal.compact.v .pal-grip { width: 30px; height: 12px; }
+.ed-pal.compact.h .pal-grip { width: 12px; height: 30px; }
+.ed-pal.compact.v .pal-turn { height: 20px; }
+.ed-pal.compact.h .pal-turn { width: 20px; }
 /* 把手的小菜单 */
 .ed-palmenu { position: absolute; z-index: 9; min-width: 160px; white-space: nowrap; }
 .ed-palmenu .lc-menu-item { width: 100%; gap: 10px; border: 0; background: none; text-align: left; }
@@ -4346,8 +5891,17 @@ onBeforeUnmount(() => {
 /* 换布局后节点互相压住的提示：和「撤销」小条同一个位置、同一种样子 */
 .ed-note { gap: 4px; max-width: calc(100% - 32px); }
 .ed-note > span { overflow: hidden; text-overflow: ellipsis; margin-right: 4px; }
-/* 属性面板（布局 b）开着：底部工具条和它上面的小条往左让，别钻到面板底下 */
-.ed.insp-open .ed-tools, .ed.insp-open .ed-undo { left: calc(50% - 166px); }
+/* 属性面板（布局 b）开着：底部工具条和它上面的小条往左让，别钻到面板底下；剩下的那一段比工具条还窄时
+   （窗口 700–900 宽）工具条在自己里面横向滚动，不伸到面板底下、也不伸出编辑区 */
+.ed.insp-open .ed-tools, .ed.insp-open .ed-undo { left: calc(50% - 166px); max-width: calc(100% - 332px - 32px); }
+.ed.insp-open .ed-tools { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: flex-start; }
+.ed.insp-open .ed-tools::-webkit-scrollbar { display: none; }
+/* 面板开着、工具面板躲不开它（见 palCovered）：先收起来 */
+.ed-pal.under { visibility: hidden; pointer-events: none; }
+/* 输入条 / 属性面板是贴底的抽屉时（手机宽度，或编辑区放不下「节点 + 输入条」）：抽屉压在最上面，底部工具条和它上面的
+   小条被盖住一半比不出现更糟 —— 先收起来，抽屉一关就回来（小地图同理，见 miniCramped）。
+   缩放用滚轮 / 双指照常；「运行」在抽屉里就有 */
+.ed.panel-sheet .ed-tools, .ed.panel-sheet .ed-undo { visibility: hidden; pointer-events: none; }
 
 /* ---------- 菜单 ---------- */
 .lc-menu hr { height: 1px; margin: 4px 6px; }
@@ -4382,12 +5936,35 @@ onBeforeUnmount(() => {
 
 /* ---------- 分享弹窗 ---------- */
 .share-dialog { width: 480px; }
+.share-dialog.team { width: 580px; }
+.share-h { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-tabs { display: flex; gap: 4px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.share-tabs button {
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; border: 0; background: none;
+  color: var(--text-2); font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.share-tabs button:hover { color: var(--text); }
+.share-tabs button.on { color: var(--text); font-weight: 600; border-bottom-color: var(--cyan); }
+.share-tabs button:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 8px 8px 0 0; }
+.share-err { margin: 12px 0 0; }
+.ed-vis { border: 0; background: none; padding: 0; border-radius: 8px; flex: none; display: inline-flex; }
+.ed-vis:focus-visible { outline: none; box-shadow: var(--ring); }
+.ed-ro { flex: none; }
+.ed-budget { flex: none; font-size: 11px; color: var(--text-3); white-space: nowrap; padding: 0 4px; }
+.ed-budget.near { color: var(--warn); }
+.ed-budget.reached { color: var(--err-soft); }
+@media (max-width: 640px) { .ed-budget { display: none; } }
 .share-tip { margin: 0 0 16px; }
 .share-last { margin-bottom: 0; }
+.share-ex { margin-top: 16px; }
+p.share-ex { margin-bottom: 0; }
 .share-expiry { align-self: flex-start; }
 .share-link-row { display: flex; gap: 8px; }
 .share-link-row .lc-input { flex: 1; min-width: 0; font-size: 12px; }
 .share-link-row .lc-btn { height: 40px; flex: none; }
+
+/* 手机上「没有模型」的提示条占着工具面板下面那一排：多选工具条让到底部工具条上面去 */
+.ed.has-hint .st.phone { top: auto; bottom: 122px; }
 
 /* 手机上抽屉后面的遮罩：桌面不出现 */
 .ed-scrim { display: none; }
@@ -4402,6 +5979,7 @@ onBeforeUnmount(() => {
   .ed-title { left: 8px; top: 8px; height: 40px; padding: 0 8px 0 3px; gap: 4px; max-width: calc(100% - 16px); }
   .ed-name { min-width: 24px; }
   .ed-name-mirror, .ed-name input { padding: 0 4px; font-size: 13px; }
+  .ed-name-mirror { padding-right: 5px; }
   /* 保存状态只留圆点，文字靠 title / 读屏 */
   .ed-save { padding: 6px; }
   .ed-save > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -4420,6 +5998,8 @@ onBeforeUnmount(() => {
   /* 缩放百分比和分隔线先让出来，「运行全部」才不会被挤到屏幕外 */
   .ed-tools .ed-zoom, .ed-tools hr { display: none; }
   .ed-tools .ed-run { margin-left: auto; }
+  /* 只读时只剩缩放那三颗：不用铺满一整条，收到左边 */
+  .ed.read-only .ed-tools { right: auto; }
   .ed-arrange { width: 34px; padding: 0; }
   .ed-arrange > span { display: none; }
   .ed-arrange .lc-ic { width: 18px; height: 18px; color: var(--text-2); }

@@ -1,18 +1,25 @@
 <template>
   <div class="cv-node cv-tool" :class="{ selected, 'is-running': status === 'running', 'has-runtime-error': status === 'error' }">
-    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" :title="t('tools.input.many')" />
+    <Handle id="image-in" type="target" :position="Position.Left" class="h-image h-top" v-tip="{ text: t('tools.input.many'), placement: 'left' }" />
 
     <div class="cv-head">
       <LcIcon name="layout" />
       <span class="cv-title">{{ t('nodes.title.collage') }}</span>
-      <span class="cv-help" :title="t('tools.collage.help')">?</span>
+      <span class="cv-help" tabindex="0" role="note" v-tip="t('tools.collage.help')" :aria-label="t('tools.collage.help')">?</span>
       <span v-if="status === 'running'" class="cv-tag running">{{ t('tools.collage.running') }}</span>
       <span v-else-if="status === 'error'" class="cv-tag error">{{ t('nodes.status.error') }}</span>
       <span v-else-if="resultUrl" class="cv-tag done">{{ outW }}×{{ outH }}</span>
-      <span class="cv-head-x" :title="t('cost.free')">{{ t('cost.free') }}</span>
+      <span v-tip="{ text: t('cost.free'), clipped: true }" class="cv-head-x">{{ t('cost.free') }}</span>
     </div>
 
     <div class="cv-body nodrag nowheel" @mousedown.stop @click.stop>
+      <!-- 只读：设置一项一行，是字不是控件 -->
+      <dl v-if="ro" class="cv-ro" data-testid="tool-ro">
+        <div><dt>{{ t('nodeui.ro.grid') }}</dt><dd>{{ gridText }}</dd></div>
+        <div><dt>{{ t('tools.collage.cell') }}</dt><dd>{{ ratioText }}</dd></div>
+        <div><dt>{{ t('tools.collage.gap') }}</dt><dd>{{ gap }}px<i class="cv-swatch" role="img" :aria-label="t('tools.collage.bgColor', { color: bg })" v-tip="t('tools.collage.bgColor', { color: bg })" :style="{ background: bg }" /></dd></div>
+      </dl>
+      <template v-else>
       <div class="cv-presets">
         <button
           v-for="p in COLLAGE_PRESETS" :key="p.key"
@@ -28,31 +35,32 @@
 
       <div class="cv-row">
         <span class="cv-label">{{ t('tools.collage.gap') }}</span>
-        <input class="cv-range" type="range" min="0" max="40" :value="gap"
+        <input class="cv-range" type="range" min="0" max="40" :value="gap" :aria-label="t('tools.collage.gap')"
                @input="patch({ gap: Number(($event.target as HTMLInputElement).value) })" />
         <span class="cv-val">{{ gap }}px</span>
         <input class="cv-color" type="color" :value="bg"
-               :title="t('tools.collage.bgColor', { color: bg })"
+               v-tip="t('tools.collage.bgColor', { color: bg })" :aria-label="t('tools.collage.bgColor', { color: bg })"
                @input="patch({ bg: ($event.target as HTMLInputElement).value })" />
       </div>
+      </template>
 
       <div v-if="displayError" class="cv-error"><div class="cv-error-msg">{{ displayError }}</div></div>
 
-      <button v-if="resultUrl" class="cv-preview" @click="download">
+      <button v-if="resultUrl" v-tip="previewTip" class="cv-preview" :aria-label="previewTip" @click="preview">
         <img :src="canvasImageThumb(resultUrl, 320)" :alt="t('tools.collage.resultAlt')" />
       </button>
-      <div v-else class="cv-empty">{{ t('tools.collage.empty') }}</div>
+      <div v-else class="cv-empty">{{ ro ? t('nodeui.share.noResult') : t('tools.collage.empty') }}</div>
       <div v-if="usedNote" class="cv-note">{{ usedNote }}</div>
 
-      <div class="cv-actions">
-        <button class="cv-run" :disabled="status === 'running'" @click="run">
+      <div v-if="!ro || resultUrl" class="cv-actions" :class="{ ro }">
+        <button v-if="!ro" class="cv-run" :disabled="status === 'running'" @click="run">
           {{ status === 'running' ? t('tools.collage.runningBtn') : t('nodes.title.collage') }}
         </button>
         <button v-if="resultUrl" class="cv-dl" @click="download">{{ t('common.download') }}</button>
       </div>
     </div>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" :title="t('tools.collage.output')" />
+    <Handle id="image-out" type="source" :position="Position.Right" class="h-image h-top" v-tip="{ text: t('tools.collage.output'), placement: 'right' }" />
   </div>
 </template>
 
@@ -72,6 +80,7 @@ import { downloadCanvasAsset } from '@/utils/canvasDownload'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { COLLAGE_PRESETS, CELL_RATIO_OPTIONS } from '@/composables/canvasToolsSpec'
 import ChipSelect from './ChipSelect.vue'
+import { useCanvasReadOnly, useCanvasViewer } from '@/composables/nodeLayout'
 
 const props = defineProps<{
   id: string
@@ -87,6 +96,9 @@ const props = defineProps<{
 const { t } = useI18n()
 const { updateNodeData } = useVueFlow()
 const executor = inject(CANVAS_EXECUTOR_KEY)
+/** 只读（别人正在编辑、只有查看权）：能看结果、能下载，不能改设置、不能拼 */
+const ro = useCanvasReadOnly()
+const viewer = useCanvasViewer()
 
 const status = computed(() => props.data.status || 'idle')
 const cols = computed(() => Number(props.data.cols) || 2)
@@ -108,17 +120,28 @@ const usedNote = computed(() => {
   return skipped > 0 ? t('tools.collage.usedSkipped', { used, skipped }) : t('tools.collage.used', { used })
 })
 
+const gridText = computed(() => COLLAGE_PRESETS.find((p) => p.cols === cols.value && p.rows === rows.value)?.label || `${cols.value} × ${rows.value}`)
+const ratioText = computed(() => CELL_RATIO_OPTIONS.find((o) => o.value === ratio.value)?.label || ratio.value)
+
 /** 改任何参数都作废上一版结果，免得看着旧图以为是新参数出的 */
 function patch(p: Record<string, any>) {
+  if (ro.value) return
   updateNodeData(props.id, {
     ...p, imageUrl: '', imageUrls: [], outW: 0, outH: 0,
     usedCount: 0, skippedCount: 0, status: 'idle', errorMsg: '',
   })
 }
 
-function run() { void executor?.runNode(props.id) }
+function run() { if (!ro.value) void executor?.runNode(props.id) }
 function download() {
   if (resultUrl.value) void downloadCanvasAsset(resultUrl.value, `collage_${cols.value}x${rows.value}`, 'image')
+}
+/** 点结果图：有画布的大图预览就放大看（下载在旁边那颗按钮上），没有才直接下载 */
+const previewTip = computed(() => (viewer ? t('gen.view.image') : t('common.download')))
+function preview() {
+  if (!resultUrl.value) return
+  if (viewer) viewer(resultUrl.value, 'image')
+  else download()
 }
 </script>
 

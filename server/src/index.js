@@ -32,8 +32,11 @@ async function main() {
   // Storage: what was saved on the settings page wins over the environment.
   const storage = await require('./services/storageSettings').load()
   if (storage.secretUnreadable) {
-    console.error('[storage] the saved S3 secret cannot be decrypted (was SECRET_KEY changed?). Enter it again under Settings > Storage.')
+    console.error('[storage] the saved S3 secret cannot be decrypted (was SECRET_KEY changed?). Enter it again under Settings > Storage.' +
+      (storage.writable ? ' Until then the files in that bucket do not load.' : ' Until then the files in that bucket do not load and NEW FILES ARE REFUSED: nothing is written anywhere else in its place.'))
   }
+  // Files of deleted accounts and teams that a storage could not give up yet are tried again in the background.
+  require('./services/storageCleanup').start()
   // Providers saved by an older version are brought to the vendor model once.
   const upgraded = await require('./services/providerMigration').migrateProviders()
   if (upgraded.providers) console.log(`[providers] brought ${upgraded.providers} stored provider(s) up to date, ${upgraded.customModels} custom model(s) carried over`)
@@ -57,10 +60,17 @@ async function main() {
   if (canvases) console.log(`[canvas] brought ${canvases} stored canvas(es) up to the current document version`)
   if (await require('./services/seed').seed()) console.log('[seed] built-in templates installed')
 
+  // Teams: their indexes, the per-team run caps, and the hourly removal of dissolved teams whose time is up.
+  const teams = require('./services/teams')
+  await teams.start()
+
   const { getRunner } = require('./runner')
   const runner = getRunner()
   const resumed = await runner.start()
   if (resumed) console.log(`[runner] resumed ${resumed} unfinished run(s)`)
+  // The counters the teams' monthly limits are checked against are a cache of the run records:
+  // whatever a process that was killed mid-way left behind is put right from the records here.
+  await require('./services/budget').reconcileAll()
 
   const retention = require('./services/retention')
   retention.start()
@@ -83,6 +93,7 @@ async function main() {
     force.unref()
     try {
       retention.stop()
+      teams.stop()
       server.close()
       server.closeIdleConnections()
       // In-flight runs go back to `queued`; the next start picks them up.

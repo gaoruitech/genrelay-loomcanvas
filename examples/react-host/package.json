@@ -1,0 +1,29 @@
+{
+  "name": "loomcanvas-example-react-host",
+  "version": "0.1.0",
+  "description": "A React (Vite + TypeScript) host that builds the LoomCanvas editor in. An example, not part of the production build.",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "loomcanvas-web": "file:../../web",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.0"
+  }
+}

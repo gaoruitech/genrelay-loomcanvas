@@ -2,12 +2,17 @@ import { computed, inject, onBeforeUnmount, reactive, ref, watch, type ComputedR
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from '@/utils/feedback'
+import { CANVAS_BUDGET_KEY, holdBudgetFresh } from '@/composables/canvasBudgetKey'
+import { preflight, refusalText, storedRefusal } from '@/utils/budget'
+import type { BudgetRefusal } from '@/types'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import { useEstimateCost } from '@/composables/useEstimateCost'
 import { usePublicUrlNotice } from '@/composables/usePublicUrlNotice'
+import { providerMark, storageGo, useRunBlockNotices, type RunNotice } from '@/composables/useStorageNotice'
 import { useMentionInput } from '@/composables/useMentionInput'
 import { mentionsToDisplay, mentionsToStored, type ImageRef } from '@/composables/canvasImageRefs'
-import type { GenNodeKind } from '@/composables/nodeLayout'
+import { CANVAS_NODE_UI_KEY, type GenNodeKind } from '@/composables/nodeLayout'
+import { clipLength } from '@/utils/duration'
 import {
   defaultModelId, defaultVideoEditModelId, getAdapter, listFlatModels, listFlatVideoEditModels, modelKeyOf, alignParams,
   isFramesModeData, isLastFrameHandle, FIRST_FRAME_HANDLE, LAST_FRAME_HANDLE,
@@ -84,7 +89,7 @@ export function useGenNode(opts: {
   kind: GenNodeKind
   id: string
   data: () => Record<string, any>
-  /** 只读（分享页）：不写任何东西、不发任何请求 */
+  /** 分享页的快照：没有画布上下文（没有模型清单、没有执行器），不写任何东西、不发任何请求。挂上之后不会变 */
   readonly?: boolean
 }) {
   const { kind, id } = opts
@@ -94,8 +99,28 @@ export function useGenNode(opts: {
   const { t } = useI18n()
   const flow = useVueFlow()
   const executor = readonly ? undefined : inject(CANVAS_EXECUTOR_KEY, undefined)
+  // 团队的每月上限（个人空间、只读画布没有）
+  const budget = readonly ? undefined : inject(CANVAS_BUDGET_KEY, undefined)
+  const ui = readonly ? undefined : inject(CANVAS_NODE_UI_KEY, undefined)
+  /**
+   * 只看不改：分享页的快照（上面的 readonly），或者编辑器里这张画布现在轮不到我改（别人正在编辑、只有查看权、
+   * 丢了锁、宿主要求只读）。后一种是活的 —— 丢了锁的那一刻变成 true，接管之后变回 false，页面不用重新载入。
+   * 界面上凡是「做事」的入口都看它：只读时不出现（不是摆着置灰）；看大图、播放、选中复制、展开长文、
+   * 切换查看历史版本、下载这些「看」的照常。
+   */
+  const viewOnly = computed(() => readonly || !!ui?.readOnly.value)
   const data = computed(() => opts.data() || {})
-  const patch = (p: Record<string, any>) => { if (!readonly) flow.updateNodeData(id, p) }
+  /** 往节点数据里写的唯一出口：只读时一个字都不写（包括落默认模型、对齐参数、预估成本这些自动的） */
+  const patch = (p: Record<string, any>) => { if (!viewOnly.value) flow.updateNodeData(id, p) }
+  /**
+   * 编辑器自己补的默认值（默认模型、按模型对齐的参数）也只从这一个口写：照样进节点数据、照样会存，
+   * 但标明「不是人改的」—— 模型清单来得再晚（人已经点过画布了），也不会让一张没改过的画布跳成「未保存」。
+   */
+  const fill = (p: Record<string, any>) => {
+    if (viewOnly.value) return
+    if (ui?.fillDefaults) ui.fillDefaults(id, p)
+    else flow.updateNodeData(id, p)
+  }
 
   /* ── 模型 ── */
   const mediaOpts = computed<GenModelOption[]>(() => {
@@ -116,7 +141,28 @@ export function useGenNode(opts: {
       tag: modelTag(m),
     }))
   })
-  const modelOpts = computed(() => (isText ? chatOpts.value : mediaOpts.value))
+  /**
+   * 因为价格跑不了的模型（团队设了金额上限、而它没填价格或币种对不上）在清单里标出来。
+   * 是哪几个由服务端给（上限答案里的 cannotRun），这里不看价格自己推。
+   */
+  const modelOpts = computed<GenModelOption[]>(() => {
+    // 所属服务商的 Key 解不开了的模型：同样标出来（见 useStorageNotice）
+    const list = (isText ? chatOpts.value : mediaOpts.value).map((o) => {
+      const mark = providerMark(String(o.modelId || o.value))
+      return mark ? { ...o, ...mark } : o
+    })
+    const blocked = budget?.limits.value?.cannotRun?.models
+    if (!blocked?.length) return list
+    const currency = budget?.limits.value?.currency || ''
+    return list.map((o) => {
+      const hit = blocked.find((b) => b.id === String(o.modelId || o.value))
+      if (!hit) return o
+      const why = hit.reason === 'currency'
+        ? t('spaces.refusal.model.currency', { modelCurrency: hit.modelCurrency, currency })
+        : t('spaces.refusal.model.unpriced')
+      return { ...o, tag: t('spaces.refusal.model.tag'), desc: why }
+    })
+  })
 
   const fallbackModel = computed(() => {
     if (readonly) return ''
@@ -196,7 +242,11 @@ export function useGenNode(opts: {
   const isFramesMode = computed(() => kind === 'video-gen' && isFramesModeData(data.value))
   const modeLabel = computed(() => imgModes.value.find(m => m.value === imgMode.value)?.label || '')
 
-  /** 页脚 / 摘要里的那一小段：「自适应 · 1K」「16:9 · 8s · 720p」 */
+  /**
+   * 页脚 / 摘要里的那一小段：「自适应 · 1K」「16:9 · 720p · 8s」。
+   * 顺序固定是 比例 · 分辨率 · 时长（· 数量）—— 和参数 chip（ImageParamsChip）、属性面板、队列、生成记录同一个顺序，
+   * 同一个节点在不同布局、不同页面上读出来的是同一句话。
+   */
   const paramsSummary = computed(() => {
     if (isText) return ''
     const d = data.value
@@ -207,9 +257,9 @@ export function useGenNode(opts: {
       || (d.aspectRatio === 'auto' ? t('models.auto') : d.aspectRatio)
     if (ratio) parts.push(String(ratio))
     else if (a) parts.push(t('models.auto'))
-    if (spec.media === 'video' && duration.value) parts.push(`${duration.value}s`)
     const res = a?.options.resolutions?.find(x => String(x.value) === String(resolution.value))?.label || resolution.value
     if (res) parts.push(String(res))
+    if (spec.media === 'video' && duration.value) parts.push(clipLength(duration.value))
     if (count.value > 1) parts.push(`×${count.value}`)
     return parts.join(' · ')
   })
@@ -376,13 +426,40 @@ export function useGenNode(opts: {
   /* ── 结果 ── */
   const urlField = spec.media === 'video' ? 'videoUrl' : 'imageUrl'
   const listField = spec.media === 'video' ? 'videoUrls' : 'imageUrls'
-  const mediaUrl = computed<string>(() => (isText ? '' : data.value[urlField] || ''))
-  const mediaList = computed<string[]>(() => (isText ? [] : data.value[listField] || []))
+  /**
+   * 只读时「切换着看」：看哪一版、哪一张只记在画布给的那张表里（节点和它的面板是两份实例，要看同一张），
+   * 不写进节点数据 —— 存着的文档一个字节都不变。指的那一版 / 那一张已经不在了（对方重跑、删了）就当没指过。
+   */
+  const peek = computed(() => {
+    const pk = viewOnly.value && !isText ? ui?.peek.get(id) : undefined
+    if (!pk) return null
+    const list = Array.isArray(data.value.results) ? data.value.results : []
+    const hasIndex = typeof pk.resultIndex === 'number' && pk.resultIndex >= 0 && pk.resultIndex < list.length
+    const urls: string[] = hasIndex
+      ? ((list[pk.resultIndex!]?.urls || []) as string[]).filter(Boolean)
+      : (data.value[listField] || [])
+    if (hasIndex && !urls.length) return null
+    const url = pk.url && urls.includes(pk.url) ? pk.url : hasIndex ? urls[0] : ''
+    if (!hasIndex && !url) return null
+    return { index: hasIndex ? pk.resultIndex! : -1, urls, url, cost: hasIndex ? (list[pk.resultIndex!]?.cost ?? null) : undefined }
+  })
+  const mediaUrl = computed<string>(() => (isText ? '' : peek.value?.url || data.value[urlField] || ''))
+  const mediaList = computed<string[]>(() => (isText ? [] : peek.value?.urls || data.value[listField] || []))
   const hasResult = computed(() => (isText ? !!data.value.text : !!mediaUrl.value))
   function selectMedia(url: string) {
     if (!url || url === mediaUrl.value) return
+    if (viewOnly.value) { ui?.peek.set(id, { ...(ui.peek.get(id) || {}), url }); return }
     patch({ [urlField]: url })
   }
+  /** 节点现在给人看的那一份数据（只读时带着「切换着看」的那一版）：任务详情、看大图、下载都读它 */
+  const shownData = computed<Record<string, any>>(() => {
+    const pk = peek.value
+    if (!pk) return data.value
+    return {
+      ...data.value, [urlField]: pk.url, [listField]: pk.urls,
+      ...(pk.index >= 0 ? { resultIndex: pk.index, cost: pk.cost ?? null } : {}),
+    }
+  })
 
   /**
    * 历次运行的产物，新的在最前；resultIndex 指向当前展示的是第几版。
@@ -391,7 +468,7 @@ export function useGenNode(opts: {
    */
   const versions = computed<GenVersion[]>(() => {
     const list = !isText && Array.isArray(data.value.results) ? data.value.results : []
-    const i = Number(data.value.resultIndex)
+    const i = peek.value && peek.value.index >= 0 ? peek.value.index : Number(data.value.resultIndex)
     const current = Number.isFinite(i) && i >= 0 && i < list.length ? i : 0
     return list.map((r: any, index: number) => {
       const parts: string[] = [index === 0 ? t('gen.history.latestTitle') : t('gen.history.nthTitle', { n: list.length - index })]
@@ -417,6 +494,7 @@ export function useGenNode(opts: {
     const r = (data.value.results || [])[index]
     const urls = ((r?.urls || []) as string[]).filter(Boolean)
     if (!urls.length) return
+    if (viewOnly.value) { ui?.peek.set(id, { resultIndex: index, url: urls[0] }); return }
     patch({
       [urlField]: urls[0],
       [listField]: urls,
@@ -443,7 +521,7 @@ export function useGenNode(opts: {
   const progress = computed<number>(() => data.value.progress || 0)
   const isRunning = computed(() => status.value === 'running' || status.value === 'queued')
   // 任务已经提交到后端、还没出结果时才有东西可取消（排队等上游、正在提交的那一小段没有）
-  const canCancel = computed(() => !readonly && status.value === 'running' && data.value.runPending === true)
+  const canCancel = computed(() => !viewOnly.value && status.value === 'running' && data.value.runPending === true)
   const runningPlainKey = kind === 'llm' ? 'nodeui.llm.statusRunning' : kind === 'video-analysis' ? 'nodeui.analysis.statusRunning' : 'gen.node.runningPlain'
   const statusLabel = computed(() => {
     if (readonly) return ''
@@ -451,7 +529,7 @@ export function useGenNode(opts: {
     if (status.value === 'canceled') return t('nodes.status.canceled')
     if (status.value === 'queued') return t('nodes.status.queued')
     if (status.value === 'running') return isText ? t(runningPlainKey) : t('nodes.status.running')
-    if (status.value === 'error') return t('nodes.status.error')
+    if (status.value === 'error') return storedRefusal(data.value.refusal) ? t('spaces.refusal.status') : t('nodes.status.error')
     if (status.value === 'done' || hasResult.value) return t('nodes.status.done')
     return ''
   })
@@ -470,24 +548,43 @@ export function useGenNode(opts: {
   })
   /** 不带百分比的那半句，百分比另外显示时用 */
   const runningPlain = computed(() => (status.value === 'queued' ? t('nodes.status.queued') : t(runningPlainKey)))
+  /** 这次运行是被团队的每月上限拦下的（没有发出去）：是哪一项、数字、找谁，见 BudgetNotice */
+  const refusal = computed<BudgetRefusal | null>(() => {
+    if (readonly || data.value.validationError || status.value !== 'error') return null
+    return storedRefusal(data.value.refusal)
+  })
+  /** 还没点运行就知道会被拦：上限已经用完，或者当前模型因为价格跑不了（服务端给的答案） */
+  const preflightRefusal = computed<BudgetRefusal | null>(() => {
+    // 只读的人本来就运行不了：「现在跑会被上限拦下」对他没有意义
+    if (viewOnly.value || refusal.value || isRunning.value) return null
+    return preflight(budget?.limits.value, currentModel.value)
+  })
   const displayError = computed<string>(() => {
     if (readonly) return ''
     if (data.value.validationError) return data.value.validationError
+    if (refusal.value) return refusalText(refusal.value).line
     if (isText) return (status.value === 'error' ? data.value.errorMsg : '') || ''
     return data.value.errorMsg || ''
   })
-  const failed = computed(() => status.value === 'error')
+  if (budget) {
+    // 上限的答案换了：各节点上记着的「被上限拦下」跟着对一遍 —— 不成立的撤掉，数字变了的换掉（执行器的 syncRefusals，
+    // 一次对的是整张画布，包括眼下没渲染的节点；幂等，所以每个实例都调也无妨）
+    watch(() => budget.limits.value, (limits) => { executor?.syncRefusals?.(limits) }, { immediate: true })
+    // 这个节点正摆着上限的说明（被拦下的那一句，或者运行前的提醒）：让答案跟得上，团长那边一改这里就知道
+    let release: (() => void) | null = null
+    watch(() => !!(refusal.value || preflightRefusal.value), (on) => {
+      if (on && !release) release = holdBudgetFresh(budget)
+      else if (!on && release) { release(); release = null }
+    }, { immediate: true })
+    onBeforeUnmount(() => { release?.(); release = null })
+  }
+  /** 真的跑了、失败了。被上限拦下的不算：那是「没有运行」 */
+  const failed = computed(() => status.value === 'error' && !refusal.value)
+  const refused = computed(() => !!refusal.value)
   const runLabel = computed(() => {
     if (kind === 'llm') return t('nodeui.llm.run')
     if (kind === 'video-analysis') return t('nodeui.analysis.run')
-    return hasResult.value ? t('nodes.action.rerun') : t('nodes.action.run')
-  })
-
-  /** 地方窄的时候用的短说法：不分「运行 / 重新运行」 */
-  const runShort = computed(() => {
-    if (kind === 'llm') return t('nodeui.llm.run')
-    if (kind === 'video-analysis') return t('nodeui.analysis.run')
-    return t('nodes.action.run')
+    return hasResult.value ? t('gen.node.rerun') : t('nodes.action.run')
   })
 
   /* ── 运行前就要说的话 ── */
@@ -496,21 +593,34 @@ export function useGenNode(opts: {
   const publicUrlNotice = isText || readonly
     ? computed(() => '')
     : usePublicUrlNotice(id, adapter as ComputedRef<ModelAdapter | null>, imageRefs, () => executor?.brandKitEffect(id)?.effect.addedImages || [])
-  const notices = computed<string[]>(() => {
-    const list: string[] = []
-    if (publicUrlNotice.value) list.push(publicUrlNotice.value)
+  // 现在跑不了的两种情况（见 useStorageNotice）：选的模型所属的服务商 Key 解不开了；存不了新文件（出图 / 出片节点）。
+  // 节点上已经显示着同一句失败原因时不重复说
+  const blockNotices = readonly
+    ? computed<RunNotice[]>(() => [])
+    : useRunBlockNotices({ media: !isText, model: () => currentModel.value, shown: () => displayError.value })
+  /** 每条说明，和它后面跟着的去处（能自己去改的人才有：超级管理员去「设置 → 存储」，能管服务商的人去「模型管理」） */
+  const noticeItems = computed<RunNotice[]>(() => {
+    const list: RunNotice[] = []
+    // 不是人点的取消：后端说了为什么（发起人被移出团队、账号被停用、团队关了）
+    if (status.value === 'canceled' && data.value.cancelNote) list.push({ text: String(data.value.cancelNote), go: null })
+    // 下面几条都是「运行之前要知道的」：只读的人运行不了，不说
+    if (viewOnly.value) return list
+    list.push(...blockNotices.value)
+    if (publicUrlNotice.value) list.push({ text: publicUrlNotice.value, go: storageGo() })
     // 纯文本模型却连着图片：说清楚这些图不会发出去
-    if (kind === 'llm' && !readsImages.value && imageInCount.value) list.push(t('nodeui.llm.imagesIgnored', { n: imageInCount.value }))
+    if (kind === 'llm' && !readsImages.value && imageInCount.value) list.push({ text: t('nodeui.llm.imagesIgnored', { n: imageInCount.value }), go: null })
     return list
   })
+  const notices = computed<string[]>(() => noticeItems.value.map(n => n.text))
+  const noticeGo = computed(() => noticeItems.value.map(n => n.go))
 
   /* ── 动作 ── */
   // 已有结果时的重跑确认由执行器统一处理（见 useRerunConfirm），这里只管发起
   async function run() {
-    if (!executor || isRunning.value) return
+    if (!executor || viewOnly.value || isRunning.value) return
     await executor.runSubtree(id)
   }
-  function cancel() { void executor?.cancelNode(id) }
+  function cancel() { if (!viewOnly.value) void executor?.cancelNode(id) }
 
   /* ── 校验失败时抖一下 ── */
   const shaking = ref(false)
@@ -520,24 +630,26 @@ export function useGenNode(opts: {
   if (!readonly) {
     if (isText) {
       // 没选过模型时把默认值落到节点上；清单是异步加载的，所以用 watch 而不是只做一次
-      watch(currentModel, (m) => { if (m && !data.value.model) patch({ model: m }) }, { immediate: true })
+      // viewOnly 也在监听里：只读时 patch 不写，接管（变回可编辑）的那一刻要补上
+      watch([currentModel, viewOnly], ([m]) => { if (m && !data.value.model) fill({ model: m }) }, { immediate: true })
       useEstimateCost(
-        computed(() => (currentModel.value ? { model: currentModel.value, count: 1 } : null)),
+        computed(() => (currentModel.value && !viewOnly.value ? { model: currentModel.value, count: 1 } : null)),
         (cost) => patch({ estimatedCost: cost }),
       )
     } else {
       // 节点还没选过模型时，把默认模型写进 data —— 执行器只认 data.model
-      watch(fallbackModel, (m) => { if (m && !data.value.model) patch({ model: m }) }, { immediate: true })
-      watch(adapter, (a) => {
+      watch([fallbackModel, viewOnly], ([m]) => { if (m && !data.value.model) fill({ model: m }) }, { immediate: true })
+      watch([adapter, viewOnly], ([a]) => {
         if (!a) return
         const p = alignParams(a, data.value)
-        if (Object.keys(p).length > 0) patch(p)
+        if (Object.keys(p).length > 0) fill(p)
       }, { immediate: true })
       useEstimateCost(
         computed(() => {
           // 只估已经写进 data 的模型：执行器提交的也是 data 里那一份
           const d = data.value
-          if (!d.model || !adapter.value) return null
+          // 只读时不问价：预估是给要运行的人看的，问回来也没处写
+          if (viewOnly.value || !d.model || !adapter.value) return null
           const params: Record<string, any> = {}
           if (d.resolution) params.resolution = d.resolution
           if (d.aspectRatio) params.aspectRatio = d.aspectRatio
@@ -565,6 +677,8 @@ export function useGenNode(opts: {
        * 悄悄删掉比留着更糟。（节点和面板各有一份实例：先跑的那份删完，后跑的就没有可删的了。）
        */
       watch(isFramesMode, (frames) => {
+        // 只读时模式不是我改的（是载入了对方存的新内容）：线是对方的，轮不到这边删
+        if (viewOnly.value) return
         const mine = flow.edges.value.filter(e => e.target === id)
         const drop = frames
           ? mine.filter(e => e.targetHandle === FIRST_FRAME_HANDLE).slice(1)
@@ -588,7 +702,7 @@ export function useGenNode(opts: {
   }
 
   return reactive({
-    kind, id, readonly, isText, data,
+    kind, id, readonly, viewOnly, isText, data, shownData,
     icon: spec.icon,
     media: spec.media,
     detailType: spec.detailType,
@@ -610,7 +724,7 @@ export function useGenNode(opts: {
     estimateText, estimateUnknown, actualText, costText, costIsActual, costUnknown,
 
     status, progress, isRunning, canCancel, statusLabel, statusClass, runningLabel, runningPlain,
-    displayError, failed, runLabel, runShort, notices, shaking,
+    displayError, failed, refused, refusal, preflightRefusal, budget, runLabel, notices, noticeGo, shaking,
     run, cancel,
   })
 }

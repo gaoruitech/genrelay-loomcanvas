@@ -14,7 +14,7 @@ A vendor is a vendor and a model is a model. Which models a vendor has is writte
 | --- | --- |
 | Vendor | The company whose API is called: Gaorui (高瑞), OpenAI or Google Gemini. In the code, one module in `server/src/providers/` plus one catalog file. The interface calls it a provider. |
 | Catalog | The models a vendor supports, stated by hand in `server/src/providers/catalog/<vendor>.json`, in three sections: image, video, chat. The section a model sits in is its kind. |
-| Provider | A vendor plus your API key, added on the **Models** page. Providers belong to the account that added them: every account has its own providers, keys, models and prices. You can add the same vendor more than once (for example with two keys), up to 50 providers per account. The vendor of a provider cannot be changed after it is added. |
+| Provider | A vendor plus your API key, added on the **Models** page. Providers belong to the space they are added in: in its personal space every account has its own providers, keys, models and prices, and a team has its own, set up by its owner and admins (members use them and never see a key; see the [user guide](user-guide.md#what-a-member-sees-and-does-not-see)). You can add the same vendor more than once (for example with two keys), up to 50 providers per space. The vendor of a provider cannot be changed after it is added. |
 | Custom model | A model that is not in the vendor's catalog, added by hand to one provider. You state its kind yourself. See [Custom models](#custom-models). |
 | Slug | A short id given to the provider when it is created, taken from the vendor id: `gaorui`, then `gaorui-2`, and so on. It never changes. |
 | Model id | `<slug>:<upstream model name>`, for example `gaorui:nano-banana-2`. Canvases, prices and usage refer to models by this id. |
@@ -22,10 +22,10 @@ A vendor is a vendor and a model is a model. Which models a vendor has is writte
 Things to know:
 
 - A provider's models are its vendor's catalog plus the custom models you added to it. The list is put together locally; saving or testing a provider does not change it.
-- The API key is required. It is encrypted before it is stored and is never returned by any endpoint. The interface shows only whether a key is set and its last four characters. When editing a provider, leave the key blank to keep the current one.
+- The API key is required. It is encrypted before it is stored and is never returned by any endpoint. The interface shows only whether a key is set and its last four characters. When editing a provider, leave the key blank to keep the current one. The key is encrypted with `SECRET_KEY`: if that is changed, the saved key cannot be read any more. The card then reads **Key unreadable** and has an **Enter the key again** button, and none of the provider's models run (`provider.key_undecryptable`) until the key has been entered again; in a team, members see "Unavailable for now. Ask the team owner or an admin".
 - **Test connection** calls the upstream's model-list endpoint. It only proves that the address and the key work; the list that comes back is not used.
 - A disabled provider hides all its models from the canvas. Deleting a provider also deletes its custom models and the price and display overrides of its models. Runs already recorded are kept.
-- The **Models** page (in the sidebar) shows your providers as cards on the left, each with its status, whether a key is set, how many models it has, and **Test connection** and **Edit**. Clicking a card shows the models of that provider on the right, grouped into Image, Video and Chat. The bar above the table filters by type, status (enabled or disabled), source (built-in or custom), price (set or not) and a search over the display name and the model ID. Custom models carry a **Custom** badge. The switch at the start of a row enables or disables the model; **More actions** in the row changes its display name and order. The filters are remembered in the browser.
+- The **Models** page (in the sidebar) shows your providers as cards on the left, each with its status (**Connected**, **Last test failed** or **Not tested**: the result of the most recent **Test connection**, kept until the key or the address changes), whether a key is set, how many models it has, who it is **Maintained by** (whoever last changed it), and **Test connection** and **Edit**. Clicking a card shows the models of that provider on the right, grouped into Image, Video and Chat. The bar above the table filters by type, status (enabled or disabled), source (built-in or custom), price (set or not) and a search over the display name and the model ID. Custom models carry a **Custom** badge. The switch at the start of a row enables or disables the model; **More actions** in the row changes its display name and order. The filters are remembered in the browser.
 
 ## Vendors
 
@@ -245,9 +245,9 @@ Reference images and source videos on a canvas are files in **your** storage. Th
 | URL if there is a public one, otherwise an inline data URI | Images in chat requests to OpenAI and Gaorui; reference images of Omni Flash and Omni Flash Edit | Chat: works, images are sent inline, up to 20 MB each. The two video models: sent inline; whether the service accepts an inline image there is not known, so give them a public address if you can. |
 | URL only | **Reference images of the Gaorui image models** (custom ones included), Omni Flash Edit **source video**, Veo 3.1 and Grok Video (1.5 and 1.0) reference images, video in chat (Gaorui `gemini-3.5-flash-c` and custom chat models) | **Fails** with "A publicly reachable URL is needed…". For reference images and the source video of a video edit, the node says so before the run. |
 
-A "public address" is an `http(s)` URL that is not `localhost` and not a private IP. A file has one when:
+A "public address" is an `http(s)` URL that is not `localhost`, not another single-label host name such as `minio`, and not a private IP (the full rule is in [Storage](storage.md#what-counts-as-reachable)). A file has one when:
 
-- it is in an S3-compatible bucket whose endpoint is reachable from the internet. The upstream then receives the bucket's public address (with `redirect` delivery), or a presigned URL that is valid for one hour. The bucket can be private, and `PUBLIC_URL` is not needed; or
+- it is in an S3-compatible bucket whose endpoint is reachable from the internet (or that has a public endpoint for signed URLs, `S3_PRESIGN_ENDPOINT`). The upstream then receives the bucket's public address (with `redirect` delivery), or a presigned URL that is valid for one hour. The bucket can be private, and `PUBLIC_URL` is not needed; or
 - `PUBLIC_URL` is your public address. It is added to the file's site-relative URL (`/files/<key>`) when the file is handed to the upstream. This is the only way for files on the local disk.
 
 So for image-to-image with a Gaorui image model, for video editing, for video analysis and for image-to-video with URL-only models, either set `PUBLIC_URL` to a public address or keep files in a bucket (**Settings → Storage**). Switching storage does not move files that are already stored. See [Storage](storage.md#reference-media-for-upstream-models) and [Deployment](deployment.md#public_url).
@@ -262,7 +262,7 @@ LoomCanvas does not know what your upstream charges. You enter the rates you pay
 
 ![The Models page](images/08-settings-models.png)
 
-*The Models page. No prices are shipped: every model starts as "Not set" (cost unknown) until you enter the rate you pay. The prices in the picture are examples.*
+*The Models page. No prices are shipped: every model starts as "Not set" (cost unknown), as in the picture, until you enter the rate you pay.*
 
 ### Entering a price
 
@@ -280,7 +280,7 @@ With the billing unit "per 1M tokens", **Price varies by** is replaced by **Inpu
 - **Priced separately**: an input price and an output price, each per million tokens. This is the default for a new chat model price.
 - **Same price**: one rate for input and output.
 
-In the model list a separately priced model reads like "Input $1.50 / output $6.00 · per 1M tokens" (made-up numbers, to show the format).
+In the model list a separately priced model shows the pair "Input $1.50 / Output $6.00" with "per 1M tokens" under it; where the price is written as one sentence (the tooltip a team member sees) it reads "$1.50 per 1M input tokens · $6.00 per 1M output tokens". Other prices read "$0.04 per image", "$3.50 per video", "$0.05 per second" (made-up numbers, to show the format).
 
 Table keys, matched case-insensitively against the run's parameters:
 

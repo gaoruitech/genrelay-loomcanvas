@@ -15,11 +15,11 @@
  */
 import './styles'
 import { reactive } from 'vue'
-import { configureRuntime } from './runtime'
+import { configureRuntime, runtime } from './runtime'
 import { createEmbedContext } from './context'
 import { applyCommonOptions, createEmitter, createMountRoot, hostSetTheme } from './mount'
 import { createLoomApp } from './createApp'
-import { fallbackPage, resolveFeatures, resolvePages, routeOfPage, PAGE_KEYS } from './options'
+import { fallbackPage, resolveBrand, resolveFeatures, resolvePages, routeOfPage, PAGE_KEYS } from './options'
 import { normalizeLocale } from '@/locales'
 import { normalizeNodeLayout } from '@/composables/nodeLayout'
 import type { HostUser, LoomCanvasAppHandle, LoomCanvasAppOptions, LoomCanvasPage } from './types'
@@ -38,6 +38,10 @@ function pathOf(to: string, params: Record<string, string> | undefined): string 
 }
 
 export function mountLoomCanvas(el: HTMLElement, options: LoomCanvasAppOptions = {}): LoomCanvasAppHandle {
+  // The whole app talks to the stock server through the built-in adapter. An editor that was mounted
+  // on this page before (and is gone) leaves its adapter behind for its last save: drop it now.
+  // While an editor IS mounted the two views share its adapter, as before (one runtime per page).
+  if (![...runtime.roots].some((r) => r.isConnected && r.classList.contains('lc-mode-editor'))) runtime.adapter = null
   configureRuntime({
     apiBase: options.apiBase,
     fileBase: options.fileBase,
@@ -61,8 +65,9 @@ export function mountLoomCanvas(el: HTMLElement, options: LoomCanvasAppOptions =
     hostAuth,
     hostUser: options.user || null,
     pages,
+    space: typeof options.space === 'string' && options.space ? options.space : null,
     features: reactive(resolveFeatures(options.features, { mode: 'app', hostAuth, shell })),
-    brand: options.brand,
+    brand: resolveBrand(options.brand),
     defaultNodeLayout: normalizeNodeLayout(options.nodeLayout),
     themeControlled: !!options.theme,
     localeControlled: !!options.locale,
@@ -76,7 +81,7 @@ export function mountLoomCanvas(el: HTMLElement, options: LoomCanvasAppOptions =
 
   // Memory mode is the default when embedded: the address bar belongs to the host.
   const routerMode = options.routerMode === 'history' || options.routerMode === 'hash' ? options.routerMode : 'memory'
-  const first = options.initialPage || fallbackPage(pages)
+  const first = options.initialPage || fallbackPage(pages, ctx.features)
 
   const lc = createLoomApp({
     el: mount.appEl,

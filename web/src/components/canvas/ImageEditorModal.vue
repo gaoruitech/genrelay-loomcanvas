@@ -1,9 +1,19 @@
 <template>
-  <div v-if="open" class="lc-mask lc-sheet ie-mask" @click.self="requestClose">
-    <div class="lc-dialog ie-modal">
+  <!-- 只认按在遮罩上的那一下：拖裁剪框、松手落在遮罩上，不该把编辑器关掉 -->
+  <div v-if="open" class="lc-mask lc-sheet ie-mask" @mousedown.self="requestClose">
+    <!-- 键盘和焦点归 v-dialog：焦点进弹窗（落在弹窗自己身上，不落在滑块上 —— 那样一按方向键图就转了）、
+         Tab 在里面转、Esc 关掉（正在应用时不关）、关掉后焦点还给打开它的那个元素 -->
+    <div
+      ref="boxRef"
+      v-dialog="{ onEscape: requestClose, busy: applying, initialFocus: () => boxRef }"
+      class="lc-dialog ie-modal"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('dialogs.editor.title')"
+    >
       <div class="lc-dialog-head">
         <span class="ie-title">{{ t('dialogs.editor.title') }}<span v-if="sizeText" class="ie-size">{{ sizeText }}</span></span>
-        <button class="lc-x" :title="t('common.close')" @click="requestClose">×</button>
+        <button type="button" class="lc-x" :aria-label="t('common.close')" @click="requestClose">×</button>
       </div>
 
       <div class="ie-main">
@@ -14,8 +24,10 @@
             :key="tl.value"
             class="lc-tb ie-tool"
             :class="{ on: tool === tl.value }"
-            :title="t(tl.labelKey)"
+            v-tip="{ text: t(tl.labelKey), placement: 'right' }"
+            type="button"
             :aria-label="t(tl.labelKey)"
+            :aria-pressed="tool === tl.value"
             :disabled="loading || !!error"
             @click="tool = tl.value"
           >
@@ -94,9 +106,9 @@
             <div class="ie-field">
               <div class="ie-label">{{ t('dialogs.editor.quick') }}</div>
               <div class="ie-grid3">
-                <button class="ie-opt" :title="t('dialogs.editor.rotateCcw')" @click="rotateBy(-1)">↺ 90°</button>
-                <button class="ie-opt" :title="t('dialogs.editor.rotateCw')" @click="rotateBy(1)">↻ 90°</button>
-                <button class="ie-opt" :title="t('dialogs.editor.rotate180')" @click="rotateBy(2)">180°</button>
+                <button v-tip="t('dialogs.editor.rotateCcw')" type="button" class="ie-opt" :aria-label="t('dialogs.editor.rotateCcw')" @click="rotateBy(-1)">↺ 90°</button>
+                <button v-tip="t('dialogs.editor.rotateCw')" type="button" class="ie-opt" :aria-label="t('dialogs.editor.rotateCw')" @click="rotateBy(1)">↻ 90°</button>
+                <button v-tip="t('dialogs.editor.rotate180')" type="button" class="ie-opt" :aria-label="t('dialogs.editor.rotate180')" @click="rotateBy(2)">180°</button>
                 <button class="ie-opt" :class="{ on: transform.flipH }" @click="toggleFlip('h')">⇄ {{ t('dialogs.editor.flipH') }}</button>
                 <button class="ie-opt" :class="{ on: transform.flipV }" @click="toggleFlip('v')">⇅ {{ t('dialogs.editor.flipV') }}</button>
                 <button class="ie-opt" @click="resetTransform">{{ t('common.reset') }}</button>
@@ -155,6 +167,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { vDialog } from '@/directives/dialog'
 import { MessagePlugin } from '@/utils/feedback'
 import { useI18n } from 'vue-i18n'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
@@ -257,7 +270,8 @@ const fullW = ref(0)
 const fullH = ref(0)
 
 const changed = computed(() => !isIdentityTransform(transform.value) || !isFullCrop(crop.value))
-const sizeText = computed(() => (fullW.value ? `${outWidth.value} × ${outHeight.value}` : ''))
+// 尺寸的写法和工具节点、任务详情一样：1920×1080，中间不留空格
+const sizeText = computed(() => (fullW.value ? `${outWidth.value}×${outHeight.value}` : ''))
 const outWidth = computed(() => Math.max(1, Math.round(fullW.value * crop.value.w)))
 const outHeight = computed(() => Math.max(1, Math.round(fullH.value * crop.value.h)))
 const outputSizeText = computed(() =>
@@ -519,6 +533,7 @@ async function apply() {
   }
 }
 
+const boxRef = ref<HTMLElement | null>(null)
 function requestClose() {
   if (applying.value) return
   emit('close')
@@ -527,6 +542,7 @@ function requestClose() {
 
 <style scoped>
 .ie-mask { z-index: 3200; }
+.ie-modal:focus { outline: none; }
 .ie-modal { width: min(1080px, 100%); height: min(calc(84 * var(--lc-vh)), 780px); overflow: hidden; }
 .ie-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .ie-size { font: 400 12px var(--f-mono); color: var(--text-3); white-space: nowrap; }

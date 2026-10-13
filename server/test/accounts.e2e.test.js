@@ -835,7 +835,7 @@ test('accounts: the automatic super admin and old data, sign-in, sessions, the s
 
     const users = await A.data('GET', '/api/admin/users')
     assert.deepEqual(users.map((x) => [x.username, x.role, x.disabled]), [['Alice', 'owner', false], ['bob', 'user', false]])
-    assert.deepEqual(Object.keys(users[1]).sort(), ['counts', 'createdAt', 'disabled', 'email', 'id', 'lastLoginAt', 'mustChangePassword', 'prefs', 'role', 'username'])
+    assert.deepEqual(Object.keys(users[1]).sort(), ['canCreateTeams', 'counts', 'createdAt', 'disabled', 'email', 'id', 'lastLoginAt', 'mustChangePassword', 'prefs', 'role', 'teams', 'username'])
     const wf = await db.collection('workflows').countDocuments({ userId: B.user.id, isDeleted: false })
     assert.deepEqual(users[1].counts, { workflows: wf, runs: await db.collection('runs').countDocuments({ userId: B.user.id }) })
     assert.ok(users[1].lastLoginAt && !JSON.stringify(users).includes('scrypt'))

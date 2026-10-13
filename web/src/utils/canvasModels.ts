@@ -1,8 +1,10 @@
 import { localizedModelDesc } from '@/utils/builtinContent'
+import { onSpaceReset, sameSpace, spaceToken } from '@/utils/spaceScope'
 import { computed, shallowRef } from 'vue'
 import { modelsApi, runsApi, unwrap } from './canvasBackend'
 import { i18n, t } from '@/locales'
 import { registerThumb } from './canvasMedia'
+import { clipLength } from './duration'
 import type { Cost, ModelSpec, Run } from '@/types'
 
 export type CanvasMediaType = 'image' | 'video'
@@ -86,11 +88,16 @@ const specs = shallowRef<ModelSpec[]>([])
 const loaded = shallowRef(false)
 
 export async function loadModels(): Promise<ModelSpec[]> {
+  // 模型清单是按空间的：发出去之后换了空间，这一份就不是现在这个空间的了
+  const token = spaceToken()
   const list = unwrap(await modelsApi.list())
+  if (!sameSpace(token)) return specs.value
   specs.value = Array.isArray(list) ? list : []
   loaded.value = true
   return specs.value
 }
+// 换空间的那一刻清空：新空间的清单取回来之前，画布上不会出现上一个空间的模型
+onSpaceReset(() => { specs.value = []; loaded.value = false })
 
 export function modelsLoaded(): boolean {
   return loaded.value
@@ -144,7 +151,8 @@ function runToPollResult(run: Run): AdapterPollResult {
     case 'failed':
       return { status: 'failed', progress, error: run.error || '', cost: run.cost }
     case 'canceled':
-      return { status: 'canceled', progress, cost: run.cost }
+      // 不是人点的取消（发起人被移出团队、账号被停用、团队关了）带着原因；人点的不带
+      return { status: 'canceled', progress, cost: run.cost, error: run.errorCode && run.errorCode !== 'run.canceled' ? run.error || '' : '' }
     case 'queued':
       return { status: 'pending', progress }
     default:
@@ -155,7 +163,8 @@ function runToPollResult(run: Run): AdapterPollResult {
 
 function optionLabel(kind: 'aspect' | 'duration' | 'imgMode', v: string | number): string {
   if (kind === 'aspect' && v === 'auto') return t('models.auto')
-  if (kind === 'duration') return t('models.seconds', { n: v })
+  // 片长每一档的叫法和节点摘要、队列、生成记录是同一份（utils/duration.ts）
+  if (kind === 'duration') return clipLength(v) || String(v)
   if (kind === 'imgMode') {
     if (v === 'frames') return t('models.imgModeFrames')
     if (v === 'multi') return t('models.imgModeMulti')
@@ -297,6 +306,22 @@ export function defaultModelId(outputType: CanvasMediaType): string {
 
 export function defaultVideoEditModelId(): string {
   return listVideoEditAdapters()[0]?.id || ''
+}
+
+/**
+ * 一个生成节点眼下会用哪个模型：节点上存的那个；没存过（或者文本类存的那个已经不在清单里）就是它会落到的默认模型。
+ * 和节点自己显示的（useGenNode 的 currentModel）、执行器真正提交的（resolveChatModel）是同一条规则。
+ * 运行之前要按模型判断的地方（每月上限的预检）用它 —— 只看 data.model 的话，「用默认模型」的节点会被漏掉。
+ */
+export function effectiveModelId(type: string, data: { model?: unknown } | null | undefined): string {
+  const chosen = typeof data?.model === 'string' ? data.model : ''
+  if (type === 'llm' || type === 'video-analysis') {
+    const list = type === 'video-analysis' ? listVideoChatModels() : listChatModels()
+    return chosen && list.some(m => m.id === chosen) ? chosen : list[0]?.id || ''
+  }
+  if (chosen) return chosen
+  if (type === 'video-edit') return defaultVideoEditModelId()
+  return defaultModelId(type === 'video-gen' ? 'video' : 'image')
 }
 
 export interface FlatModelOption extends ModelOption {

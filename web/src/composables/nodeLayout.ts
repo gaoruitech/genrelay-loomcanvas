@@ -1,4 +1,4 @@
-import type { InjectionKey, Ref } from 'vue'
+import { computed, inject, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 
 /**
  * 生成节点的三种布局。选哪种是账号的偏好（服务端存 user.prefs.nodeLayout），
@@ -42,14 +42,47 @@ export function genNodeSize(type: string, layout: NodeLayout): { w: number; h: n
   return type === 'llm' || type === 'video-analysis' ? s.text : s.media
 }
 
+/** 只读时「切换着看」某个节点的哪一版 / 哪一张：只记在画布这边，不写进节点数据 */
+export interface NodePeek { resultIndex?: number; url?: string }
+
 /**
- * 画布给生成节点和它们的面板（输入条 / 属性面板）的上下文。
- * 只读画布（分享页）不 provide：节点按 a 的只读形态渲染。
+ * 画布给节点和生成节点的面板（输入条 / 属性面板）的上下文。
+ * 分享页不 provide：生成节点按 a 的只读形态渲染，其余节点用只读的 ShareNode。
  */
 export interface CanvasNodeUi {
   layout: Ref<NodeLayout>
+  /**
+   * 这张画布现在只能看（别人正在编辑、只有查看权、丢了锁、宿主要求只读）。是活的：丢了锁的那一刻变 true，
+   * 接管之后变回 false。所有节点类型都看它（useCanvasReadOnly）：只读时「做事」的入口不出现 ——
+   * 改字段、运行、删除、上传、调序、换品牌包；「看」的照常 —— 大图、播放、选中复制、展开长文、切换查看版本、下载。
+   */
+  readOnly: Ref<boolean>
   /** 布局 c：节点把「聚焦自己的提示词框」登记上来，画布上选中后直接打字时用 */
   registerPromptFocus: (nodeId: string, focus: (() => void) | null) => void
+  /** 看大图 / 放视频：画布根上那一份预览（节点自己不各带一份） */
+  viewMedia: (url: string, type: 'image' | 'video') => void
+  /** 只读时各节点「切换着看」到了哪儿（响应式的 Map，键是节点 id）；变回可编辑、换画布时清空 */
+  peek: Map<string, NodePeek>
+  /**
+   * 编辑器自己往节点上补默认值（没选过模型时落默认模型、按模型对齐参数）走这里，不走普通的写入：
+   * 这种写入照样要存，但不是人改的 —— 画布按「是谁写的」认，不为它标「未保存」。
+   */
+  fillDefaults: (nodeId: string, patch: Record<string, any>) => void
 }
 
 export const CANVAS_NODE_UI_KEY: InjectionKey<CanvasNodeUi> = Symbol('canvas-node-ui')
+
+/**
+ * 节点里问「现在是不是只读」。没有画布上下文（分享页、单独挂一个节点）一律算只读：
+ * 那里没有执行器、没有保存，任何「做事」的入口都接不上。
+ */
+export function useCanvasReadOnly(): ComputedRef<boolean> {
+  const ui = inject(CANVAS_NODE_UI_KEY, undefined)
+  return computed(() => (ui ? !!ui.readOnly.value : true))
+}
+
+/** 节点里「点一下看大图 / 放视频」：有画布上下文才有（分享页的节点自己带播放控件） */
+export function useCanvasViewer(): ((url: string, type: 'image' | 'video') => void) | null {
+  const ui = inject(CANVAS_NODE_UI_KEY, undefined)
+  return ui ? ui.viewMedia : null
+}

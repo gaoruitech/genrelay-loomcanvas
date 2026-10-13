@@ -214,6 +214,21 @@ function specsForInstance(doc) {
   return buildSpecs({ id: String(doc._id), slug: doc.slug, name: doc.name, type: doc.type }, rawSpecsFor(doc))
 }
 
+/**
+ * Is a key stored for this instance that can no longer be decrypted (SECRET_KEY
+ * changed)? Such a provider is listed as before, but cannot be used until its
+ * key is entered again. Needs apiKeyEnc selected.
+ */
+function keyUnreadable(doc) {
+  if (!doc || !doc.apiKeyEnc) return false
+  try {
+    decrypt(doc.apiKeyEnc, getConfig().secretKey)
+    return false
+  } catch {
+    return true
+  }
+}
+
 /** Plugin config for an instance, with the key decrypted. Needs apiKeyEnc selected. */
 function configFor(doc) {
   const plugin = getType(doc.type)
@@ -291,6 +306,7 @@ module.exports = {
   checkCustomModel,
   specsForInstance,
   configFor,
+  keyUnreadable,
   listModels,
   resolveModel,
 }

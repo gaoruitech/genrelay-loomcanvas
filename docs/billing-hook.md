@@ -46,8 +46,10 @@ The same object is passed to all three calls of one run.
 | Field | Meaning |
 | --- | --- |
 | `runId` | Run id (string). Use it as your idempotency key. |
-| `userId` | Id of the account the run belongs to (a 24-character hex string). `'local'` only for a run left over from before accounts that no account owns yet. Key your own records on this. |
-| `username` | That account's current username; `''` when the account no longer exists or the run is not owned yet. It can change when the user edits their profile. |
+| `userId` | Id of the account that **started** the run (a 24-character hex string) - in its personal space and in a team alike, so a hook written before teams keeps charging the right person. `'local'` only for a run left over from before accounts that no account owns yet. Key your own records on this. |
+| `spaceId` | Id of the space the run belongs to: whose providers and keys it uses and where its files go. Equal to `userId` for a run in a personal space; the team's id for a run in a team. |
+| `teamId` | The team's id for a run in a team, `''` otherwise. Use it to charge a team instead of a person, or to tell team runs from personal ones. |
+| `username` | The current username of the account in `userId`; `''` when the account no longer exists or the run is not owned yet. It can change when the user edits their profile. |
 | `kind` | `'image'`, `'video'` or `'chat'`. |
 | `model` | Model id, `<slug>:<upstream model>`. |
 | `providerType` | For example `'gaorui'`. |
@@ -66,6 +68,8 @@ Called once per run, after the run is taken from the queue and its provider has 
 | `amount` | Estimated cost of the whole run. `0` when unknown. |
 | `currency` | Currency of the price table, or `''`. |
 | `unknown` | `true` when no amount could be calculated. Do not read `amount: 0` as free. Chat models priced per token are always unknown at this point. |
+
+A team's [monthly limits](api.md#monthly-limits) are a separate, earlier check: they are applied when the run is **submitted**, and a run they refuse never reaches the queue or this hook. A chat run priced per token holds a reserve of the team's money limit from then until it ends; the hook is not told that reserve - `cost` here stays `unknown` for such a run, and its real cost arrives with `afterRun` (`result.cost`). When `beforeRun` refuses a run, or the run fails or is canceled, the place and the money it held of the team's limits are given back without the hook having to do anything.
 
 Return value:
 
@@ -194,5 +198,6 @@ What it does **not** guarantee:
 - **Not transactional.** The hook and the run's database update are separate steps.
 - **No timeout on the hook.** The runner awaits each call. A slow `beforeRun` delays the run and holds one of the `concurrency` slots.
 - **The cost is an estimate.** It comes from the price table an operator typed in, not from the upstream's bill. A run that fails may still have been billed upstream.
-- **The hook knows the account, not more.** `ctx.userId` and `ctx.username` say whose run it is; balances, plans and quotas per account are yours to keep. A hook written for earlier versions, where `userId` was always the constant `'local'`, has to be changed if it relied on that value.
+- **The hook knows the account and the space, not more.** `ctx.userId` and `ctx.username` say who started the run, `ctx.spaceId` and `ctx.teamId` where; balances, plans and quotas are yours to keep. A hook written for earlier versions, where `userId` was always the constant `'local'`, has to be changed if it relied on that value.
+- **A team's monthly limits come first.** A run a team's limit refuses is refused when it is submitted (`403 budget.*`) and never reaches the hook. The hook sees a team run only after it was accepted, when it is taken from the queue.
 - **Tool nodes do not pass through the hook.** Slice, collage, watermark, resize and multi-platform export are not runs.

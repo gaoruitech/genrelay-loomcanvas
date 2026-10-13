@@ -18,6 +18,7 @@ export function createHttpAdapter(options: HttpAdapterOptions = {}): EditorAdapt
     // Without getAuth the adapter sends no credentials at all: it never reads LoomCanvas' own token.
     getAuth: () => options.getAuth || (() => ({})),
     locale: options.locale,
+    space: () => options.space || '',
     timeoutMs: options.timeoutMs,
     onUnauthorized: () => options.onAuthRequired?.(),
   })

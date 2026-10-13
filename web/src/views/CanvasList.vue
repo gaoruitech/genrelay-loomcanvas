@@ -2,13 +2,20 @@
   <div class="lc-page"><div class="lc-page-inner">
     <header class="lc-page-head cl-head">
       <div class="cl-heading">
-        <h1 class="lc-ph1">{{ t('views.list.title') }}</h1>
-        <p class="lc-ph-sub">{{ t('views.list.subtitle') }}</p>
+        <h1 class="lc-ph1">{{ space.isTeam ? t('views.team.title') : t('views.list.title') }}</h1>
+        <p class="lc-ph-sub">
+          <template v-if="!space.isTeam">{{ t('views.list.subtitle') }}</template>
+          <template v-else-if="loaded">{{ t('views.team.subtitle', { team: space.name, n: list.length }) }}</template>
+          <template v-else>{{ t('views.team.subtitleLoading', { team: space.name }) }}</template>
+        </p>
       </div>
       <span class="lc-sp" />
       <div class="cl-actions">
+        <button v-if="canTrash" class="lc-btn" @click="trashOpen = true">
+          <LcIcon name="trash" /><span>{{ t('views.trash.title') }}</span>
+        </button>
         <button v-if="$feat.share" class="lc-btn" @click="openLibrary('mine')">
-          <LcIcon name="share" /><span>{{ t('views.list.shareLinks') }}</span>
+          <LcIcon name="share" /><span>{{ space.isTeam ? t('views.team.shareLinks') : t('views.list.shareLinks') }}</span>
         </button>
         <button v-if="$feat.templates" class="lc-btn" @click="openLibrary('canvas-template')">
           <LcIcon name="layout" /><span>{{ t('views.list.templates') }}</span>
@@ -18,6 +25,26 @@
         </button>
       </div>
     </header>
+
+    <!-- 团队空间：按「谁的、哪一档」筛，右边按创建人筛和排序 -->
+    <div v-if="space.isTeam && list.length" class="cl-filters">
+      <div class="lc-seg" role="tablist" :aria-label="t('views.team.filterLabel')">
+        <button
+          v-for="f in filters"
+          :key="f.key"
+          type="button"
+          role="tab"
+          :aria-selected="filter === f.key"
+          :class="{ on: filter === f.key }"
+          @click="filter = f.key"
+        >{{ f.label }} <span class="cl-n">{{ f.count }}</span></button>
+      </div>
+      <span class="lc-sp" />
+      <div class="cl-selects">
+        <LcSelect v-model="creator" :options="creatorOptions" :searchable="creatorOptions.length > 9" size="sm" auto-width :aria-label="t('views.team.creator')" />
+        <LcSelect v-model="sort" :options="sortOptions" size="sm" auto-width :aria-label="t('views.team.sort')" />
+      </div>
+    </div>
 
     <!-- 冷启动（屏幕上还没有任何画布）才出骨架 -->
     <div v-if="loading && list.length === 0" class="cl-grid">
@@ -30,81 +57,91 @@
     </div>
     <div v-else-if="list.length === 0" class="lc-card cl-state">
       <span class="cl-state-ic"><LcIcon name="canvas" size="l" /></span>
-      <p>{{ t('views.list.empty') }}</p>
+      <p>{{ space.isTeam ? t('views.team.empty') : t('views.list.empty') }}</p>
       <button class="lc-btn" @click="openCreateDialog"><LcIcon name="plus" />{{ t('views.list.newCanvas') }}</button>
+    </div>
+    <div v-else-if="shown.length === 0" class="lc-card cl-state">
+      <span class="cl-state-ic"><LcIcon name="search" size="l" /></span>
+      <p>{{ t('views.team.noMatch') }}</p>
+      <button class="lc-btn sm" @click="resetFilters">{{ t('views.team.showAll') }}</button>
     </div>
 
     <div v-else class="cl-grid">
-      <div
-        v-for="w in list"
+      <CanvasCard
+        v-for="w in shown"
         :key="w.id"
-        class="lc-card cl-card"
-        role="link"
-        tabindex="0"
-        @click="openCanvas(w.id)"
-        @keydown.enter.self="openCanvas(w.id)"
+        class="cl-card"
+        :canvas="w"
+        :team="space.isTeam"
+        :menu-items="space.isTeam ? acts?.itemsOf(w) : undefined"
+        :now="now"
+        @open="openCanvas(w.id)"
+        @action="acts?.run($event, w)"
       >
-        <div class="lc-thumb cl-thumb">
-          <img
-            v-if="w.thumbnailType === 'image' && hasCover(w)"
-            loading="lazy"
-            :src="canvasImageThumb(https(w.thumbnail))"
-            alt=""
-            @error="onCoverError(w.id)"
-          />
-          <template v-else-if="w.thumbnailType === 'video' && hasCover(w)">
-            <video :src="https(w.thumbnail)" preload="metadata" muted @error="onCoverError(w.id)" />
-            <span class="play"><LcIcon name="play" /></span>
-          </template>
-          <span v-else class="cl-ph"><LcIcon name="canvas" size="xl" /></span>
-          <span v-if="w.thumbnailType === 'image' || w.thumbnailType === 'video'" class="lc-bd tag" :class="w.thumbnailType">{{ t(`workbench.kind.${w.thumbnailType}`) }}</span>
-        </div>
-        <div class="cl-meta">
-          <h3 :title="w.name">{{ w.name }}</h3>
-          <small>{{ formatTime(w.createdAt) }}</small>
-        </div>
         <!--
-          复制 / 删除走就地确认气泡。一屏十几张卡片，盖住整页的弹窗会把人从列表里拽出去；
-          气泡贴着按钮弹，动的是哪张一目了然。
+          个人空间：操作是封面右上角的一排图标。复制 / 删除走就地确认气泡 ——
+          一屏十几张卡片，盖住整页的弹窗会把人从列表里拽出去；气泡贴着按钮弹，动的是哪张一目了然。
           ConfirmPop 内部对触发和气泡都做了 click.stop，不会连带把画布点开。
+          团队空间里操作收在卡片右下角的「…」里（见 CanvasActions）。
         -->
-        <div class="cl-ops">
-          <button class="cl-op" :title="t('views.list.renameTip', { name: w.name })" :aria-label="t('views.list.renameTip', { name: w.name })" @click.stop="openRenameDialog(w)">
-            <LcIcon name="edit" size="s" />
-          </button>
-          <button
-            class="cl-op"
-            :title="t('views.list.downloadTip', { name: w.name })"
-            :aria-label="t('views.list.downloadTip', { name: w.name })"
-            :disabled="!!downloadingId"
-            @click.stop="handleDownload(w)"
-          >
-            <LcIcon name="download" size="s" />
-          </button>
-          <ConfirmPop
-            :text="t('views.list.duplicateConfirm', { name: w.name })"
-            :hint="t('views.list.duplicateHint')"
-            :ok-text="t('common.copy')"
-            :disabled="duplicating"
-            @ok="handleDuplicate(w)"
-          >
-            <button class="cl-op" :title="t('views.list.duplicateTip', { name: w.name })" :aria-label="t('views.list.duplicateTip', { name: w.name })">
-              <LcIcon name="copy" size="s" />
+        <template v-if="!space.isTeam" #ops>
+          <div class="cl-ops">
+            <button class="cl-op" v-tip="t('views.list.renameTip', { name: w.name })" :aria-label="t('views.list.renameTip', { name: w.name })" @click.stop="acts?.rename(w)">
+              <LcIcon name="edit" size="s" />
             </button>
-          </ConfirmPop>
-          <ConfirmPop
-            :text="t('views.list.deleteConfirm', { name: w.name })"
-            :hint="t('views.list.deleteHint')"
-            :disabled="deleting"
-            @ok="handleDelete(w)"
-          >
-            <button class="cl-op danger" :title="t('views.list.deleteTip', { name: w.name })" :aria-label="t('views.list.deleteTip', { name: w.name })">
-              <LcIcon name="trash" size="s" />
+            <button
+              v-if="$feat.batchDownload"
+              class="cl-op"
+              v-tip="t('views.list.downloadTip', { name: w.name })"
+              :aria-label="t('views.list.downloadTip', { name: w.name })"
+              :disabled="!!acts?.downloadingId"
+              @click.stop="acts?.download(w)"
+            >
+              <LcIcon name="download" size="s" />
             </button>
-          </ConfirmPop>
-        </div>
-      </div>
+            <ConfirmPop
+              :text="t('views.list.duplicateConfirm', { name: w.name })"
+              :hint="t('views.list.duplicateHint')"
+              :ok-text="t('common.copy')"
+              tone="primary"
+              :disabled="acts?.duplicating"
+              @ok="acts?.duplicate(w)"
+            >
+              <button class="cl-op" v-tip="t('views.list.duplicateTip', { name: w.name })" :aria-label="t('views.list.duplicateTip', { name: w.name })">
+                <LcIcon name="copy" size="s" />
+              </button>
+            </ConfirmPop>
+            <!-- 加入了团队的人才有：把这张画布（连同里面的文件）复制一份到团队里 -->
+            <button
+              v-if="acts?.canCopyTo"
+              class="cl-op"
+              v-tip="t('views.team.copyToTeamTip', { name: w.name })"
+              :aria-label="t('views.team.copyToTeamTip', { name: w.name })"
+              @click.stop="acts?.copyTo(w)"
+            >
+              <LcIcon name="users" size="s" />
+            </button>
+            <ConfirmPop
+              :text="t('views.list.deleteConfirm', { name: w.name })"
+              :hint="t('views.list.deleteHint')"
+              :disabled="acts?.deleting"
+              @ok="acts?.remove(w)"
+            >
+              <button class="cl-op danger" v-tip="t('views.list.deleteTip', { name: w.name })" :aria-label="t('views.list.deleteTip', { name: w.name })">
+                <LcIcon name="trash" size="s" />
+              </button>
+            </ConfirmPop>
+          </div>
+        </template>
+      </CanvasCard>
     </div>
+
+    <!-- 三档可见范围各是什么意思 -->
+    <ul v-if="space.isTeam && list.length" class="cl-legend" :aria-label="t('spaces.visibility.label')">
+      <li v-for="v in VISIBILITIES" :key="v">
+        <VisibilityChip :value="v" plain :title="false" /><span>{{ t(`spaces.visibility.${v}.hint`) }}</span>
+      </li>
+    </ul>
 
     <!-- 画布模板 / 我的分享 弹窗；列表页没有「当前画布」，选中的东西一律落到一个新画布里 -->
     <LibraryDialog
@@ -115,56 +152,54 @@
       @add-text="onAddTextToNewCanvas"
     />
 
-    <!-- 新建 / 重命名 共用一个弹窗 -->
     <CanvasNameDialog
       v-model="nameDialogOpen"
-      :title="renameTarget ? t('views.list.renameTitle') : t('views.list.newCanvas')"
-      :initial="renameTarget?.name || ''"
-      :ok-text="renameTarget ? t('common.save') : t('views.list.create')"
-      :busy-text="renameTarget ? t('common.saving') : t('views.list.creating')"
+      :title="t('views.list.newCanvas')"
+      :ok-text="t('views.list.create')"
+      :busy-text="t('views.list.creating')"
       :busy="submitting"
       @submit="submitNameDialog"
     />
+
+    <!-- 卡片上的操作（重命名、复制、团队权限、下载、删除）和它们的弹窗 -->
+    <CanvasActions ref="acts" @changed="fetchList" @patched="onPatched" />
+    <TrashDialog v-if="trashOpen" @close="trashOpen = false" @restored="fetchList" />
   </div></div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from '@/utils/feedback'
-import { workflowApi, apiErrorMessage, type WorkflowSummary } from '@/utils/api'
+import { workflowApi, type WorkflowSummary } from '@/utils/api'
+import { useAppStore } from '@/stores/app'
+import { useSpaceStore } from '@/stores/space'
 import LibraryDialog from '@/components/canvas/LibraryDialog.vue'
+import { mergeList, useCanvasLocks } from '@/components/canvaslist/useCanvasLocks'
 import ListSkeleton from '@/components/ListSkeleton.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
 import LcIcon from '@/components/LcIcon.vue'
+import LcSelect from '@/components/LcSelect.vue'
+import VisibilityChip from '@/components/space/VisibilityChip.vue'
 import CanvasNameDialog from '@/components/workbench/CanvasNameDialog.vue'
+import CanvasCard from '@/components/canvaslist/CanvasCard.vue'
+import CanvasActions from '@/components/canvaslist/CanvasActions.vue'
+import TrashDialog from '@/components/canvaslist/TrashDialog.vue'
+import { personTitle } from '@/components/canvaslist/canvasMeta'
 import { useCanvasCreate, type TemplateLike } from '@/components/workbench/useCanvasCreate'
-import { ensureHttps } from '@/utils/mediaUrl'
-import { canvasImageThumb } from '@/utils/canvasMedia'
+import type { CanvasVisibility } from '@/types'
 
 const router = useRouter()
 const { t } = useI18n()
-const { formatTime, createAndOpen, createFromTemplate, createFromAsset, createFromText } = useCanvasCreate()
+const app = useAppStore()
+const space = useSpaceStore()
+const { createAndOpen, createFromTemplate, createFromAsset, createFromText } = useCanvasCreate()
 
 const list = ref<WorkflowSummary[]>([])
 const loading = ref(false)
 const loadError = ref(false)
-
-/**
- * 封面取不到时退回占位图。
- *
- * 老画布的封面指向的资源可能早就没了（换过存储、产物被清理过），
- * 不兜底的话浏览器会画一个破图标 —— 那看着像是页面坏了，而不是这张图没了。
- */
-const brokenCovers = ref(new Set<string>())
-function onCoverError(id: string) {
-  // 换个 Set 才触发重渲染，原地 add 是改不动的
-  brokenCovers.value = new Set(brokenCovers.value).add(id)
-}
-const hasCover = (w: WorkflowSummary) => !!w.thumbnail && !brokenCovers.value.has(w.id)
-// WorkflowSummary.thumbnail 是可选的，hasCover 里那层判空 TS 收窄不到这里
-const https = (u?: string) => (u ? ensureHttps(u) : '')
+/** 至少成功取到过一次（团队里的副标题要报张数，没取到之前不报 0） */
+const loaded = ref(false)
 
 async function fetchList() {
   loading.value = true
@@ -172,65 +207,94 @@ async function fetchList() {
   try {
     const res = await workflowApi.list()
     if (res.data.result === 0 && res.data.data) {
-      list.value = res.data.data
+      // 没变的卡片留着原来的对象（隔几秒的轮询、回到页签时的重取都走这里：一样的回答不重绘）
+      list.value = mergeList(list.value, res.data.data)
+      loaded.value = true
     } else {
       loadError.value = true
     }
   } catch (err) {
     loadError.value = true
-    console.error('[canvas-list] fetch failed:', err)
+    // 空间没了（被移出、团队解散或停用）由外壳统一处理并说明原因，不算这一页的错
+    if (!['team.not_found', 'team.dissolved', 'team.suspended'].includes(String((err as any)?.response?.data?.code || ''))) console.error('[canvas-list] fetch failed:', err)
   } finally {
     loading.value = false
   }
 }
 
 function openCanvas(id: string) {
-  router.push(`/canvas/${id}`)
+  router.push({ name: 'canvas', params: { id } })
 }
 
-/* ===== 新建 / 重命名 ===== */
+/* ===== 团队空间：筛选、创建人、排序（都在已经取回来的这一份上做） ===== */
+const VISIBILITIES: CanvasVisibility[] = ['private', 'team_view', 'team_edit']
+type FilterKey = 'all' | 'mine' | 'team_edit' | 'private'
+type SortKey = 'edited' | 'created' | 'name'
+const filter = ref<FilterKey>('all')
+const creator = ref('')
+const sort = ref<SortKey>('edited')
+
+const myId = computed(() => app.user?.id || '')
+const matches = (w: WorkflowSummary, f: FilterKey) =>
+  f === 'all' || (f === 'mine' ? !!myId.value && w.createdBy?.id === myId.value : w.visibility === f)
+const filters = computed(() => (['all', 'mine', 'team_edit', 'private'] as FilterKey[]).map((key) => ({
+  key,
+  label: key === 'all' ? t('views.team.filterAll') : key === 'mine' ? t('views.team.filterMine') : t(`spaces.visibility.${key}.label`),
+  count: list.value.filter((w) => matches(w, key)).length,
+})))
+
+/** 创建人下拉：只列这份列表里出现过的人 */
+const creatorOptions = computed(() => {
+  const seen = new Map<string, string>()
+  for (const w of list.value) {
+    const p = w.createdBy
+    if (p?.id && !seen.has(p.id)) seen.set(p.id, personTitle(p))
+  }
+  return [
+    { value: '', label: t('views.team.creatorAll') },
+    ...[...seen].map(([value, label]) => ({ value, label: value === myId.value ? t('views.team.creatorMe', { name: label }) : label })),
+  ]
+})
+const sortOptions = computed(() => (['edited', 'created', 'name'] as SortKey[]).map((value) => ({ value, label: t(`views.team.sortBy.${value}`) })))
+
+const shown = computed(() => {
+  // 个人空间：就是服务端给的那一份，顺序也不动
+  if (!space.isTeam) return list.value
+  const ts = (v?: string | null) => (v ? new Date(v).getTime() || 0 : 0)
+  const edited = (w: WorkflowSummary) => ts(w.lastEditedAt || w.updatedAt || w.createdAt)
+  const out = list.value.filter((w) => matches(w, filter.value) && (!creator.value || w.createdBy?.id === creator.value))
+  if (sort.value === 'name') return out.sort((a, b) => a.name.localeCompare(b.name))
+  return out.sort((a, b) => (sort.value === 'created' ? ts(b.createdAt) - ts(a.createdAt) : edited(b) - edited(a)))
+})
+function resetFilters() {
+  filter.value = 'all'
+  creator.value = ''
+}
+
+/* ===== 卡片上的操作 ===== */
+const acts = ref<InstanceType<typeof CanvasActions> | null>(null)
+function onPatched(canvas: WorkflowSummary) {
+  list.value = list.value.map((it) => (it.id === canvas.id ? { ...it, ...canvas } : it))
+}
+
+/* ===== 回收站 =====
+   个人空间里是自己删的那些；团队里只有能恢复的人（团长、管理员）才有这个入口 */
+const trashOpen = ref(false)
+const canTrash = computed(() => space.can('canvas:restore'))
+
+/* ===== 新建 ===== */
 const nameDialogOpen = ref(false)
 const submitting = ref(false)
-/** 有值 = 正在给这张画布改名；空 = 新建 */
-const renameTarget = ref<WorkflowSummary | null>(null)
+const openCreateDialog = () => { nameDialogOpen.value = true }
 
-function showNameDialog(target: WorkflowSummary | null) {
-  renameTarget.value = target
-  nameDialogOpen.value = true
-}
-const openCreateDialog = () => showNameDialog(null)
-const openRenameDialog = (w: WorkflowSummary) => showNameDialog(w)
-
-/** 弹窗已经把名字去过空白、判过空 */
+/** 弹窗已经把名字去过空白、判过空。团队里不传可见范围：用团队的默认值 */
 async function submitNameDialog(name: string) {
   if (submitting.value) return
-  const target = renameTarget.value
   submitting.value = true
   try {
-    const ok = target
-      ? name === target.name || await renameCanvas(target, name)
-      : await createAndOpen(name)
-    if (ok) nameDialogOpen.value = false
+    if (await createAndOpen(name)) nameDialogOpen.value = false
   } finally {
     submitting.value = false
-  }
-}
-
-/** 只改名字，画布内容不动；失败时提示并返回 false */
-async function renameCanvas(w: WorkflowSummary, name: string): Promise<boolean> {
-  try {
-    const res = await workflowApi.update(w.id, { name })
-    if (res.data.result !== 0) {
-      MessagePlugin.error(res.data.message || t('views.list.renameFailed'))
-      return false
-    }
-    // 列表里就地改名，不为这一个字段整页重拉
-    list.value = list.value.map(it => (it.id === w.id ? { ...it, name } : it))
-    MessagePlugin.success(t('views.list.renamed'))
-    return true
-  } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('views.list.renameFailed')))
-    return false
   }
 }
 
@@ -255,90 +319,33 @@ async function onAddTextToNewCanvas(content: string) {
   if (await createFromText(content)) libraryOpen.value = false
 }
 
-/* ===== 卡片上的操作 ===== */
-const deleting = ref(false)
-const duplicating = ref(false)
-const downloadingId = ref('')
-
-async function handleDuplicate(w: WorkflowSummary) {
-  if (!w || duplicating.value) return
-  duplicating.value = true
-  try {
-    const res = await workflowApi.duplicate(w.id, t('common.copyName', { name: w.name }))
-    if (res.data.result === 0) {
-      MessagePlugin.success(t('views.list.duplicated'))
-      fetchList()
-    } else {
-      MessagePlugin.error(res.data.message || t('views.list.duplicateFailed'))
-    }
-  } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('views.list.duplicateFailed')))
-  } finally {
-    duplicating.value = false
-  }
+/* 「现在」：相对时间、编辑锁有没有过期都按它算。团队里回到这个页签时顺手重取一次 */
+const now = ref(Date.now())
+// 页面开着时隔几秒问一次：谁正在编辑、别人改的名字、新建 / 删掉 / 恢复的画布，变了的卡片就地换（见 useCanvasLocks）；
+// 可见范围被人改了（张数对不上）才整个重取。顺序和服务端给的一样：新建的在前
+const byCreated = (a: WorkflowSummary, b: WorkflowSummary) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0)
+useCanvasLocks(list, {
+  enabled: () => space.isTeam && !loading.value,
+  onTick: () => { now.value = Date.now() },
+  reload: fetchList,
+  order: byCreated,
+})
+let ticker = 0
+function onVisible() {
+  if (document.visibilityState !== 'visible') return
+  now.value = Date.now()
+  if (space.isTeam && !loading.value) void fetchList()
 }
 
-/** 确认气泡点了「删除」才会走到这里，所以这里不再自己弹确认 */
-async function handleDelete(w: WorkflowSummary) {
-  if (!w || deleting.value) return
-  deleting.value = true
-  try {
-    const res = await workflowApi.remove(w.id)
-    if (res.data.result === 0) {
-      MessagePlugin.success(t('views.list.deleted'))
-      fetchList()
-    } else {
-      MessagePlugin.error(res.data.message || t('views.list.deleteFailed'))
-    }
-  } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('views.list.deleteFailed')))
-  } finally {
-    deleting.value = false
-  }
-}
-
-/** 接口按 blob 收，出错时错误信息也裹在 blob 里，得自己拆出来 */
-async function blobErrorMessage(data: unknown): Promise<string> {
-  if (!(data instanceof Blob)) return ''
-  try { return JSON.parse(await data.text())?.message || '' } catch { return '' }
-}
-
-/**
- * 整张画布打包下载：不传 urls，后端把画布里所有图片和视频打成一个 zip。
- * 打包是串行拉流，大画布会等比较久，loading 一直挂到 blob 落地为止。
- */
-async function handleDownload(w: WorkflowSummary) {
-  if (downloadingId.value) return
-  downloadingId.value = w.id
-  MessagePlugin.loading(t('views.list.downloading', { name: w.name }), 0)
-  try {
-    const resp = await workflowApi.downloadZip(w.id)
-    const blob = resp.data as Blob
-    // 空画布之类的情况后端可能回一个 JSON 而不是 zip
-    if (blob.type.includes('json')) {
-      throw new Error((await blobErrorMessage(blob)) || t('download.nothing'))
-    }
-    const safeName = (w.name || t('download.zipName')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
-    const href = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = href
-    a.download = `${safeName}.zip`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(href), 1000)
-    MessagePlugin.closeAll()
-    MessagePlugin.success(t('download.zipDone'))
-  } catch (err: any) {
-    MessagePlugin.closeAll()
-    const fromBlob = await blobErrorMessage(err?.response?.data)
-    MessagePlugin.error(fromBlob || (err?.isAxiosError ? '' : err?.message) || t('download.zipFailed'))
-  } finally {
-    downloadingId.value = ''
-  }
-}
-
-onMounted(fetchList)
+onMounted(() => {
+  void fetchList()
+  ticker = window.setInterval(() => { now.value = Date.now() }, 30000)
+  document.addEventListener('visibilitychange', onVisible)
+})
+onBeforeUnmount(() => {
+  window.clearInterval(ticker)
+  document.removeEventListener('visibilitychange', onVisible)
+})
 </script>
 
 <style scoped>
@@ -351,20 +358,16 @@ onMounted(fetchList)
 /* 骨架卡是公用组件里的，圆角和边线对到这页的卡片上 */
 .cl-grid :deep(.skel-canvas-card) { border-radius: var(--r-md); border-color: var(--line); background: var(--grad-card); }
 
-.cl-card { position: relative; overflow: hidden; min-width: 0; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-.cl-card:hover { border-color: var(--line-3); }
-.cl-card:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
-.cl-thumb { aspect-ratio: 16 / 10; }
-/* 封面可能是浅色的图：徽标垫一层深底才读得出来 */
-.cl-thumb .tag { box-shadow: 0 0 0 99px var(--tag-scrim) inset; }
-.cl-ph {
-  position: absolute; inset: 0; display: grid; place-items: center; color: rgb(var(--c-film-2) / .38);
-  background: linear-gradient(135deg, rgb(var(--c-cyan) / .07), rgb(var(--c-violet) / .1));
-}
-/* 名字是主角、时间是配角 */
-.cl-meta { padding: 12px 14px 14px; }
-.cl-meta h3 { font: 600 14px/1.5 var(--f-body); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cl-meta small { display: block; margin-top: 2px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* 团队空间的筛选行 */
+.cl-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.cl-filters + .cl-grid, .cl-filters + .cl-state { margin-top: 16px; }
+.cl-n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lc-seg > button.on .cl-n { color: var(--text-2); }
+.cl-selects { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* 三档可见范围的图例 */
+.cl-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 20px 0 0; padding: 0; font-size: 12px; color: var(--text-3); }
+.cl-legend li { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
 /* 卡片右上角的一排操作：悬停才出现，不跟封面抢戏 */
 .cl-ops {
@@ -397,6 +400,10 @@ onMounted(fetchList)
   .cl-actions { width: 100%; }
   .cl-actions .lc-btn { flex: 1 1 auto; padding: 0 12px; }
   .cl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .cl-filters .lc-sp { display: none; }
+  .cl-selects { width: 100%; }
+  .cl-selects > * { flex: 1 1 0; min-width: 0; }
+  .cl-legend { flex-direction: column; }
   /* 窄屏卡片太小，操作条不再压在封面上，改成卡片底部的一行 */
   .cl-ops {
     position: static; opacity: 1; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none;

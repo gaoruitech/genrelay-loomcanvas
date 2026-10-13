@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import * as appEntry from '../src/embed/app'
 import * as editorEntry from '../src/embed/editor'
 import {
-  ADAPTER_OPTIONAL_KEYS, ADAPTER_REQUIRED_KEYS, APP_EVENT_KEYS, APP_HANDLE_KEYS, APP_OPTION_KEYS,
+  ADAPTER_OPTIONAL_KEYS, ADAPTER_REQUIRED_KEYS, APP_EVENT_KEYS, APP_HANDLE_KEYS, APP_OPTION_KEYS, BRAND_KEYS,
   EDITOR_EVENT_KEYS, EDITOR_HANDLE_KEYS, EDITOR_OPTION_KEYS, FEATURE_KEYS, PAGE_KEYS,
 } from '../src/embed/options'
 import { createMemoryAdapter } from '../src/embed/memoryAdapter'
@@ -70,10 +70,22 @@ describe('public API surface', () => {
         "pages",
         "routerMode",
         "shell",
+        "space",
         "storagePrefix",
         "theme",
         "user",
         "zIndex",
+      ]
+    `)
+  })
+
+  // `showName` was added on purpose (additive, default `true`: a host that passes `brand` gets what it got before).
+  it('mountLoomCanvas `brand` members', () => {
+    expect([...BRAND_KEYS]).toMatchInlineSnapshot(`
+      [
+        "name",
+        "logoUrl",
+        "showName",
       ]
     `)
   })
@@ -146,6 +158,7 @@ describe('public API surface', () => {
           "ready",
           "route",
           "canvas:saved",
+          "space",
           "run:started",
           "run:finished",
           "run:failed",
@@ -156,6 +169,7 @@ describe('public API surface', () => {
           "ready",
           "change",
           "saved",
+          "created",
           "run:started",
           "run:finished",
           "run:failed",
@@ -187,6 +201,8 @@ describe('public API surface', () => {
           "immersive",
           "account",
           "externalLinks",
+          "spaceSwitch",
+          "teamAdmin",
           "palette",
           "queue",
           "minimap",
@@ -204,9 +220,11 @@ describe('public API surface', () => {
           "brand-kits",
           "models",
           "history",
+          "team",
           "settings",
           "setup",
           "share",
+          "join",
         ],
       }
     `)
@@ -216,6 +234,10 @@ describe('public API surface', () => {
     expect({ required: [...ADAPTER_REQUIRED_KEYS], optional: [...ADAPTER_OPTIONAL_KEYS] }).toMatchInlineSnapshot(`
       {
         "optional": [
+          "acquireLock",
+          "releaseLock",
+          "peekLock",
+          "createCanvas",
           "capabilities",
           "estimate",
           "importRemoteFile",

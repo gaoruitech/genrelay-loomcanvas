@@ -33,7 +33,8 @@ services:
       # First value of "open sign-up" (true / false); once that setting has been saved it is ignored.
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-}
       # Storage is normally set in the app, under Settings > Storage; what is saved there overrides
-      # these. They are the default of an instance on which nothing was saved yet. See docs/storage.md.
+      # these. They are the default of an instance on which nothing was saved yet. The bucket the S3_*
+      # variables describe is also read whatever STORAGE_DRIVER says. See docs/storage.md.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       # Always used, also after a switch to S3: files stored before the switch stay in this volume.
       STORAGE_LOCAL_DIR: /app/data/files
@@ -45,6 +46,7 @@ services:
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX:-}
       S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_PRESIGN_ENDPOINT: ${S3_PRESIGN_ENDPOINT:-}
       S3_DELIVERY: ${S3_DELIVERY:-}
       S3_ACL: ${S3_ACL:-}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
@@ -53,6 +55,8 @@ services:
       SSRF_ALLOW_HOSTS: ${SSRF_ALLOW_HOSTS:-}
       # Path of a billing hook module inside the container (mount the file, e.g. into /app/data).
       BILLING_HOOK: ${BILLING_HOOK:-}
+      # Teams with an amount limit: output tokens assumed for a chat run's reserve (empty = 8192).
+      BUDGET_CHAT_RESERVE_OUTPUT_TOKENS: ${BUDGET_CHAT_RESERVE_OUTPUT_TOKENS:-}
       WEB_DIST: /app/web-dist
       PORT: 3000
     ports:

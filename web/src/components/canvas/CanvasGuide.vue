@@ -3,10 +3,11 @@
   <div v-if="showCard" class="cg-card">
     <div class="cg-card-ico"><LcIcon name="canvas" size="l" /></div>
     <div class="cg-card-title">{{ t('library.guide.cardTitle') }}</div>
-    <div class="cg-card-sub">{{ t('library.guide.cardSub') }}</div>
+    <!-- 集成方关了模板（features.templates）：没有「从模板开始」这颗按钮，那句话也换一种说法 -->
+    <div class="cg-card-sub">{{ $feat.templates ? t('library.guide.cardSub') : t('library.guide.cardSubNoTemplate') }}</div>
     <div class="cg-card-actions">
-      <button class="lc-btn primary quiet" @click="onFromTemplate">{{ t('library.guide.fromTemplate') }}</button>
-      <button class="lc-btn" @click="openDrawer">{{ t('library.guide.openGuide') }}</button>
+      <button v-if="$feat.templates" class="lc-btn primary quiet" @click="onFromTemplate">{{ t('library.guide.fromTemplate') }}</button>
+      <button class="lc-btn" :class="{ primary: !$feat.templates, quiet: !$feat.templates }" @click="openDrawer">{{ t('library.guide.openGuide') }}</button>
     </div>
     <button class="lc-btn ghost sm cg-card-dismiss" @click="dismissCard">{{ t('library.guide.dismiss') }}</button>
   </div>
@@ -17,7 +18,7 @@
       <div class="cg-head">
         <span class="cg-badge"><LcIcon name="book" /></span>
         <span class="cg-title">{{ t('library.guide.title') }}</span>
-        <button class="lc-tb sm cg-close" :title="t('common.close')" :aria-label="t('common.close')" @click="close"><LcIcon name="x" size="s" /></button>
+        <button class="lc-tb sm cg-close" v-tip="t('common.close')" :aria-label="t('common.close')" @click="close"><LcIcon name="x" size="s" /></button>
       </div>
 
       <nav class="cg-toc">
@@ -46,6 +47,8 @@ import { lcLocal } from '@/utils/storage'
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
+import { useEmbed } from '@/embed/context'
+import { GUIDE_SECTION_IDS, guideItemIndexes, guideSectionVisible } from './guideSections'
 
 const { t, tm, rt } = useI18n()
 
@@ -70,25 +73,26 @@ function dismissCard() { cardDismissed.value = true; writeFlag(CARD_KEY) }
 function onFromTemplate() { emit('open-templates') }
 
 interface Sec { id: string; title: string; intro: string; items: string[]; tip: string }
-// 章节顺序在这里定，文案全在 locales/modules/library.ts 的 guide.sections 下（两种语言同一棵键树）
-const SECTION_IDS = [
-  'start', 'models', 'ui', 'basic', 'nodes', 'source', 'gen', 'cost', 'run', 'tools',
-  'link', 'brand', 'group', 'layout', 'lib', 'share', 'view', 'keys', 'faq',
-]
-const sections = computed<Sec[]>(() => SECTION_IDS.map((id) => {
+// 章节顺序、哪一章哪一条要哪项功能开着才出：见 guideSections.ts。
+// 文案全在 locales/modules/library.ts 的 guide.sections 下（两种语言同一棵键树）
+const features = useEmbed().features
+const sections = computed<Sec[]>(() => GUIDE_SECTION_IDS.filter((id) => guideSectionVisible(id, features)).map((id) => {
   const raw = tm(`library.guide.sections.${id}`) as any
   const text = (m: any) => (m ? rt(m) : '')
+  const all: string[] = Array.isArray(raw?.items) ? raw.items.map(text) : []
   return {
     id,
     title: text(raw?.title),
     intro: text(raw?.intro),
-    items: Array.isArray(raw?.items) ? raw.items.map(text) : [],
+    items: guideItemIndexes(id, all.length, features).map((i) => all[i]),
     tip: text(raw?.tip),
   }
-}))
+}).filter((s) => s.items.length || s.intro))
 
 // ===== 目录跳转 & 高亮 =====
-const activeId = ref(SECTION_IDS[0])
+/** 这次挂载里实际出的章节 */
+const ids = computed(() => sections.value.map((s) => s.id))
+const activeId = ref<string>(GUIDE_SECTION_IDS[0])
 const bodyEl = ref<HTMLElement | null>(null)
 const secRefs: Record<string, HTMLElement | null> = {}
 function setSecRef(id: string, el: any) { secRefs[id] = (el as HTMLElement) || null }
@@ -103,8 +107,8 @@ function onScroll() {
   scrollRaf = requestAnimationFrame(() => {
     scrollRaf = 0
     const top = (bodyEl.value?.scrollTop || 0) + 16
-    let cur = SECTION_IDS[0]
-    for (const id of SECTION_IDS) {
+    let cur = ids.value[0]
+    for (const id of ids.value) {
       const el = secRefs[id]
       if (el && el.offsetTop <= top) cur = id
     }
@@ -114,8 +118,8 @@ function onScroll() {
 // 每次打开回到顶部；指定了章节（比如从「快捷键」入口进来）就直接到那一节
 function jump() {
   nextTick(() => {
-    const id = props.section && SECTION_IDS.includes(props.section) ? props.section : ''
-    activeId.value = id || SECTION_IDS[0]
+    const id = props.section && ids.value.includes(props.section) ? props.section : ''
+    activeId.value = id || ids.value[0]
     if (!bodyEl.value) return
     bodyEl.value.scrollTop = id && secRefs[id] ? secRefs[id]!.offsetTop - 8 : 0
   })

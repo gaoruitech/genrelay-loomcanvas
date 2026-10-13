@@ -366,40 +366,139 @@ test('switching storage: files written before the switch keep loading, in both d
   }
 })
 
-test('reference media for upstreams: a signed address when the bucket is reachable, never one that is stored', { skip: SKIP }, async () => {
+/** A reverse proxy in front of the live service. `keepHost`: pass the Host header on unchanged, as a proxy in front of S3 must. */
+async function reverseProxy({ keepHost }) {
+  const http = require('http')
+  const target = new URL(E.TEST_S3_ENDPOINT)
+  const server = http.createServer((req, res) => {
+    const headers = { ...req.headers }
+    if (!keepHost) headers.host = target.host
+    const out = http.request({ host: target.hostname, port: target.port || 80, method: req.method, path: req.url, headers }, (answer) => {
+      res.writeHead(answer.statusCode, answer.headers)
+      answer.pipe(res)
+    })
+    out.on('error', () => { res.statusCode = 502; res.end() })
+    req.pipe(out)
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  /** Load a URL made for a public name by connecting to the proxy, the way DNS would send a client there. */
+  const fetchThrough = (url) => new Promise((resolve, reject) => {
+    const u = new URL(url)
+    http.get({ host: '127.0.0.1', port, path: u.pathname + u.search, headers: { Host: u.host } }, (res) => {
+      const chunks = []
+      res.on('data', (c) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks) }))
+    }).on('error', reject)
+  })
+  return { port, fetchThrough, close: () => { server.closeAllConnections(); server.close() } }
+}
+
+test('reference media for upstreams: never the address of a bucket that only this machine can reach', { skip: SKIP }, async () => {
   storage.resetStorage()
   storage.configure({ active: config(), readable: [] })
   const { ingest } = require('../src/routes/files')
-  const { upstreamUrl, createMediaHelpers } = require('../src/services/media')
+  const { upstreamUrl, createMediaHelpers, isPubliclyReachable, newFilesReachable } = require('../src/services/media')
   const { setAllowedHosts } = require('../src/utils/safeFetch')
-  const host = new URL(E.TEST_S3_ENDPOINT).hostname
   try {
     const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#00aa00' } }).png().toBuffer()
     const up = await ingest(png)
     assert.ok(!up.url.includes('X-Amz') && !up.thumbnailUrl.includes('X-Amz'), 'what the canvas stores is the site address')
-
-    // Treat the endpoint as reachable from outside (it is, for a real bucket).
-    setAllowedHosts([host])
-    const direct = await upstreamUrl(up.url)
-    assert.match(direct, /X-Amz-Signature=/)
-    assert.ok(new URL(direct).hostname.endsWith(host))
-    const res = await fetch(direct)
-    assert.equal(res.status, 200)
-    assert.ok(Buffer.from(await res.arrayBuffer()).equals(png))
     const helpers = createMediaHelpers()
-    assert.equal(new URL(await helpers.toRef(up.url)).pathname, new URL(direct).pathname)
-    assert.match(await helpers.toPublicUrl(up.url), /X-Amz-Expires=3600/)
-
-    // A bucket only this machine can reach: inline for images, a clear error where a URL is required.
-    setAllowedHosts([])
-    if (['127.0.0.1', 'localhost'].includes(host)) {
-      assert.equal(await upstreamUrl(up.url), '')
-      assert.match(await helpers.toRef(up.url), /^data:image\/png;base64,/)
-      await assert.rejects(() => helpers.toPublicUrl(up.url), { code: 'media.needs_public_url' })
+    if (isPubliclyReachable(E.TEST_S3_ENDPOINT)) {
+      // A bucket on the internet: a signed address that loads.
+      const direct = await upstreamUrl(up.url)
+      assert.match(direct, /X-Amz-Signature=/)
+      assert.ok(Buffer.from(await (await fetch(direct)).arrayBuffer()).equals(png))
+      assert.match(await helpers.toPublicUrl(up.url), /X-Amz-Expires=3600/)
+    } else {
+      // A bucket only this machine can reach (MinIO on 127.0.0.1): inline for images, a clear error
+      // where a URL is required - also when the downloader is allowed to fetch from that host.
+      for (const allowed of [[], [new URL(E.TEST_S3_ENDPOINT).hostname]]) {
+        setAllowedHosts(allowed)
+        assert.equal(await upstreamUrl(up.url), '')
+        assert.match(await helpers.toRef(up.url), /^data:image\/png;base64,/)
+        await assert.rejects(() => helpers.toPublicUrl(up.url), { code: 'media.needs_public_url' })
+        assert.equal(await newFilesReachable(), false)
+      }
     }
     await storage.getStorage().delete(up.key)
   } finally {
     setAllowedHosts([])
+    storage.resetStorage()
+  }
+})
+
+test('signed addresses for the name the service has outside: they load through a reverse proxy that keeps the Host header', { skip: SKIP }, async () => {
+  const keeping = await reverseProxy({ keepHost: true })
+  const rewriting = await reverseProxy({ keepHost: false })
+  const { ingest } = require('../src/routes/files')
+  const { upstreamUrl, newFilesReachable } = require('../src/services/media')
+  try {
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#aa00aa' } }).png().toBuffer()
+    for (const [proxy, works] of [[keeping, true], [rewriting, false]]) {
+      // The app talks to the service at its own address; signed addresses are made for a public name.
+      const outside = `http://s3.example.com:${proxy.port}`
+      storage.resetStorage()
+      storage.configure({ active: config({ presignEndpoint: outside }), readable: [] })
+      const up = await ingest(png)
+      assert.equal(await newFilesReachable(), true)
+      const signed = await upstreamUrl(up.url)
+      assert.ok(signed.startsWith(`${outside}/`) && /X-Amz-Signature=/.test(signed), signed.split('?')[0])
+      assert.ok(!signed.includes(new URL(E.TEST_S3_ENDPOINT).host), 'the address the app itself uses is not in it')
+      const res = await proxy.fetchThrough(signed)
+      if (works) {
+        assert.equal(res.status, 200)
+        assert.ok(res.body.equals(png), 'the object, through the proxy, with nothing but the signed address')
+        const tampered = new URL(signed)
+        tampered.searchParams.set('X-Amz-Signature', '0'.repeat(64))
+        assert.equal((await proxy.fetchThrough(tampered.toString())).status, 403)
+      } else {
+        // The signature covers the host name: a proxy that replaces it breaks every signed address.
+        assert.equal(res.status, 403)
+        assert.match(res.body.toString(), /SignatureDoesNotMatch/)
+      }
+      await storage.getStorage().delete(up.key)
+    }
+  } finally {
+    keeping.close()
+    rewriting.close()
+    storage.resetStorage()
+  }
+})
+
+test('an earlier bucket that is down does not slow the live bucket down; a missing file is 503 until it is gone from the set', { skip: SKIP }, async () => {
+  const { startBlackHole } = require('./support/fakeS3')
+  const hole = await startBlackHole()
+  const app = await filesApp()
+  const { ingest } = require('../src/routes/files')
+  const silent = config({ endpoint: hole.endpoint, bucket: 'gone-bucket' })
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    storage.resetStorage()
+    storage.configure({ active: config(), readable: [] })
+    const up = await ingest(await sharp({ create: { width: 900, height: 600, channels: 3, background: '#335577' } }).png().toBuffer())
+    storage.resetStorage()
+    storage.configure({ active: config(), readable: [silent] })
+    for (const address of [up.url, up.thumbnailUrl]) {
+      const started = Date.now()
+      assert.equal((await fetch(app.url + address)).status, 200)
+      assert.ok(Date.now() - started < 2000, `${address}: ${Date.now() - started} ms`)
+    }
+    assert.equal(hole.connections, 0)
+    const missing = await fetch(`${app.url}/files/uploads/2025/01/${hex()}.png`)
+    assert.deepEqual([missing.status, (await missing.json()).code, missing.headers.get('cache-control')], [503, 'storage.unreachable', 'no-store'])
+    const removed = await storage.getStorage().deleteUserFiles('0123456789abcdef01234567', { waitMs: 1000 })
+    assert.deepEqual([removed.failed.length, removed.pending.length], [1, 0], 'known to be down: not waited for')
+    storage.configure({ active: config(), readable: [] })
+    assert.equal((await fetch(`${app.url}/files/uploads/2025/01/${hex()}.png`)).status, 404)
+    await storage.getStorage().delete(up.key)
+    await storage.getStorage().delete(storage.thumbKeyFor(up.key))
+  } finally {
+    console.warn = warn
+    hole.close()
+    app.close()
     storage.resetStorage()
   }
 })
@@ -409,8 +508,7 @@ test('redirect delivery: /files/<key> sends the browser to the public domain', {
   storage.resetStorage()
   storage.configure({ active: cfg, readable: [] })
   const { ingest } = require('../src/routes/files')
-  const { upstreamUrl } = require('../src/services/media')
-  const { setAllowedHosts } = require('../src/utils/safeFetch')
+  const { upstreamUrl, isPubliclyReachable } = require('../src/services/media')
   const app = await filesApp()
   try {
     const png = await sharp({ create: { width: 800, height: 800, channels: 3, background: '#3355ff' } }).png().toBuffer()
@@ -430,9 +528,8 @@ test('redirect delivery: /files/<key> sends the browser to the public domain', {
     assert.equal(thumb.status, 302)
     assert.equal((await fetch(thumb.headers.get('location'))).headers.get('content-type'), 'image/webp')
 
-    // Upstreams get the public address, which does not expire.
-    setAllowedHosts([new URL(cfg.publicBaseUrl).hostname])
-    assert.equal(await upstreamUrl(up.url), expected)
+    // Upstreams get the public address, which does not expire - when it is one they can open.
+    assert.equal(await upstreamUrl(up.url), isPubliclyReachable(cfg.publicBaseUrl) ? expected : '')
 
     // The connection test checks that the public address really serves the bucket.
     const good = await probe(cfg)
@@ -446,7 +543,6 @@ test('redirect delivery: /files/<key> sends the browser to the public domain', {
     }
     await storage.getStorage().delete(up.key)
   } finally {
-    setAllowedHosts([])
     app.close()
     storage.resetStorage()
   }
@@ -489,7 +585,8 @@ test('settings API against live S3: test, save, switch, and everything that read
   try {
     // Storage is the super admin's to configure; that account is created at start-up.
     await require('../src/services/accounts').prepare({ admin: { username: 'owner', email: 'owner@example.com', password: 'correct horse' } })
-    token = (await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).body.data.token
+    const session = (await call('POST', '/api/auth/login', { account: 'owner', password: 'correct horse' })).body.data
+    token = session.token
     let status = (await call('GET', '/api/admin/storage')).body.data
     assert.deepEqual([status.source, status.driver, status.s3], ['default', 'local', null])
     const localFile = await upload(await picture('#101010'))
@@ -541,7 +638,7 @@ test('settings API against live S3: test, save, switch, and everything that read
       { id: 'n1', type: 'image', position: { x: 0, y: 0 }, data: { imageUrl: localFile.url } },
       { id: 'n2', type: 'image', position: { x: 300, y: 0 }, data: { imageUrl: bucketFile.url } },
     ], edges: [] })).body.data
-    const zip = await fetch(`${app.url}/api/workflow/${canvas.id || canvas._id}/download-zip`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const zip = await fetch(`${app.url}/api/workflow/${canvas.id || canvas._id}/download-zip`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: '{}' })
     assert.equal(zip.status, 200)
     const archive = Buffer.from(await zip.arrayBuffer()).toString('latin1')
     assert.ok(archive.includes('01-image.png') && archive.includes('02-image.png') && !archive.includes('skipped'), 'both files are in the archive')
@@ -550,7 +647,7 @@ test('settings API against live S3: test, save, switch, and everything that read
     const Run = require('../src/models/Run')
     const outKey = storage.newKey('outputs', 'image/png')
     await storage.getStorage().put(outKey, await picture('#303030'), { contentType: 'image/png' })
-    await Run.create({ kind: 'image', status: 'succeeded', modelId: 'x:y', providerId: new mongoose.Types.ObjectId(), upstreamModel: 'y', finishedAt: new Date(Date.now() - 3 * 86400000), outputs: [{ type: 'image', url: `/files/${outKey}`, key: outKey }] })
+    await Run.create({ userId: session.user.id, kind: 'image', status: 'succeeded', modelId: 'x:y', providerId: new mongoose.Types.ObjectId(), upstreamModel: 'y', finishedAt: new Date(Date.now() - 3 * 86400000), outputs: [{ type: 'image', url: `/files/${outKey}`, key: outKey }] })
     await call('PUT', '/api/admin/settings', { retentionDays: 1 })
     assert.equal(await require('../src/services/retention').sweep(), 1)
     assert.equal(await backend.head(outKey), null)

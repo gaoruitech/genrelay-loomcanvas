@@ -14,6 +14,9 @@ const { Mixed } = mongoose.Schema.Types
 const shareSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   token: { type: String, required: true, unique: true },
+  // The account that made it. `userId` is the SPACE it belongs to (an account's personal
+  // space, or a team); rows from before teams have no createdBy and read as userId.
+  createdBy: { type: String, default: '' },
   sourceWorkflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', index: true },
 
   title: { type: String, required: true, default: 'Untitled', maxlength: 80 },

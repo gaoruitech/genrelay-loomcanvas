@@ -16,6 +16,8 @@ import assetsPage from './modules/assetsPage'
 import account from './modules/account'
 import queue from './modules/queue'
 import brandKit from './modules/brandKit'
+import spaces from './modules/spaces'
+import team from './modules/team'
 
 export default {
   common: {
@@ -45,6 +47,7 @@ export default {
     add: '添加',
     create: '新建',
     search: '搜索',
+    noMatch: '没有匹配的选项',
     empty: '暂无数据',
     more: '更多',
     back: '返回',
@@ -85,6 +88,14 @@ export default {
     free: '本机处理，无成本',
   },
 
+  // 时长的写法全站只有这一份，只由 utils/duration.ts 用（片长、用时、已用时、还剩）
+  duration: {
+    sec: '{s} 秒',
+    minSec: '{m} 分 {s} 秒',
+    hourMin: '{h} 小时 {m} 分',
+    under: '<1 秒',
+  },
+
   models: {
     catalogDesc: {
       'nano-banana-pro': '高质量图片生成与编辑',
@@ -98,7 +109,6 @@ export default {
       'grok-imagine-1.0-video': '文生视频 / 多图参考，6 / 10 / 15 秒，480p',
     },
     auto: '自适应',
-    seconds: '{n} 秒',
     imgModeFrames: '首尾帧',
     imgModeMulti: '多图参考',
     none: '还没有可用的模型',
@@ -190,6 +200,7 @@ export default {
     runFailed: '执行失败',
     allFailed: '全部任务失败',
     partialFailed: '{n} 个任务失败：{reason}',
+    partialSubmit: '要了 {total} 个，只提交了 {ok} 个，其余的没有运行。{reason}',
     pollTimeout: '等待结果超时',
     queryFailed: '查询失败',
     emptyResult: '结果为空',
@@ -250,4 +261,6 @@ export default {
   brandKit: brandKit['zh-CN'],
   account: account['zh-CN'],
   queue: queue['zh-CN'],
+  spaces: spaces['zh-CN'],
+  team: team['zh-CN'],
 }

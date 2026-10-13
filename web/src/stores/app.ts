@@ -60,6 +60,12 @@ export const useAppStore = defineStore('app', () => {
   const hasProvider = computed(() => !!bootstrap.value?.hasProvider)
   const siteName = computed(() => (embed.brand && embed.brand.name) || bootstrap.value?.site?.name || 'LoomCanvas')
   const logoUrl = computed(() => (embed.brand ? embed.brand.logoUrl || '' : bootstrap.value?.site?.logoUrl || ''))
+  /**
+   * Logo 旁边写不写站点名称。没有 Logo 时总是写（不然页头上就只剩一个默认图标）；
+   * 有 Logo 时看超级管理员的设置（外观 → 站点品牌）：本身带着名称的 Logo（字标）可以单独出现。
+   * 集成方自己给了品牌（embed.brand）的不受这项站点设置影响：看它自己的 brand.showName（默认写），规则是同一条。
+   */
+  const showSiteName = computed(() => !logoUrl.value || (embed.brand ? embed.brand.showName : bootstrap.value?.site?.showName) !== false)
 
   // ---- 语言 ----
   const locale = ref<LocaleCode>(currentLocale())
@@ -72,13 +78,17 @@ export const useAppStore = defineStore('app', () => {
   // ---- 启动与登录 ----
   async function loadBootstrap(justSignedIn = false, keepLocalTheme = false) {
     bootstrapError.value = ''
+    // 启动信息是按空间的（角色、权限、hasProvider）：发出去之后空间换了，这一份就不要了，换空间的那一方会自己再取
+    const spaceAtRequest = runtime.spaceEpoch
     try {
       const info = unwrap(await appApi.bootstrap())
+      if (spaceAtRequest !== runtime.spaceEpoch) return
       bootstrap.value = info
       // 带着令牌去取、回来却没有账号：令牌已经失效（过期 / 被下线 / 账号被停用）。
       // 清掉它，免得之后每个请求（包括公开页面的）都带着一个死令牌。
       if (!justSignedIn && token.value && !info.user) { token.value = ''; clearToken() }
-      syncTheme(info.user, keepLocalTheme)
+      // 刚登录：账号上的主题先拿在手里，等路由换到外壳的那一刻再上色（见 applyHeldTheme）
+      syncTheme(info.user, keepLocalTheme, justSignedIn)
       // 用户自己没选过语言，才跟站点默认值走
       const siteLocale = normalizeLocale(info.site?.defaultLocale)
       if (!savedLocale() && siteLocale && !embed.localeControlled) setLocale(siteLocale, false)
@@ -96,7 +106,10 @@ export const useAppStore = defineStore('app', () => {
     setToken(data.token, remember)
     await loadBootstrap(true, keepLocalTheme)
     // 启动信息没取回来（网络抖了一下）也先让人进去，账号以登录接口返回的为准
-    if (bootstrap.value && !bootstrap.value.user) bootstrap.value = { ...bootstrap.value, user: data.user }
+    if (bootstrap.value && !bootstrap.value.user) {
+      bootstrap.value = { ...bootstrap.value, user: data.user }
+      syncTheme(data.user, keepLocalTheme, true)
+    }
   }
 
   async function login(account: string, password: string, remember: boolean) {
@@ -135,10 +148,11 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function dropSession() {
+    heldTheme = null
     token.value = ''
     signInPassword.value = ''
     clearToken()
-    if (bootstrap.value?.user) bootstrap.value = { ...bootstrap.value, user: null, hasProvider: false }
+    if (bootstrap.value?.user) bootstrap.value = { ...bootstrap.value, user: null, hasProvider: false, spaces: [], space: null, teams: null, spaceError: undefined }
   }
 
   /** 用户自己点的退出（区别于令牌失效）：App.vue 据此回落地页，而不是带着 redirect 去登录页 */
@@ -152,9 +166,15 @@ export const useAppStore = defineStore('app', () => {
     await loadBootstrap()
   }
 
-  /** 改了用户名 / 邮箱之后同步到顶栏 */
-  function setUser(u: User) {
+  /** 把账号换成 u（只换数据，不碰主题：偏好先改本地、没存上再改回去的那几步用它） */
+  function putUser(u: User) {
     if (bootstrap.value) bootstrap.value = { ...bootstrap.value, user: u }
+  }
+
+  /** 服务端给了一份新的账号（改了用户名 / 邮箱之后）：同步到顶栏，主题也对一下（见 followAccountTheme） */
+  function setUser(u: User) {
+    putUser(u)
+    followAccountTheme(u)
   }
 
   // ---- 界面偏好（跟着账号存在服务端） ----
@@ -177,15 +197,19 @@ export const useAppStore = defineStore('app', () => {
     }
     const before = bootstrap.value?.user
     if (!before) return
-    setUser({ ...before, prefs: { ...before.prefs, ...patch } })
+    putUser({ ...before, prefs: { ...before.prefs, ...patch } })
     try {
       const out = unwrap(await authApi.updatePrefs(patch))
       // 只接偏好这一项：请求在路上时账号的别的字段可能已经变了（改了名字、被要求改密码）
       const cur = bootstrap.value?.user
-      if (cur && out?.user?.prefs) setUser({ ...cur, prefs: out.user.prefs })
+      if (cur && out?.user?.prefs) {
+        putUser({ ...cur, prefs: out.user.prefs })
+        // 存的是别的偏好，回来的账号上主题却和这里不一样：在别的设备上换过，跟过去
+        if (!('theme' in patch)) followAccountTheme(out.user)
+      }
     } catch (err) {
       const cur = bootstrap.value?.user
-      if (cur) setUser({ ...cur, prefs: before.prefs })
+      if (cur) putUser({ ...cur, prefs: before.prefs })
       throw err
     }
   }
@@ -206,7 +230,7 @@ export const useAppStore = defineStore('app', () => {
    *   本机的选择还没存到任何账号上（没登录时在落地页 / 登录页换的，或者这是刚注册的新账号）就反过来，
    *   以本机的为准并存到账号上。没存上（比如还在用临时密码，接口只放行改密码）就留着记号，下次再存。
    */
-  function syncTheme(u: User | null | undefined, keepLocal: boolean) {
+  function syncTheme(u: User | null | undefined, keepLocal: boolean, hold = false) {
     // 主题由宿主定（挂载时给了 theme，之后用 setTheme 改）：不拿账号上的那一份去盖它
     if (!u || embed.themeControlled) return
     const mine = normalizeTheme(u.prefs?.theme)
@@ -219,7 +243,38 @@ export const useAppStore = defineStore('app', () => {
       void setPrefs({ theme: local }).then(() => setThemePending(false)).catch(() => undefined)
       return
     }
-    if (mine !== local) setThemePref(mine, { animate: false })
+    if (mine === local) { heldTheme = null; return }
+    if (hold) heldTheme = mine
+    else setThemePref(mine, { animate: false })
+  }
+
+  /**
+   * 账号每次从服务端（重新）取回来，都把上面的主题和这台浏览器记着的那一份对齐：启动信息走 syncTheme，
+   * 其余的（存别的偏好、改资料的返回）走这里。不一样说明在别的设备上换过：跟过去，并记到这台浏览器上——
+   * 下次打开时首帧（theme-boot.js 读的就是这一份）已经是对的。
+   * 所以在别的设备上换了主题之后，这台浏览器最多只在「下一次打开」时换一次色，而且是在启动的那个转圈上换
+   * （启动信息回来时应用还没挂载，见 embed/createApp.ts），应用自己不会先画错再改。
+   * 三种情况不动：本机的选择还没存到账号上（themePending，那是反过来以本机为准）、登录那一下拿在手里的还没上色
+   * （heldTheme）、这里正在往账号上存主题（请求在路上，回来的可能是上一次的值）。
+   */
+  let themeSaving = 0
+  function followAccountTheme(u: User | null | undefined) {
+    if (!u || embed.themeControlled || embed.editor || heldTheme !== null || themeSaving > 0 || themePending()) return
+    const mine = normalizeTheme(u.prefs?.theme)
+    if (mine !== themePref.value) setThemePref(mine)
+  }
+
+  /**
+   * 登录那一下，账号上的主题和这台浏览器上的不一样（新浏览器第一次登录：本机是默认的深色，账号上选的是浅色）。
+   * 启动信息一到就换的话，登录页会先整页变一次色，接着才换成外壳 —— 人看到的是闪了一下。
+   * 所以先拿在手里：路由换到下一页（外壳）的那一刻再上色（App.vue 的 afterEach 里调），
+   * 属性和新页面的 DOM 在同一帧里落地，登录页从头到尾是原来的主题，外壳第一帧就是账号的主题。
+   */
+  let heldTheme: ThemePref | null = null
+  function applyHeldTheme() {
+    const v = heldTheme
+    heldTheme = null
+    if (v && v !== themePref.value && !embed.themeControlled) setThemePref(v, { animate: false })
   }
 
   /**
@@ -233,12 +288,15 @@ export const useAppStore = defineStore('app', () => {
     // 没登录：先记在这台浏览器上，并留个记号，登录之后存到那个账号上
     if (embed.themeControlled || embed.editor) return
     if (!bootstrap.value?.user) { if (!hostAuth) setThemePending(true); return }
+    themeSaving++
     try {
       await setPrefs({ theme: v })
       setThemePending(false)
     } catch (err) {
       setThemePref(before)
       throw err
+    } finally {
+      themeSaving--
     }
   }
 
@@ -260,11 +318,11 @@ export const useAppStore = defineStore('app', () => {
   return {
     bootstrap, bootstrapError, token, user, authed, isOwner, registrationOpen, hostAuth, avatarUrl, setHostUser,
     mustChangePassword, signInPassword, replaceTemporaryPassword,
-    hasProvider, siteName, logoUrl,
+    hasProvider, siteName, logoUrl, showSiteName,
     locale, setLocale,
     loadBootstrap, login, register, logout, setUser, swapToken, leaving,
     nodeLayout, setPrefs, setNodeLayout,
-    theme, setTheme,
+    theme, setTheme, applyHeldTheme,
     immersive, setImmersive, toggleImmersive,
   }
 })

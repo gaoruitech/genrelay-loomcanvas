@@ -6,7 +6,7 @@
 
 ## 仓库结构
 
-```
+```text
 loomcanvas/
 ├─ server/                 Node.js + Express + Mongoose（CommonJS）
 │  ├─ src/
@@ -20,7 +20,7 @@ loomcanvas/
 │  │  ├─ runner/           任务队列、时限、结果转存、计价
 │  │  ├─ storage/          存储层：本地磁盘与 S3 兼容的桶、key 生成
 │  │  ├─ billing/          计费钩子的加载（默认空实现）
-│  │  ├─ services/         账号与会话、设置、存储设置、素材读取、图片工具、内置内容、结果清理、画布图
+│  │  ├─ services/         账号与会话、空间、团队、权限表、每月上限（budget）、团队动态、跨空间复制、打包下载、设置、存储设置、素材读取、图片工具、内置内容、结果清理、画布图
 │  │  ├─ cli/              reset-password.js
 │  │  ├─ middleware/       会话与角色、语言、错误、安全响应头
 │  │  ├─ i18n/             服务端提示语：en.js、zh-CN.js
@@ -28,15 +28,17 @@ loomcanvas/
 │  └─ test/                node:test 测试
 ├─ web/                    Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  ├─ src/
-│  │  ├─ views/            Landing、Login、Register、ChangePassword、Setup、Workbench、CanvasList、Canvas、Assets、Models、History、Settings、CanvasShareView、NotFound
+│  │  ├─ views/            Landing、Login、Register、ChangePassword、Setup、Workbench、CanvasList、Canvas、Assets、BrandKits、Models、History、Team、Join、Settings、CanvasShareView、NotFound
 │  │  ├─ components/AppShell.vue  登录后每个页面外面的顶栏和侧栏
 │  │  ├─ components/canvas/    编辑器的节点和对话框
 │  │  ├─ components/models/    「模型管理」页：服务商表单、自定义模型、价格
 │  │  ├─ components/history/   「生成记录」页：详情弹窗和清理弹窗
 │  │  ├─ components/settings/  「设置」页的各个分区
-│  │  ├─ components/workbench/、landing/、auth/  工作台、落地页、登录注册页用到的部件
+│  │  ├─ components/team/、space/  「团队」页（成员、用量、动态、设置），以及各个空间共用的部件：空间切换器、创建和加入团队的弹窗、团队权限、复制到其他空间、上限
+│  │  ├─ components/workbench/、canvaslist/、assets/、brandkit/、landing/、auth/  工作台、画布列表、素材库页、品牌包、落地页、登录注册页用到的部件
 │  │  ├─ composables/      执行器、批量、历史、布局等
-│  │  ├─ utils/            api.ts、canvasModels.ts 等
+│  │  ├─ directives/       v-tip（界面自己画的悬停提示）、v-dialog（弹窗的焦点和 Esc）
+│  │  ├─ utils/            api.ts、canvasModels.ts、floatSpot.ts（悬浮面板摆在哪）等
 │  │  ├─ locales/          zh-CN.ts、en.ts、modules/*.ts
 │  │  ├─ stores/           Pinia（bootstrap、当前登录的账号、语言）
 │  │  ├─ router/           路由和登录守卫（是个工厂：每挂一份应用建一个路由）
@@ -120,7 +122,7 @@ npm test
 ```
 
 - 单元测试只需要 Node。
-- 端到端测试（`api.e2e.test.js`、`security.e2e.test.js`、`vendors.e2e.test.js`、`accounts.e2e.test.js`）需要 MongoDB。设置 `TEST_MONGODB_URI` 可以用你自己起的那个，每次运行会建自己的库。不设的话会尝试 `mongodb-memory-server`，它第一次使用时要下载 MongoDB 的可执行文件。两个都不行时，这些测试是跳过，不是失败。
+- 端到端测试（`api.e2e.test.js`、`security.e2e.test.js`、`vendors.e2e.test.js`、`accounts.e2e.test.js`、`teams.e2e.test.js`、`teams.matrix.e2e.test.js`、`teamdata.e2e.test.js`、`locks.e2e.test.js`、`budget.e2e.test.js`、`storage.e2e.test.js`）需要 MongoDB。设置 `TEST_MONGODB_URI` 可以用你自己起的那个，每次运行会建自己的库。不设的话会尝试 `mongodb-memory-server`，它第一次使用时要下载 MongoDB 的可执行文件。两个都不行时，这些测试是跳过，不是失败。
 
   ```bash
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
@@ -129,11 +131,13 @@ npm test
 - 服务商模块是对着测试里现起的假上游测的，见[编写服务商模块](writing-a-provider.zh-CN.md#对着假上游测试)。没有任何测试会调用真实的模型接口；`server/test/providers.test.js` 里名字带 "real service" 的测试，用的样本是 2026-10-10 从高瑞服务录下来的回答。
 - 对着真实服务的 S3 存储测试，没设 `TEST_S3_ENDPOINT` 时是跳过的，见[对着真实的 S3 测试](#对着真实的-s3-测试)。
 
-前端没有单元测试，把关的是 `npm run build`（类型检查）和 `npm run i18n:check`。
+前端的测试是 `web/test/` 下的 Vitest 测试（在 `web/` 下运行 `npm test`，见上表）；另外两道关是 `npm run build`（类型检查）和 `npm run i18n:check`。
 
 ### 对着真实的 S3 测试
 
 `server/test/storage.test.js` 不联网，测的是存储层本身：配置校验、寻址、查找、切换、优先级、密钥加密、设置逻辑、错误归类。它和其他单元测试一样随 `npm test` 运行。
+
+`server/test/storageResilience.test.js` 和 `server/test/storage.e2e.test.js` 测的是存储出问题的时候，同样不需要任何存储服务：S3 SDK 通过真实的套接字去连 `server/test/support/fakeS3.js` 里的几个替身（内存里的 S3 接口、拒绝连接的端口、接受连接却从不回应的服务）。覆盖：桶的地址在内网时交给上游的是什么、连不上的桶、`SECRET_KEY` 变更、`S3_*` 变量描述的桶。
 
 `server/test/storage.live.test.js` 让同一层代码对着真实的 S3 接口跑。里面没有任何模拟：对象真的写进环境变量指定的服务，再读回来。没设 `TEST_S3_ENDPOINT` 时，这个文件里的测试全部报告为跳过，CI 里就是这种情况。
 
@@ -197,8 +201,8 @@ node --test test/storage.live.test.js
 - 所有请求都走 `web/src/utils/api.ts` 里的同一个 axios 实例，`baseURL: '/api'`。函数按功能分组（`workflowApi`、`adminApi`、`filesApi` 等）。
 - 画布编辑器不直接调这些函数。它需要后端做的每一件事（读写画布、模型、运行、上传、工具、模板、品牌包、素材、分享）都走 `web/src/utils/canvasBackend.ts`，再转给当前的**适配器**（`web/src/embed/types.ts` 里的 `EditorAdapter`）。独立应用里的适配器就是架在同一个 axios 实例上的 HTTP 适配器（`web/src/embed/httpAdapterCore.ts`）；只嵌编辑器的宿主提供自己的。给编辑器加后端调用时，加在适配器上，不要加在组件里。见 [integration.zh-CN.md](integration.zh-CN.md)。
 - 开发时，Vite 把 `/api` 和 `/files` 代理到 `http://127.0.0.1:3000`（`web/vite.config.ts`），浏览器看到的是同一个来源，不用配跨域。生产环境由服务端直接提供构建好的前端（`WEB_DIST`）。
-- 每个请求都带 `X-Locale`（当前界面语言）；登录后还带 `Authorization: Bearer <token>`。
-- 每个返回都是 `{ result, message, data }`，`unwrap()` 取出 `data` 或抛错。收到 `401` 会清掉凭证并显示登录页。
+- 每个请求都带 `X-Locale`（当前界面语言）；登录后还带 `Authorization: Bearer <token>`。在团队空间里另带 `X-Space: <团队 id>`，个人空间不带这个头。
+- 每个返回都是 `{ result, message, code, data }`（`code` 只在失败时有），`unwrap()` 取出 `data` 或抛错。收到 `401` 会清掉凭证并显示登录页。
 - 运行是异步的：前端提交运行，然后拿着在等的 id 轮询 `POST /api/runs/status`。没有 WebSocket。
 - 接口层用到的类型在 `web/src/types/index.ts`。
 
@@ -307,7 +311,7 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - 凡是来自用户或上游响应的地址，都通过 `utils/safeFetch.js` 去取。文件类型按内容判断（`utils/sniff.js`），不看文件名，也不看对方声明的类型。
 - 存储 key 由 `storage/keys.js` 生成，用户输入的任何内容都不会进入 key。
 - 读写文件一律通过 `getStorage()`（`storage/index.js`），文件在哪个后端它就去哪找。存下来的、返回给客户端的地址永远是 `storage.urlFor(key)`，也就是 `/files/<key>`。预签名地址（`storage.externalUrls()`）只给那一次上游请求用：不要保存，不要返回给客户端，也不要写进日志。
-- 每张按账号区分的数据表都带 `userId`（所属账号的 id），对它的每一次查询都要带上 `req.userId`：别的账号的数据必须返回 404，不是 403，更不能返回内容。新增按账号区分的表时，要把它加进 `server/src/services/accounts.js` 的 `OWNED`（接手旧数据和删除账号都按这份清单走），并补进隔离测试 `server/test/accounts.e2e.test.js`。查服务商和模型一律经过 `providers/index.js`，不给账号 id 它会直接报错。站点级的东西（设置、存储、内置模板）只有超级管理员能改（`requireOwner`）。
+- 每张按空间区分的数据表都带 `userId`：文档所属**空间**的 id，个人空间是账号 id，团队是团队 id（字段名是有团队之前留下的，见 [architecture.md](architecture.md) 第 12 节），另有 `createdBy` 记创建它的账号。对这类表的每一次查询都要带 `req.spaceId`，不是 `req.userId`（后者是操作人，只有在个人空间里才等于 `req.spaceId`）：别的空间的数据必须返回 404，不是 403，更不能返回内容。新建的文档写 `userId: req.spaceId, createdBy: req.userId`。团队里不是人人都能做的操作一律经过唯一的权限表 `server/src/services/permissions.js`（`spaces.requireCan(action)` / `spaces.assertCan(req, action, ctx)`），文档里的矩阵和 `server/test/teams.matrix.e2e.test.js` 也都出自这张表。新增按空间区分的表时，要把它加进 `server/src/services/accounts.js` 的 `OWNED`（接手旧数据、删除账号、永久删除团队都按这份清单走），并补进隔离测试 `server/test/accounts.e2e.test.js` 和 `server/test/teams.e2e.test.js`。查服务商和模型一律经过 `providers/index.js`，不给空间 id 它会直接报错。站点级的东西（设置、存储、内置模板）只有超级管理员能改（`requireOwner`）。
 - 执行器核心（`runner/core.js`）的存储、服务商查找、转存和计费都是注入的依赖，所以不需要数据库就能测试。
 - 没有理由不加新的运行时依赖：响应头、跨域、限流各自只有几行代码，没有引入包。
 
@@ -317,6 +321,8 @@ throw new RunError('TIMEOUT', 'run.timeout_generate')
 - TDesign 组件由 `unplugin-vue-components` 自动引入，直接写 `<t-button>` 即可。
 - `@/` 指 `web/src/`。
 - 组件里不写给用户看的字面文字，一律走 `t()`。
+- 悬停提示用 `v-tip` 指令（`directives/tip.ts`），不用原生的 `title` 属性：它跟随主题，键盘聚焦和触屏长按时也会出现，被截断的文字能看全文（`{ text, clipped: true }`）。只有图标的按钮仍然要有 `aria-label`。
+- 弹窗、抽屉和弹层用同一套机制接管键盘：`v-dialog` 指令（`directives/dialog.ts`）或 `composables/useDialogFocus.ts`，并且挂在弹层那一层（`Teleport :to="$lcPortal"`）。浮在画布上、跟着某样东西走的面板（输入条、多选工具条、生成队列圆钮）用 `utils/floatSpot.ts` 摆位置，它会让开别的悬浮面板；不要自己手算位置。
 - 颜色和间距来自 `styles/design-tokens.css`，里面是同一组令牌名字的两套主题：`:root` 是深色（默认），`:root[data-theme='light']` 是浅色。组件里不写色值：用令牌；要自己配透明度就用通道令牌（`rgb(var(--c-cyan) / .12)`，模糊的外发光用 `--g-*`）。加令牌要两套一起加。SVG 属性不认 `var()`，插画用类名取色；库要纯字符串的地方（小地图）用 `utils/tokenColor.ts` 读令牌。压在用户画面上的件（`--c-scrim`、`--on-scrim*`）两套取值相同。
 - `npm run theme:check`（在 `web/` 下）核对两套令牌的名字，打印两套主题下文字、强调色、语义色压在各自底面上的对比度，并列出令牌文件之外残留的裸色值；后面带一个构建目录就连构建出的 CSS 和 JS 一起查。改了样式，两套主题都要看一眼再提交。
 

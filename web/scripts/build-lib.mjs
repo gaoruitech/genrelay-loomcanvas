@@ -1,5 +1,6 @@
 // 库构建：把两个集成入口打成可以直接被别的项目引用的 ES 模块。
-// 用法：node scripts/build-lib.mjs [--no-types] [--no-standalone]
+// 用法：node scripts/build-lib.mjs [--no-types] [--no-standalone] [--out=<目录>]
+//   --out=<目录>  产物写到别处而不是 web/dist-lib（试验性的构建用：正在读 dist-lib 的示例、别人的检查不会看到半成品）
 //
 // 产物（web/dist-lib/）：
 //   app.js / editor.js              入口，vue 是外部依赖（对等依赖）
@@ -16,8 +17,9 @@ import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const out = path.join(root, 'dist-lib')
 const args = new Set(process.argv.slice(2))
+const outArg = process.argv.slice(2).find((a) => a.startsWith('--out='))
+const out = outArg ? path.resolve(outArg.slice('--out='.length)) : path.join(root, 'dist-lib')
 // 直接用 node 跑两个工具的入口脚本：不经 shell，Windows 上也不用管 .cmd
 const VITE = path.join(root, 'node_modules/vite/bin/vite.js')
 const VUE_TSC = path.join(root, 'node_modules/vue-tsc/bin/vue-tsc.js')

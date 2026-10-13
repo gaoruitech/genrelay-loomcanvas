@@ -7,8 +7,10 @@
  */
 const express = require('express')
 const User = require('../models/User')
+const Workflow = require('../models/Workflow')
 const accounts = require('../services/accounts')
 const settings = require('../services/settings')
+const teams = require('../services/teams')
 const { getRunner } = require('../runner')
 const { ok, wrap, badRequest, notFound } = require('../utils/http')
 const { isObjectId, isPlainObject } = require('../utils/validate')
@@ -32,31 +34,60 @@ async function target(req) {
   return user
 }
 
-const serialize = (u, counts) => ({
+const serialize = (u, counts, teamCounts) => ({
   ...accounts.serializeUser(u),
   disabled: !!u.disabled,
   lastLoginAt: u.lastLoginAt || null,
+  // May this account create teams? The super admin always may; everybody else by this grant.
+  canCreateTeams: u.role === ROLES.OWNER || !!u.canCreateTeams,
   counts: counts.get(String(u._id)) || { workflows: 0, runs: 0 },
+  // How many teams the account is in, and how many of those it owns.
+  teams: (teamCounts && teamCounts.get(String(u._id))) || { member: 0, owned: 0 },
 })
 
-/** GET /api/admin/users -> [{ ...User, disabled, lastLoginAt, counts: { workflows, runs } }] */
+const allCounts = () => Promise.all([accounts.countsByUser(), accounts.teamCountsByUser()])
+
+/** GET /api/admin/users -> [{ ...User, disabled, lastLoginAt, canCreateTeams, counts: { workflows, runs }, teams: { member, owned } }] */
 router.get('/users', wrap(async (_req, res) => {
-  const [users, counts] = await Promise.all([
+  const [users, [counts, teamCounts]] = await Promise.all([
     User.find({}).sort({ createdAt: 1 }).limit(MAX_LISTED).lean(),
-    accounts.countsByUser(),
+    allCounts(),
   ])
-  ok(res, users.map((u) => serialize(u, counts)))
+  ok(res, users.map((u) => serialize(u, counts, teamCounts)))
 }))
 
-/** PATCH /api/admin/users/:id { disabled } - a disabled account is signed out at once and cannot sign in */
+/**
+ * PATCH /api/admin/users/:id { disabled?, canCreateTeams? }
+ *   disabled        a disabled account is signed out at once and cannot sign in. Its teams
+ *                   and memberships stay; for a team it owns, a new owner can be appointed
+ *                   (POST /api/admin/teams/:id/owner). What it had waiting in the queue - in
+ *                   its own space and in every team - is canceled, exactly as for a member who
+ *                   is removed (`runsCanceled` in the answer says how many); a run that already
+ *                   started is left to finish.
+ *   canCreateTeams  the authorisation to create teams. Taking it back stops new teams;
+ *                   the ones the account created stay.
+ */
 router.patch('/users/:id', wrap(async (req, res) => {
   const user = await target(req)
   const body = isPlainObject(req.body) ? req.body : {}
-  if (typeof body.disabled !== 'boolean') throw badRequest('validation.boolean', { field: 'disabled' })
-  user.disabled = body.disabled
+  if (body.canCreateTeams !== undefined && typeof body.canCreateTeams !== 'boolean') throw badRequest('validation.boolean', { field: 'canCreateTeams' })
+  if (typeof body.disabled !== 'boolean' && body.canCreateTeams === undefined) throw badRequest('validation.boolean', { field: 'disabled' })
+  if (typeof body.disabled === 'boolean') user.disabled = body.disabled
+  if (body.canCreateTeams !== undefined) user.canCreateTeams = body.canCreateTeams
   await user.save()
-  if (user.disabled) await accounts.revokeSessions(user._id)
-  ok(res, serialize(user.toObject(), await accounts.countsByUser()))
+  let runsCanceled = 0
+  if (typeof body.disabled === 'boolean' && user.disabled) {
+    await accounts.revokeSessions(user._id)
+    // An account that cannot act any more starts nothing new either: its queued runs go the
+    // way a removed member's do (teams.cancelQueued). The one submitted in this very instant
+    // is caught where runs are sent (runner resolveRun: `run.account_disabled`).
+    const uid = String(user._id)
+    runsCanceled = await teams.cancelQueued({ $or: [{ createdBy: uid }, { userId: uid }] }, 'account_disabled')
+    // Nor does it go on holding canvases: the edit locks it had are given back at once, so
+    // nobody waits out the lock's lifetime for somebody who cannot come back to it.
+    await Workflow.updateMany({ 'lock.by': uid }, { $set: { lock: { by: '', at: null, expiresAt: null } } }, { timestamps: false })
+  }
+  ok(res, { ...serialize(user.toObject(), ...(await allCounts())), runsCanceled })
 }))
 
 /**

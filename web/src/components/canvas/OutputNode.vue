@@ -26,10 +26,14 @@
       :style="{ gridTemplateColumns: `repeat(${cols}, 1fr)` }"
       @mousedown.stop
     >
-      <div
+      <!-- 每一格是一颗按钮：点开看大图 / 放视频（只读时也一样）；键盘 Tab 走得到 -->
+      <button
         v-for="(it, i) in visibleItems"
         :key="it.url + i"
+        type="button"
         class="cv-grid-cell"
+        :aria-label="isOverflow && i === MAX - 1 ? t('nodeui.output.more') : t(it.type === 'video' ? 'gen.view.video' : 'gen.view.image')"
+        data-testid="node-view"
         @click.stop="onCellClick(it, i)"
       >
         <img v-if="it.type === 'image'" :src="canvasImageThumb(it.url, 160)" alt="" />
@@ -44,7 +48,7 @@
           <span class="cv-cell-more-n">+{{ overflowCount }}</span>
           <span class="cv-cell-more-t">{{ t('nodeui.output.more') }}</span>
         </div>
-      </div>
+      </button>
     </div>
     <div v-else class="cv-output-slot empty">
       <span class="cv-empty-icon"><LcIcon name="image" /></span>
@@ -52,16 +56,19 @@
     </div>
 
       <!-- 链路成本固定在运行按钮正上方 -->
-      <div v-if="costBreakdown.total" class="cv-kv">
+      <!-- 集成方关了成本显示（features.cost）：这一行整个不出（不然是一个「预估成本」标签配一个空值） -->
+      <div v-if="$feat.cost && costBreakdown.total" class="cv-kv">
         <span>{{ costBreakdown.actual ? t('nodeui.output.chainCost') : t('cost.estimate') }}</span>
         <span v-if="costBreakdown.total.unknown" class="cv-unk">{{ costBreakdown.estimated ? formatEstimate(costBreakdown.total) : formatCost(costBreakdown.total) }}</span>
         <b v-else>{{ costBreakdown.estimated ? formatEstimate(costBreakdown.total) : formatCost(costBreakdown.total) }}</b>
       </div>
-      <div v-if="costBreakdown.actual && costBreakdown.estimated" class="cv-hint cv-cost-sub">
+      <div v-if="$feat.cost && costBreakdown.actual && costBreakdown.estimated" class="cv-hint cv-cost-sub">
         {{ t('nodeui.output.breakdown', { actual: formatCost(costBreakdown.actual), estimated: formatEstimate(costBreakdown.estimated) }) }}
       </div>
 
+      <!-- 只读：没有运行这回事，按钮不出现；这一支正在跑的话表头有状态 -->
       <button
+        v-if="!ro"
         class="cv-run nodrag"
         :disabled="branchRunning"
         @click.stop="handleRun"
@@ -75,16 +82,18 @@
     <!-- 查看更多：素材库式网格弹窗 -->
     <Teleport :to="$lcPortal">
       <div v-if="galleryOpen" class="lc-mask lc-sheet cv-gal-mask" @click.self="galleryOpen = false" @mousedown.self.stop @wheel.stop>
-        <div class="lc-dialog cv-gal-box">
+        <div v-dialog="() => (galleryOpen = false)" class="lc-dialog cv-gal-box" role="dialog" aria-modal="true" :aria-label="t('nodeui.output.galleryTitle', { n: outputItems.length })">
           <div class="lc-dialog-head">
             <span>{{ t('nodeui.output.galleryTitle', { n: outputItems.length }) }}</span>
-            <button class="lc-x" :title="t('common.close')" @click="galleryOpen = false">×</button>
+            <button class="lc-x" v-tip="t('common.close')" :aria-label="t('common.close')" @click="galleryOpen = false">×</button>
           </div>
           <div class="lc-dialog-body cv-gal-grid">
-            <div
+            <button
               v-for="(it, i) in outputItems"
               :key="it.url + i"
+              type="button"
               class="cv-gal-item"
+              :aria-label="t(it.type === 'video' ? 'gen.view.video' : 'gen.view.image')"
               @click="openLightbox(it)"
             >
               <img v-if="it.type === 'image'" :src="canvasImageThumb(it.url, 240)" alt="" loading="lazy" />
@@ -95,7 +104,7 @@
                   <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
                 </span>
               </template>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -116,6 +125,8 @@ import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { CANVAS_EXECUTOR_KEY } from '@/composables/canvasExecutorKey'
 import MediaLightbox from './MediaLightbox.vue'
+import { vDialog } from '@/directives/dialog'
+import { useCanvasReadOnly } from '@/composables/nodeLayout'
 import LcIcon from '@/components/LcIcon.vue'
 import { canvasImageThumb, canvasVideoPoster } from '@/utils/canvasMedia'
 import { formatCost, formatEstimate, sumCosts } from '@/utils/cost'
@@ -132,6 +143,8 @@ const props = defineProps<{
 const { t } = useI18n()
 const executor = inject(CANVAS_EXECUTOR_KEY)
 const { nodes, edges } = useVueFlow()
+/** 只读（别人正在编辑、只有查看权）：成品照样点开看，不能运行这一支 */
+const ro = useCanvasReadOnly()
 
 const status = computed(() => props.data.status || 'idle')
 // 表头下方两个输入口各接了几根线
@@ -283,7 +296,7 @@ const costBreakdown = computed(() => {
 })
 
 async function handleRun() {
-  if (!executor) return
+  if (!executor || ro.value) return
   await executor.runSubtree(props.id)
 }
 </script>
@@ -304,8 +317,11 @@ async function handleRun() {
   border: 1px solid var(--line);
   cursor: pointer;
   transition: border-color .15s ease;
+  /* 是一颗按钮：去掉按钮自带的留白和字体 */
+  display: block; width: 100%; padding: 0; font: inherit; color: inherit;
 }
 .cv-grid-cell:hover { border-color: var(--line-3); }
+.cv-grid-cell:focus-visible, .cv-gal-item:focus-visible { outline: none; border-color: var(--cyan); box-shadow: var(--ring); }
 .cv-grid-cell img,
 .cv-grid-cell video { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* 压在画面上的件：底是恒暗遮罩，字固定用浅色 */
@@ -374,6 +390,7 @@ async function handleRun() {
   border: 1px solid var(--line);
   cursor: pointer;
   transition: border-color .15s ease;
+  display: block; width: 100%; padding: 0; font: inherit; color: inherit;
 }
 .cv-gal-item:hover { border-color: var(--cyan); }
 .cv-gal-item img,

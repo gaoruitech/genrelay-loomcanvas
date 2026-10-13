@@ -1,5 +1,5 @@
 <template>
-  <span v-if="g.costText" class="gf-cost" :class="{ unk: g.costUnknown }" :title="g.costIsActual ? t('cost.actual') : t('cost.estimateTip')" data-testid="gen-cost">
+  <span v-if="g.costText" class="gf-cost" :class="{ unk: g.costUnknown }" v-tip="g.costIsActual ? t('cost.actual') : t('cost.estimateTip')" data-testid="gen-cost">
     <template v-if="long && !g.costUnknown">{{ g.costIsActual ? t('cost.actual') : t('cost.estimate') }} · </template><b>{{ g.costText }}</b>
   </span>
 </template>

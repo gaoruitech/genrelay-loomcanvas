@@ -1,9 +1,10 @@
 <template>
-  <div class="lc-mask" @click.self="close" @keydown.esc="close">
-    <form class="lc-dialog me" role="dialog" aria-modal="true" :aria-labelledby="uid + '-title'" @submit.prevent="submit">
+  <Teleport :to="$lcPortal">
+  <div class="lc-mask lc-sheet" @mousedown="downOnMask = $event.target === $event.currentTarget" @click.self="downOnMask && close()">
+    <form v-dialog="{ onEscape: close, busy: !!saving, initialFocus: () => labelEl }" class="lc-dialog me" role="dialog" aria-modal="true" :aria-labelledby="uid + '-title'" novalidate data-testid="model-edit-dialog" @submit.prevent="submit">
       <div class="lc-dialog-head">
         <span :id="uid + '-title'" class="me-title">{{ t('modelsPage.edit.title', { model: model.label || name }) }}</span>
-        <button type="button" class="lc-x" :aria-label="t('common.close')" @click="close">×</button>
+        <button type="button" class="lc-x" :aria-label="t('common.close')" :disabled="saving" @click="close">×</button>
       </div>
       <div class="lc-dialog-body">
         <p class="me-id">{{ name }}</p>
@@ -25,6 +26,7 @@
       </div>
     </form>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -34,6 +36,7 @@
  */
 import { onMounted, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { vDialog } from '@/directives/dialog'
 import { upstreamName } from './modelMeta'
 import type { AdminModel } from '@/types'
 
@@ -51,7 +54,10 @@ const label = ref(props.model.label || '')
 const sort = ref<number | string>(props.model.sort ?? 0)
 const error = ref('')
 const labelEl = ref<HTMLInputElement | null>(null)
+// 焦点由 v-dialog 放到名称框上；顺手全选，直接敲新名字就行
 onMounted(() => labelEl.value?.select())
+/** 按下和松开都在遮罩上才算「点外面」：在输入框里拖选文字、松手时滑到外面不算 */
+const downOnMask = ref(false)
 
 function close() {
   if (!props.saving) emit('close')
@@ -71,7 +77,7 @@ function submit() {
 </script>
 
 <style scoped>
-.me { width: 440px; color-scheme: dark; }
+.me { width: 440px; }
 .me-title { min-width: 0; overflow-wrap: anywhere; }
 .me-id { font: 12px/1.5 var(--f-mono); color: var(--text-3); margin-bottom: 14px; word-break: break-all; }
 .sort { width: 120px; }

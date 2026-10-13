@@ -23,6 +23,7 @@ export default {
       viewAll: '查看全部',
       empty: '还没有画布',
       emptyHint: '新建一块空白画布，或者从下面的模板开始。',
+      emptyHintBlank: '新建一块空白画布就可以开始。',
       loadFailed: '画布加载失败',
       justNow: '刚刚更新',
       minutesAgo: '{n} 分钟前更新',
@@ -80,7 +81,6 @@ export default {
       title: '生成队列',
       active: '{n} 个进行中',
       empty: '现在没有正在生成或排队的任务。',
-      seconds: '{n} 秒',
     },
 
     providers: {
@@ -92,6 +92,69 @@ export default {
       empty: '还没有添加服务商，添加之后才能生成。',
       add: '添加服务商',
       loadFailed: '服务商加载失败',
+    },
+
+    /** 团队空间里的首页 */
+    team: {
+      headline: '你是{role} · {n} 名成员 · {owns}',
+      headlineNoCount: '你是{role} · {owns}',
+      // 「这里的什么属于团队」：素材库、模型管理被集成方关掉时不提它们
+      owns: {
+        all: '这里的画布、素材和 Key 属于团队',
+        noAssets: '这里的画布和 Key 属于团队',
+        noKeys: '这里的画布和素材属于团队',
+        canvases: '这里的画布属于团队',
+      },
+      invite: '邀请成员',
+
+      runs: '本月运行',
+      runsOwn: '我的本月运行',
+      kinds: '图片 {image} · 视频 {video} · 对话 {chat}',
+      runsSplit: '已成功 {ok} + 进行中 {going}',
+      cost: '本月预估金额',
+      costOwn: '我的本月预估金额',
+      costSplit: '已成功 {ok} + 进行中占着 {going}',
+      estimate: '按团队填写的价格估算',
+      noCost: '本月还没有计入的运行',
+      limitsFailed: '每月上限加载失败',
+      noLimit: '未设上限',
+      noLimitData: '这个团队现在没有每月上限的数据',
+      active: '排队和运行中',
+      activeOwn: '我的排队和运行中',
+      activeSplit: '运行中 {running} · 排队 {queued}',
+      activeSplitCap: '运行中 {running} / 团队并发上限 {cap} · 排队 {queued}',
+      capShared: '团队并发上限 {cap}，全队共用',
+
+      onboarding: {
+        title: '三步把团队用起来',
+        done: '已完成',
+        provider: '配置服务商',
+        providerHint: '填上团队的 Key，成员就能用它生成。',
+        providerWait: '等团长或管理员配置服务商',
+        providerGo: '去配置',
+        members: '邀请成员',
+        membersHint: '发一条邀请链接，同事点开就能加入。',
+        membersWait: '由团长或管理员邀请',
+        membersGo: '去邀请',
+        canvas: '新建画布',
+        canvasHint: '建在团队里的画布归团队，谁能看、谁能改可以再调。',
+      },
+
+      canvases: '最近的团队画布',
+      allCanvases: '全部 {n} 张',
+      canvasesEmpty: '团队里还没有你看得到的画布',
+
+      running: '正在运行',
+      scope: {
+        all: '全队',
+        own: '只看我的',
+      },
+      moreActive: '还有 {n} 个，去生成记录看',
+
+      providers: '团队服务商',
+      providersWait: '团队还没有服务商。等团长或管理员配置之后才能生成。',
+      modelCount: '{n} 个模型 · 已启用 {on}',
+      keyNote: 'Key 由团长和管理员配置',
     },
   },
 
@@ -119,6 +182,7 @@ export default {
       viewAll: 'View all',
       empty: 'No canvases yet',
       emptyHint: 'Create a blank canvas, or start from a template below.',
+      emptyHintBlank: 'Create a blank canvas to get started.',
       loadFailed: "Couldn't load your canvases",
       justNow: 'Updated just now',
       minutesAgo: 'Updated {n} min ago',
@@ -176,7 +240,6 @@ export default {
       title: 'Queue',
       active: '{n} active',
       empty: 'Nothing is generating or queued right now.',
-      seconds: '{n}s',
     },
 
     providers: {
@@ -188,6 +251,67 @@ export default {
       empty: 'No provider yet. Add one to start generating.',
       add: 'Add a provider',
       loadFailed: "Couldn't load providers",
+    },
+
+    team: {
+      headline: 'Your role: {role} · {n} members · {owns}',
+      headlineNoCount: 'Your role: {role} · {owns}',
+      owns: {
+        all: 'Canvases, assets and keys here belong to the team',
+        noAssets: 'Canvases and keys here belong to the team',
+        noKeys: 'Canvases and assets here belong to the team',
+        canvases: 'Canvases here belong to the team',
+      },
+      invite: 'Invite members',
+
+      runs: 'Runs this month',
+      runsOwn: 'My runs this month',
+      kinds: 'Image {image} · Video {video} · Chat {chat}',
+      runsSplit: '{ok} succeeded + {going} in progress',
+      cost: 'Estimated amount this month',
+      costOwn: 'My estimated amount this month',
+      costSplit: '{ok} succeeded + {going} held by runs in progress',
+      estimate: "Estimated from the team's prices",
+      noCost: 'No runs counted this month yet',
+      limitsFailed: "Couldn't load the monthly limits",
+      noLimit: 'No limit set',
+      noLimitData: 'There is no monthly-limit data for this team right now',
+      active: 'Queued and running',
+      activeOwn: 'My queued and running',
+      activeSplit: 'Running {running} · Queued {queued}',
+      activeSplitCap: 'Running {running} of {cap} at once · Queued {queued}',
+      capShared: 'The team runs up to {cap} at once, shared by everyone',
+
+      onboarding: {
+        title: 'Three steps to get the team going',
+        done: 'done',
+        provider: 'Set up a provider',
+        providerHint: "Enter the team's API key so members can generate with it.",
+        providerWait: 'Waiting for the owner or an admin to set up a provider',
+        providerGo: 'Set up',
+        members: 'Invite members',
+        membersHint: 'Send an invite link. Colleagues join by opening it.',
+        membersWait: 'The owner or an admin invites people',
+        membersGo: 'Invite',
+        canvas: 'Create a canvas',
+        canvasHint: 'A canvas created here belongs to the team. Who can see or edit it can be changed later.',
+      },
+
+      canvases: 'Recent team canvases',
+      allCanvases: 'All {n}',
+      canvasesEmpty: 'There are no canvases you can see in this team yet',
+
+      running: 'Running now',
+      scope: {
+        all: 'Whole team',
+        own: 'Mine only',
+      },
+      moreActive: '{n} more in History',
+
+      providers: 'Team providers',
+      providersWait: 'The team has no provider yet. Generating works once the owner or an admin sets one up.',
+      modelCount: '{n} models · {on} enabled',
+      keyNote: 'Keys are set up by the owner and admins',
     },
   },
 }

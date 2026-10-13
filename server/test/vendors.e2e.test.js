@@ -152,7 +152,10 @@ test('vendors, custom models and the provider migration', async (t) => {
     openaiId = official.id
     const zhModel = (id) => vendors[1].models.find((m) => m.model === id)
 
-    const moved = await data('PUT', `/api/admin/providers/${openaiId}`, { baseUrl: upstream.baseUrl })
+    // Moving a provider to another address needs its key again: the stored one stays with the address it was saved for.
+    assert.deepEqual(await refused('PUT', `/api/admin/providers/${openaiId}`, { baseUrl: upstream.baseUrl }), [400, 'provider.key_required_for_url'])
+    assert.equal((await providers.findOne({ slug: 'openai' })).baseUrl, '', 'the refused change stored nothing')
+    const moved = await data('PUT', `/api/admin/providers/${openaiId}`, { baseUrl: upstream.baseUrl, apiKey: KEY })
     assert.deepEqual([moved.baseUrl, moved.customBaseUrl], [upstream.baseUrl, true])
     assert.deepEqual(await refused('PUT', `/api/admin/providers/${openaiId}`, { type: 'gemini' }), [400, 'provider.vendor_fixed'])
     assert.equal((await data('PUT', `/api/admin/providers/${openaiId}`, { type: 'openai', name: 'Mine' })).name, 'Mine')

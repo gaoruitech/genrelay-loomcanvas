@@ -74,9 +74,29 @@ function trustProxy(name) {
   return list
 }
 
+const S3_REQUIRED = ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']
+
+/**
+ * The bucket the S3_* variables describe, when they describe one completely.
+ * It is where new files go with STORAGE_DRIVER=s3, and a bucket that is still
+ * read with any other driver: an install that used it and then went back to the
+ * local disk keeps its files. Resolves { s3, problem }: with the driver set to
+ * s3 a missing or invalid value stops the server; otherwise it is only reported
+ * (`problem`), since nothing is written there.
+ */
+function envBucket(driver) {
+  if (driver !== 's3' && S3_REQUIRED.some((name) => !str(name))) return { s3: null, problem: '' }
+  try {
+    return { s3: envS3(), problem: '' }
+  } catch (err) {
+    if (driver === 's3') throw err
+    return { s3: null, problem: err.message }
+  }
+}
+
 /** S3_* variables as a storage configuration (storage/schema.js). */
 function envS3() {
-  for (const name of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
+  for (const name of S3_REQUIRED) {
     if (!str(name)) throw new ConfigError(`STORAGE_DRIVER=s3 requires ${name}`)
   }
   try {
@@ -89,6 +109,7 @@ function envS3() {
       forcePathStyle: /^(1|true|yes)$/i.test(str('S3_FORCE_PATH_STYLE')),
       keyPrefix: str('S3_KEY_PREFIX'),
       publicBaseUrl: str('S3_PUBLIC_BASE_URL'),
+      presignEndpoint: str('S3_PRESIGN_ENDPOINT'),
       delivery: str('S3_DELIVERY').toLowerCase(),
       acl: str('S3_ACL').toLowerCase(),
     }))
@@ -126,6 +147,7 @@ function build() {
 
   const serverRoot = path.resolve(__dirname, '..')
   const resolveFromRoot = (p) => (path.isAbsolute(p) ? p : path.resolve(serverRoot, p))
+  const bucket = envBucket(storageDriver)
 
   return Object.freeze({
     port: int('PORT', 3000, { min: 1, max: 65535 }),
@@ -155,9 +177,12 @@ function build() {
     storage: Object.freeze({
       driver: storageDriver,
       localDir: resolveFromRoot(str('STORAGE_LOCAL_DIR', './data/files')),
-      // The S3 settings from the environment, validated; null unless STORAGE_DRIVER=s3.
-      // A configuration saved on the settings page takes precedence over these.
-      s3: storageDriver === 's3' ? envS3() : null,
+      // The bucket the S3_* variables describe, validated; null when they do not describe one.
+      // New files go there only with STORAGE_DRIVER=s3 (and nothing saved on the settings page);
+      // with any other driver it is still read, so the files an install left there keep loading.
+      s3: bucket.s3,
+      // Why the S3_* variables are not used although they are set ('' = no problem).
+      s3Problem: bucket.problem,
     }),
   })
 }

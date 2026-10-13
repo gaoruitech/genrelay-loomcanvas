@@ -29,6 +29,11 @@ export interface FloatingMenuOptions {
   matchWidth?: boolean
   /** 上下都放不下时，把菜单高度压到放得下的那一侧（菜单自己要 overflow-y:auto） */
   fitHeight?: boolean
+  /**
+   * 菜单最高多高（像素，和菜单自己 CSS 里的 max-height 是同一个数）。给了它，「放不放得下」就按这个高度算：
+   * 几百项的列表不会因为「自然高度哪边都放不下」被翻到按钮上方、撑满半个屏幕。
+   */
+  maxHeight?: number
   /** 祖先滚动时关闭而不是跟着走（表单下拉用；菜单自身的滚动不算） */
   closeOnScroll?: boolean
 }
@@ -66,7 +71,8 @@ export function useFloatingMenu(opts: FloatingMenuOptions) {
     const menu = opts.menu.value
     if (menu) {
       // 自然高度：不受上一次 max-height 的影响
-      const mh = opts.fitHeight ? menu.scrollHeight + (menu.offsetHeight - menu.clientHeight) : menu.offsetHeight
+      const natural = opts.fitHeight ? menu.scrollHeight + (menu.offsetHeight - menu.clientHeight) : menu.offsetHeight
+      const mh = opts.maxHeight ? Math.min(natural, opts.maxHeight) : natural
       const mw = Math.max(menu.offsetWidth, minWidth || 0)
       const below = vh - SAFE - top
       const above = rect.top - gap - SAFE

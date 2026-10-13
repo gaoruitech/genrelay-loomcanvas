@@ -6,6 +6,8 @@ export default {
     explain: {
       summary: '品牌包是一组固定的出图设定：几张参考图、一段固定写在提示词前面的话、一份「不要出现」的清单。给画布选了品牌包，这张画布上的图片生成、图片编辑、视频生成、视频编辑节点每次运行时，都会自动把那段话加在提示词最前面，把「不要出现：…」加在提示词末尾，并把参考图排在节点自己的参考图后面一起发给模型。',
       limits: '它不改模型、比例、分辨率和数量，预估成本也不变；参考图只填模型剩下的名额，首尾帧模式的视频和不接收参考图的模型只加文字；「不要出现」只是写进提示词的一句话，模型不一定照做。品牌包里没有 Logo 和品牌色这两项，需要的话放进参考图或写进那段话。改了品牌包，之后每一次运行都用新的内容；已经生成的结果不变。',
+      // 集成方关了成本显示（features.cost）时用这一句：和上面一样，只是不提「预估成本」
+      limitsNoCost: '它不改模型、比例、分辨率和数量；参考图只填模型剩下的名额，首尾帧模式的视频和不接收参考图的模型只加文字；「不要出现」只是写进提示词的一句话，模型不一定照做。品牌包里没有 Logo 和品牌色这两项，需要的话放进参考图或写进那段话。改了品牌包，之后每一次运行都用新的内容；已经生成的结果不变。',
     },
 
     summary: {
@@ -57,6 +59,18 @@ export default {
       show: '看看会加什么',
       hide: '收起',
       scope: '此节点',
+      // 「选了」不等于「起作用」：参考图发不出去时照实说
+      appliedTextOnly: '已套用品牌包：{name}（只加文字）',
+      appliedOwnTextOnly: '此节点单独套用：{name}（只加文字）',
+      noEffect: '品牌包「{name}」这次不起作用',
+      emptyKit: '品牌包「{name}」还是空的',
+      // 节点表头上的标记（悬停提示，也是它的无障碍名字）
+      tipKit: '品牌包：{name}',
+      tipNoEffect: '品牌包「{name}」这次运行不起作用',
+      tipEmpty: '品牌包「{name}」还是空的，运行时不会加任何东西',
+      tipNone: '未套用品牌包',
+      popTitle: '此节点的品牌包',
+      popChoose: '此节点用哪个',
     },
     preview: {
       title: '运行时会自动加上',
@@ -66,13 +80,17 @@ export default {
       skippedFull: '另有 {n} 张不会发出：{model} 最多收 {max} 张参考图，节点自己的优先',
       skippedFrames: '{n} 张参考图不会发出：首尾帧模式只发首帧和尾帧',
       skippedNoRefs: '{n} 张参考图不会发出：{model} 不接收参考图',
+      skippedFullAll: '{n} 张参考图不会发出：{model} 最多收 {max} 张参考图，已被节点自己的占满',
       nothing: '这个品牌包还是空的，运行时不会加任何东西。',
       thisModel: '当前模型',
     },
 
     page: {
       tabAssets: '素材',
+      tabTeamAssets: '团队资产',
       tabKits: '品牌包',
+      // 页头副标题只说这一页是什么。品牌包本身的定义在「品牌包是什么」那一块，空态给的是例子和下一步 —— 三处不说同一句话
+      sub: '你的品牌包都在这里 —— 可以给任意一张画布选用的固定出图设定。',
       create: '新建品牌包',
       aboutTitle: '品牌包是什么',
       emptyTitle: '还没有品牌包',
@@ -119,6 +137,23 @@ export default {
       removed: '已删除',
       removeFailed: '删除失败',
     },
+
+    // 团队空间里：品牌包是全队共用的一套，团长和管理员维护，成员只能选用
+    team: {
+      sub: '「{team}」的品牌包都在这里 —— 可以给团队里任意一张画布选用的固定出图设定。',
+      managed: '团队的品牌包全队共用：所有成员都能在画布上选用，团长和管理员可以新建、修改和删除。',
+      readonly: '品牌包由团长和管理员维护，成员可以在画布上选用。',
+      emptyTitle: '团队还没有品牌包',
+      // 谁维护、成员能做什么，上面那一行（team.readonly）已经说了，这里只说接下来会怎样
+      emptyMember: '等团长或管理员建好第一个，它会出现在这里。',
+      howToMember: '要用哪一个，打开一张画布，在左上角画布名旁边选它。',
+      view: '查看',
+      viewTitle: '查看品牌包',
+      readonlyEditor: '品牌包由团长和管理员维护。你可以在画布上选用它，但不能修改。',
+      cannotCreate: '这个团队的品牌包由团长和管理员新建和维护。需要新的品牌包，请找他们。',
+      nameHelp: '团队里的人都看得到这个名字，不会发给模型。',
+      isDefaultHelp: '打开后，团队里之后新建的画布会自动选上这个品牌包；同一时间只能有一个。已有的画布不受影响。',
+    },
   },
   en: {
     negativeLead: 'Do not include: ',
@@ -126,6 +161,7 @@ export default {
     explain: {
       summary: 'A brand kit is a fixed set of generation settings: a few reference images, a piece of text that always goes in front of the prompt, and a list of things to leave out. Choose one for a canvas and every Image generation, Image edit, Video generation and Video edit node on that canvas adds it on each run: the text goes in front of the prompt, "Do not include: …" goes at the end, and the reference images are sent to the model after the node\'s own.',
       limits: 'It does not change the model, aspect ratio, resolution or count, and the estimated cost stays the same. Its reference images only fill the slots the model has left; videos in first/last-frame mode and models that take no reference images get the text only. "Do not include" is a sentence in the prompt, so the model may ignore it. A kit has no logo or colour fields: put those in the reference images or in the text. Edit a kit and every later run uses the new content; results you already have do not change.',
+      limitsNoCost: 'It does not change the model, aspect ratio, resolution or count. Its reference images only fill the slots the model has left; videos in first/last-frame mode and models that take no reference images get the text only. "Do not include" is a sentence in the prompt, so the model may ignore it. A kit has no logo or colour fields: put those in the reference images or in the text. Edit a kit and every later run uses the new content; results you already have do not change.',
     },
 
     summary: {
@@ -177,6 +213,16 @@ export default {
       show: 'See what it adds',
       hide: 'Hide',
       scope: 'This node',
+      appliedTextOnly: 'Brand kit applied: {name} (text only)',
+      appliedOwnTextOnly: 'This node\'s own kit: {name} (text only)',
+      noEffect: 'Brand kit "{name}" adds nothing to this run',
+      emptyKit: 'Brand kit "{name}" is still empty',
+      tipKit: 'Brand kit: {name}',
+      tipNoEffect: 'Brand kit "{name}" adds nothing to this run',
+      tipEmpty: 'Brand kit "{name}" is still empty, so nothing is added',
+      tipNone: 'No brand kit applied',
+      popTitle: 'Brand kit for this node',
+      popChoose: 'What this node uses',
     },
     preview: {
       title: 'Added automatically on each run',
@@ -186,13 +232,16 @@ export default {
       skippedFull: '{n} more will not be sent: {model} takes at most {max} reference images and the node\'s own come first',
       skippedFrames: '{n} reference image will not be sent: first/last-frame mode sends only the two frames | {n} reference images will not be sent: first/last-frame mode sends only the two frames',
       skippedNoRefs: '{n} reference image will not be sent: {model} takes no reference images | {n} reference images will not be sent: {model} takes no reference images',
+      skippedFullAll: '{n} reference image will not be sent: {model} takes at most {max} and the node\'s own fill them | {n} reference images will not be sent: {model} takes at most {max} and the node\'s own fill them',
       nothing: 'This brand kit is still empty, so nothing is added.',
       thisModel: 'this model',
     },
 
     page: {
       tabAssets: 'Assets',
+      tabTeamAssets: 'Team assets',
       tabKits: 'Brand kits',
+      sub: 'Your brand kits live here: fixed generation settings you can choose for any canvas.',
       create: 'New brand kit',
       aboutTitle: 'What a brand kit is',
       emptyTitle: 'No brand kits yet',
@@ -238,6 +287,21 @@ export default {
       removeHint: 'Canvases and nodes that use it will run without a brand kit from now on. The canvases and the results you already have are not affected.',
       removed: 'Deleted',
       removeFailed: 'Couldn\'t delete the brand kit',
+    },
+
+    team: {
+      sub: 'The brand kits of {team} live here: fixed generation settings any canvas of the team can use.',
+      managed: 'The team\'s brand kits are shared: every member can choose them on a canvas; the owner and admins can create, edit and delete them.',
+      readonly: 'Brand kits are maintained by the owner and admins. Members can choose them on a canvas.',
+      emptyTitle: 'The team has no brand kits yet',
+      emptyMember: 'The first one shows up here once the owner or an admin makes it.',
+      howToMember: 'To use one, open a canvas and choose it next to the canvas name at the top left.',
+      view: 'View',
+      viewTitle: 'Brand kit',
+      readonlyEditor: 'Brand kits are maintained by the owner and admins. You can choose this one on a canvas, but you can\'t change it.',
+      cannotCreate: 'In this team, brand kits are created and maintained by the owner and admins. Ask them if you need a new one.',
+      nameHelp: 'Everyone in the team sees this name. It is not sent to the model.',
+      isDefaultHelp: 'When on, canvases created in the team from now on start with this kit. Only one kit can be the default. Existing canvases are not affected.',
     },
   },
 }

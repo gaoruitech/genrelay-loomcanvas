@@ -1,11 +1,11 @@
 <template>
-  <div class="gf-prompt" :class="[variant, { focused, 'is-up': g.upstream.connected }]" @mousedown.stop @click.stop>
+  <div class="gf-prompt" :class="[variant, { focused, 'is-up': g.upstream.connected, 'is-view': g.viewOnly }]" @mousedown.stop @click.stop>
     <!-- 提示词来自上游文本节点：只读展示，就是运行时会发出去的那一份 -->
     <template v-if="g.upstream.connected">
       <div v-if="variant !== 'node'" class="gf-up-h">
-        <LcIcon name="branch" size="s" />{{ t('gen.prompt.fromUpstream') }}<span>{{ t('gen.prompt.readOnly') }}</span>
+        <LcIcon name="branch" size="s" />{{ t('gen.prompt.fromUpstream') }}<span v-if="!g.viewOnly">{{ t('gen.prompt.readOnly') }}</span>
       </div>
-      <div class="gf-up-q" :class="{ empty: !g.upstream.text }" :title="g.upstream.text" data-testid="gen-upstream">
+      <div v-tip="{ text: g.upstream.text, clipped: true }" class="gf-up-q" :class="{ empty: !g.upstream.text }" data-testid="gen-upstream">
         <span v-if="variant === 'node'" class="gf-up-tag">{{ t('gen.prompt.upstreamTag') }}</span>{{ g.upstream.text || t('gen.prompt.upstreamEmpty') }}
       </div>
     </template>
@@ -13,14 +13,17 @@
 
     <!-- 节点自己的提示词。连了上游时它只是备用：上游有内容就整段用上游的 -->
     <div v-if="g.hasOwnPrompt" class="gf-ta" :class="{ fallback: g.upstream.connected }">
-      <span v-if="g.upstream.connected" class="gf-ta-l" :title="t('gen.prompt.fallbackTip')">{{ t('gen.prompt.fallback') }}</span>
+      <span v-if="g.upstream.connected" v-tip="t('gen.prompt.fallbackTip')" class="gf-ta-l">{{ t('gen.prompt.fallback') }}</span>
       <div class="gf-ta-box">
         <div ref="hlRef" class="gf-hl" aria-hidden="true" v-html="highlighted" />
+        <!-- 只读：readonly（不是 disabled）—— 字照样能选中、复制、滚动，Tab 也停得上去 -->
         <textarea
           ref="taRef"
           v-model="g.prompt"
           class="gf-textarea nodrag nowheel"
-          :placeholder="g.upstream.connected ? t('gen.prompt.fallbackPlaceholder') : g.placeholder"
+          :placeholder="g.viewOnly ? t('gen.prompt.none') : g.upstream.connected ? t('gen.prompt.fallbackPlaceholder') : g.placeholder"
+          :readonly="g.viewOnly"
+          :aria-label="g.promptLabel"
           :maxlength="PROMPT_MAX"
           rows="1"
           data-testid="gen-prompt"
@@ -42,9 +45,11 @@
           ref="sysRef"
           v-model="g.systemPrompt"
           class="gf-textarea nodrag nowheel"
-          :placeholder="t('nodeui.llm.systemPromptPlaceholder')"
+          :placeholder="g.viewOnly ? t('gen.prompt.none') : t('nodeui.llm.systemPromptPlaceholder')"
           :maxlength="PROMPT_MAX"
-          :disabled="g.isRunning"
+          :disabled="g.isRunning && !g.viewOnly"
+          :readonly="g.viewOnly"
+          :aria-label="t('gen.prompt.system')"
           rows="1"
           data-testid="gen-system"
           @input="fitSys"
@@ -59,11 +64,11 @@
     <!-- 输入图小签 + 清空 / 字数 / 放大。布局 c 的节点自己排这一行（端口要对着它） -->
     <div v-if="meta && (g.hasOwnPrompt || g.imageRefs.length)" class="gf-pm">
       <GenRefs sm />
-      <span v-if="g.imageRefs.length && g.hasOwnPrompt && variant === 'inspector'" class="gf-pm-hint">{{ t('gen.prompt.atHint') }}</span>
+      <span v-if="g.imageRefs.length && g.hasOwnPrompt && variant === 'inspector' && !g.viewOnly" class="gf-pm-hint">{{ t('gen.prompt.atHint') }}</span>
       <span v-if="g.hasOwnPrompt" class="gf-pm-r">
-        <button v-if="g.prompt" type="button" class="gf-link" data-testid="gen-clear" @click.stop="g.prompt = ''">{{ t('common.clear') }}</button>
+        <button v-if="g.prompt && !g.viewOnly" type="button" class="gf-link" data-testid="gen-clear" @click.stop="g.prompt = ''">{{ t('common.clear') }}</button>
         <span class="gf-count" data-testid="gen-count-chars">{{ g.prompt.length }} / {{ PROMPT_MAX }}</span>
-        <button type="button" class="gf-ib-plain" :title="t('nodes.action.expand')" :aria-label="t('nodes.action.expand')" data-testid="gen-expand" @click.stop="openExpand"><GenIconExpand /></button>
+        <button type="button" class="gf-ib-plain" v-tip="t(g.viewOnly ? 'nodeui.ro.expand' : 'nodes.action.expand')" :aria-label="t(g.viewOnly ? 'nodeui.ro.expand' : 'nodes.action.expand')" data-testid="gen-expand" @click.stop="openExpand"><GenIconExpand /></button>
       </span>
     </div>
 
@@ -80,23 +85,28 @@
 
     <!-- 放大编辑：脱离面板居中，和原位那个框是同一段提示词 -->
     <Teleport :to="$lcPortal">
-      <div v-if="expanded" class="gf-expand nodrag nowheel" role="dialog" aria-modal="true" :aria-label="g.promptLabel" data-testid="gen-expand-editor" @click.stop @mousedown.stop @wheel.stop>
+      <!-- 键盘和焦点归 v-dialog：焦点进这个框、Tab 在里面转、焦点落在按钮上时 Esc 也关得掉（框里的 Esc 由 onBigKeydown 先接，
+           它还要顾 @ 候选），关掉后焦点还回去 -->
+      <div v-if="expanded" v-dialog="{ onEscape: () => (expanded = false), initialFocus: () => bigRef }" class="gf-expand nodrag nowheel" role="dialog" aria-modal="true" :aria-label="g.promptLabel" data-testid="gen-expand-editor" @click.stop @mousedown.stop @wheel.stop>
         <div class="gf-expand-h">
           <span>{{ g.title }} · {{ g.promptLabel }}</span>
-          <button type="button" class="gf-ib-plain" :title="t('nodes.action.collapse')" :aria-label="t('nodes.action.collapse')" @click.stop="expanded = false"><LcIcon name="x" size="s" /></button>
+          <button type="button" class="gf-ib-plain" v-tip="t('nodes.action.collapse')" :aria-label="t('nodes.action.collapse')" @click.stop="expanded = false"><LcIcon name="x" size="s" /></button>
         </div>
         <textarea
           ref="bigRef"
           v-model="g.prompt"
           class="gf-expand-ta"
-          :placeholder="g.placeholder"
+          :placeholder="g.viewOnly ? t('gen.prompt.none') : g.placeholder"
+          :readonly="g.viewOnly"
+          :aria-label="g.promptLabel"
           :maxlength="PROMPT_MAX"
-          @input="g.mention.onInput"
+          @input="!g.viewOnly && g.mention.onInput($event)"
           @keydown="onBigKeydown"
           @blur="g.mention.close"
         />
         <div class="gf-expand-f">
-          <button type="button" class="gf-link" :disabled="!g.prompt" @click.stop="g.prompt = ''">{{ t('common.clear') }}</button>
+          <button v-if="!g.viewOnly" type="button" class="gf-link" :disabled="!g.prompt" @click.stop="g.prompt = ''">{{ t('common.clear') }}</button>
+          <button v-else type="button" class="gf-link" :disabled="!g.prompt" data-testid="gen-expand-copy" @click.stop="copyPrompt">{{ t('common.copy') }}</button>
           <span class="gf-count">{{ g.prompt.length }} / {{ PROMPT_MAX }}</span>
         </div>
       </div>
@@ -116,6 +126,8 @@
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { MessagePlugin } from '@/utils/feedback'
+import { vDialog } from '@/directives/dialog'
 import { useGenNodeState, PROMPT_MAX } from '@/composables/useGenNode'
 import { knownMentionRanges } from '@/composables/canvasImageRefs'
 import LcIcon from '@/components/LcIcon.vue'
@@ -161,6 +173,8 @@ function syncScroll() {
   if (hlRef.value && taRef.value) hlRef.value.scrollTop = taRef.value.scrollTop
 }
 watch(() => [g.prompt, g.upstream.connected, focused.value], () => nextTick(fit))
+// 变成只读的那一刻：@ 候选要是开着就收掉（正在打的那个框由画布那边让它失焦）
+watch(() => g.viewOnly, (ro) => { if (ro) g.mention.close() })
 watch(() => g.systemPrompt, () => nextTick(fitSys))
 onMounted(() => { fit(); fitSys() })
 
@@ -181,7 +195,16 @@ const highlighted = computed(() => {
   return out + esc(text.slice(last)) + '\n'
 })
 
-function onInput(e: Event) { g.mention.onInput(e); fit() }
+function onInput(e: Event) { if (g.viewOnly) return; g.mention.onInput(e); fit() }
+/** 只读时放大框里的「复制」：整段提示词 */
+async function copyPrompt() {
+  try {
+    await navigator.clipboard.writeText(g.prompt)
+    MessagePlugin.success(t('common.copied'))
+  } catch {
+    MessagePlugin.error(t('common.copyFailed'))
+  }
+}
 function onFocus() { focused.value = true; emit('focused', true) }
 function onBlur() {
   g.mention.close()
@@ -189,24 +212,31 @@ function onBlur() {
   emit('focused', false)
 }
 function runKey(e: KeyboardEvent): boolean {
+  // 只读：没有运行这回事，这个组合键不接（回车照常交给浏览器，只读的框里它什么也不做）
+  if (g.viewOnly) return false
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void g.run(); return true }
   return false
 }
+/** 输入法正在组字：回车是上屏、Esc 是取消组字、方向键是挑候选 —— 都是输入法的键，这里一概不接 */
+const imeKey = (e: KeyboardEvent) => e.isComposing || e.keyCode === 229
 function onKeydown(e: KeyboardEvent) {
+  if (imeKey(e)) return
   // @ 候选框开着时，方向键 / 回车 / Esc 都是它的
-  const picking = g.mention.picker.open
-  g.mention.onKeydown(e)
+  const picking = g.mention.picker.open && !g.viewOnly
+  if (!g.viewOnly) g.mention.onKeydown(e)
   if (picking) return
   if (runKey(e)) return
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLElement).blur(); emit('escape') }
 }
 function onSysKeydown(e: KeyboardEvent) {
+  if (imeKey(e)) return
   if (runKey(e)) return
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLElement).blur(); emit('escape') }
 }
 function onBigKeydown(e: KeyboardEvent) {
-  const picking = g.mention.picker.open
-  g.mention.onKeydown(e)
+  if (imeKey(e)) return
+  const picking = g.mention.picker.open && !g.viewOnly
+  if (!g.viewOnly) g.mention.onKeydown(e)
   if (picking) return
   if (runKey(e)) { expanded.value = false; return }
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); expanded.value = false; nextTick(() => taRef.value?.focus()) }

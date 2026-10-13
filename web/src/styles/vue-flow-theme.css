@@ -26,13 +26,15 @@
   fill: var(--text);
 }
 
-/* ---------- 小地图：一块悬浮玻璃 ---------- */
+/* ---------- 小地图：一块悬浮玻璃 ----------
+   它画的是画布本身，所以外框跟着画布底色的明暗走（--mini-* 在「画布底」那组令牌里）：
+   默认底色时就是主题的玻璃；浅色主题 + 自选深底时是深色的一块，不会在深底上亮出一块白板。 */
 .vue-flow .vue-flow__minimap {
   margin: 0;
-  background: rgb(var(--c-glass) / .88);
-  border: 1px solid var(--line-2);
+  background: var(--mini-panel);
+  border: 1px solid var(--mini-line);
   border-radius: 14px;
-  box-shadow: var(--sh-1);
+  box-shadow: var(--mini-shadow);
   overflow: hidden;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
@@ -111,4 +113,12 @@
   box-shadow: none;
   outline: none;
   border: none;
+}
+
+/* 键盘走到节点上（Tab）：一圈看得见的焦点环 —— vue-flow 的默认皮肤把它关掉了，键盘用户不知道自己停在哪个节点上。
+   鼠标点出来的焦点不算（:focus-visible）。写在所有节点类型上，选择器比上面那几条和默认皮肤的都具体。 */
+.vue-flow .vue-flow__nodes .vue-flow__node:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 16px;
 }

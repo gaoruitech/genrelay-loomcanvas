@@ -1,6 +1,6 @@
 <template>
   <div v-if="modelValue" class="lc-mask lc-sheet lib-mask" @click.self="close">
-    <div class="lc-dialog lib-dialog">
+    <div v-dialog="close" class="lc-dialog lib-dialog" role="dialog" aria-modal="true" :aria-label="t('canvas.rail.library')">
       <div class="lib-header">
         <div class="lc-seg lib-tabs">
           <button
@@ -8,14 +8,17 @@
             :key="tab.key"
             :class="{ on: activeTab === tab.key }"
             @click="switchTab(tab.key)"
-          >{{ t(tab.label) }}</button>
+          >{{ tabLabel(tab) }}</button>
         </div>
         <label v-if="activeTab === 'mine' || activeTab === 'text-template'" class="lc-inp sm lib-search">
           <LcIcon name="search" size="s" />
           <input v-model="searchText" :placeholder="searchPlaceholder" />
         </label>
-        <button class="lc-x lib-close" :title="t('common.close')" @click="close">×</button>
+        <button class="lc-x lib-close" :aria-label="t('common.close')" @click="close">×</button>
       </div>
+
+      <!-- 画布只读时打开的：只能看、能下载；上传、删除、加到画布、撤销链接这些入口都不出 -->
+      <p v-if="readOnly" class="lib-ro" role="note" data-testid="lib-readonly"><LcIcon name="eye" size="s" /><span>{{ t('library.readOnly.note') }}</span></p>
 
       <div class="lib-body" ref="bodyRef" @scroll="onBodyScroll">
         <!-- 素材库 -->
@@ -67,7 +70,8 @@
 
                   <!-- hover overlay: 添加到画布 -->
                   <div class="thumb-overlay">
-                    <button class="lc-btn sm primary quiet add-btn" @click="addMaterial(item)">{{ t('library.addToCanvas') }}</button>
+                    <button v-if="readOnly" class="lc-btn sm add-btn" :disabled="!item.mediaUrl" data-testid="lib-download" @click="downloadItem(item)"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
+                    <button v-else class="lc-btn sm primary quiet add-btn" @click="addMaterial(item)">{{ t('library.addToCanvas') }}</button>
                   </div>
                 </div>
                 <div class="lib-meta">
@@ -86,13 +90,17 @@
             <div class="cat-tabs">
               <button v-for="k in MY_KINDS" :key="k" :class="['cat-tab', { active: myAssetKind === k }]" @click="switchMyKind(k)">{{ t('library.myAsset.kinds.' + k) }}</button>
             </div>
-            <button class="lc-btn sm" :disabled="myAssetUploading" @click="assetFileInput?.click()">
-              <LcIcon name="upload" size="s" />{{ myAssetUploading ? t('common.uploading') : t('library.myAsset.upload') }}
-            </button>
-            <input ref="assetFileInput" type="file" accept="image/*,video/*" multiple hidden @change="onAssetFiles" />
+            <template v-if="!readOnly">
+              <button class="lc-btn sm" :disabled="myAssetUploading" @click="assetFileInput?.click()">
+                <LcIcon name="upload" size="s" />{{ myAssetUploading ? t('common.uploading') : t('library.myAsset.upload') }}
+              </button>
+              <input ref="assetFileInput" type="file" accept="image/*,video/*" multiple hidden @change="onAssetFiles" />
+            </template>
           </div>
+          <!-- 团队里：这是全队共用的库，谁能删什么说在前面 -->
+          <p v-if="inTeam && !readOnly" class="lib-rule" data-testid="lib-team-rule">{{ t('library.team.rule') }}</p>
           <div v-if="myAssetLoading && !myAssetList.length" class="lib-empty">{{ t('common.loading') }}</div>
-          <div v-else-if="!myAssetList.length" class="lib-empty">{{ t('library.myAsset.empty') }}</div>
+          <div v-else-if="!myAssetList.length" class="lib-empty">{{ inTeam ? t('library.team.empty') : t('library.myAsset.empty') }}</div>
           <div v-else class="lib-grid">
             <div v-for="item in myAssetList" :key="item._id" class="lib-card">
               <div class="lib-thumb" @mouseenter="onThumbEnter" @mouseleave="onThumbLeave">
@@ -107,10 +115,17 @@
                   />
                   <span class="play-overlay"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg></span>
                 </template>
-                <div class="thumb-overlay"><button class="lc-btn sm primary quiet add-btn" @click="addMyAsset(item)">{{ t('library.addToCanvas') }}</button></div>
-                <button class="btn-del" :title="t('common.delete')" @click.stop="confirmRemoveAsset(item)"><LcIcon name="trash" size="s" /></button>
+                <div class="thumb-overlay">
+                  <button v-if="readOnly" class="lc-btn sm add-btn" :disabled="!item.mediaUrl" data-testid="lib-download" @click="downloadItem(item)"><LcIcon name="download" size="s" />{{ t('common.download') }}</button>
+                  <button v-else class="lc-btn sm primary quiet add-btn" @click="addMyAsset(item)">{{ t('library.addToCanvas') }}</button>
+                </div>
+                <!-- 团队里别人加的删不了（团长和管理员除外）：以每一条自己带的 canManage 为准 -->
+                <button v-if="item.canManage !== false && !readOnly" class="btn-del" v-tip="t('common.delete')" :aria-label="t('common.delete')" @click.stop="confirmRemoveAsset(item)"><LcIcon name="trash" size="s" /></button>
               </div>
-              <div class="lib-meta"><div class="lib-name">{{ item.name || t('library.unnamed') }}</div></div>
+              <div class="lib-meta">
+                <div class="lib-name">{{ item.name || t('library.unnamed') }}</div>
+                <div v-if="item.scope === 'team'" class="lib-sub"><span class="sub-main" v-tip="uploaderOf(item)">{{ item.mine ? t('library.team.byMe') : uploaderOf(item) }}</span></div>
+              </div>
             </div>
           </div>
         </template>
@@ -140,10 +155,13 @@
                 <div class="thumb-overlay">
                   <button class="lc-btn sm primary quiet add-btn">{{ t('library.useTemplate') }}</button>
                 </div>
+                <span v-if="tpl.builtin === false" class="lc-bd status-tag st-saved">{{ savedLabel }}</span>
+                <button v-if="tpl.canDelete" class="btn-del" v-tip="t('common.delete')" :aria-label="t('common.delete')" @click.stop="confirmRemoveTpl(tpl)"><LcIcon name="trash" size="s" /></button>
               </div>
               <div class="lib-meta">
                 <div class="lib-name">{{ tpl.title }}</div>
                 <div v-if="tpl.description" class="lib-sub"><span class="sub-main">{{ tpl.description }}</span></div>
+                <div v-if="savedByText(tpl, inTeam)" class="lib-sub" data-role="author"><span class="sub-main" v-tip="{ text: savedByText(tpl, inTeam), clipped: true }">{{ savedByText(tpl, inTeam) }}</span></div>
               </div>
             </div>
           </div>
@@ -175,14 +193,17 @@
           </div>
           <div v-else class="tt-grid">
             <div v-for="tpl in filteredTextTpl" :key="tpl.id" class="lc-card tt-card" @click="pickTextTpl(tpl)">
-              <div class="tt-card-head">
-                <span class="tt-card-title">{{ tpl.title }}</span>
+              <span class="tt-card-title" v-tip="{ text: tpl.title, clipped: true }">{{ tpl.title }}</span>
+              <div v-if="tpl.builtin === false || tpl.category" class="tt-card-head">
+                <span v-if="tpl.builtin === false" class="lc-tag accent tt-card-cat">{{ savedLabel }}</span>
                 <span v-if="tpl.category" class="lc-chip tt-card-cat">{{ tpl.category }}</span>
+                <span v-if="savedByText(tpl, inTeam)" class="tt-card-by" data-role="author" v-tip="{ text: savedByText(tpl, inTeam), clipped: true }">{{ savedByText(tpl, inTeam) }}</span>
               </div>
               <div class="tt-card-content">{{ tpl.content }}</div>
               <div class="tt-card-hover">
                 <span class="lc-btn sm primary quiet">{{ t('library.addToCanvas') }}</span>
               </div>
+              <button v-if="tpl.canDelete" class="lc-tb sm tt-card-del" type="button" v-tip="t('common.delete')" :aria-label="t('common.delete')" @click.stop="confirmRemoveText(tpl)"><LcIcon name="trash" size="s" /></button>
             </div>
           </div>
         </template>
@@ -224,16 +245,20 @@
                   <span class="sub-main">{{ expiryText(item) }}</span>
                   <span class="sub-side">{{ t('library.share.nodeCount', { n: item.nodeCount || 0 }) }}</span>
                 </div>
+                <!-- 团队里：团长和管理员看得到全队的链接，标出是谁发布的 -->
+                <div v-if="item.createdBy" class="lib-sub share-by" data-testid="share-publisher">{{ t('library.share.publishedBy', { name: uploaderOf(item) }) }}</div>
                 <!-- 都是本机操作，不调模型：一律描边按钮 -->
                 <div class="share-actions">
                   <button class="lc-btn sm" :disabled="shareState(item) !== 'active'" @click="copyLink(item)">{{ t('library.share.copyLink') }}</button>
-                  <button class="lc-btn sm" :disabled="shareState(item) !== 'active'" @click="openShare(item)">{{ t('library.share.open') }}</button>
+                  <button v-if="canOpenShare(item)" class="lc-btn sm" :disabled="shareState(item) !== 'active'" @click="openShare(item)">{{ t('library.share.open') }}</button>
+                  <!-- 复制回来的那张画布要打开来看：这次挂载里没有画布页（只嵌了编辑器，开哪张画布由宿主定）就不出 -->
                   <button
+                    v-if="!readOnly && pages.has('canvas')"
                     class="lc-btn sm"
                     :disabled="shareState(item) !== 'active' || !!copyingId"
                     @click="copyToMine(item)"
                   >{{ copyingId === item.id ? t('library.share.copying') : t('library.share.copyToMine') }}</button>
-                  <button v-if="!item.revoked" class="lc-btn sm danger" @click="confirmRevoke(item)">{{ t('library.share.revoke') }}</button>
+                  <button v-if="!item.revoked && !readOnly" class="lc-btn sm danger" @click="confirmRevoke(item)">{{ t('library.share.revoke') }}</button>
                 </div>
               </div>
             </div>
@@ -244,7 +269,7 @@
 
     <!-- 二次确认（撤销分享链接 / 删除资产） -->
     <div v-if="pending" class="lc-mask confirm-mask" @click.self="cancelPending">
-      <div class="lc-dialog confirm-dialog">
+      <div v-dialog="{ onEscape: cancelPending, busy: pendingBusy }" class="lc-dialog confirm-dialog" role="alertdialog" aria-modal="true" :aria-label="pending.title">
         <div class="lc-dialog-head"><span>{{ pending.title }}</span><button class="lc-x" :disabled="pendingBusy" @click="cancelPending">×</button></div>
         <div class="lc-dialog-body">
           <p class="confirm-text">{{ pending.text }}</p>
@@ -259,25 +284,32 @@
 </template>
 
 <script setup lang="ts">
+import { vDialog } from '@/directives/dialog'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
 import { MessagePlugin } from '@/utils/feedback'
 import {
-  canvasShareApi, canvasAssetApi, canvasTemplateApi, canvasTextTemplateApi, userAssetApi, apiErrorMessage, shareLinkFor,
+  canvasShareApi, canvasAssetApi, canvasTemplateApi, canvasTextTemplateApi, userAssetApi, apiErrorMessage, apiErrorCode, shareLinkFor,
   type CanvasShareSummary, type CanvasAssetCategory, type CanvasAssetItem,
 } from '@/utils/canvasBackend'
 import { ensureHttps } from '@/utils/mediaUrl'
 import { useEmbed } from '@/embed/context'
+import { usePageOpen } from '@/embed/links'
 import { registerThumb } from '@/utils/canvasMedia'
 import { uploadCanvasImage, uploadCanvasVideo } from '@/utils/canvasUpload'
+import { downloadCanvasAsset } from '@/utils/canvasDownload'
+import { useSpaceStore } from '@/stores/space'
+import { personTitle, savedByText } from '@/utils/person'
+import type { Person } from '@/types'
 
 type TabKey = 'material' | 'my-asset' | 'canvas-template' | 'text-template' | 'mine'
 
 // 画布模板 / 文本模板 卡片类型（与各自独立弹窗保持一致）
-interface CanvasTplItem { key: string; title: string; description?: string; cover?: string; graph?: any }
-interface TextTplItem { id: string; title: string; content: string; category: string; lang?: string }
+// builtin / canDelete：内置的，还是这个空间里存的；调用者能不能删（自己存的能删，团队里团长和管理员能删任何人的）
+interface CanvasTplItem { key: string; title: string; description?: string; cover?: string; graph?: any; builtin?: boolean; canDelete?: boolean; createdBy?: Person | null; mine?: boolean }
+interface TextTplItem { id: string; title: string; content: string; category: string; lang?: string; builtin?: boolean; canDelete?: boolean; createdBy?: Person | null; mine?: boolean }
 
 // label 存的是文案键，渲染时再翻译（语言可以在运行时切换）
 const TABS: { key: TabKey; label: string }[] = [
@@ -291,6 +323,11 @@ const TABS: { key: TabKey; label: string }[] = [
 const props = defineProps<{
   modelValue: boolean
   initialTab?: TabKey
+  /**
+   * 从一张只读的画布里打开的：只能浏览和下载。上传、删除、加到画布、套用模板、撤销链接都不出——
+   * 模板两个页签整个不出（它们唯一的用处就是往画布里加东西）。
+   */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -301,6 +338,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const pages = usePageOpen()
 const { t, locale } = useI18n()
 
 // 网格里一屏几十张：后端给了 thumbnailUrl 就用它，没有才退回原图
@@ -336,6 +374,23 @@ const searchPlaceholder = computed(() =>
 
 function close() {
   emit('update:modelValue', false)
+}
+
+/**
+ * 是不是在团队里（「我的资产」这一页签就是团队的库）。
+ * 只嵌编辑器时没有空间这回事，由适配器定：那就只看取回来的条目自己怎么说（scope === 'team'），
+ * 适配器不给这一项就和以前完全一样。别的形态下再加上当前空间，这样库还是空的时候叫法也对。
+ */
+const embedMode = useEmbed().mode
+const spaceIsTeam = embedMode === 'editor' ? () => false : (() => { const s = useSpaceStore(); return () => s.isTeam })()
+const sawTeamScope = ref(false)
+const inTeam = computed(() => sawTeamScope.value || spaceIsTeam())
+const tabLabel = (tab: { key: TabKey; label: string }) => (tab.key === 'my-asset' && inTeam.value ? t('library.tabs.teamAsset') : t(tab.label))
+/** 自己存的模板 / 片段上的小标签 */
+const savedLabel = computed(() => (inTeam.value ? t('library.saved.team') : t('library.saved.mine')))
+/** 谁加的：「周屿」/「周屿 · 已离开团队」 */
+function uploaderOf(item: any): string {
+  return personTitle(item?.createdBy || { name: item?.uploaderName || '' })
 }
 
 /** 进入某个标签时拉它的数据 */
@@ -388,7 +443,15 @@ const TAB_FEATURE: Record<TabKey, () => boolean> = {
   mine: () => feat.share,
 }
 const visibleTabs = computed(() => TABS.filter((tab) =>
-  TAB_FEATURE[tab.key]() && (tab.key !== 'material' || !materialCatsLoaded.value || materialCats.value.length > 0)))
+  TAB_FEATURE[tab.key]() && (tab.key !== 'material' || !materialCatsLoaded.value || materialCats.value.length > 0)
+  && !(props.readOnly && (tab.key === 'canvas-template' || tab.key === 'text-template'))))
+
+/** 只读时卡片上的那颗钮：把这一个素材下载下来 */
+function downloadItem(item: { mediaUrl?: string; name?: string; nodeType?: string }) {
+  if (!item.mediaUrl) return
+  const base = String(item.name || t('library.unnamed')).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'asset'
+  void downloadCanvasAsset(https(item.mediaUrl), base, item.nodeType === 'VIDEO' ? 'video' : 'image')
+}
 const materialCats = ref<CanvasAssetCategory[]>([])
 const materialCode = ref<string>('')
 const materialList = ref<CanvasAssetItem[]>([])
@@ -495,7 +558,10 @@ async function loadMyAssets() {
   try {
     const res = await userAssetApi.list({ kind: myAssetKind.value, pageSize: 100 })
     if (seq !== myAssetSeq) return
-    if (res.data.result === 0) myAssetList.value = res.data.data?.list || []
+    if (res.data.result === 0) {
+      myAssetList.value = res.data.data?.list || []
+      if (myAssetList.value.some((x) => x?.scope === 'team')) sawTeamScope.value = true
+    }
   } catch { /* 静默：显示空态 */ } finally {
     if (seq === myAssetSeq) myAssetLoading.value = false
   }
@@ -566,6 +632,8 @@ function confirmRemoveAsset(item: any) {
         MessagePlugin.success(t('library.myAsset.removed'))
       } catch (err: any) {
         MessagePlugin.error(apiErrorMessage(err, t('library.myAsset.removeFailed')))
+        // 不是自己的（或者角色刚变了）：确认框收掉，列表重取一遍，按钮跟上现在的权限
+        if (apiErrorCode(err) === 'team.forbidden') { loadMyAssets(); return }
         throw err
       }
     },
@@ -590,6 +658,52 @@ async function loadCanvasTpl() {
     MessagePlugin.error(apiErrorMessage(e, t('library.template.loadFailed')))
   } finally {
     canvasTplLoading.value = false
+  }
+}
+
+/** 删掉一个存下来的模板 / 片段；被拒绝或已经不在了就重取一遍 */
+function confirmRemoveTpl(tpl: CanvasTplItem) {
+  pending.value = {
+    title: t('library.saved.removeTemplateTitle'),
+    text: t('library.saved.removeConfirm', { name: tpl.title }),
+    okText: t('common.delete'),
+    busyText: t('common.delete'),
+    run: async () => {
+      try {
+        const res = await canvasTemplateApi.remove(tpl.key)
+        if (res.data.result !== 0) throw new Error(res.data.message || t('library.saved.removeFailed'))
+        canvasTplList.value = canvasTplList.value.filter((x) => x.key !== tpl.key)
+        MessagePlugin.success(t('library.myAsset.removed'))
+      } catch (err: any) {
+        MessagePlugin.error(apiErrorMessage(err, t('library.saved.removeFailed')))
+        const code = apiErrorCode(err)
+        if (code === 'team.forbidden' || code === 'template.not_found') { canvasTplLoaded.value = false; void loadCanvasTpl(); return }
+        throw err
+      }
+    },
+  }
+}
+function confirmRemoveText(tpl: TextTplItem) {
+  pending.value = {
+    title: t('library.saved.removeSnippetTitle'),
+    text: t('library.saved.removeConfirm', { name: tpl.title }),
+    okText: t('common.delete'),
+    busyText: t('common.delete'),
+    run: async () => {
+      const lang = textTplLang.value
+      try {
+        const res = await canvasTextTemplateApi.remove(tpl.id)
+        if (res.data.result !== 0) throw new Error(res.data.message || t('library.saved.removeFailed'))
+        textTplCache[lang] = (textTplCache[lang] || []).filter((x) => x.id !== tpl.id)
+        if (textTplLang.value === lang) textTplList.value = textTplCache[lang]
+        MessagePlugin.success(t('library.myAsset.removed'))
+      } catch (err: any) {
+        MessagePlugin.error(apiErrorMessage(err, t('library.saved.removeFailed')))
+        const code = apiErrorCode(err)
+        if (code === 'team.forbidden' || code === 'template.not_found') { delete textTplCache[lang]; void loadTextTpl(lang); return }
+        throw err
+      }
+    },
   }
 }
 
@@ -716,18 +830,30 @@ async function writeClipboard(text: string) {
   if (!ok) throw new Error('copy failed')
 }
 
+/** 适配器自己给的公开地址（只嵌编辑器时没有分享页，地址只能由它给）；没有返回空串 */
+const adapterLink = (item: CanvasShareSummary) => shareLinkFor(item.token, '')
+/** 分享链接的完整地址：适配器给的优先，否则按路由拼（应用挂在子路径下、用 hash 路由时也对） */
+const shareUrl = (item: CanvasShareSummary) => adapterLink(item) || new URL(router.resolve(sharePath(item)).href, location.href).href
+
 async function copyLink(item: CanvasShareSummary) {
   try {
-    // 地址按路由拼（应用挂在子路径下、用 hash 路由时也对）；只嵌编辑器时由适配器的 share.linkFor 给
-    await writeClipboard(shareLinkFor(item.token, new URL(router.resolve(sharePath(item)).href, location.href).href))
+    await writeClipboard(shareUrl(item))
     MessagePlugin.success(t('library.share.linkCopied'))
   } catch {
     MessagePlugin.error(t('common.copyFailed'))
   }
 }
 
+/**
+ * 「打开」：地址栏认得这条地址（适配器给了公开地址，或者路由写在地址栏里）就开新标签页；
+ * 嵌在别人页面里、地址栏不归本产品管（memory 路由）时新标签页打不开应用里的地址，就在原地打开分享页；
+ * 连分享页都没有（只嵌了编辑器、适配器又没给地址）就没有这颗按钮。
+ */
+const canOpenShare = (item: CanvasShareSummary) => !!adapterLink(item) || pages.newTab || pages.to(sharePath(item))
 function openShare(item: CanvasShareSummary) {
-  window.open(router.resolve(sharePath(item)).href, '_blank', 'noopener')
+  if (adapterLink(item) || pages.newTab) { window.open(shareUrl(item), '_blank', 'noopener'); return }
+  close()
+  void router.push(sharePath(item))
 }
 
 async function copyToMine(item: CanvasShareSummary) {
@@ -775,6 +901,9 @@ watch(() => props.modelValue, (open) => {
   if (!open) { pending.value = null; return }
   activeTab.value = initialTabKey()
   searchText.value = ''
+  // 模板和片段在团队里是大家一起存的：每次打开都重取，不沿用上一次打开时的那份
+  canvasTplLoaded.value = false
+  for (const k of Object.keys(textTplCache)) delete textTplCache[k]
   void loadMaterialCats()
   loadTab(activeTab.value)
 }, { immediate: true })
@@ -852,11 +981,22 @@ watch(() => props.modelValue, (open) => {
   opacity: 0; transition: opacity .15s ease, color .15s ease;
 }
 .lib-thumb:hover .btn-del { opacity: 1; }
-.btn-del:hover { color: var(--err-soft); }
+/* 垫的是画面上的恒暗遮罩：悬停换危险色的实底、白字，不把字染成主题的红（浅色主题里那是深红压深底） */
+.btn-del:hover { background: var(--scrim-danger); color: var(--on-scrim-max); }
 .status-tag { position: absolute; top: 8px; left: 8px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgb(var(--c-glass) / .8); }
 .status-tag.st-active { color: var(--ok); }
 .status-tag.st-expired { color: var(--warn); }
 .status-tag.st-revoked { color: var(--text-3); }
+.status-tag.st-saved { color: var(--cyan-soft); }
+.lib-ro {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 20px; flex: none;
+  font-size: 12px; line-height: 1.6; color: var(--warn); background: rgb(var(--c-warn) / .1); border-bottom: 1px solid var(--line);
+}
+.lib-ro .lc-ic { flex: none; }
+.lib-rule { margin: -6px 0 14px; font-size: 12px; line-height: 1.6; color: var(--text-3); }
+.tt-card-del { position: absolute; right: 8px; bottom: 8px; z-index: 1; opacity: 0; transition: opacity .15s; }
+.tt-card:hover .tt-card-del, .tt-card-del:focus-visible { opacity: 1; }
+.tt-card-del:hover { color: var(--err-soft); }
 
 .lib-meta { padding: 10px 12px 12px; }
 .lib-name { font-size: 14px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -874,9 +1014,13 @@ watch(() => props.modelValue, (open) => {
 }
 .tt-card:hover { border-color: rgb(var(--c-cyan) / .55); }
 .tt-card:hover .tt-card-hover { opacity: 1; }
-.tt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.tt-card-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-.tt-card-cat { flex-shrink: 0; }
+.tt-card-title {
+  font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--text); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 6px;
+}
+.tt-card-head { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; margin-bottom: 8px; min-width: 0; }
+.tt-card-cat { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-card-by { flex: 0 1 auto; min-width: 0; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-card-content {
   font-size: 12px; line-height: 1.6; color: var(--text-2); overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
@@ -907,5 +1051,6 @@ watch(() => props.modelValue, (open) => {
   /* 触屏没有悬停：动作直接露出来 */
   .thumb-overlay { opacity: 1; inset: auto 0 0 0; padding: 8px; background: linear-gradient(to top, rgb(var(--c-scrim) / .8), transparent); }
   .btn-del { opacity: 1; }
+  .tt-card-del { opacity: 1; }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="sbar" :class="{ dirty }" data-testid="settings-savebar">
+  <div ref="el" class="sbar" :class="{ dirty }" data-testid="settings-savebar">
     <p class="sbar-note" :class="{ on: dirty }" aria-live="polite">
       <i v-if="dirty" aria-hidden="true" />{{ dirty ? t('settings.unsaved') : note }}
     </p>
@@ -8,11 +8,41 @@
 </template>
 
 <script setup lang="ts">
-/** 有明确「保存」的分区底下那一条：页面长的时候贴在视口底部，滚到头就落回原位。 */
+/**
+ * 有明确「保存」的分区底下那一条：页面长的时候贴在视口底部，滚到头就落回原位。
+ * 它贴着的时候会盖住视口最底下的一条：把自己实际占的高度报给设置页（见 dirty.ts 的 useSaveBarSpace），
+ * 设置页据此给滚动容器留出 scroll-padding-bottom，键盘走到底下那一格时不会停在它后面。
+ */
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSaveBarSpace } from './dirty'
 
 defineProps<{ dirty?: boolean; note?: string }>()
 const { t } = useI18n()
+
+const el = ref<HTMLElement | null>(null)
+const report = useSaveBarSpace()
+let ro: ResizeObserver | null = null
+/** 高度会变（有改动时多一行提示、窄屏上按钮折行），离底边的距离随断点变：都按实际量 */
+function measure() {
+  const bar = el.value
+  if (!bar) return
+  const gap = parseFloat(getComputedStyle(bar).bottom) || 0
+  report(Math.ceil(bar.offsetHeight + gap))
+}
+onMounted(() => {
+  measure()
+  if (el.value && typeof ResizeObserver === 'function') {
+    ro = new ResizeObserver(measure)
+    ro.observe(el.value)
+  }
+  window.addEventListener('resize', measure)
+})
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  window.removeEventListener('resize', measure)
+  report(0)
+})
 </script>
 
 <style scoped>

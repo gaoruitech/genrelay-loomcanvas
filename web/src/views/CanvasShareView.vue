@@ -8,8 +8,9 @@
         <span v-if="detail" class="lc-chip sv-ro"><LcIcon name="eye" size="s" />{{ t('views.share.readOnly') }}</span>
       </div>
       <!-- 分享页跟的是看的人自己的主题（这台浏览器上记着的 / 系统的），不是作者的 -->
-      <ThemeSwitch />
-      <button v-if="detail" class="lc-btn primary sv-copy" :disabled="copying" @click="handleCopy">
+      <ThemeSwitch v-if="$feat.themeSwitch" />
+      <!-- 复制回来的画布要打开来看：这次挂载里没有画布页（集成方没开放）就不出这颗按钮 -->
+      <button v-if="detail && pages.has('canvas')" class="lc-btn primary sv-copy" :disabled="copying" @click="handleCopy">
         <LcIcon name="copy" />
         <span>{{ copying ? t('views.share.copying') : t('views.share.copyToMine') }}</span>
       </button>
@@ -96,6 +97,7 @@ import { GEN_NODE_KINDS } from '@/composables/nodeLayout'
 import GlowEdge from '@/components/canvas/GlowEdge.vue'
 import LcLogo from '@/components/LcLogo.vue'
 import ThemeSwitch from '@/components/ThemeSwitch.vue'
+import { usePageOpen } from '@/embed/links'
 import LcIcon from '@/components/LcIcon.vue'
 import { canvasShareApi, apiErrorMessage, type CanvasShareDetail } from '@/utils/api'
 import { useAppStore } from '@/stores/app'
@@ -122,6 +124,7 @@ const vfMiniNode = useTokenColor('--mini-node-ro')
 
 const route = useRoute()
 const router = useRouter()
+const pages = usePageOpen()
 const appStore = useAppStore()
 const { t } = useI18n()
 

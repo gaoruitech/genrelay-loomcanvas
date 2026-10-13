@@ -47,23 +47,48 @@ const pendingThumbs = new Map()
  * Make sure the derived thumbnail `thumbKey` exists, generating it from its
  * source image when it does not (files stored before thumbnails had derived
  * keys, tool outputs). Resolves 'ok', 'missing' (no such source image) or
- * 'unsupported' (the source exists but cannot be thumbnailed).
+ * 'unsupported' (the source exists but no thumbnail can be had of it: it is
+ * not an image sharp decodes, or the thumbnail could not be stored).
+ *
+ * A thumbnail lives next to its image, so only the image has to be found: a
+ * bucket that cannot be reached matters when the image may be in it, and then
+ * the storage's own error (StorageUnavailable) is thrown - neither 'missing'
+ * nor 'unsupported' is said about a file that could not be looked at, and
+ * nothing is remembered about the attempt. Whether the thumbnail is already
+ * there is asked of the backends that answer; if a bucket that is down has a
+ * copy, a second one is made where the image is.
  */
 function ensureThumbnail(thumbKey, sourceKey) {
   const running = pendingThumbs.get(thumbKey)
   if (running) return running
   const job = (async () => {
     const storage = getStorage()
-    if (await storage.exists(thumbKey)) return 'ok'
+    if (await storage.locate(thumbKey, { tolerant: true })) return 'ok'
     if (!(await storage.exists(sourceKey))) return 'missing'
+    let buffer
     try {
-      const buffer = await storage.getBuffer(sourceKey)
-      if (buffer.length > THUMB_MAX_SOURCE_BYTES || kindOfMime(sniffMime(buffer)) !== 'image') return 'unsupported'
-      await storage.put(thumbKey, await makeThumbnail(buffer), { contentType: 'image/webp', sameBackendAs: sourceKey })
-      return 'ok'
+      buffer = await storage.getBuffer(sourceKey)
+    } catch (err) {
+      // Removed between the two lines above.
+      if (err && err.code === 'ENOENT') return 'missing'
+      throw err
+    }
+    if (buffer.length > THUMB_MAX_SOURCE_BYTES || kindOfMime(sniffMime(buffer)) !== 'image') return 'unsupported'
+    let thumb
+    try {
+      thumb = await makeThumbnail(buffer)
     } catch {
+      // An image sharp cannot decode.
       return 'unsupported'
     }
+    try {
+      await storage.put(thumbKey, thumb, { contentType: 'image/webp', sameBackendAs: sourceKey })
+    } catch {
+      // The image can be read but nothing can be written next to it (a bucket that is only
+      // read, a full disk): the image itself is shown, and the next request tries again.
+      return 'unsupported'
+    }
+    return 'ok'
   })().finally(() => pendingThumbs.delete(thumbKey))
   pendingThumbs.set(thumbKey, job)
   return job

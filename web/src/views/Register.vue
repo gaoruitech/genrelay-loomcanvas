@@ -82,7 +82,7 @@
           <div v-if="errors.confirm" id="rg-pw2-h" class="lc-help err">{{ errors.confirm }}</div>
         </div>
 
-        <p class="lic">{{ t('auth.register.licenseNote') }} <a :href="LINKS.license" target="_blank" rel="noopener">{{ t('auth.register.licenseLink') }}</a></p>
+        <p class="lic">{{ t('auth.register.licenseNote') }} <a v-if="$feat.externalLinks" :href="LINKS.license" target="_blank" rel="noopener">{{ t('auth.register.licenseLink') }}</a></p>
 
         <button type="submit" class="lc-btn primary lg block" :disabled="busy">
           {{ busy ? t('auth.register.submitting') : t('auth.register.submit') }}

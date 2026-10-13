@@ -1,22 +1,27 @@
 <template>
-  <div class="lp">
+  <div ref="lp" class="lp">
     <header class="lp-nav">
       <LcLogo to="/" />
       <nav class="lp-links" :aria-label="t('shell.navLabel')">
         <a href="#features">{{ t('landing.nav.features') }}</a>
         <a href="#integration">{{ t('landing.nav.integration') }}</a>
-        <a :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.nav.docs') }}</a>
+        <a v-if="$feat.externalLinks" :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.nav.docs') }}</a>
         <a href="#open-source">{{ t('landing.nav.open') }}</a>
       </nav>
       <span class="lc-sp" />
+      <!-- 语言、主题、站外链接都听集成方的开关（features.localeSwitch / themeSwitch / externalLinks）：关了的这一页上哪儿都不出现 -->
       <LcSelect
+        v-if="$feat.localeSwitch"
         class="lp-lang" size="sm" auto-width :model-value="app.locale" :options="LOCALE_OPTIONS"
         :aria-label="t('auth.language')" @update:model-value="app.setLocale"
       />
-      <ThemeSwitch plain />
-      <a class="lc-btn ghost src" :href="LINKS.repo" target="_blank" rel="noopener"><LcIcon name="branch" />{{ t('landing.nav.source') }}</a>
-      <router-link class="lc-btn" to="/login">{{ t('landing.nav.login') }}</router-link>
+      <ThemeSwitch v-if="$feat.themeSwitch" class="lp-theme" plain />
+      <a v-if="$feat.externalLinks" class="lc-btn ghost src" :href="LINKS.repo" target="_blank" rel="noopener"><LcIcon name="branch" />{{ t('landing.nav.source') }}</a>
+      <!-- 注册关着的时候「登录」是页头上唯一的去处：给它主按钮的样子 -->
+      <router-link class="lc-btn login" :class="{ only: !app.registrationOpen, primary: !app.registrationOpen }" to="/login">{{ t('landing.nav.login') }}</router-link>
       <router-link v-if="app.registrationOpen" class="lc-btn primary" to="/register">{{ t('landing.nav.register') }}</router-link>
+      <!-- ≤820px：上面的链接、语言、主题、源码都收进这个菜单 -->
+      <LandingMenu :links="menuLinks" :theme="$feat.themeSwitch" :language="$feat.localeSwitch" @go="goSection" />
     </header>
 
     <section class="lp-hero">
@@ -25,7 +30,7 @@
       <p class="lead">{{ t('landing.lead') }}</p>
       <div class="lp-cta">
         <router-link class="lc-btn primary lg" :to="startTo">{{ t('landing.start') }}<LcIcon name="arrow" /></router-link>
-        <a class="lc-btn lg" :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.viewDocs') }}</a>
+        <a v-if="$feat.externalLinks" class="lc-btn lg" :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.viewDocs') }}</a>
       </div>
       <div class="lp-meta">
         <span><LcIcon name="check" size="s" />{{ t('landing.meta1') }}</span>
@@ -36,7 +41,7 @@
       <HeroCanvas />
     </section>
 
-    <section id="features" class="lp-sec">
+    <section id="features" class="lp-sec" tabindex="-1">
       <div class="eyebrow">{{ t('landing.featEyebrow') }}</div>
       <h2>{{ t('landing.featTitle') }}</h2>
       <div class="tiles">
@@ -53,7 +58,7 @@
       </div>
     </section>
 
-    <section id="integration" class="lp-sec">
+    <section id="integration" class="lp-sec" tabindex="-1">
       <div class="eyebrow">{{ t('landing.integ.eyebrow') }}</div>
       <h2>{{ t('landing.integ.title') }}</h2>
       <p class="sub">{{ t('landing.integ.sub') }}</p>
@@ -97,13 +102,13 @@
       </div>
     </section>
 
-    <section id="open-source" class="lp-sec">
+    <section id="open-source" class="lp-sec" tabindex="-1">
       <div class="oss lc-glass lc-gb">
         <div>
           <div class="eyebrow">{{ t('landing.ossEyebrow') }}</div>
           <h2>{{ t('landing.ossTitle') }}</h2>
           <p class="sub">{{ t('landing.ossSub') }}</p>
-          <div class="lc-row oss-act">
+          <div v-if="$feat.externalLinks" class="lc-row oss-act">
             <a class="lc-btn primary" :href="LINKS.repo" target="_blank" rel="noopener"><LcIcon name="branch" />{{ t('landing.ossSource') }}</a>
             <a class="lc-btn" :href="LINKS.commercial" target="_blank" rel="noopener">{{ t('landing.ossCommercial') }}</a>
           </div>
@@ -113,14 +118,15 @@
       </div>
     </section>
 
-    <footer class="lp-foot">
+    <!-- 站外链接关了：页脚只剩页内的那一栏（「资源」「开源」两栏全是站外链接，整栏不出） -->
+    <footer class="lp-foot" :class="{ few: !$feat.externalLinks }">
       <div><LcLogo /><p class="blurb">{{ t('landing.foot.blurb') }}</p></div>
-      <div><h4>{{ t('landing.foot.product') }}</h4><a href="#features">{{ t('landing.foot.features') }}</a><a :href="LINKS.changelog" target="_blank" rel="noopener">{{ t('landing.foot.changelog') }}</a></div>
-      <div><h4>{{ t('landing.foot.resources') }}</h4><a :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.foot.docs') }}</a><a :href="LINKS.deployment" target="_blank" rel="noopener">{{ t('landing.foot.deploy') }}</a><a :href="LINKS.faq" target="_blank" rel="noopener">{{ t('landing.foot.faq') }}</a></div>
-      <div><h4>{{ t('landing.foot.open') }}</h4><a :href="LINKS.repo" target="_blank" rel="noopener">{{ t('landing.foot.source') }}</a><a :href="LINKS.license" target="_blank" rel="noopener">{{ t('landing.foot.license') }}</a><a :href="LINKS.commercial" target="_blank" rel="noopener">{{ t('landing.foot.commercial') }}</a></div>
+      <div><h4>{{ t('landing.foot.product') }}</h4><a href="#features">{{ t('landing.foot.features') }}</a><a v-if="!$feat.externalLinks" href="#integration">{{ t('landing.nav.integration') }}</a><a v-if="$feat.externalLinks" :href="LINKS.changelog" target="_blank" rel="noopener">{{ t('landing.foot.changelog') }}</a></div>
+      <div v-if="$feat.externalLinks"><h4>{{ t('landing.foot.resources') }}</h4><a :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.foot.docs') }}</a><a :href="LINKS.deployment" target="_blank" rel="noopener">{{ t('landing.foot.deploy') }}</a><a :href="LINKS.faq" target="_blank" rel="noopener">{{ t('landing.foot.faq') }}</a></div>
+      <div v-if="$feat.externalLinks"><h4>{{ t('landing.foot.open') }}</h4><a :href="LINKS.repo" target="_blank" rel="noopener">{{ t('landing.foot.source') }}</a><a :href="LINKS.license" target="_blank" rel="noopener">{{ t('landing.foot.license') }}</a><a :href="LINKS.commercial" target="_blank" rel="noopener">{{ t('landing.foot.commercial') }}</a></div>
       <div class="copy">
         <span>{{ t('landing.foot.copy', { year: YEAR }) }}</span>
-        <span class="langs">
+        <span v-if="$feat.localeSwitch" class="langs">
           <button v-for="l in LOCALE_OPTIONS" :key="l.value" :class="{ on: app.locale === l.value }" @click="app.setLocale(l.value)">{{ l.label }}</button>
         </span>
       </div>
@@ -129,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { LOCALE_OPTIONS } from '@/locales'
@@ -140,9 +146,12 @@ import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
 import HeroCanvas from '@/components/landing/HeroCanvas.vue'
 import IntegrationCards from '@/components/landing/IntegrationCards.vue'
+import LandingMenu, { type LandingMenuLink } from '@/components/landing/LandingMenu.vue'
+import { useEmbed } from '@/embed/context'
 
 const { t } = useI18n()
 const app = useAppStore()
+const embed = useEmbed()
 
 const FEATS = [
   { k: 'canvas', icon: 'infinite' }, { k: 'key', icon: 'key' }, { k: 'gen', icon: 'video' },
@@ -152,6 +161,31 @@ const YEAR = new Date().getFullYear()
 
 /** 能注册就去注册，注册关了就去登录 */
 const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
+
+/** 窄屏菜单里的入口：和页头那一排是同一组，多一个「源码」。站外的两项听 features.externalLinks */
+const menuLinks = computed<LandingMenuLink[]>(() => [
+  { key: 'features', label: t('landing.nav.features'), icon: 'bolt', anchor: 'features' },
+  { key: 'integration', label: t('landing.nav.integration'), icon: 'panel', anchor: 'integration' },
+  { key: 'open', label: t('landing.nav.open'), icon: 'shield', anchor: 'open-source' },
+  ...(embed.features.externalLinks ? [
+    { key: 'docs', label: t('landing.nav.docs'), icon: 'book', href: LINKS.docs },
+    { key: 'source', label: t('landing.nav.source'), icon: 'branch', href: LINKS.repo },
+  ] : []),
+])
+
+/**
+ * 从菜单去某一节：滚过去（节顶停在吸顶页头下面，靠 .lp-sec 的 scroll-margin-top），地址栏带上 #，
+ * 焦点落到那一节上 —— 菜单关了以后键盘和读屏都从那一节接着往下走。
+ */
+const lp = ref<HTMLElement | null>(null)
+function goSection(id: string) {
+  const el = lp.value?.querySelector<HTMLElement>('#' + CSS.escape(id))
+  if (!el) return
+  const calm = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' })
+  el.focus({ preventScroll: true })
+  try { history.replaceState(history.state, '', '#' + id) } catch { /* 改不了地址栏不影响滚动 */ }
+}
 </script>
 
 <style scoped>
@@ -179,7 +213,9 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .lp-meta span { display: inline-flex; align-items: center; gap: 6px; }
 .lp-meta svg { color: var(--cyan); }
 
+/* 节顶自带一大段留白：滚到某一节时让标题落在吸顶页头下面一点，而不是把整段留白都露出来 */
 .lp-sec { padding: 112px max(24px, calc((100% - 1200px) / 2)) 0; scroll-margin-top: 40px; }
+.lp-sec:focus { outline: none; }
 .eyebrow { font: 500 12px var(--f-mono); letter-spacing: .16em; color: var(--cyan); }
 .lp-sec h2 { font: 600 34px/1.3 var(--f-disp); margin-top: 12px; color: var(--text); }
 .sub { color: var(--text-2); font-size: 16px; margin-top: 12px; max-width: 640px; }
@@ -233,6 +269,8 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 .langs button { border: 0; background: none; color: var(--text-3); font-size: 12px; padding: 0 6px; border-radius: 6px; }
 .langs button:hover, .langs button.on { color: var(--text); }
 
+.lp-foot.few { grid-template-columns: minmax(0, 1fr) 160px; }
+
 @media (max-width: 1100px) {
   .lp-hero h1 { font-size: 46px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -241,16 +279,19 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
   .lp-links { margin-left: 16px; gap: 20px; }
 }
 @media (max-width: 820px) {
-  .lp-nav .lp-links, .lp-nav .src, .lp-nav .lp-lang { display: none; }
+  .lp-nav .lp-links, .lp-nav .src, .lp-nav .lp-lang, .lp-nav .lp-theme { display: none; }
   .steps { grid-template-columns: 1fr; }
   .steps::before { display: none; }
   .lp-sec { padding-top: 72px; }
   .lp-foot { grid-template-columns: 1fr 1fr 1fr; margin-top: 72px; }
+  .lp-foot.few { grid-template-columns: 1fr; }
   .lp-foot > :first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
   .lp-nav { height: 60px; padding: 0 16px; gap: 8px; }
-  .lp-nav .lc-btn { height: 34px; padding: 0 12px; }
+  .lp-nav .lc-btn { height: 40px; padding: 0 14px; }
+  /* 手机上页头只留一个去处（能注册就是注册），登录在菜单里 */
+  .lp-nav .login:not(.only) { display: none; }
   .lp-hero { padding: 40px 16px 0; }
   .lp-hero h1 { font-size: 30px; line-height: 1.25; }
   .lead { font-size: 15px; margin-top: 16px; }
@@ -266,5 +307,6 @@ const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
   .steps { margin-top: 28px; }
   .oss { grid-template-columns: 1fr; padding: 24px 20px; }
   .lp-foot { padding: 32px 16px 28px; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .lp-foot.few { grid-template-columns: 1fr; }
 }
 </style>

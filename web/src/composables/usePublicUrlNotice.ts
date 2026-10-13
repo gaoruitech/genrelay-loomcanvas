@@ -1,6 +1,9 @@
 import { computed, type ComputedRef } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { backendCapabilities } from '@/utils/canvasBackend'
+import { storageWritable } from '@/composables/useStorageNotice'
+import { useAppStore } from '@/stores/app'
+import { currentEmbed } from '@/embed/context'
 import { t } from '@/locales'
 import type { ModelAdapter } from '@/utils/canvasModels'
 
@@ -21,16 +24,28 @@ export function publicUrlProblem(
   input: { imageUrls?: string[]; imagePending?: boolean; videoUrl?: string | null; videoPending?: boolean },
 ): string {
   if (!adapter) return ''
+  // 存不了新文件的时候（存储桶的密钥解不开）要说的是那件事（见 useStorageNotice），不是公网地址：
+  // 这里不出声，也不拦，让运行去服务端，由它说出真正的原因
+  if (storageWritable() === false) return ''
   // 老版本后端没有这一项：不知道就不说
   const known = backendCapabilities().upstreamByUrl
   if (known === undefined || known) return ''
   if (adapter.videoEdit && (input.videoPending || (input.videoUrl && !isAbsolute(input.videoUrl)))) {
-    return t('gen.publicUrl.video')
+    return t('gen.publicUrl.video') + whoFixes()
   }
   if (adapter.spec.imageByUrlOnly && (input.imagePending || (input.imageUrls || []).some(u => !isAbsolute(u)))) {
-    return t('gen.publicUrl.image', { model: adapter.label })
+    return t('gen.publicUrl.image', { model: adapter.label }) + whoFixes()
   }
   return ''
+}
+
+/**
+ * 三种解决办法都在「设置 → 存储」和部署配置里，只有超级管理员动得了：别人这里补一句该找谁。
+ * （超级管理员那里是一个直接过去的链接，见 useGenNode 的 notices。只嵌编辑器时没有账号这回事，不补。）
+ */
+function whoFixes(): string {
+  if (currentEmbed().mode === 'editor' || useAppStore().isOwner) return ''
+  return t('gen.publicUrl.askAdmin')
 }
 
 /**

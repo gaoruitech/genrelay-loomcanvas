@@ -4,12 +4,15 @@ import { t } from '@/locales'
 import type { AdminSettings } from '@/types'
 
 /**
- * 设置页「运行限制」「外观」两个分区共用的读写逻辑：
+ * 设置页「运行限制」「外观」「团队」几个分区共用的读写逻辑：
  * 读取 /api/admin/settings，编辑本地副本，只把本分区关心的字段提交回去。
  * dirty：本地副本和上次读到 / 存下的不一样；reset：把没保存的修改丢掉。
  */
-export function useAdminSettings<K extends keyof AdminSettings>(keys: readonly K[], defaults: Pick<AdminSettings, K>) {
-  const form = ref({ ...defaults }) as Ref<Pick<AdminSettings, K>>
+/** 团队那几项在类型里是可选的（老后端没有）；表单里每一项都有默认值，所以按必填算 */
+type Settings = Required<AdminSettings>
+
+export function useAdminSettings<K extends keyof Settings>(keys: readonly K[], defaults: Pick<Settings, K>) {
+  const form = ref({ ...defaults }) as Ref<Pick<Settings, K>>
   const loading = ref(true)
   const loadError = ref('')
   const saving = ref(false)
@@ -24,7 +27,7 @@ export function useAdminSettings<K extends keyof AdminSettings>(keys: readonly K
       const next = { ...defaults }
       for (const k of keys) {
         const v = (data as Partial<AdminSettings>)[k]
-        if (v !== undefined && v !== null) next[k] = v as AdminSettings[K]
+        if (v !== undefined && v !== null) next[k] = v as Settings[K]
       }
       form.value = next
       stored.value = JSON.stringify(next)

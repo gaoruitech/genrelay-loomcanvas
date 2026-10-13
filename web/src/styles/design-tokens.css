@@ -303,6 +303,12 @@
   --on-scrim-grid: rgba(255, 255, 255, .3);
   --scrim-err: rgba(60, 10, 28, .88);
   --on-scrim-err: #ffc2cf;
+  /* 压在画面上的危险操作（移除 / 取消）悬停时的底：两套主题下垫的都是深色画面，所以两边同值；字用 --on-scrim-err 或 --on-scrim-max */
+  --scrim-danger: rgba(168, 22, 58, .94);
+  /* 压在画面上的强调色（当前这一版的描边、进度环）：垫的是压暗的画面，两边同值 —— 浅色主题的 --cyan 是深青，压在深底上看不清 */
+  --on-scrim-accent: #3fd8ff;
+  /* 压在画面上的「正常 / 进行中」状态点（画布卡片封面上「某某 正在编辑」那一条）：垫的是深色遮罩，两边同值 —— 浅色主题的 --ok 是深绿，压在深底上看不见 */
+  --on-scrim-ok: #3ee6a8;
   /* 压在缩略图上的类型标签的垫底 */
   --tag-scrim: rgba(7, 13, 39, .8);
   --kind-image-scrim: rgba(4, 30, 52, .78);
@@ -357,6 +363,13 @@
   --frame-ring: rgba(63, 216, 255, .14);
   --sel-fill: rgba(63, 216, 255, .08);
   --sel-line: rgba(63, 216, 255, .6);
+  /* 小地图也画在画布底上：外框、遮罩、节点块、视口框跟着底色的明暗走（浅色主题 + 自选深底 = 深色的小地图） */
+  --mini-panel: rgba(12, 21, 52, .88);
+  --mini-line: rgba(124, 170, 255, .30);
+  --mini-shadow: 0 8px 24px rgba(2, 6, 22, .45);
+  --mini-mask: rgba(4, 9, 28, .55);
+  --mini-stroke: #3fd8ff;
+  --mini-node: rgba(124, 170, 255, .45);
 }
 
 /* ============================================================
@@ -601,6 +614,9 @@
   --on-scrim-grid: rgba(255, 255, 255, .3);
   --scrim-err: rgba(60, 10, 28, .88);
   --on-scrim-err: #ffc2cf;
+  --scrim-danger: rgba(168, 22, 58, .94);
+  --on-scrim-accent: #3fd8ff;
+  --on-scrim-ok: #3ee6a8;
   --tag-scrim: rgba(255, 255, 255, .9);
   --kind-image-scrim: rgba(255, 255, 255, .88);
   --kind-video-scrim: rgba(255, 255, 255, .88);
@@ -650,6 +666,12 @@
   --frame-ring: rgba(8, 145, 204, .16);
   --sel-fill: rgba(8, 145, 204, .08);
   --sel-line: rgba(8, 145, 204, .65);
+  --mini-panel: rgba(255, 255, 255, .88);
+  --mini-line: rgba(30, 54, 112, .2);
+  --mini-shadow: 0 1px 2px rgba(20, 40, 90, .06), 0 8px 24px rgba(20, 40, 90, .1);
+  --mini-mask: rgba(226, 232, 244, .62);
+  --mini-stroke: #0577ad;
+  --mini-node: rgba(40, 68, 140, .34);
 }
 
 /* 旧标记里写死在 SVG 属性上的颜色，接到令牌上 */

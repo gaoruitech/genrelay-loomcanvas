@@ -20,6 +20,8 @@ export default {
       sourceImage: '原图',
       sourceVideo: '源视频',
       runningPlain: '生成中',
+      // 已有结果时运行钮上的字。三种布局同一个说法；英文用短的「Re-run」—— 布局 c 的那一行地方有限
+      rerun: '重新运行',
       kindImage: '图片',
       kindVideo: '视频',
       kindChat: '对话',
@@ -37,6 +39,11 @@ export default {
       atHint: "输入 {'@'} 指定参考图",
       runHint: 'Ctrl + Enter 运行',
       expand: '放大',
+      none: '（没有填写）',
+    },
+    view: {
+      image: '查看大图',
+      video: '播放',
     },
     empty: {
       image: '写好提示词后运行，结果出现在这里',
@@ -48,12 +55,14 @@ export default {
     },
     composer: {
       label: '{name}输入条',
+      labelView: '{name}的设置（只读）',
       keyAt: '引用参考图',
       keyRun: '运行',
       keyClose: '收起',
     },
     inspector: {
       label: '{name}属性',
+      labelView: '{name}属性（只读）',
       result: '结果',
       outputs: '本次结果',
       outputsN: '共 {n} 个',
@@ -61,8 +70,9 @@ export default {
       versionsN: '共 {n} 版',
     },
     publicUrl: {
-      image: '{model} 的参考图只能以公网地址交给上游，而这个实例没有公网地址，带参考图运行会被拒绝。请把 PUBLIC_URL 设为实例的公网域名，或在「设置 → 存储」改用公网能访问的对象存储；不带参考图可以照常运行。',
-      video: '源视频只能以公网地址交给上游，而这个实例没有公网地址，运行会被拒绝。请把 PUBLIC_URL 设为实例的公网域名，或在「设置 → 存储」改用公网能访问的对象存储。',
+      image: '{model} 的参考图只能以公网地址交给上游，而这个实例现在给不出这样的地址，带参考图运行会被拒绝；不带参考图可以照常运行。解决办法三选一：把 PUBLIC_URL 设为本站的公网地址；给存储桶配一个公开访问地址；或者填写「签名地址用的 Endpoint」。',
+      video: '源视频只能以公网地址交给上游，而这个实例现在给不出这样的地址，运行会被拒绝。解决办法三选一：把 PUBLIC_URL 设为本站的公网地址；给存储桶配一个公开访问地址；或者填写「签名地址用的 Endpoint」。',
+      askAdmin: '这些要由管理员在部署配置和「设置 → 存储」里改。',
     },
     params: {
       title: '比例 / 分辨率 / 时长 / 数量',
@@ -73,6 +83,7 @@ export default {
       nthNamed: '第 {n} 张参考图（{name}）',
       hint: "拖拽调序 · 双击改名 · 点击插入 {'@'}",
       insert: "点击插入 {'@'}{name}",
+      view: '{name} · 点击查看大图',
       overCap: '超出上限',
       none: '未接{name}',
       overCapTip: '超出该模型的参考图上限，不会送给模型',
@@ -118,6 +129,7 @@ export default {
       sourceImage: 'Source image',
       sourceVideo: 'Source video',
       runningPlain: 'Generating',
+      rerun: 'Re-run',
       kindImage: 'Image',
       kindVideo: 'Video',
       kindChat: 'Chat',
@@ -135,6 +147,11 @@ export default {
       atHint: "Type {'@'} to point at a reference image",
       runHint: 'Ctrl + Enter to run',
       expand: 'Expand',
+      none: '(not filled in)',
+    },
+    view: {
+      image: 'View full size',
+      video: 'Play',
     },
     empty: {
       image: 'Write a prompt and run. The image appears here',
@@ -146,12 +163,14 @@ export default {
     },
     composer: {
       label: '{name} composer',
+      labelView: '{name} settings (read-only)',
       keyAt: 'reference an image',
       keyRun: 'run',
       keyClose: 'collapse',
     },
     inspector: {
       label: '{name} properties',
+      labelView: '{name} properties (read-only)',
       result: 'Result',
       outputs: 'This run',
       outputsN: '{n} in total',
@@ -159,8 +178,9 @@ export default {
       versionsN: '{n} in total',
     },
     publicUrl: {
-      image: '{model} takes reference images by public URL only, and this instance has no public address, so a run with a reference image will be refused. Set PUBLIC_URL to the public domain of this instance, or switch to a bucket reachable from the internet under Settings → Storage. Without a reference image it runs as usual.',
-      video: 'The source video is handed over by public URL only, and this instance has no public address, so the run will be refused. Set PUBLIC_URL to the public domain of this instance, or switch to a bucket reachable from the internet under Settings → Storage.',
+      image: '{model} takes reference images by public URL only, and this instance cannot give out such an address right now, so a run with a reference image will be refused. Without a reference image it runs as usual. Any one of these fixes it: set PUBLIC_URL to the public address of this site; give the bucket a public base URL; or enter an endpoint for signed URLs.',
+      video: 'The source video is handed over by public URL only, and this instance cannot give out such an address right now, so the run will be refused. Any one of these fixes it: set PUBLIC_URL to the public address of this site; give the bucket a public base URL; or enter an endpoint for signed URLs.',
+      askAdmin: ' An administrator has to change these, in the deployment settings and under Settings → Storage.',
     },
     params: {
       title: 'Aspect ratio / resolution / duration / count',
@@ -171,8 +191,9 @@ export default {
       nthNamed: 'reference image {n} ({name})',
       hint: "Drag to reorder · double-click to rename · click to insert {'@'}",
       insert: "Click to insert {'@'}{name}",
+      view: '{name} · click to view full size',
       overCap: 'Over limit',
-      none: 'No {name} connected',
+      none: '{name}: none connected',
       overCapTip: "Over this model's reference image limit, so it won't be sent",
     },
     history: {

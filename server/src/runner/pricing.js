@@ -98,6 +98,27 @@ function tokenCost(spec, usage) {
   return { amount: round(amount), currency, unknown: false }
 }
 
+/**
+ * What a chat run priced per token may cost at most, as far as can be told
+ * before it runs: the price of its input, estimated from what is sent, plus
+ * the price of the longest answer assumed (the spec's `maxOutputTokens`, else
+ * `limits.outputTokens`). A team's money limit holds this much for the run
+ * while it is in flight and swaps it for the real cost when it is done
+ * (services/budget.js). `unknown` when the model has no usable per-token price.
+ *
+ * `input`: { prompt, systemPrompt, imageUrls, videoUrls };
+ * `limits`: { outputTokens, tokensPerChar, tokensPerImage, tokensPerVideo }.
+ */
+function chatReserve(spec, input = {}, limits = {}) {
+  const chars = String(input.prompt || '').length + String(input.systemPrompt || '').length
+  const inputTokens = Math.ceil(chars * (limits.tokensPerChar || 1))
+    + (input.imageUrls || []).length * (limits.tokensPerImage || 0)
+    + (input.videoUrls || []).length * (limits.tokensPerVideo || 0)
+  const own = spec && Number.isInteger(spec.maxOutputTokens) && spec.maxOutputTokens > 0 ? spec.maxOutputTokens : 0
+  const outputTokens = own || limits.outputTokens || 0
+  return { ...tokenCost(spec, { inputTokens, outputTokens }), inputTokens, outputTokens }
+}
+
 /** Validate a pricing object from an admin override. Returns a clean copy or throws a LocalizedError. */
 function normalizePricing(input) {
   if (input === null) return null
@@ -137,4 +158,4 @@ function normalizePricing(input) {
   return out
 }
 
-module.exports = { estimateCost, tokenCost, normalizePricing }
+module.exports = { estimateCost, tokenCost, chatReserve, normalizePricing }

@@ -1,7 +1,8 @@
 <template>
-  <nav class="at" :aria-label="t('assetsPage.title')">
+  <!-- 两个页签各是一页；其中一页在这次挂载里不存在（集成方没开放，或者关了素材库 / 品牌包）时，只剩一个页签就不出这一条 -->
+  <nav v-if="pages.has('assets') && pages.has('brand-kits')" class="at" :aria-label="t('assetsPage.title')">
     <router-link :to="{ name: 'assets' }" class="at-tab" :class="{ on: current === 'assets' }" :aria-current="current === 'assets' ? 'page' : undefined" data-tab="assets">
-      <LcIcon name="assets" size="s" />{{ t('brandKit.page.tabAssets') }}
+      <LcIcon name="assets" size="s" />{{ space.isTeam ? t('brandKit.page.tabTeamAssets') : t('brandKit.page.tabAssets') }}
     </router-link>
     <router-link :to="{ name: 'brand-kits' }" class="at-tab" :class="{ on: current === 'brand-kits' }" :aria-current="current === 'brand-kits' ? 'page' : undefined" data-tab="brand-kits">
       <LcIcon name="star" size="s" />{{ t('brandKit.page.tabKits') }}
@@ -13,9 +14,14 @@
 /** 素材库页头下面的两个页签：素材（上传和存下来的图片 / 视频）与品牌包。各有自己的地址。 */
 import { useI18n } from 'vue-i18n'
 import LcIcon from '@/components/LcIcon.vue'
+import { useSpaceStore } from '@/stores/space'
+import { usePageOpen } from '@/embed/links'
 
 defineProps<{ current: 'assets' | 'brand-kits' }>()
 const { t } = useI18n()
+const pages = usePageOpen()
+/** 团队里这个库是全队共用的：页签叫「团队资产」，品牌包也是团队的那一套 */
+const space = useSpaceStore()
 </script>
 
 <style scoped>

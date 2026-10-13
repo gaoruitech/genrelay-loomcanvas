@@ -7,6 +7,7 @@
       'has-error': !!g.displayError,
       'is-text': g.isText,
       'is-ro': readonly,
+      'is-view': g.viewOnly,
       shaking: g.shaking,
     }]"
     :data-layout="layout"
@@ -15,24 +16,25 @@
   >
     <component :is="shell" :selected="!!selected" @detail="detailOpen = true" @expand="textOpen = true" />
 
-    <TaskDetailModal v-if="g.detailType && !readonly" :open="detailOpen" :type="(g.detailType as any)" :data="data" @close="detailOpen = false" />
+    <!-- 只读时也开得了：详情里只有看的（预览、下载、复制提示词）。给它的是「现在给人看的那一版」 -->
+    <TaskDetailModal v-if="g.detailType && !readonly" :open="detailOpen" :type="(g.detailType as any)" :data="g.shownData" @close="detailOpen = false" />
 
     <!-- 文本类节点的放大查看：结果占大头，大语言模型另带系统提示词 -->
     <Teleport v-if="g.isText && !readonly" :to="$lcPortal">
       <div v-if="textOpen" class="lc-mask lc-sheet" @click.self="textOpen = false" @wheel.stop @mousedown.stop>
-        <div class="lc-dialog gn-tmodal">
+        <div v-dialog="() => (textOpen = false)" class="lc-dialog gn-tmodal" role="dialog" aria-modal="true" :aria-label="type === 'llm' ? t('nodeui.llm.modalTitle') : t('nodeui.analysis.modalTitle')">
           <div class="lc-dialog-head">
             <span>{{ type === 'llm' ? t('nodeui.llm.modalTitle') : t('nodeui.analysis.modalTitle') }}</span>
-            <button class="lc-x" :title="t('common.close')" :aria-label="t('common.close')" @click="textOpen = false">×</button>
+            <button class="lc-x" v-tip="t('common.close')" :aria-label="t('common.close')" @click="textOpen = false">×</button>
           </div>
           <div class="lc-dialog-body gn-tmodal-b">
             <div v-if="type === 'llm'" class="lc-field">
               <label class="lc-label">{{ t('nodeui.llm.systemPrompt') }}</label>
-              <textarea v-model="g.systemPrompt" class="lc-textarea gn-tmodal-sys" :placeholder="t('nodeui.llm.systemPromptPlaceholder')" :disabled="g.isRunning" :maxlength="PROMPT_MAX" />
+              <textarea v-model="g.systemPrompt" class="lc-textarea gn-tmodal-sys" :placeholder="g.viewOnly ? t('gen.prompt.none') : t('nodeui.llm.systemPromptPlaceholder')" :disabled="g.isRunning && !g.viewOnly" :readonly="g.viewOnly" :maxlength="PROMPT_MAX" />
             </div>
             <div class="lc-field gn-tmodal-grow">
               <label v-if="type === 'llm'" class="lc-label">{{ t('nodeui.llm.result') }}</label>
-              <textarea v-model="g.text" class="lc-textarea gn-tmodal-ta" :disabled="g.isRunning" :maxlength="PROMPT_MAX" />
+              <textarea v-model="g.text" class="lc-textarea gn-tmodal-ta" :placeholder="g.viewOnly ? t('nodeui.share.noResult') : undefined" :disabled="g.isRunning && !g.viewOnly" :readonly="g.viewOnly" :maxlength="PROMPT_MAX" />
             </div>
           </div>
         </div>
@@ -49,13 +51,16 @@
  *   a  GenShellA  结果优先，编辑在选中后节点下方的输入条里
  *   b  GenShellB  紧凑节点，编辑在画布右缘的属性面板里
  *   c  GenShellC  一体化卡片，编辑就在节点上
- * 只读画布（分享页）没有画布上下文：固定用 a 的只读形态。
+ * 分享页没有画布上下文：固定用 a 的快照形态（readonly，挂上之后不变）。
+ * 编辑器里的只读（别人正在编辑、只有查看权、丢了锁）是另一回事，而且是活的：见 useGenNode 的 viewOnly ——
+ * 三种布局照常，只是「做事」的入口都不出现。
  */
 import { computed, inject, nextTick, provide, ref, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { useGenNode, GEN_NODE_KEY, PROMPT_MAX } from '@/composables/useGenNode'
 import { CANVAS_NODE_UI_KEY, DEFAULT_NODE_LAYOUT, type GenNodeKind } from '@/composables/nodeLayout'
+import { vDialog } from '@/directives/dialog'
 import TaskDetailModal from '../TaskDetailModal.vue'
 import GenShellA from './GenShellA.vue'
 import GenShellB from './GenShellB.vue'

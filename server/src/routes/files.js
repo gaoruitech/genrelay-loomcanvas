@@ -10,10 +10,11 @@ const express = require('express')
 const multer = require('multer')
 const sharp = require('sharp')
 const { getConfig } = require('../config')
-const { getStorage, newKey, isValidKey, mimeForKey, thumbSourceKey } = require('../storage')
+const { getStorage, newKey, isValidKey, mimeForKey, thumbSourceKey, isUnavailable } = require('../storage')
 const { safeFetch } = require('../utils/safeFetch')
 const { sniffMime, kindOfMime } = require('../utils/sniff')
 const { ok, wrap, badRequest, ApiError } = require('../utils/http')
+const { t } = require('../i18n')
 const { storeThumbnail, ensureThumbnail } = require('../runner/transfer')
 
 /** Images larger than this get a separate webp thumbnail; smaller ones are their own thumbnail. */
@@ -21,7 +22,7 @@ const THUMB_MIN_EDGE = 512
 
 const MAX_IMAGE_PIXELS = 120 * 1000 * 1000
 
-/** Validate a buffer, store it under the account's own key prefix, describe it. */
+/** Validate a buffer, store it under the key prefix of its space (`userId`: an account or a team), describe it. */
 async function ingest(buffer, { allow = ['image', 'video', 'audio'], userId = '' } = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw badRequest('file.empty')
   const mime = sniffMime(buffer)
@@ -62,7 +63,8 @@ function apiRouter() {
   /** POST /api/files/upload  multipart, field "file" */
   router.post('/upload', upload.single('file'), wrap(async (req, res) => {
     if (!req.file) throw badRequest('file.missing')
-    ok(res, await ingest(req.file.buffer, { userId: req.userId }))
+    // Stored under the space the request acts in: a team's uploads live and die with the team.
+    ok(res, await ingest(req.file.buffer, { userId: req.spaceId }))
   }))
 
   /** POST /api/files/fetch { url } - download a remote image into storage */
@@ -92,7 +94,7 @@ function apiRouter() {
     } catch (err) {
       throw badRequest(err.name === 'SafeFetchError' ? err.i18n : 'fetch.failed')
     }
-    ok(res, await ingest(fetched.buffer, { allow: ['image'], userId: req.userId }))
+    ok(res, await ingest(fetched.buffer, { allow: ['image'], userId: req.spaceId }))
   }))
 
   return router
@@ -143,12 +145,16 @@ function gone(key, res) {
  * Stream an object out of a bucket. Range and If-None-Match go to the storage
  * service and its answer (206, 304, 416) is passed on, so a video is never
  * read further than the player asked for and nothing is buffered here.
+ *
+ * The file's headers (a year of caching among them) are only set once the
+ * bucket has answered: a "not there" or "cannot be asked" must not go out
+ * with them.
  */
 async function sendObject(backend, key, req, res) {
-  res.set(fileHeaders(key))
-  res.setHeader('Accept-Ranges', 'bytes')
-  res.setHeader('Cache-Control', `public, max-age=${ONE_YEAR / 1000}, immutable`)
   const describe = (info) => {
+    res.set(fileHeaders(key))
+    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('Cache-Control', `public, max-age=${ONE_YEAR / 1000}, immutable`)
     if (info.etag) res.setHeader('ETag', info.etag)
     if (info.lastModified) res.setHeader('Last-Modified', new Date(info.lastModified).toUTCString())
   }
@@ -164,13 +170,34 @@ async function sendObject(backend, key, req, res) {
   const ifNoneMatch = String(req.headers['if-none-match'] || '').slice(0, 300) || undefined
   const object = await backend.open(key, { range, ifNoneMatch })
   if (!object) return gone(key, res)
+  // 416 says nothing about the file that is worth keeping: no file headers on it.
+  if (object.status === 416) return res.status(416).end()
   describe(object)
-  if (object.status === 304 || object.status === 416) return res.status(object.status).end()
+  if (object.status === 304) return res.status(304).end()
   res.status(object.status)
   res.setHeader('Content-Length', object.size)
   if (object.contentRange) res.setHeader('Content-Range', object.contentRange)
   // pipeline tears the bucket stream down when the browser goes away mid-file.
   pipeline(object.stream, res, () => {})
+}
+
+/** How long a client is asked to wait before it tries a file again that could not be looked up. */
+const RETRY_AFTER_SEC = 30
+
+/**
+ * The file may exist, but the storage that would know cannot be asked: 503
+ * with a message, never a 404 (the file is not gone) and never something a
+ * cache would keep. The answer names no host and no bucket - this route is
+ * public; which storage it was is in the server log, once per outage.
+ */
+function unavailable(err, key, req, res) {
+  if (res.headersSent) return res.destroy()
+  if (!isUnavailable(err)) console.error(`[files] ${key}: ${(err && (err.name || err.code)) || 'error'}`)
+  const code = 'storage.unreachable'
+  res.status(503)
+  res.setHeader('Retry-After', String(RETRY_AFTER_SEC))
+  res.setHeader('Cache-Control', 'no-store')
+  res.json({ result: -1, message: t(req.locale, code), code, data: null })
 }
 
 /**
@@ -180,7 +207,8 @@ async function sendObject(backend, key, req, res) {
  *
  * The file is looked up in the storage layer and answered according to where
  * it is: read from the disk, streamed out of a bucket, or - when that bucket
- * delivers from a public domain - redirected there.
+ * delivers from a public domain - redirected there. A file no storage has is
+ * a 404; one that may be in a storage that cannot be reached is a 503.
  */
 function staticRouter() {
   const router = express.Router()
@@ -192,10 +220,14 @@ function staticRouter() {
       // then served like any other file.
       const sourceKey = thumbSourceKey(key)
       if (sourceKey) {
-        const state = await ensureThumbnail(key, sourceKey).catch(() => 'unsupported')
+        const state = await ensureThumbnail(key, sourceKey)
         if (state === 'missing') return res.status(404).end()
-        // Not thumbnailable: the browser gets the image itself instead of a broken picture.
-        if (state !== 'ok') return res.redirect(302, `/files/${sourceKey}`)
+        if (state !== 'ok') {
+          // No thumbnail this time: the browser gets the image itself instead of a broken
+          // picture. Not to be remembered - the next request may well get one.
+          res.setHeader('Cache-Control', 'no-store')
+          return res.redirect(302, `/files/${sourceKey}`)
+        }
       }
       const backend = await getStorage().locate(key)
       if (!backend) return res.status(404).end()
@@ -207,10 +239,7 @@ function staticRouter() {
       }
       await sendObject(backend, key, req, res)
     } catch (err) {
-      // The storage service could not be asked. Not a 404: the file may well exist.
-      console.error(`[files] ${key}: ${(err && (err.name || err.code)) || 'error'}`)
-      if (!res.headersSent) res.status(502).end()
-      else res.destroy()
+      unavailable(err, key, req, res)
     }
   })
   return router

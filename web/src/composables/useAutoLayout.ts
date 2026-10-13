@@ -31,6 +31,11 @@ interface Options {
   nodeLayout?: () => NodeLayout
   updateNode: (id: string, update: any) => void
   fitView?: (opts?: any) => void
+  /**
+   * 选中的全部节点（vue-flow 的 getSelectedNodes）。不给就从 getNodes 里挑 —— 那样只挑得到视野里的，
+   * 选区有一部分在视野外时对齐 / 分布会漏掉它们。
+   */
+  selected?: () => any[]
 }
 
 interface Pos { x: number; y: number }
@@ -87,7 +92,24 @@ export function useAutoLayout(opts: Options) {
   const snapshot = ref<Record<string, Pos> | null>(null)
   const canUndo = computed(() => !!snapshot.value)
 
-  const selectedCount = computed(() => getNodes.value.filter((n: any) => n.selected).length)
+  const selectedNodes = (): any[] => (opts.selected ? opts.selected() : getNodes.value.filter((n: any) => n.selected))
+  const selectedCount = computed(() => selectedNodes().length)
+
+  /**
+   * 对齐 / 分布用的盒子：按画布上的绝对坐标算（组里的节点存的是相对组的坐标，直接拿来和组外的节点比就错了）。
+   * ox / oy = 绝对坐标 − 存着的坐标，算完目标位置再减回去。
+   * 组和它里面的节点一起选中时只算组：里面的跟着组走，再各自挪一遍就挪了两次。
+   */
+  function selectedBoxes(): (Box & { ox: number; oy: number })[] {
+    const sel = selectedNodes()
+    const ids = new Set(sel.map((n: any) => n.id))
+    const own = sel.filter((n: any) => !(n.parentNode && ids.has(n.parentNode)))
+    return boxes(own).map((b, i) => {
+      const n = own[i]
+      const ax = n.computedPosition?.x ?? b.x, ay = n.computedPosition?.y ?? b.y
+      return { ...b, x: ax, y: ay, ox: ax - b.x, oy: ay - b.y }
+    })
+  }
 
   function reduceMotion(): boolean {
     return typeof window !== 'undefined'
@@ -412,7 +434,7 @@ export function useAutoLayout(opts: Options) {
   /** 对齐所选（至少 2 个） */
   async function alignSelected(mode: AlignMode): Promise<boolean> {
     if (running.value) return false
-    const sel = boxes(getNodes.value.filter((n: any) => n.selected))
+    const sel = selectedBoxes()
     if (sel.length < 2) return false
 
     const left = Math.min(...sel.map((b) => b.x))
@@ -431,8 +453,10 @@ export function useAutoLayout(opts: Options) {
       else if (mode === 'top') y = top
       else if (mode === 'bottom') y = bottom - b.h
       else if (mode === 'vcenter') y = cy - b.h / 2
-      targets[b.id] = { x, y }
+      targets[b.id] = { x: x - b.ox, y: y - b.oy }
     }
+    // 已经对齐在这条线上了：什么都不动，调用方不记历史
+    if (sel.every((b) => Math.abs(targets[b.id].x + b.ox - b.x) < 0.5 && Math.abs(targets[b.id].y + b.oy - b.y) < 0.5)) return false
     takeSnapshot()
     await animateTo(targets)
     return true
@@ -441,7 +465,7 @@ export function useAutoLayout(opts: Options) {
   /** 所选等距分布（至少 3 个）：两端不动，中间按中心点均分 */
   async function distributeSelected(axis: DistributeAxis): Promise<boolean> {
     if (running.value) return false
-    const sel = boxes(getNodes.value.filter((n: any) => n.selected))
+    const sel = selectedBoxes()
     if (sel.length < 3) return false
 
     const center = (b: Box) => (axis === 'h' ? b.x + b.w / 2 : b.y + b.h / 2)
@@ -454,8 +478,8 @@ export function useAutoLayout(opts: Options) {
     sel.forEach((b, i) => {
       const c = first + step * i
       targets[b.id] = axis === 'h'
-        ? { x: c - b.w / 2, y: b.y }
-        : { x: b.x, y: c - b.h / 2 }
+        ? { x: c - b.w / 2 - b.ox, y: b.y - b.oy }
+        : { x: b.x - b.ox, y: c - b.h / 2 - b.oy }
     })
     takeSnapshot()
     await animateTo(targets)

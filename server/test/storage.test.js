@@ -263,12 +263,19 @@ test('which backend holds a key: looked up disk first, then the active bucket, t
     await facade.delete('uploads/2025/01/never.png')
 
     // A bucket that cannot be asked does not hide a file another backend has,
-    // and "could not check" is an error, not "no such file".
+    // and "could not check" is an error (503), not "no such file". More in storageResilience.test.js.
     storage.resetStorage()
     storage.configure({ active: parseS3Config({ ...MINIO, bucket: 'down' }), readable: [now] })
-    assert.equal((await facade.locate('uploads/2025/01/cccc.png')).bucket, 'now')
-    assert.equal((await facade.locate('uploads/2025/01/eeee.png')).driver, 'local')
-    await assert.rejects(() => facade.locate('uploads/2025/01/dddd.png'), { code: 'ECONNREFUSED' })
+    const warn = console.warn
+    console.warn = () => {} // the line that says the bucket is down
+    try {
+      assert.equal((await facade.locate('uploads/2025/01/cccc.png')).bucket, 'now')
+      assert.equal((await facade.locate('uploads/2025/01/eeee.png')).driver, 'local')
+      await assert.rejects(() => facade.locate('uploads/2025/01/dddd.png'), { name: 'StorageUnavailable', status: 503, code: 'storage.unreachable' })
+      assert.equal(await facade.locate('uploads/2025/01/dddd.png', { tolerant: true }), null)
+    } finally {
+      console.warn = warn
+    }
   } finally {
     fake.restore()
     storage.resetStorage()
@@ -377,14 +384,15 @@ test('the secret: encrypted at rest, never returned, kept when the form leaves i
     fake.buckets.get(backendId(parseS3Config(MINIO))).set(KEY, Buffer.from('old bucket'))
     assert.equal((await storage.getStorage().getBuffer(KEY)).toString(), 'old bucket')
 
-    // SECRET_KEY changed: the secret cannot be read. Nothing is written to a place
-    // the operator did not choose, and the settings page is told.
+    // SECRET_KEY changed: the secret cannot be read. The bucket stays the choice, new files are
+    // refused rather than written to a place the operator did not choose, and the settings page
+    // is told. More in storageResilience.test.js.
     const status = await withEnv({ SECRET_KEY: 'a-completely-different-secret-key' }, async () => {
       storage.resetStorage()
       storageSettings.reset()
       return storageSettings.load()
     })
-    assert.deepEqual([status.secretUnreadable, status.driver, status.source], [true, 'local', 'saved'])
+    assert.deepEqual([status.secretUnreadable, status.writable, status.driver, status.source], [true, false, 's3', 'saved'])
   } finally {
     db.restore()
     fake.restore()
@@ -460,6 +468,12 @@ test('can an upstream be given a stored file by URL: a public PUBLIC_URL, or a b
   assert.equal(await ask({ active: parseS3Config({ ...PRIVATE, publicBaseUrl: 'https://cdn.example.com', delivery: 'redirect' }) }), true)
   // A bucket that is only read from (storage was switched back to the disk) does not help new files.
   assert.equal(await ask({ active: null, readable: [parseS3Config(AWS)] }), false)
+  // A container name is not an address anybody outside can open, with either addressing style
+  // ("canvas.minio" is not a domain) - unless signed addresses are made for the name the service has outside.
+  assert.equal(await ask({ active: parseS3Config({ ...MINIO, endpoint: 'http://minio:9000' }) }), false)
+  assert.equal(await ask({ active: parseS3Config({ ...MINIO, endpoint: 'http://minio:9000', forcePathStyle: false }) }), false)
+  assert.equal(await ask({ active: parseS3Config({ ...MINIO, endpoint: 'http://minio:9000', presignEndpoint: 'https://s3.example.com' }) }), true)
+  assert.equal(await withEnv({ PUBLIC_URL: 'http://app:3000' }, () => ask(null)), false, 'the same rule for PUBLIC_URL')
 })
 
 test('Content-Security-Policy lists the public domains files are delivered from', () => {

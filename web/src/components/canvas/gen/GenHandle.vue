@@ -6,7 +6,7 @@
     class="gn-h"
     :class="[port.cls, { 'is-wired': port.count > 0, 'is-off': port.off }]"
     :connectable="port.connectable"
-    :title="tip"
+    v-tip="tip"
   >
     <!-- 端口旁的名字：pill = 悬停 / 选中时出现的小胶囊（带已连接数），tag = 常驻的一小段字 -->
     <span v-if="label && port.label" class="gn-pl" :class="label">{{ port.label }}<b v-if="label === 'pill' && port.countText">{{ port.countText }}</b></span>

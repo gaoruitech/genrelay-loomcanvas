@@ -6,7 +6,7 @@ How the repository is laid out, how to run it for development, and where to make
 
 ## Repository layout
 
-```
+```text
 loomcanvas/
 ├─ server/                 Node.js + Express + Mongoose (CommonJS)
 │  ├─ src/
@@ -20,7 +20,7 @@ loomcanvas/
 │  │  ├─ runner/           run queue, deadlines, result transfer, pricing
 │  │  ├─ storage/          storage layer: local disk and S3-compatible buckets, key generation
 │  │  ├─ billing/          billing hook loader (no-op by default)
-│  │  ├─ services/         accounts and sessions, settings, storage settings, media, image tools, seed, retention, canvas graph
+│  │  ├─ services/         accounts and sessions, spaces, teams, the permission table, monthly limits (budget), team activity, copying between spaces, zip export, settings, storage settings, media, image tools, seed, retention, canvas graph
 │  │  ├─ cli/              reset-password.js
 │  │  ├─ middleware/       sessions and roles, locale, errors, security headers
 │  │  ├─ i18n/             server messages: en.js, zh-CN.js
@@ -28,15 +28,17 @@ loomcanvas/
 │  └─ test/                node:test suites
 ├─ web/                    Vue 3 + Vite + TypeScript + Vue Flow + TDesign
 │  ├─ src/
-│  │  ├─ views/            Landing, Login, Register, ChangePassword, Setup, Workbench, CanvasList, Canvas, Assets, Models, History, Settings, CanvasShareView, NotFound
+│  │  ├─ views/            Landing, Login, Register, ChangePassword, Setup, Workbench, CanvasList, Canvas, Assets, BrandKits, Models, History, Team, Join, Settings, CanvasShareView, NotFound
 │  │  ├─ components/AppShell.vue  top bar and sidebar around every signed-in page
 │  │  ├─ components/canvas/    nodes and dialogs of the editor
 │  │  ├─ components/models/    the Models page: provider form, custom models, prices
 │  │  ├─ components/history/   the History page: details and clean-up dialogs
 │  │  ├─ components/settings/  sections of the Settings page
-│  │  ├─ components/workbench/, landing/, auth/  parts of the workbench, the landing page and the sign-in pages
+│  │  ├─ components/team/, space/  the Team page (members, usage, activity, settings) and what spaces share: switcher, create and join dialogs, access, copy-to-space, limits
+│  │  ├─ components/workbench/, canvaslist/, assets/, brandkit/, landing/, auth/  parts of the workbench, the canvas list, the Assets page, brand kits, the landing page and the sign-in pages
 │  │  ├─ composables/      executor, batch, history, layout…
-│  │  ├─ utils/            api.ts, canvasModels.ts…
+│  │  ├─ directives/       v-tip (the interface's own tooltips), v-dialog (focus and Esc handling of dialogs)
+│  │  ├─ utils/            api.ts, canvasModels.ts, floatSpot.ts (where floating panels go)…
 │  │  ├─ locales/          zh-CN.ts, en.ts, modules/*.ts
 │  │  ├─ stores/           Pinia store (bootstrap, signed-in user, locale)
 │  │  ├─ router/           routes and the sign-in guard (a factory: one router per mounted app)
@@ -120,7 +122,7 @@ npm test
 ```
 
 - Unit tests need nothing but Node.
-- The end-to-end tests (`api.e2e.test.js`, `security.e2e.test.js`, `vendors.e2e.test.js`, `accounts.e2e.test.js`) need a MongoDB. Set `TEST_MONGODB_URI` to use one you run; each run creates its own databases. Without it, `mongodb-memory-server` is tried, which downloads a MongoDB binary on first use. If neither works, those tests are skipped, not failed.
+- The end-to-end tests (`api.e2e.test.js`, `security.e2e.test.js`, `vendors.e2e.test.js`, `accounts.e2e.test.js`, `teams.e2e.test.js`, `teams.matrix.e2e.test.js`, `teamdata.e2e.test.js`, `locks.e2e.test.js`, `budget.e2e.test.js`, `storage.e2e.test.js`) need a MongoDB. Set `TEST_MONGODB_URI` to use one you run; each run creates its own databases. Without it, `mongodb-memory-server` is tried, which downloads a MongoDB binary on first use. If neither works, those tests are skipped, not failed.
 
   ```bash
   TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
@@ -129,11 +131,13 @@ npm test
 - Vendor modules are tested against a fake upstream started inside the test; see [Writing a provider](writing-a-provider.md#testing-against-a-fake-upstream). No test calls a real model API; the fixtures of the tests named "real service" in `server/test/providers.test.js` are answers recorded from the Gaorui service on 2026-10-10.
 - The S3 storage tests against a real service are skipped unless `TEST_S3_ENDPOINT` is set; see [Live S3 tests](#live-s3-tests).
 
-The frontend has no unit tests. `npm run build` (type-check) and `npm run i18n:check` are its gates.
+The frontend's tests are the Vitest suites in `web/test/` (`npm test` in `web/`, see the table above). Its other gates are `npm run build` (type-check) and `npm run i18n:check`.
 
 ### Live S3 tests
 
 `server/test/storage.test.js` covers the storage layer without a network: validation, addressing, lookup, switching, precedence, the encrypted secret, the settings logic, error classification. It runs with `npm test` like every other unit test.
+
+`server/test/storageResilience.test.js` and `server/test/storage.e2e.test.js` cover storage in trouble, also without a storage service: the S3 SDK talks over real sockets to the stand-ins in `server/test/support/fakeS3.js` (an S3 API in memory, a port that refuses connections, a server that accepts them and never answers). They test what an upstream is given for a bucket with an internal address, buckets that are down, a changed `SECRET_KEY`, and the bucket of the `S3_*` variables.
 
 `server/test/storage.live.test.js` runs the same layer against a real S3 API. Nothing in it is mocked: objects are written to and read from the service named by the environment. Without `TEST_S3_ENDPOINT` every test in the file is reported as skipped, which is what happens in CI.
 
@@ -197,8 +201,8 @@ There is no other pipeline (none for Gitee).
 - All calls go through one axios instance in `web/src/utils/api.ts`, with `baseURL: '/api'`. Functions are grouped by area (`workflowApi`, `adminApi`, `filesApi`…).
 - The canvas editor does not call those functions directly. Everything it needs from a backend (load and save a canvas, models, runs, uploads, tools, templates, brand kits, assets, shares) goes through `web/src/utils/canvasBackend.ts`, which forwards to the current **adapter** (`EditorAdapter` in `web/src/embed/types.ts`). In the stand-alone app the adapter is the HTTP one over the same axios instance (`web/src/embed/httpAdapterCore.ts`); a host that embeds only the editor supplies its own. When you add a backend call to the editor, add it to the adapter, not to a component. See [integration.md](integration.md).
 - In development the Vite server proxies `/api` and `/files` to `http://127.0.0.1:3000` (`web/vite.config.ts`), so the browser sees one origin and no CORS setup is needed. In production the server serves the built frontend itself (`WEB_DIST`).
-- Every request carries `X-Locale` (the current UI language) and, when signed in, `Authorization: Bearer <token>`.
-- Every response is the envelope `{ result, message, data }`; `unwrap()` returns `data` or throws. A `401` clears the token and shows the sign-in page.
+- Every request carries `X-Locale` (the current UI language) and, when signed in, `Authorization: Bearer <token>`. In a team space it also carries `X-Space: <team id>`; in the personal space the header is left out.
+- Every response is the envelope `{ result, message, code, data }` (`code` on failures only); `unwrap()` returns `data` or throws. A `401` clears the token and shows the sign-in page.
 - Runs are asynchronous: the frontend posts a run, then polls `POST /api/runs/status` with the ids it is waiting for. There are no WebSockets.
 - Types shared by the API layer are in `web/src/types/index.ts`.
 
@@ -309,7 +313,7 @@ Server:
 - Any URL that came from a user or from an upstream response is fetched through `utils/safeFetch.js`. Files are typed by content (`utils/sniff.js`), never by name or declared type.
 - Storage keys are generated by `storage/keys.js`; nothing a user typed goes into a key.
 - Files are read and written only through `getStorage()` (`storage/index.js`), which finds a file on whichever backend holds it. The address that is stored and returned is always `storage.urlFor(key)`, that is `/files/<key>`. A presigned URL (`storage.externalUrls()`) is for one upstream request: never store it, return it to a client or log it.
-- Every per-account collection carries `userId`, the id of the account that owns the document, and every query on it carries `req.userId`: another account's document must answer 404, never 403 and never data. A new per-account collection has to be added to `OWNED` in `server/src/services/accounts.js` (adoption of pre-account data and deletion of an account walk that list) and to the isolation suite, `server/test/accounts.e2e.test.js`. Provider and model lookups go through `providers/index.js`, which refuses to run without an account id. Site-wide things (settings, storage, built-in templates) are changed by the super admin only (`requireOwner`).
+- Every per-space collection carries `userId`: the id of the **space** the document belongs to - an account's id for its personal space, a team's id for a team (the field kept its name from before teams; see [architecture.md](architecture.md), section 12) - plus `createdBy`, the account that made it. Every query on such a collection carries `req.spaceId`, never `req.userId` (that is who is acting, and equals `req.spaceId` only in a personal space): a document of another space must answer 404, never 403 and never data. A new document is written with `userId: req.spaceId, createdBy: req.userId`. What not everybody in a team may do goes through the one permission table, `server/src/services/permissions.js` (`spaces.requireCan(action)` / `spaces.assertCan(req, action, ctx)`), which is also what the documentation and `server/test/teams.matrix.e2e.test.js` are generated from. A new per-space collection has to be added to `OWNED` in `server/src/services/accounts.js` (adoption of pre-account data, deletion of an account and removal of a team walk that list) and to the isolation suites, `server/test/accounts.e2e.test.js` and `server/test/teams.e2e.test.js`. Provider and model lookups go through `providers/index.js`, which refuses to run without a space id. Site-wide things (settings, storage, built-in templates) are changed by the super admin only (`requireOwner`).
 - The runner core (`runner/core.js`) takes its store, provider lookup, transfer and billing as injected dependencies, which is what makes it testable without a database.
 - No new runtime dependency without a reason: headers, CORS and rate limiting are a few lines each rather than packages.
 
@@ -319,6 +323,8 @@ Web:
 - TDesign components are auto-imported by `unplugin-vue-components`; write `<t-button>` without importing it.
 - `@/` is `web/src/`.
 - No user-visible literal text in components: everything goes through `t()`.
+- Hover hints go through the `v-tip` directive (`directives/tip.ts`), not the native `title` attribute: it follows the theme, shows on keyboard focus and on touch-and-hold, and shows clipped text in full (`{ text, clipped: true }`). An icon-only button still needs an `aria-label`.
+- Dialogs, sheets and popovers take the keyboard through one mechanism, the `v-dialog` directive (`directives/dialog.ts`) or `composables/useDialogFocus.ts`, and live in the portal layer (`Teleport :to="$lcPortal"`). A panel that floats over the canvas and follows something (the composer, the selection toolbar, the queue button) is placed with `utils/floatSpot.ts`, which keeps it clear of the other floating panels; do not position one by hand.
 - Colours and spacing come from `styles/design-tokens.css`, which holds two themes under the same token names: `:root` is dark (the default) and `:root[data-theme='light']` is light. Never write a colour in a component: use a token, or a channel token when you need your own opacity (`rgb(var(--c-cyan) / .12)`; blurred glows use `--g-*`). A new token goes into both themes. SVG attributes do not resolve `var()`, so colour SVG art by class; for values a library wants as plain strings (the minimap) read the token with `utils/tokenColor.ts`. Things drawn over user media (`--c-scrim`, `--on-scrim*`) are the same in both themes.
 - `npm run theme:check` (in `web/`) compares the two token sets, prints the contrast of text, accent and status colours on their surfaces for both themes, and lists colour literals left outside the token file; pass a build directory to scan the built CSS and JS too. Look at a change in both themes before sending it.
 

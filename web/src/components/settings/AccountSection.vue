@@ -96,7 +96,7 @@
           @click="confirmAll = true"
         >{{ t('account.sessions.revokeOthers') }}</button>
       </template>
-      <div data-testid="account-sessions">
+      <div ref="sessEl" class="sess-box" tabindex="-1" data-testid="account-sessions">
         <div v-if="sessLoading && !sessions.length" class="sk" aria-busy="true"><i /><i /></div>
         <div v-else-if="sessError" class="sec-state">
           <p class="lc-error-text">{{ sessError }}</p>
@@ -124,28 +124,30 @@
       </div>
     </SettingsCard>
 
-    <div v-if="confirmAll" class="lc-mask" @click.self="confirmAll = false">
-      <div class="lc-dialog dlg" role="dialog" aria-modal="true">
-        <div class="lc-dialog-head"><span>{{ t('account.sessions.revokeOthers') }}</span></div>
-        <div class="lc-dialog-body"><p>{{ t('account.sessions.revokeOthersText', { n: others }) }}</p></div>
-        <div class="lc-dialog-foot">
-          <button class="lc-btn" :disabled="revokingAll" @click="confirmAll = false">{{ t('common.cancel') }}</button>
-          <button class="lc-btn danger" :disabled="revokingAll" data-testid="account-revoke-others-ok" @click="revokeOthers">{{ t('account.sessions.revokeOthersOk') }}</button>
-        </div>
-      </div>
-    </div>
+    <TeamDialog
+      v-if="confirmAll" :title="t('account.sessions.revokeOthers')" :width="440" :busy="revokingAll" :fallback-focus="() => sessEl"
+      data-testid="account-revoke-others-dialog"
+      @close="confirmAll = false" @submit="revokeOthers"
+    >
+      <p>{{ t('account.sessions.revokeOthersText', { n: others }) }}</p>
+      <template #foot>
+        <button class="lc-btn" type="button" :disabled="revokingAll" @click="confirmAll = false">{{ t('common.cancel') }}</button>
+        <button class="lc-btn danger" type="submit" :disabled="revokingAll" data-autofocus data-testid="account-revoke-others-ok">{{ t('account.sessions.revokeOthersOk') }}</button>
+      </template>
+    </TeamDialog>
   </SettingsSection>
 </template>
 
 <script setup lang="ts">
 /** 账号与安全：改用户名 / 邮箱、改密码、看和下线登录会话，各占一张卡片、各有各的按钮。每个登录的人都有。 */
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from '@/utils/feedback'
 import { authApi, unwrap, apiErrorCode, apiErrorMessage } from '@/utils/api'
 import { describeAuthError, EMAIL_RE, PASSWORD_MAX, PASSWORD_MIN, USERNAME_RE } from '@/utils/authErrors'
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'
+import TeamDialog from '@/components/team/TeamDialog.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsCard from './SettingsCard.vue'
 import { useSectionDirty } from './dirty'
@@ -252,6 +254,8 @@ const sessError = ref('')
 const revoking = ref('')
 const revokingAll = ref(false)
 const confirmAll = ref(false)
+/** 会话列表那一块：下线之后原来那颗按钮没了，焦点落到这里（不让它掉回页面开头） */
+const sessEl = ref<HTMLElement | null>(null)
 
 /** 当前这个排最前，其余按最近活跃 */
 const sorted = computed(() => [...sessions.value].sort((a, b) => {
@@ -295,24 +299,28 @@ async function revoke(s: AuthSession) {
   } catch (err) {
     // 那个会话已经不在了（过期 / 在别处被下线）：结果一样，刷新列表就行
     if (apiErrorCode(err) !== 'auth.session_not_found') MessagePlugin.error(apiErrorMessage(err, t('common.operationFailed')))
-  } finally {
-    revoking.value = ''
   }
+  // 列表先刷新再放开按钮；这一行连同它的按钮都没了，焦点交给列表
   await loadSessions()
+  revoking.value = ''
+  await nextTick()
+  const at = document.activeElement
+  if (!at || at === document.body || !at.isConnected) sessEl.value?.focus({ preventScroll: true })
 }
 
 async function revokeOthers() {
+  if (revokingAll.value) return
   revokingAll.value = true
   try {
     unwrap(await authApi.revokeOtherSessions())
     MessagePlugin.success(t('account.sessions.revokedOthers'))
   } catch (err) {
     MessagePlugin.error(apiErrorMessage(err, t('common.operationFailed')))
-  } finally {
-    revokingAll.value = false
-    confirmAll.value = false
   }
+  // 列表先刷新，弹窗再关：「下线其他会话」那颗按钮这时已经不在了，弹窗把焦点交给会话列表（fallback-focus）
   await loadSessions()
+  revokingAll.value = false
+  confirmAll.value = false
 }
 </script>
 
@@ -322,6 +330,8 @@ async function revokeOthers() {
 .role { vertical-align: 1px; }
 .role.own { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .12); }
 
+/* 只在程序把焦点放过来时才有焦点（tabindex=-1）：不画焦点框，读屏会从这一块接着读 */
+.sess-box:focus { outline: none; }
 .sess-list { list-style: none; margin-top: 8px; }
 .sess {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, auto) 72px; gap: 16px; align-items: center;

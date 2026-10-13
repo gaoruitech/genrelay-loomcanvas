@@ -122,6 +122,7 @@
   cursor: help;
 }
 .cv-help:hover { color: var(--cyan-soft); border-color: var(--line-3); }
+.cv-help:focus-visible { outline: none; color: var(--cyan-soft); border-color: var(--cyan); box-shadow: var(--ring); }
 
 /* ---------- 内容区 ---------- */
 .cv-body {
@@ -181,23 +182,48 @@
 .cv-textarea:disabled,
 .cv-prompt-textarea:disabled { opacity: .6; }
 
-/* 文本域底部的「清空 + 放大 + 字数」：浮在文本域内侧底边 */
-.cv-textarea-wrap { position: relative; }
+/* 带「清空 + 放大 + 字数」的文本域：描边、圆角、底色画在外面这一层，里面上半是文本域，下半是那一条。
+   那一条不浮在文本域上 —— 长文滚到中间时，字不会从它底下透出来 */
+.cv-textarea-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  overflow: hidden;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.cv-textarea-wrap:hover { border-color: var(--line-2); }
+.cv-textarea-wrap:has(textarea:focus) { border-color: var(--cyan); box-shadow: var(--ring); }
 .cv-textarea-wrap .cv-textarea,
-.cv-textarea-wrap .cv-prompt-textarea { padding-bottom: 28px; resize: none; }
+.cv-textarea-wrap .cv-prompt-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 6px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  resize: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
 .cv-textarea-footer {
-  position: absolute;
-  left: 10px;
-  right: 8px;
-  bottom: 6px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 28px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
   font-size: 11px;
   color: var(--text-3);
   user-select: none;
-  pointer-events: none; /* 让文本域在这一条之外照常聚焦 */
 }
+/* 最右边是一颗图标按钮时让它贴近边：它自己带着留白 */
+.cv-textarea-footer .cv-footer-right { margin-right: -6px; }
 .cv-clear-btn {
   background: none;
   border: 0;
@@ -210,22 +236,25 @@
 }
 .cv-clear-btn:hover:not(:disabled) { color: var(--err-soft); }
 .cv-clear-btn:disabled { opacity: .4; cursor: not-allowed; }
-.cv-char-count { font-family: var(--f-mono); font-size: 10.5px; pointer-events: auto; }
-.cv-footer-right { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto; }
+.cv-char-count { font: 400 11px/1 var(--f-mono); white-space: nowrap; pointer-events: auto; }
+.cv-footer-right { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
 .cv-zoom-btn {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 7px;
   background: none;
   color: var(--text-3);
   cursor: pointer;
   pointer-events: auto;
 }
-.cv-zoom-btn:hover { color: var(--cyan-soft); background: rgb(var(--c-film) / .12); }
-.cv-zoom-btn svg { width: 13px; height: 13px; }
+.cv-zoom-btn:hover { color: var(--text); background: rgb(var(--c-film) / .12); }
+.cv-zoom-btn:focus-visible,
+.cv-clear-btn:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+.cv-zoom-btn svg { width: 14px; height: 14px; }
 
 /* 键值行：参数 / 预估成本 */
 .cv-kv {
@@ -275,6 +304,8 @@
   background: var(--grad-btn-hover);
   box-shadow: 0 0 0 1px rgb(var(--c-btn-edge-2) / .7) inset, 0 6px 18px rgb(var(--c-btn-glow-2) / .34);
 }
+.cv-run:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 0 0 1px rgb(var(--c-btn-edge) / .5) inset; }
+.cv-run:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--cyan); }
 .cv-run:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .cv-run svg { width: 12px; height: 12px; }
 .cv-actions { flex: none; display: flex; gap: 6px; margin-top: auto; }
@@ -299,8 +330,14 @@
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease;
 }
-.cv-pick-btn:hover,
-.cv-dl:hover { background: rgb(var(--c-film) / .14); border-color: var(--line-3); }
+.cv-pick-btn:hover:not(:disabled),
+.cv-dl:hover:not(:disabled) { background: rgb(var(--c-film) / .14); border-color: var(--line-3); }
+.cv-pick-btn:active:not(:disabled),
+.cv-dl:active:not(:disabled) { background: rgb(var(--c-film) / .22); }
+.cv-pick-btn:focus-visible,
+.cv-dl:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--cyan); }
+.cv-pick-btn:disabled,
+.cv-dl:disabled { opacity: .45; cursor: not-allowed; }
 .cv-pick-btn svg { width: 13px; height: 13px; color: var(--text-2); }
 
 /* ---------- 报错 / 提示 ---------- */
@@ -379,8 +416,11 @@
   line-height: 1;
   cursor: pointer;
 }
-.cv-image-clear:hover,
 .cv-image-edit:hover { background: rgb(var(--c-scrim) / .9); }
+/* 移除：悬停换成危险色的实底、白字 —— 垫的是画面，深浅两套主题下都要读得清，不能只把字染红 */
+.cv-image-clear:hover { background: var(--scrim-danger); color: var(--on-scrim-max); }
+.cv-image-clear:focus-visible,
+.cv-image-edit:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .cv-upload-zone,
 .cv-placeholder {
   display: flex;

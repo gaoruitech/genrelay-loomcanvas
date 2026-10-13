@@ -13,6 +13,9 @@ const MAX_REF_IMAGES = 5
 const brandKitSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 40 },
+  // The account that made it. `userId` is the SPACE it belongs to (an account's personal
+  // space, or a team); rows from before teams have no createdBy and read as userId.
+  createdBy: { type: String, default: '' },
   // Media URLs only, never inline base64.
   refImages: {
     type: [String],

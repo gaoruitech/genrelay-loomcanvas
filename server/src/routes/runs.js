@@ -2,16 +2,22 @@
 
 /**
  * Models, cost estimates, runs and chat tasks (contract section 4). All of it
- * is the caller's own: their providers' models, their runs.
+ * belongs to the space the request acts in: that space's providers and
+ * models, that space's runs. In a team every member may run the team's models
+ * (with the team's keys, which they never see) and follow a run of the team by
+ * its id - a canvas shows its results to whoever may open it; the list of
+ * records, with prompts, is a different matter (routes/admin.js, usage).
  */
 const express = require('express')
 const Run = require('../models/Run')
 const registry = require('../providers')
 const { getRunner, createRun, serializeRun } = require('../runner')
 const { estimateCost } = require('../runner/pricing')
-const { ok, wrap, badRequest, notFound } = require('../utils/http')
+const { ok, wrap, badRequest, notFound, ApiError } = require('../utils/http')
 const { requireObjectId, isObjectId, isPlainObject, isMediaUrl, clampInt } = require('../utils/validate')
 const { RUN_KINDS } = require('../constants')
+const spaces = require('../services/spaces')
+const permissions = require('../services/permissions')
 
 const router = express.Router()
 
@@ -68,7 +74,7 @@ function attribution(body) {
 
 async function findRun(req, kindFilter) {
   requireObjectId(req.params.id, 'id')
-  const run = await Run.findOne({ _id: req.params.id, userId: req.userId, ...kindFilter }).lean()
+  const run = await Run.findOne({ _id: req.params.id, userId: req.spaceId, ...kindFilter }).lean()
   if (!run) throw notFound('run.not_found')
   return run
 }
@@ -80,14 +86,14 @@ const CHAT = { kind: 'chat' }
 router.get('/models', wrap(async (req, res) => {
   const kind = req.query.kind
   if (kind !== undefined && !RUN_KINDS.includes(kind)) throw badRequest('validation.one_of', { field: 'kind', values: RUN_KINDS.join(' / ') })
-  const models = await registry.listModels({ userId: req.userId, kind })
+  const models = await registry.listModels({ userId: req.spaceId, kind })
   ok(res, models.map((m) => registry.localizeSpec(publicSpec(m), req.locale)))
 }))
 
 /** POST /api/runs/estimate { model, params, count } */
 router.post('/runs/estimate', wrap(async (req, res) => {
   const body = req.body || {}
-  const { spec } = await registry.resolveModel(modelIdOf(body), { userId: req.userId })
+  const { spec } = await registry.resolveModel(modelIdOf(body), { userId: req.spaceId })
   if (!spec) throw badRequest('model.unavailable')
   const params = cleanParams(body.params)
   const count = clampInt(body.count !== undefined ? body.count : params.count, 1, 100, 1)
@@ -97,7 +103,7 @@ router.post('/runs/estimate', wrap(async (req, res) => {
 /** POST /api/runs -> { runId } */
 router.post('/runs', wrap(async (req, res) => {
   const body = req.body || {}
-  const run = await createRun(req.user, {
+  const run = await createRun(req.user, req.space, {
     kind: 'media',
     model: modelIdOf(body),
     prompt: promptOf(body.prompt),
@@ -115,7 +121,7 @@ router.post('/runs/status', wrap(async (req, res) => {
   if (!Array.isArray(ids)) throw badRequest('validation.array', { field: 'ids' })
   if (ids.length > MAX_IDS) throw badRequest('validation.max_items', { field: 'ids', max: MAX_IDS })
   const valid = [...new Set(ids.filter(isObjectId))]
-  const runs = valid.length ? await Run.find({ _id: { $in: valid }, userId: req.userId, ...MEDIA }).lean() : []
+  const runs = valid.length ? await Run.find({ _id: { $in: valid }, userId: req.spaceId, ...MEDIA }).lean() : []
   const byId = new Map(runs.map((r) => [String(r._id), r]))
   // Same order as requested; unknown ids are simply absent.
   ok(res, valid.filter((id) => byId.has(id)).map((id) => serializeRun(byId.get(id), req.locale)))
@@ -126,9 +132,10 @@ router.get('/runs/:id', wrap(async (req, res) => {
   ok(res, serializeRun(await findRun(req, MEDIA), req.locale))
 }))
 
-/** POST /api/runs/:id/cancel */
+/** POST /api/runs/:id/cancel - in a team: whoever started the run, the owner or an admin */
 router.post('/runs/:id/cancel', wrap(async (req, res) => {
   const run = await findRun(req, {})
+  if (spaces.isTeam(req) && permissions.creatorOf(run) !== req.userId && !spaces.isManager(req.space)) throw new ApiError(403, 'team.forbidden')
   if (['succeeded', 'failed', 'canceled'].includes(run.status)) return ok(res, serializeRun(run, req.locale), 'run.already_finished')
   const after = await getRunner().cancel(String(run._id))
   ok(res, serializeRun(after || run, req.locale))
@@ -145,7 +152,7 @@ router.post('/llm/tasks', wrap(async (req, res) => {
     videoUrls = [body.videoUrl]
   }
   if (!prompt.trim() && !imageUrls.length && !videoUrls.length) throw badRequest('run.prompt_required')
-  const run = await createRun(req.user, {
+  const run = await createRun(req.user, req.space, {
     kind: 'chat',
     model: modelIdOf(body),
     prompt,

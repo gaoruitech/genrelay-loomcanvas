@@ -1,0 +1,28 @@
+/*
+ * 加载不出来的站内图片 / 视频换成的那一块（directives/mediaGuard.ts）：
+ * 「这个文件所在的存储暂时连不上」（带重试）和「文件已不存在」是同一种样子。
+ * 不是报错的样子：前一种文件还在，只是现在取不到。占的地方和原来的图一样大；小缩略图里只剩一个图标。
+ */
+[data-lc-media-down] { display: none !important; }
+
+.lc-media-down {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  box-sizing: border-box; min-width: 0; padding: 12px 14px; text-align: center;
+  border-radius: inherit; background: rgb(var(--c-film) / .06); color: var(--text-2);
+  font: 12px/1.5 var(--f-body); cursor: default; overflow: hidden;
+}
+/* 原图自己没有尺寸（高度跟着图走）：给一块看得清说明的地方，但不跟着很宽的容器一起拉长 */
+.lc-media-down.auto { width: 100%; max-width: 360px; min-height: 132px; margin: 0 auto; border-radius: 10px; border: 1px dashed var(--line-3); }
+.lc-media-down.gone.auto { min-height: 96px; }
+.lc-media-down > svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--text-3); }
+.lc-media-down-t { font-size: 13px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+/* 没了的文件没有下一步可做：字轻一点 */
+.lc-media-down.gone .lc-media-down-t { font-weight: 400; color: var(--text-2); }
+.lc-media-down-h { color: var(--text-3); overflow-wrap: anywhere; }
+.lc-media-down > .lc-btn { margin-top: 4px; pointer-events: auto; }
+.lc-media-down.busy > .lc-btn { opacity: .5; pointer-events: none; }
+
+/* 小缩略图：只有图标，文字在提示里 */
+.lc-media-down.compact { padding: 0; gap: 0; }
+.lc-media-down.compact > svg { width: 16px; height: 16px; }
+.lc-media-down.compact > :not(svg) { display: none; }

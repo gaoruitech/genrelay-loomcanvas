@@ -8,6 +8,8 @@ import { EMBED_KEY, setCurrentEmbed, type EmbedContext } from './context'
 import { i18n, mergeMessages, normalizeLocale, savedLocale, setLocale } from '@/locales'
 import { initEmbeddedTheme, paintRoot, setThemePref, normalizeTheme } from '@/composables/useTheme'
 import { mediaSrc } from '@/utils/mediaUrl'
+import { installTip } from '@/directives/tip'
+import { installMediaGuard } from '@/directives/mediaGuard'
 import type { CommonOptions, LoomCanvasTheme, Unsubscribe } from './types'
 
 export interface Emitter {
@@ -103,6 +105,11 @@ export function installCommon(app: App, ctx: EmbedContext): void {
   app.config.globalProperties.$lcPortal = ctx.portal
   app.config.globalProperties.$src = mediaSrc
   app.config.globalProperties.$feat = ctx.features
+  // v-tip：悬停提示。整站和单独的编辑器两个入口都从这里过，所以哪个入口里都有
+  installTip(app)
+  // 加载不出来的站内图片 / 视频换成说得清的占位（存储暂时连不上 / 文件已不存在）。装在挂载根上，
+  // 所以页面里的和传送到弹层里的都在内；卸载时一并收走
+  if (ctx.root) app.onUnmount(installMediaGuard(ctx.root))
   setCurrentEmbed(ctx)
 }
 

@@ -393,6 +393,18 @@ a:not(lc-0):hover { text-decoration: underline; }
   }
 }
 
+/* 悬停提示（directives/tip.ts 的 v-tip）：每个挂载根一个浮层元素，挂在 Teleport 的去处，位置由脚本设。
+   压在所有弹窗、灯箱之上；自己不接事件，所以不会挡住底下的东西，也不会让指针「离开」宿主元素 */
+.lc-tip {
+  position: fixed; left: 0; top: 0; z-index: 10100; pointer-events: none;
+  max-width: min(280px, calc(calc(100 * var(--lc-vw)) - 12px)); padding: 6px 10px; border-radius: 8px;
+  font: 400 12px/1.5 var(--f-body); color: var(--text); text-align: start; white-space: pre-line; overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums; letter-spacing: 0;
+  background: var(--pop); border: 1px solid var(--line-2); box-shadow: var(--sh-1);
+  opacity: 0; visibility: hidden; transition: opacity .12s, visibility 0s .12s;
+}
+.lc-tip.on { opacity: 1; visibility: visible; transition: opacity .12s; }
+
 /* 下拉菜单：ChipSelect 与 LcSelect 共用，Teleport 到 body，所以写在全局 */
 .lc-menu {
   overflow-y: auto; background: var(--pop); border: 1px solid var(--line-2);

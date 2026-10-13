@@ -5,8 +5,13 @@
  *
  * Publishing snapshots a canvas and returns a link addressed by a long random
  * token. Links can expire and be revoked. Reading a link is the only public
- * operation; everything else belongs to the account that published the link,
- * and every such query carries that account's id.
+ * operation; everything else belongs to the space the link was published in,
+ * and every such query carries that space's id.
+ *
+ * In a team: whoever may edit a canvas may publish it (unless the owner
+ * limited that to managers); a member sees and manages the links they
+ * created, the owner and admins all of the team's. The links of a team that
+ * is closed (suspended or dissolved) do not open.
  *
  * Paths follow the original canvas frontend (plaza / mine / publish / :id /
  * :id/copy / DELETE :id). There is no public gallery, so `plaza` lists the
@@ -19,8 +24,12 @@ const { pickThumbnail, cleanNodes } = require('../services/canvasGraph')
 const { CURRENT_SCHEMA_VERSION } = require('../utils/workflowSchema')
 const { listModels } = require('../providers')
 const { randomToken } = require('../utils/crypto')
+const Team = require('../models/Team')
 const { requireAuth } = require('../middleware/auth')
-const { ok, wrap, badRequest, notFound } = require('../utils/http')
+const spaces = require('../services/spaces')
+const permissions = require('../services/permissions')
+const activity = require('../services/activity')
+const { ok, wrap, badRequest, notFound, ApiError } = require('../utils/http')
 const { requireObjectId, pageParams, text } = require('../utils/validate')
 const { t } = require('../i18n')
 
@@ -30,6 +39,27 @@ const MAX_NODES = 500
 const MAX_SHARES = 500
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,64}$/
 const GONE = 'share.gone'
+/** Signed in, and acting in a space: what every route here except the public read needs. */
+const inSpace = [requireAuth, spaces.resolveSpace]
+
+/** The links of the space this caller may see and manage: all of them, or - a team member - their own. */
+function mine(req) {
+  const filter = { userId: req.spaceId, isDeleted: false }
+  if (spaces.isTeam(req) && !permissions.can(req.space, 'share:manage_all')) filter.createdBy = req.userId
+  return filter
+}
+
+function logActivity(req, type, doc) {
+  if (!spaces.isTeam(req)) return null
+  return activity.record(req.spaceId, { id: req.userId, name: req.user.username }, type, { type: 'share', id: doc._id, name: doc.title }, { expiresAt: doc.expiresAt || null })
+}
+
+/** In a team: who published each link. */
+async function withPublishers(req, list) {
+  if (!spaces.isTeam(req)) return list
+  const names = await spaces.people(list.map((s) => s.createdById), req.spaceId)
+  return list.map((s) => ({ ...s, createdBy: spaces.personOf(names, s.createdById) }))
+}
 
 /**
  * A viewer of a share link has none of the publisher's providers, so a node's
@@ -83,6 +113,7 @@ function summary(doc, { owner }) {
   }
   if (owner) {
     out.userId = doc.userId
+    out.createdById = permissions.creatorOf(doc)
     out.revoked = !!doc.revoked
     out.active = isActive(doc)
     out.isPublished = out.active
@@ -112,11 +143,10 @@ function parseExpiry(body) {
 }
 
 /** GET /api/canvas-share/plaza?page&pageSize - the owner's active links */
-router.get('/plaza', requireAuth, wrap(async (req, res) => {
+router.get('/plaza', inSpace, wrap(async (req, res) => {
   const { page, pageSize, skip } = pageParams(req.query, { defaultSize: 24, maxSize: 60 })
   const filter = {
-    userId: req.userId,
-    isDeleted: false,
+    ...mine(req),
     revoked: false,
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   }
@@ -125,14 +155,14 @@ router.get('/plaza', requireAuth, wrap(async (req, res) => {
     Share.countDocuments(filter),
     Share.find(filter).select('-snapshot').sort(sort).skip(skip).limit(pageSize).lean(),
   ])
-  ok(res, { list: list.map((d) => summary(d, { owner: true })), total, page, pageSize })
+  ok(res, { list: await withPublishers(req, list.map((d) => summary(d, { owner: true }))), total, page, pageSize })
 }))
 
 /** GET /api/canvas-share/mine - every link incl. expired and revoked */
-router.get('/mine', requireAuth, wrap(async (req, res) => {
-  const list = await Share.find({ userId: req.userId, isDeleted: false })
+router.get('/mine', inSpace, wrap(async (req, res) => {
+  const list = await Share.find(mine(req))
     .select('-snapshot').sort({ createdAt: -1 }).limit(MAX_SHARES).lean()
-  ok(res, { list: list.map((d) => summary(d, { owner: true })) })
+  ok(res, { list: await withPublishers(req, list.map((d) => summary(d, { owner: true }))) })
 }))
 
 /**
@@ -140,16 +170,19 @@ router.get('/mine', requireAuth, wrap(async (req, res) => {
  * Publishing the same canvas again refreshes the snapshot and keeps the link,
  * unless that link was revoked - then a new token is issued.
  */
-router.post('/publish', requireAuth, wrap(async (req, res) => {
+router.post('/publish', inSpace, wrap(async (req, res) => {
   const body = req.body || {}
   requireObjectId(body.workflowId, 'workflowId')
-  const wf = await Workflow.findOne({ _id: body.workflowId, userId: req.userId, isDeleted: false }).lean()
-  if (!wf) throw notFound('canvas.not_found')
+  const wf = await Workflow.findOne({ _id: body.workflowId, userId: req.spaceId, isDeleted: false }).lean()
+  const access = wf ? permissions.canvasAccess(req.space, wf) : null
+  if (!wf || !access.canView) throw notFound('canvas.not_found')
+  // A link shows the canvas to anybody: only those who may edit it hand it out.
+  if (!access.canShare) throw new ApiError(403, 'team.forbidden')
   const rawNodes = Array.isArray(wf.nodes) ? wf.nodes : []
   if (!rawNodes.length) throw badRequest('share.empty_canvas')
   if (rawNodes.length > MAX_NODES) throw badRequest('canvas.max_nodes', { max: MAX_NODES })
 
-  const nodes = await labelModels(cleanNodes(rawNodes), req.userId)
+  const nodes = await labelModels(cleanNodes(rawNodes), req.spaceId)
   const snapshot = {
     nodes,
     edges: structuredClone(Array.isArray(wf.edges) ? wf.edges : []),
@@ -169,8 +202,10 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
   }
   const expiry = parseExpiry(body)
 
-  let doc = await Share.findOne({ userId: req.userId, sourceWorkflowId: wf._id, isDeleted: false })
+  // One link per canvas and space, whoever published first: publishing again refreshes it.
+  let doc = await Share.findOne({ userId: req.spaceId, sourceWorkflowId: wf._id, isDeleted: false })
   const updated = !!doc
+  let opened = !doc
   if (doc) {
     Object.assign(doc, fields)
     if (expiry !== undefined) doc.expiresAt = expiry
@@ -178,20 +213,24 @@ router.post('/publish', requireAuth, wrap(async (req, res) => {
     if (doc.revoked) {
       doc.revoked = false
       doc.token = randomToken()
+      doc.createdBy = req.userId
+      opened = true
     }
     await doc.save()
   } else {
-    if ((await Share.countDocuments({ userId: req.userId, isDeleted: false })) >= MAX_SHARES) {
+    if ((await Share.countDocuments({ userId: req.spaceId, isDeleted: false })) >= MAX_SHARES) {
       throw badRequest('share.max', { max: MAX_SHARES })
     }
     doc = await Share.create({
-      userId: req.userId,
+      userId: req.spaceId,
+      createdBy: req.userId,
       token: randomToken(),
       sourceWorkflowId: wf._id,
       expiresAt: expiry === undefined ? null : expiry,
       ...fields,
     })
   }
+  if (opened) await logActivity(req, 'share:created', doc)
   ok(res, { id: String(doc._id), token: doc.token, updated, expiresAt: doc.expiresAt || null })
 }))
 
@@ -205,6 +244,9 @@ async function findReadable(req) {
   const doc = TOKEN_RE.test(token) ? await Share.findOne({ token }).lean() : null
   // One message for every failure: do not reveal whether a link ever existed.
   if (!doc || !isActive(doc)) throw notFound(GONE)
+  // A team's link lives only while the team is open. (A personal space's id names no team.)
+  const team = await Team.findById(doc.userId).select('status').lean().catch(() => null)
+  if (team && team.status !== 'active') throw notFound(GONE)
   return doc
 }
 
@@ -226,12 +268,15 @@ router.get('/:token', wrap(async (req, res) => {
 }))
 
 /** POST /api/canvas-share/:token/copy { name? } - copy the snapshot into a new canvas of mine */
-router.post('/:token/copy', requireAuth, wrap(async (req, res) => {
+router.post('/:token/copy', inSpace, wrap(async (req, res) => {
   const doc = await findReadable(req)
   const snap = doc.snapshot || {}
   const nodes = dropModelLabels(cleanNodes(snap.nodes))
   const wf = await Workflow.create({
-    userId: req.userId,
+    userId: req.spaceId,
+    createdBy: req.userId,
+    // In a team the copy is the copier's own until they open it up.
+    visibility: spaces.isTeam(req) ? 'private' : '',
     name: (text(req.body && req.body.name, 80) || t(req.locale, 'share.copy_name', { name: doc.title || t(req.locale, 'canvas.untitled') })).slice(0, 80),
     nodes,
     edges: structuredClone(Array.isArray(snap.edges) ? snap.edges : []),
@@ -250,15 +295,16 @@ router.post('/:token/copy', requireAuth, wrap(async (req, res) => {
 
 async function findOwned(req) {
   requireObjectId(req.params.id)
-  const doc = await Share.findOne({ _id: req.params.id, userId: req.userId, isDeleted: false })
+  const doc = await Share.findOne({ _id: req.params.id, ...mine(req) })
   if (!doc) throw notFound('share.not_found')
   return doc
 }
 
 /** PUT /api/canvas-share/:id { title?, description?, expiresAt? | expiresInDays?, revoked? } */
-router.put('/:id', requireAuth, wrap(async (req, res) => {
+router.put('/:id', inSpace, wrap(async (req, res) => {
   const doc = await findOwned(req)
   const body = req.body || {}
+  const wasRevoked = !!doc.revoked
   if (body.title !== undefined) {
     const title = text(body.title, 80)
     if (!title) throw badRequest('share.title_required')
@@ -274,14 +320,17 @@ router.put('/:id', requireAuth, wrap(async (req, res) => {
     doc.revoked = body.revoked
   }
   await doc.save()
+  if (wasRevoked !== !!doc.revoked) await logActivity(req, doc.revoked ? 'share:revoked' : 'share:created', doc)
   ok(res, summary(doc.toObject(), { owner: true }))
 }))
 
 /** POST /api/canvas-share/:id/revoke - the link stops working immediately */
-router.post('/:id/revoke', requireAuth, wrap(async (req, res) => {
+router.post('/:id/revoke', inSpace, wrap(async (req, res) => {
   const doc = await findOwned(req)
+  const wasRevoked = !!doc.revoked
   doc.revoked = true
   await doc.save()
+  if (!wasRevoked) await logActivity(req, 'share:revoked', doc)
   ok(res, summary(doc.toObject(), { owner: true }))
 }))
 
@@ -290,11 +339,13 @@ router.post('/:id/revoke', requireAuth, wrap(async (req, res) => {
  * First call revokes the link (it stays in "mine", marked revoked, so the
  * owner can see what was shared). Deleting an already revoked link removes it.
  */
-router.delete('/:id', requireAuth, wrap(async (req, res) => {
+router.delete('/:id', inSpace, wrap(async (req, res) => {
   const doc = await findOwned(req)
+  const wasRevoked = !!doc.revoked
   if (doc.revoked) doc.isDeleted = true
   doc.revoked = true
   await doc.save()
+  if (!wasRevoked) await logActivity(req, 'share:revoked', doc)
   ok(res, { id: String(doc._id), revoked: true, removed: doc.isDeleted })
 }))
 

@@ -595,3 +595,143 @@ test('start(): recovered runs are queued under the account they belong to', asyn
   for (const id of rows) await settled(store, id)
   assert.deepEqual(started, ['a1', 'b1', 'a2', 'a3'])
 })
+
+/* ---- teams: fair per person, capped per team ---- */
+
+/**
+ * A runner that tracks, per group (team) and per person, how many runs are in
+ * flight at once. `caps` is { groupId: limit }; a run's group is `teamId`.
+ */
+function teamRunner(settings, caps, ms = 12) {
+  const store = createMemoryStore()
+  const started = []
+  const inFlight = { person: {}, team: {} }
+  const peak = { person: {}, team: {}, all: 0 }
+  let all = 0
+  const bump = (kind, key, by) => {
+    if (!key) return
+    inFlight[kind][key] = (inFlight[kind][key] || 0) + by
+    peak[kind][key] = Math.max(peak[kind][key] || 0, inFlight[kind][key])
+  }
+  const runner = new Runner({
+    store,
+    resolve: async (run) => ({
+      sync: true,
+      cfg: {},
+      request: {},
+      provider: {
+        async submit() {
+          started.push(run.label)
+          all++
+          peak.all = Math.max(peak.all, all)
+          bump('person', run.createdBy, 1)
+          bump('team', run.teamId, 1)
+          await new Promise((r) => setTimeout(r, ms))
+          all--
+          bump('person', run.createdBy, -1)
+          bump('team', run.teamId, -1)
+          return { outputs: [{ type: 'image', url: 'u' }] }
+        },
+        async poll() {},
+      },
+    }),
+    transfer: async (o) => o,
+    billing: recordingBilling(),
+    settings,
+    groupLimit: (groupId) => caps[groupId] || 99,
+    logger: silent,
+    pollIntervalMs: [5, 10],
+  })
+  const add = (label, person, team = '') => {
+    const id = newRun(store, { label, userId: team || person, createdBy: person, teamId: team })
+    runner.enqueue(id, person, team)
+    return id
+  }
+  return { store, runner, started, peak, add }
+}
+
+test('a team holds at most its cap of slots, whoever of its members is running; others are not kept waiting', async () => {
+  const { store, started, peak, add } = teamRunner(baseSettings({ concurrency: 6, userConcurrency: 6 }), { T: 2 })
+  const ids = []
+  // Three members of team T with four runs each, then two people on their own.
+  for (let i = 1; i <= 4; i++) for (const m of ['a', 'b', 'c']) ids.push(add(`${m}${i}`, m, 'T'))
+  ids.push(add('x1', 'x'), add('x2', 'x'), add('y1', 'y'))
+  for (const id of ids) assert.equal((await settled(store, id, 5000)).status, 'succeeded')
+  assert.equal(peak.team.T, 2, 'never more than two of the team at once, although six slots exist')
+  assert.ok(peak.all > 2, 'the free slots went to the others')
+  // The outsiders started long before the team's queue was through.
+  assert.ok(Math.max(started.indexOf('x1'), started.indexOf('y1')) < 6, String(started))
+  // Inside the team the members took turns: the first three team runs to start are one of each.
+  const team = started.filter((l) => /^[abc]/.test(l))
+  assert.deepEqual(team.slice(0, 3).map((l) => l[0]).sort(), ['a', 'b', 'c'], String(team))
+})
+
+test('ten members with fifty runs each next to three accounts on their own: everybody gets their turn, the team stays under its cap', async () => {
+  const { store, started, peak, add } = teamRunner(baseSettings({ concurrency: 8, userConcurrency: 4 }), { T: 4 }, 2)
+  const members = Array.from({ length: 10 }, (_, i) => `m${String.fromCharCode(97 + i)}`)
+  const solos = ['sx', 'sy', 'sz']
+  const ids = []
+  for (let i = 0; i < 50; i++) {
+    for (const m of members) ids.push(add(`${m}-${i}`, m, 'T'))
+    for (const s of solos) ids.push(add(`${s}-${i}`, s))
+  }
+  for (const id of ids) assert.equal((await settled(store, id, 20000)).status, 'succeeded')
+  assert.ok(peak.team.T <= 4, `team peak ${peak.team.T}`)
+  assert.ok(peak.all <= 8, `instance peak ${peak.all}`)
+  for (const who of [...members, ...solos]) assert.ok(peak.person[who] <= 4, `${who} peak ${peak.person[who]}`)
+  // Fair between people: by the time every member has started five runs, none has started more than twice as many as another.
+  const firstHundred = started.filter((l) => l.startsWith('m')).slice(0, 100)
+  const perMember = members.map((m) => firstHundred.filter((l) => l.startsWith(`${m}-`)).length)
+  assert.ok(Math.max(...perMember) - Math.min(...perMember) <= 2, String(perMember))
+  // The three on their own were not queued behind the team's five hundred.
+  const lastSolo = Math.max(...solos.map((s) => started.lastIndexOf(`${s}-49`)))
+  assert.ok(lastSolo < started.length - 100, `the solo accounts finished early: ${lastSolo} of ${started.length}`)
+})
+
+test('a person is fair-queued as one person across their personal space and their team', async () => {
+  const { store, started, add } = teamRunner(baseSettings({ concurrency: 1 }), {})
+  const ids = [add('a-personal-1', 'a'), add('a-team-1', 'a', 'T'), add('a-personal-2', 'a'), add('b-team-1', 'b', 'T'), add('b-team-2', 'b', 'T')]
+  for (const id of ids) await settled(store, id)
+  // Arrival order would put all three of a's first; a and b alternate instead.
+  assert.deepEqual(started, ['a-personal-1', 'b-team-1', 'a-team-1', 'b-team-2', 'a-personal-2'])
+})
+
+test('cancelIfQueued: a waiting run is canceled, one in flight is left to finish', async () => {
+  const { store, runner, add } = teamRunner(baseSettings({ concurrency: 1 }), {}, 40)
+  const first = add('first', 'a', 'T')
+  const second = add('second', 'a', 'T')
+  await until(async () => (await store.get(first)).status === 'running')
+  assert.equal((await runner.cancelIfQueued(first)).status, 'running')
+  assert.equal((await runner.cancelIfQueued(second)).status, 'canceled')
+  assert.equal((await settled(store, first)).status, 'succeeded')
+  assert.equal((await store.get(second)).status, 'canceled')
+})
+
+test('start(): a recovered team run is queued under who started it and under its team', async () => {
+  const { store, runner, started, peak } = teamRunner(baseSettings({ concurrency: 4 }), { T: 1 }, 10)
+  const rows = [['a1', 'a', 'T'], ['a2', 'a', 'T'], ['b1', 'b', 'T'], ['c1', 'c', '']].map(([label, person, team], i) => newRun(store, { label, userId: team || person, createdBy: person, teamId: team, createdAt: new Date(i + 1) }))
+  assert.equal(await runner.start(), 4)
+  for (const id of rows) await settled(store, id)
+  assert.equal(peak.team.T, 1)
+  assert.deepEqual(started.filter((l) => l !== 'c1'), ['a1', 'b1', 'a2'], 'fair between the two members after a restart too')
+})
+
+/* ---- what a chat run priced per token holds of a team's money limit while it runs ---- */
+
+test('chatReserve: the price of the input as sent plus the longest answer assumed; unknown without a usable price', () => {
+  const { chatReserve } = require('../src/runner/pricing')
+  const limits = { outputTokens: 8192, tokensPerChar: 1, tokensPerImage: 1500, tokensPerVideo: 20000 }
+  const split = { pricing: { currency: 'CNY', unit: 'per_1m_tokens', table: { input: 10, output: 100 } } }
+  // 5 + 3 characters in, 8192 tokens out.
+  assert.deepEqual(chatReserve(split, { prompt: 'hello', systemPrompt: 'abc' }, limits), { amount: 0.81928, currency: 'CNY', unknown: false, inputTokens: 8, outputTokens: 8192 })
+  // Pictures and a video are a flat number of tokens each.
+  assert.equal(chatReserve(split, { prompt: '', imageUrls: ['a', 'b'], videoUrls: ['v'] }, limits).inputTokens, 23000)
+  // A model that states its own longest answer is taken at its word.
+  assert.equal(chatReserve({ ...split, maxOutputTokens: 1000 }, { prompt: '' }, limits).amount, 0.1)
+  // One price for both directions.
+  assert.equal(chatReserve({ pricing: { currency: 'USD', unit: 'per_1m_tokens', price: 2 } }, { prompt: 'x'.repeat(808) }, limits).amount, 0.018)
+  // Nothing to go by: no price, or a price that is not per token.
+  for (const spec of [null, {}, { pricing: { currency: 'CNY', unit: 'per_image', price: 1 } }, { pricing: { currency: 'CNY', unit: 'per_1m_tokens' } }]) {
+    assert.equal(chatReserve(spec, { prompt: 'hello' }, limits).unknown, true)
+  }
+})

@@ -11,6 +11,9 @@ const { Mixed } = mongoose.Schema.Types
 const modelOverrideSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   modelId: { type: String, required: true, maxlength: 200 },
+  // The account that made it. `userId` is the SPACE it belongs to (an account's personal
+  // space, or a team); rows from before teams have no createdBy and read as userId.
+  createdBy: { type: String, default: '' },
   enabled: { type: Boolean },
   label: { type: String, maxlength: 80 },
   sort: { type: Number },

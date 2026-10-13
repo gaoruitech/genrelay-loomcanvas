@@ -43,11 +43,12 @@ Compose 读取 `docker-compose.yml` 同目录下的 `.env`，并把下面这些�
 | `PORT` | `3000` | 映射到宿主机的端口。容器内服务端固定监听 3000。 |
 | `MAX_UPLOAD_MB` | `50` | 单个上传文件的上限。 |
 | `STORAGE_DRIVER` | `local` | `local` 或 `s3`。只是初始默认值：「设置 → 存储」里保存的配置优先于它。 |
-| `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_FORCE_PATH_STYLE`、`S3_KEY_PREFIX`、`S3_PUBLIC_BASE_URL`、`S3_DELIVERY`、`S3_ACL` | 空 | S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）。见[存储](storage.zh-CN.md#环境变量一览)。 |
+| `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_FORCE_PATH_STYLE`、`S3_KEY_PREFIX`、`S3_PUBLIC_BASE_URL`、`S3_PRESIGN_ENDPOINT`、`S3_DELIVERY`、`S3_ACL` | 空 | S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）。不管 `STORAGE_DRIVER` 是什么、「设置 → 存储」里保存了什么，它们描述的桶都会被读取。见[存储](storage.zh-CN.md#环境变量一览)。 |
 | `TRUST_PROXY` | 空 | 前面反向代理的层数，或代理的地址。 |
 | `CORS_ORIGIN` | 空 | 额外允许跨域调用接口的来源。 |
 | `SSRF_ALLOW_HOSTS` | 空 | 不受内网地址下载拦截限制的主机。 |
 | `BILLING_HOOK` | 空 | 计费钩子模块在容器内的路径。 |
+| `BUDGET_CHAT_RESERVE_OUTPUT_TOKENS` | 空（`8192`） | 只和设了金额上限的团队有关：按 token 计价的对话运行在跑的时候按多少个输出 token 预留额度。见[配置](configuration.zh-CN.md#网络与集成)。 |
 
 下面几个由 Compose 文件写死：`MONGODB_URI=mongodb://mongodb:27017/loomcanvas`、`STORAGE_LOCAL_DIR=/app/data/files`、`WEB_DIST=/app/web-dist`。
 
@@ -192,9 +193,9 @@ Caddy 会自己申请证书，并自动带上 `X-Forwarded-For`。
 **它用在发给上游模型的参考素材上。** 节点把参考图或原视频交给模型时，上游得能读到它。对本地磁盘上的文件：
 
 - `PUBLIC_URL` 是公网地址：上游拿到的是 `<PUBLIC_URL>/files/<key>`。
-- 留空，或者是 `localhost`、内网地址：图片以 base64 的形式直接发给支持这种方式的服务商。必须是地址的输入（高瑞图片模型的参考图、视频编辑的原视频、交给对话模型分析的视频、部分视频模型的参考图）会失败，并提示设置 `PUBLIC_URL` 或改用对象存储。
+- 留空，或者是 `localhost`、`app` 这样的容器名、内网地址：图片以 base64 的形式直接发给支持这种方式的服务商。必须是地址的输入（高瑞图片模型的参考图、视频编辑的原视频、交给对话模型分析的视频、部分视频模型的参考图）会失败，并提示设置 `PUBLIC_URL` 或改用对象存储。
 
-桶里的文件则是直接从桶交给上游：给它的公开地址，或者一个有效期一小时的预签名地址。只有这两个都不是公网可达的地址时，才退回到 `PUBLIC_URL`。所以桶在公网上的话，参考素材不需要 `PUBLIC_URL`。见[存储](storage.zh-CN.md#给上游模型的参考素材)。
+桶里的文件则是直接从桶交给上游：给它的公开地址，或者一个有效期一小时的预签名地址。只有这两个都不是公网可达的地址时，才退回到 `PUBLIC_URL`。Endpoint 只在内网里能用的桶（比如 `http://minio:9000`）就是这种情况：它的地址绝不会交给上游。所以桶在公网上的话，参考素材不需要 `PUBLIC_URL`；桶在内网里的话就需要，除非把桶的 S3 接口发布到公网并设置 `S3_PRESIGN_ENDPOINT`。见[存储](storage.zh-CN.md#给上游模型的参考素材)。
 
 分享链接是浏览器按地址栏里的地址拼出来的，与 `PUBLIC_URL` 无关。
 
@@ -213,7 +214,7 @@ Caddy 会自己申请证书，并自动带上 `X-Forwarded-For`。
   - 设了 `ADMIN_PASSWORD`：账号用这个密码创建，日志里有一行 `[auth] created the super admin account "admin" with the password from ADMIN_PASSWORD`。用 Compose 时推荐这样做：第一次 `docker compose up -d` 之前把它写进 `.env`。
   - 没设：生成一个 16 位的随机密码，在启动日志里**只打印一次**：
 
-    ```
+    ```text
     =======================================================================
     | LoomCanvas created the super admin account.                       |
     |                                                                     |
@@ -240,7 +241,7 @@ Caddy 会自己申请证书，并自动带上 `X-Forwarded-For`。
   ```
 
   已有的账号照常登录。要让某个人注册，就临时打开，等他注册完再关上。`REGISTRATION_OPEN`（`true` 或 `false`，写成别的值服务端拒绝启动）只给这项设置一个初始值：设置从没保存过时才生效，之后就不再理会它，不管当初是由这个变量、设置页还是接口保存的。
-- **管理账号。** 超级管理员可以在「设置 → 用户管理」里停用或启用账号、删除账号、重置密码。停用会让该账号立即退出登录，数据保留。删除会把账号和它名下的一切（包括存储里的文件）一起删掉，无法恢复。
+- **管理账号。** 超级管理员可以在「设置 → 用户管理」里停用或启用账号、删除账号、重置密码。停用会让该账号立即退出登录，数据保留；它还在排队的运行会被取消，它在团队画布上持有的编辑锁立即释放。删除会把账号和它个人空间里的一切（包括存储里的文件）一起删掉，无法恢复；它在团队里做的东西留在团队，账号还是某个团队的团长时不能删除，要先转让团长或删除团队。授权某个账号创建团队（「允许创建团队」）也在这一页；团队本身在「设置 → 团队」里管理，见[配置](configuration.zh-CN.md#团队)。
 - **限制。** `userConcurrency` 和 `userQueueLimit` 限定一个账号最多能占用多少队列。超级管理员在「设置 → 运行限制」里设置（「每个账号的并发上限」「每个账号的排队上限」），见[配置](configuration.zh-CN.md#管理设置)。没有按账号的存储配额。
 
 LoomCanvas 不发任何邮件，所以不需要邮件服务器，邮箱也不做验证。

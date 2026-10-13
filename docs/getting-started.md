@@ -55,7 +55,7 @@ The log line `LoomCanvas server listening on :3000` means the server is ready.
 
 If you left `ADMIN_PASSWORD` empty, the same log contains the generated password, in a block like this. It is printed this one time only:
 
-```
+```text
 =======================================================================
 | LoomCanvas created the super admin account.                       |
 |                                                                     |
@@ -75,6 +75,8 @@ Open <http://localhost:3000>. If you changed `PORT`, use that port; from another
 You see the landing page.
 
 ![Landing page](images/12-landing.png)
+
+Its header has **Features**, **Integration**, **Docs** and **Open source**, the language, the theme, **Source**, **Sign in** and **Sign up**. In a window up to 820px wide the links, the language and the theme move into the menu button at the right end of the header; on a phone **Sign in** is in that menu too, and the header keeps **Sign up** (or **Sign in**, when registration is closed).
 
 1. Click **Sign in** and sign in as the super admin: username `admin` (or your `ADMIN_USERNAME`) and the password from `ADMIN_PASSWORD`, or the generated one from the log. See [Accounts](#accounts).
 2. If you signed in with the generated password, the **Set a new password** screen comes first: enter the generated password, choose your own, and continue. Nothing else is available until this is done.
@@ -118,8 +120,8 @@ The workbench is the start page of the app. The sidebar on the left leads to eve
 ## 6. Run a node
 
 1. Edit the text in the Text node if you want a different prompt.
-2. In the Image generation node, open the model dropdown and choose a model. If the dropdown says "No models available yet", open the **Models** page and check that the provider and its models are enabled.
-3. Click the node's **Run** button.
+2. Click the Image generation node. A composer appears next to it, with the prompt, the model, the parameters and the estimated cost: open the model dropdown and choose a model. If the dropdown says "No models available yet", open the **Models** page and check that the provider and its models are enabled.
+3. Click **Run** in the composer, or the **Run** chip on the node itself.
 
 The badge on the result frame shows the status: queued, running, done or failed.
 
@@ -138,7 +140,7 @@ The badge on the result frame shows the status: queued, running, done or failed.
 
 Signing in is always required. There are two kinds of account: the super admin, which the server creates, and ordinary users, who register in the app.
 
-**The super admin is built in.** At start-up the server creates the super admin account if there is none. Nobody registers as it, so there is nothing you have to do before other people can reach the instance. There is exactly one super admin. Besides working on its own canvases like everybody else, it manages the site: whether registration is open, storage, run limits, the site's name, logo and default language, and the list of accounts. These are the sections of **Settings** that only the super admin sees.
+**The super admin is built in.** At start-up the server creates the super admin account if there is none. Nobody registers as it, so there is nothing you have to do before other people can reach the instance. There is exactly one super admin. Besides working on its own canvases like everybody else, it manages the site: whether registration is open, storage, run limits, the site's name, logo and default language, the list of accounts, and who may create teams. These are the sections of **Settings** that only the super admin sees.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -148,7 +150,7 @@ Signing in is always required. There are two kinds of account: the super admin, 
 
 These variables are read only when the super admin is created. On every later start they are ignored, so changing `ADMIN_PASSWORD` afterwards does nothing; a lost super admin password is reset from the command line (see **Forgotten password** below). With Docker Compose, set `ADMIN_PASSWORD` in `.env` before the first `docker compose up -d`; otherwise read the generated password with `docker compose logs app`. Without Docker, the block is printed in the terminal where `npm start` runs. More in [Deployment](deployment.md#accounts).
 
-**Other people register themselves.** Registration only ever creates ordinary users. Each account gets its own private space: its own canvases, assets, brand kits, runs and usage, and its own providers, API keys, models and prices. Nothing is shared between accounts, and there are no teams. To hand a canvas to someone else, publish a share link; the other account can copy it.
+**Other people register themselves.** Registration only ever creates ordinary users. Each account gets its own **personal space**: its own canvases, assets, brand kits, runs and usage, and its own providers, API keys, models and prices. Nothing is shared between personal spaces. For several people to work with the same canvases, assets and keys, create a team, see [Working as a team](#working-as-a-team); to just hand one canvas to someone else, publish a share link, and the other account can copy it.
 
 | Field | Rules |
 | --- | --- |
@@ -162,8 +164,8 @@ You sign in with the username or the email. A session lasts 12 hours, or 30 days
 
 **What the super admin can and cannot do.**
 
-- Can, under **Settings → Users**: disable or enable an account, delete an account with everything it owns, reset an account's password. Under **Settings → Site**: close and open registration. And change the other site settings.
-- Cannot: read another account's canvases, files or API keys. The list of accounts shows how many canvases and runs each account has, never their content.
+- Can, under **Settings → Users**: disable or enable an account, delete an account with its personal space, reset an account's password, authorise an account to create teams. Under **Settings → Site**: close and open registration. Under **Settings → Teams**: decide requests to create teams, change a team's limits, suspend and resume a team. And change the other site settings.
+- Cannot: read another account's canvases, files or API keys, or enter a team it is not a member of. The lists of accounts and of teams show numbers only (canvases, runs, members), never content.
 
 **Your own account.** **Settings → Account & security** (also in the menu behind your name in the top bar) is where you change your username, email and password, and where you see your sign-in sessions and sign any of them out. Changing the password signs the account out on every other device.
 
@@ -172,6 +174,25 @@ You sign in with the username or the email. A session lasts 12 hours, or 30 days
 **Coming from an earlier version?** `ACCESS_PASSWORD` is no longer used; remove it from `.env`. At the first start of the new version the server creates the super admin and hands it the data that is already there: set `ADMIN_PASSWORD` first (or read the generated password from the log), sign in as the super admin, and everything is in place. See [Deployment](deployment.md#upgrading-from-a-version-without-accounts) before you start the new version.
 
 More on what accounts do and do not protect: [Security](security.md#accounts).
+
+## Working as a team
+
+A team is one space that several accounts share: canvases, assets, providers and keys, and run history are kept together, with three roles (owner, admin, member). One person edits a canvas at a time; it is not real-time collaboration. While no account is authorised to create teams, the instance behaves as it does without teams.
+
+![The space switcher](images/16-space-switcher.png)
+
+From nothing to a working team in four steps:
+
+1. **Authorise.** Creating a team needs the super admin's authorisation. The super admin can always create one. To authorise somebody else, choose **Allow creating teams** in the **More** menu of their row under **Settings → Users**, or approve the request they sent, under **Requests to create teams** in **Settings → Teams** (they send it with **Ask to create a team** in the space switcher).
+2. **Create.** An authorised account opens the space switcher to the right of the logo, chooses **Create a team** and enters a name. The creator is the owner, and the page switches to the team space.
+3. **Set up a provider.** A team space only uses the team's own providers; keys of a personal space do not come along. A new team has no provider, so the **Add a provider** page of step 4 comes first: enter the key the team will use. You can skip it and set it up later on the team's **Models** page (the three steps on Team home lead there). Members can use the models right away and never see the key.
+4. **Invite members.** Under **Invite links** on **Team → Members**, choose **New link** and send the link to your colleagues. They sign in, open it, confirm, and join as members. No email is sent.
+
+![Team home](images/17-team-home.png)
+
+**First steps for the super admin.** The site settings for teams are under **Settings → Teams → Team feature**: teams one person may create (3 by default), members per team (50 by default), days team activity is kept (365 by default). How many runs of one team may execute at once is under **Settings → Run limits** (**Default team concurrency limit**, 4 by default). See [Configuration](configuration.md#teams). The super admin manages that teams exist and how large they are, and sees nothing of what is inside them.
+
+Roles, visibility, taking turns, monthly limits, leaving and dissolving are in the [Teams chapter of the user guide](user-guide.md#teams).
 
 ## Next steps
 

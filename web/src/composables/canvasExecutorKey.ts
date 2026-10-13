@@ -2,6 +2,7 @@ import type { InjectionKey, Ref } from 'vue'
 import type { ImageRef } from '@/composables/canvasImageRefs'
 import type { RunOptions } from '@/composables/useCanvasExecutor'
 import type { BrandKit, BrandKitEffect } from '@/composables/useBrandKits'
+import type { TeamLimits } from '@/types'
 
 export interface CanvasExecutorApi {
   running: Ref<boolean>
@@ -19,6 +20,11 @@ export interface CanvasExecutorApi {
   /** 该节点现在运行的话，品牌包会往请求里加什么（与真正发出去的同一份推导）；不套用返回 null */
   brandKitEffect: (nodeId: string) => { kit: BrandKit; effect: BrandKitEffect } | null
   resumeIncompleteTasks: () => void
+  /**
+   * 上限的答案换了：把各节点上记着的「被每月上限拦下」对一遍 —— 不成立的撤掉（节点回到运行之前的样子），
+   * 还成立的把数字换成现在的。幂等，谁看到新答案都可以调。宿主自己的执行器可以没有。
+   */
+  syncRefusals?: (limits: TeamLimits | null | undefined) => void
 }
 
 export const CANVAS_EXECUTOR_KEY: InjectionKey<CanvasExecutorApi> = Symbol('canvas-executor')

@@ -4,9 +4,13 @@
       ref="btn"
       class="chip nodrag"
       type="button"
-      :title="title"
+      v-tip="open ? '' : title"
+      :aria-haspopup="$slots.menu ? 'dialog' : 'listbox'"
+      :aria-expanded="open"
+      :aria-activedescendant="open && hi >= 0 ? `${uid}-o${hi}` : undefined"
       @click.stop="toggle"
       @mousedown.stop
+      @keydown="onKey"
     >
       <span v-if="badge" class="lc-bd chip-badge" :class="badgeKind">{{ badge }}</span>
       <span v-else-if="label" class="chip-leading">{{ label }}</span>
@@ -23,16 +27,23 @@
         ref="menuEl"
         class="lc-menu chip-menu nodrag nowheel"
         :style="menuStyle"
+        :role="$slots.menu ? 'dialog' : 'listbox'"
+        :aria-label="title || label || undefined"
         @mousedown.stop
         @wheel.stop
+        @keydown="onMenuKey"
       >
         <slot name="menu" :close="close">
           <div
-            v-for="o in (options || [])"
+            v-for="(o, i) in (options || [])"
+            :id="`${uid}-o${i}`"
             :key="String(o.value)"
             class="lc-menu-item chip-item"
-            :class="{ active: String(o.value) === String(modelValue), rich: !!(o.desc || o.tag || o.icon) }"
+            role="option"
+            :aria-selected="String(o.value) === String(modelValue)"
+            :class="{ active: String(o.value) === String(modelValue), rich: !!(o.desc || o.tag || o.icon), hi: i === hi }"
             @click.stop="select(o.value)"
+            @mousemove="hi = i"
           >
             <span v-if="o.icon" class="chip-item-icon" v-html="o.icon" />
             <span class="chip-item-main">
@@ -54,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, useSlots, watch } from 'vue'
 import { useFloatingMenu } from '@/composables/useFloatingMenu'
 
 interface Option {
@@ -99,6 +110,55 @@ const shownValue = computed(() => {
 function select(v: string | number) {
   emit('update:modelValue', v)
   close()
+}
+
+/* ── 键盘 ──
+   以前只有鼠标能用：按钮能用回车打开，可里面的选项是一排不接焦点的 div，键盘走不进去，Esc 也不归它（会直接把
+   外面的输入条收掉）。现在：
+     选项列表  焦点留在按钮上，↑ ↓ Home End 挑，回车 / 空格选中，Esc 收起（只收这一层）
+     自定义弹层（参数那一颗：里面是真的按钮）  ↓ 或 Tab 把焦点送进弹层，在里面 Tab 走到头就收起、焦点回到按钮；Esc 同上 */
+const slots = useSlots()
+const uid = 'cs' + Math.random().toString(36).slice(2, 8)
+const hi = ref(-1)
+watch(open, (v) => {
+  if (!v) { hi.value = -1; return }
+  hi.value = (props.options || []).findIndex(o => String(o.value) === String(props.modelValue))
+})
+const inner = () => Array.from(menuEl.value?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])
+function scrollHi() {
+  void nextTick(() => menuEl.value?.querySelector('.chip-item.hi')?.scrollIntoView({ block: 'nearest' }))
+}
+function onKey(e: KeyboardEvent) {
+  if (e.isComposing) return
+  if (!open.value) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); toggle() }
+    return
+  }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return }
+  if (slots.menu) {
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+      const first = inner()[0]
+      if (first) { e.preventDefault(); e.stopPropagation(); first.focus() }
+    } else if (e.key === 'Tab') close()
+    return
+  }
+  const list = props.options || []
+  if (e.key === 'Tab') { close(); return }
+  if (!list.length) return
+  const move = (to: number) => { e.preventDefault(); e.stopPropagation(); hi.value = Math.max(0, Math.min(list.length - 1, to)); scrollHi() }
+  if (e.key === 'ArrowDown') move(hi.value + 1)
+  else if (e.key === 'ArrowUp') move(hi.value < 0 ? list.length - 1 : hi.value - 1)
+  else if (e.key === 'Home') move(0)
+  else if (e.key === 'End') move(list.length - 1)
+  else if ((e.key === 'Enter' || e.key === ' ') && hi.value >= 0) { e.preventDefault(); e.stopPropagation(); select(list[hi.value].value) }
+}
+/** 焦点在自定义弹层里：Esc 收起并把焦点还给按钮；Tab 走出两头也一样（弹层挂在页面末尾，不拦的话焦点会掉到页面外） */
+function onMenuKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.value?.focus(); return }
+  if (e.key !== 'Tab') return
+  const list = inner()
+  const at = list.indexOf(document.activeElement as HTMLElement)
+  if ((e.shiftKey && at <= 0) || (!e.shiftKey && at === list.length - 1)) { e.preventDefault(); close(); btn.value?.focus() }
 }
 </script>
 
@@ -162,6 +222,9 @@ function select(v: string | number) {
    面板与菜单项的基础外观在 base.css 的 .lc-menu / .lc-menu-item，与表单下拉共用 */
 .chip-menu { min-width: 150px; max-height: calc(62 * var(--lc-vh)); max-width: calc(calc(100 * var(--lc-vw)) - 16px); }
 .chip-item { white-space: nowrap; }
+/* 键盘挑到的那一项（焦点留在按钮上，见 onKey）：和鼠标悬停同一个样子 */
+.chip-item.hi { background: rgb(var(--c-film) / .12); color: var(--text); }
+.chip-item.hi.active { background: rgb(var(--c-cyan) / .18); }
 
 /* 富行：图标 + 标题 + 描述 + 标签（模型下拉） */
 .chip-item.rich { gap: 10px; padding: 8px 10px; min-width: 232px; }

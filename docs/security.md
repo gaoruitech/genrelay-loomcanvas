@@ -6,7 +6,7 @@ How to run a LoomCanvas instance safely, and what it does and does not protect. 
 
 ## The model in one paragraph
 
-LoomCanvas has **accounts**, and signing in is always required. The super admin account is built in: the server creates it at the first start, and nobody registers as it. Anyone who can reach the instance can register an ordinary account of their own until the super admin closes registration. Each account sees only its own canvases, files, providers, API keys and usage. The super admin also manages the site (registration, storage, run limits, the site's name, logo and default language, the user list) but cannot read other accounts' data through the API. There are no teams and no shared workspaces. Accounts are kept apart by the API, not by a hardened boundary: they share one process, one database, one storage area and one queue. Generated and uploaded files are public to anyone who has their URL. Design your deployment around that.
+LoomCanvas has **accounts**, and signing in is always required. The super admin account is built in: the server creates it at the first start, and nobody registers as it. Anyone who can reach the instance can register an ordinary account of their own until the super admin closes registration. In its personal space each account sees only its own canvases, files, providers, API keys and usage. Several accounts can share a **team** space: with roles, with members who use the team's key and never see it, and with one person editing a canvas at a time (see [Teams](#teams)). The super admin also manages the site (registration, storage, run limits, the site's name, logo and default language, the user list, the list of teams) but cannot read other accounts' data through the API, or enter a team without being a member. Accounts and teams are kept apart by the API, not by a hardened boundary: they share one process, one database, one storage area and one queue. Generated and uploaded files are public to anyone who has their URL. Design your deployment around that.
 
 ## Checklist
 
@@ -32,7 +32,7 @@ It has no part in signing in. Sessions are random tokens kept in the database (s
 Rules:
 
 - At least 16 characters; use 32 random bytes or more. The server refuses to start without it and never generates one.
-- Keep it stable. If it changes, saved provider keys cannot be decrypted, and every account has to enter its own keys again. A saved S3 secret cannot be decrypted either: the server logs it, writes new files to what the environment says (the local disk by default) and the storage settings ask the super admin for the secret again; until then the files in that bucket do not load.
+- Keep it stable. If it changes, saved provider keys cannot be decrypted, and every account has to enter its own keys again. Each provider is then marked (`keyUnreadable`) and refuses runs with a message that says so. A saved S3 secret cannot be decrypted either: the server still starts and logs it, the storage settings ask the super admin for the secret again, and until then the files in that bucket do not load and, when it is the bucket in use, new files are refused. They are deliberately not written somewhere else instead. See [Storage](storage.md#backups).
 - It lives in `.env`. Protect that file, keep it out of version control, and back it up together with the database. A database backup without the key cannot restore provider keys. A database backup **with** the key reveals them.
 
 ## Accounts
@@ -41,23 +41,23 @@ Every API endpoint except the public ones ([below](#what-is-public)) requires a 
 
 ### Roles
 
-There are two roles and nothing in between.
+On the site there are two roles and nothing in between. (Inside a team there are three more, which are about the team and not about the site: see [Teams](#teams).)
 
 | Role | Who | What it can do |
 | --- | --- | --- |
-| `owner` (the super admin) | Created by the server at the first start (the `ADMIN_*` variables). There is exactly one. | Everything a user can, on its own data. In addition it manages the site, in the sections of **Settings** that only the super admin sees: storage, run limits (concurrency, timeouts, retries, retention), the site's name, logo and default language, whether registration is open, and the user list (disable or enable an account, delete it, reset its password). |
-| `user` | Every other account: everyone who registers. | Works in its own space: canvases, share links it published, assets, brand kits, runs, usage records, saved templates, and its own providers, API keys, custom models and prices. |
+| `owner` (the super admin) | Created by the server at the first start (the `ADMIN_*` variables). There is exactly one. | Everything a user can, on its own data. In addition it manages the site, in the sections of **Settings** that only the super admin sees: storage, run limits (concurrency, timeouts, retries, retention), the site's name, logo and default language, whether registration is open, the user list (disable or enable an account, delete it, reset its password, authorise it to create teams), and the list of teams (see [Teams](#teams)). |
+| `user` | Every other account: everyone who registers. | Works in its own personal space: canvases, share links it published, assets, brand kits, runs, usage records, saved templates, and its own providers, API keys, custom models and prices - and in the teams it is a member of. |
 
-The super admin role is about managing the site, not about reading data. The super admin's requests are scoped to the super admin's own data like anybody else's. The user list shows, per account, the username, the email, the state and two numbers (canvases and runs), never content. The super admin cannot disable, delete or reset the super admin account from the user list.
+The super admin role is about managing the site, not about reading data. The super admin's requests are scoped to the super admin's own data like anybody else's. The user list shows, per account, the username, the email, the state, how many teams it is in and owns, and two numbers (canvases and runs of its personal space), never content. The super admin cannot disable, delete or reset the super admin account from the user list.
 
 The super admin is created at start-up when no account with the `owner` role exists, from `ADMIN_USERNAME` (default `admin`), `ADMIN_PASSWORD` and `ADMIN_EMAIL`. These are read at that moment only: afterwards they are ignored, and an existing super admin is never overwritten from the environment. Registration cannot produce a super admin, so there is no race for the role, also when several processes start at once. See [Deployment](deployment.md#accounts).
 
 ### What is separated, and what is not
 
-- Every query the API makes is scoped to the calling account. Lists never mix accounts. Another account's canvas, run, provider or asset addressed by its id answers 404, the same as an id that does not exist.
-- Provider keys are per account. A run is executed with the provider and key of the account it belongs to, also when it is resumed after a restart.
+- Every query the API makes is scoped to one space: the calling account's personal space, or a team the caller is checked to be a member of ([Teams](#teams)). Lists never mix spaces. Another account's canvas, run, provider or asset addressed by its id answers 404, the same as an id that does not exist.
+- Provider keys are per space: an account's own in its personal space, the team's in a team. A run is executed with the provider and key of the space it belongs to, also when it is resumed after a restart.
 - Built-in templates, built-in prompt snippets and the read-only stock asset library belong to the site and are shown to everyone.
-- **Share links and file URLs cross accounts on purpose.** Whoever has a share link can read its snapshot without signing in, and a signed-in account can copy it into its own canvases. `/files/<key>` is public to whoever has the URL. Keys of new files contain the account's id (`uploads/<account id>/…`) so that an account's files can be removed with it; that segment is not an access check.
+- **Share links and file URLs cross accounts on purpose.** Whoever has a share link can read its snapshot without signing in, and a signed-in account can copy it into its own canvases. `/files/<key>` is public to whoever has the URL. Keys of new files contain the id of the space they belong to - the account's id (`uploads/<account id>/…`), or the team's for a team's files - so that an account's or a team's files can be removed with it; that segment is not an access check.
 - **This is not a hardened multi-tenant boundary.** All accounts share one process, one database, one storage area and one queue. Whoever can read the database or the server's disk can read everything; provider keys stay encrypted under `SECRET_KEY`.
 
 ### Sessions
@@ -113,15 +113,49 @@ What an open registration means: every account can use the instance's storage an
 
 **Registration tells whether a username or an email is taken.** It has to: a second account with the same name cannot be created, and since no email is ever sent there is no way to answer "check your inbox" instead. So anyone who can reach an open registration form can test whether an address has an account here, at most 20 times per client address per hour. Changing one's own username or email gives the same two answers, which is why it is limited to 20 changes per account per hour. Sign-in never tells (see [Passwords](#passwords)). If it matters that nobody can find out who has an account, close registration.
 
-To take access away from one person, the super admin disables or deletes that account (**Settings → Users**). Disabling signs it out at once and keeps its data; deleting removes the account with its canvases, share links, assets, providers and keys, usage records and stored files, and cannot be undone.
+To take access away from one person, the super admin disables or deletes that account (**Settings → Users**). Disabling signs it out at once and keeps its data: the runs it had waiting in a queue are canceled, and the edit locks it held on team canvases are released at once, so nobody waits for them to expire. Deleting removes the account with the canvases, share links, assets, providers and keys, usage records and stored files of its personal space, and cannot be undone. What it made in teams stays with those teams; an account that still owns a team cannot be deleted, and the interface lists the teams concerned.
+
+### Teams
+
+A team is a space several accounts share (see [the API reference](api.md#spaces-and-teams)). What that adds to the picture above:
+
+**Roles inside a team.** Three, separate from the two site roles: the **owner** (one per team), **admins** and **members**. What each may do is one table, printed in [the API reference](api.md#the-permission-matrix) from the table the server checks against. In short: members work - canvases, assets, runs with the team's keys; admins also manage members, invite links, providers and keys, brand kits; the owner alone decides about money (monthly limits), about who sees what (team settings), and about the team itself (handing it over, dissolving it). The owner sees every canvas of the team, "only me" ones included: the team's keys paid for them, and they stay when their creator leaves.
+
+**Creating a team needs the super admin's authorisation**, per account, granted with **Allow creating teams** in the account's row under **Settings → Users** (and taken back with **Take back team creation**), or by approving the account's request under **Requests to create teams** in **Settings → Teams**. How many teams an authorised account may create and how many members a team may have are site settings (`teamMaxPerUser`, default 3; `teamMaxMembers`, default 50).
+
+**What the super admin can and cannot do with a team.** Can: see that it exists, its name, its owner, how many members, canvases and runs it has; set its member and concurrency ceilings; suspend and reopen it; restore it after its owner dissolved it; remove it for good once it is closed; and, when the owner's account is disabled or gone, name another member the owner (for which the member names and roles are shown). Cannot: enter a team's space, read its canvases, prompts, assets, usage records or keys. A request of the super admin that names a team they are not a member of gets the same 404 as anybody else's. "The super admin manages the site, not other people's data" holds for teams as it does for accounts. In the interface all of this is under **Settings → Teams**, a page of names and numbers only.
+
+**How a team is kept apart.**
+
+- Every request that touches a team's content says which space it acts in (the `X-Space` header, or the team id in the path), and the server looks the caller's membership up on that very request. It is not cached in the session: **somebody who is removed from a team is refused on their next request**, with the session they already have.
+- A team the caller is not in answers exactly like a team that does not exist. Inside a space, an id that belongs to another space answers 404 like an id that never existed - for outsiders, for members of that team acting elsewhere, and for the super admin. Lists never mix spaces.
+- Inside a team, a canvas set to "only me" is a 404 to everybody but its creator and the owner.
+- What is said above about the shared process, database, storage and queue holds for teams too, and so does **what is public**: a file URL is public to whoever has it, and a public share link shows its snapshot to whoever has it. A team's "private" is about lists and the API, not about file URLs.
+
+**The team's keys.**
+
+- Only the owner and admins enter, replace and test a team's provider keys. They are shown what a personal owner is shown: that a key is set and its last four characters - never the key.
+- **Members use the keys and never see them**: no endpoint returns a member the key, its ciphertext, its last characters or the address it is sent to. Inside a team only the team's providers exist; a member's personal keys are never used there, and the team's keys are never used for anybody's personal space. On the team's **Models** page a member sees each provider's name, whether it is available, **Set up by the team** and who maintains it, plus the models and prices; the page is read-only for members, and the result of a connection test (which may quote the upstream) is not shown to them either.
+- So when a **member** leaves, no key needs replacing. When an **admin** leaves or is removed, they knew the keys they entered: the removal answers with the providers concerned, the interface lists them once the person is removed, and the owner should replace those keys at the upstream. LoomCanvas cannot do that part.
+- A stored key is only ever sent to the address it was saved with ([below](#keys-at-rest)). Without that, an admin could point a provider at their own server and collect a key somebody else entered.
+
+**Invite links.** An invite link is the ticket in: whoever holds it joins the team as a member, without anybody approving. It is valid for 7 days and 10 uses unless its creator chose otherwise (the API takes 1 to 90 days and up to 1000 uses, or unlimited; the interface offers 1, 7 or 30 days and 1, 10 or unlimited uses), and can be revoked at any time. Treat it like a password: send it to the person, not to a group chat. Links created by somebody who is later removed from the team stop working. A link is not a way around closed registration: without an account, and with registration closed, it cannot be used, and the join page says so instead of offering to register. The page behind a link shows the team's name and avatar, its owner's and the inviter's names, its size, when the link expires and how many uses it has left to anybody who has the link - nothing of what is in the team. Only the SHA-256 of a link's token and an encrypted copy (so managers can copy the link again) are stored.
+
+**One editor at a time.** There is no real-time collaboration. A team canvas has an edit lock: one open editor (one browser tab) holds it at a time - a second tab of the same account is read-only like anybody else's. It expires 36 seconds after the editor last renewed it (the editor renews every 12 seconds), is given back at once when the tab is closed, and can be taken over by whoever may edit the canvas. Every save names the revision it started from and is refused when the canvas has moved on. Nothing is merged, and nothing is overwritten unseen. Giving the lock back from a closing page is the one team endpoint that works without a session ([What is public](#what-is-public)): it takes a token that only the holder of that lock was given, and frees that lock and nothing else.
+
+**Monthly limits** (runs, and estimated money, per member and per team) are enforced by the server when a run is submitted. "Used" is runs that succeeded plus runs in progress; failed and canceled runs give their place back. Their boundaries: the money is an **estimate** from the prices the team entered, not the upstream's bill; they count runs started through this instance, not what somebody does with a key elsewhere (members have no key to do that with). The check is exact, also for submissions that arrive at the same moment: admitting a run is one atomic update in the database. A chat run priced per token, whose cost is known only when it finishes, holds a reserve for the longest answer assumed while it runs, so a money limit is not passed by the chat runs in flight - and such a run can be refused although its real cost would have fitted.
+
+**The activity log.** Each team has a log of management actions: members joining, leaving and being removed, role changes, invite links, providers added or removed, keys and addresses changed, prices, limits, canvases deleted, restored, taken over or overwritten, share links, settings, dissolving and restoring. The owner and admins read it; nobody can change or delete an entry; entries older than `teamActivityDays` (default 365) are dropped. It holds no key, no address and no prompt. It is **not** an audit trail of the site: what the super admin does outside a team (disabling an account, changing a site setting) is not recorded anywhere, and neither is everyday work inside a team (saving, running).
+
+**Closing a team.** Dissolving closes it for everybody at once and deletes nothing for 7 days, during which its owner or the super admin can restore it; after that everything in it, files included, is removed and cannot be brought back. An account that owns a team cannot be deleted until the team is handed over or removed. A member whose account is deleted leaves their teams; what they made there stays with the team.
 
 ### Its limits
 
 - **No email verification.** An email address only has to look like one and be unused. Nothing is sent to it.
 - **No two-factor authentication and no single sign-on.**
-- **No audit trail.** Runs are recorded per account, but not who changed a setting or who was disabled when.
-- **No per-account storage quota or spending limit.** Use a [billing hook](billing-hook.md); it is told which account a run belongs to.
-- **No teams.** Two accounts cannot work on the same canvas. A share link gives the other account a copy.
+- **No audit trail of the site.** Runs are recorded per account, and each team has a log of its own management actions ([Teams](#teams)); but nothing records who changed a site setting or who was disabled when.
+- **No storage quota, and no spending limit outside teams.** A team has monthly limits in runs and in estimated money; a personal space has none. For anything else use a [billing hook](billing-hook.md); it is told which account started a run and in which space.
+- **No real-time collaboration.** Members of a team can work on the same canvas, one at a time; nothing is edited simultaneously or merged. Outside a team, a share link gives the other account a copy.
 - Usernames and email addresses are stored in plain text in the database.
 
 An extra authentication layer in front of the instance (a proxy, a VPN) protects `/api` and the pages, but files and share links are meant to stay reachable (see below).
@@ -145,6 +179,8 @@ These work without signing in:
 | `GET /api/bootstrap` (also answered at `/api/app/bootstrap`) | The sign-in and registration pages need it. | To an anonymous caller it reveals the site name, logo URL, default language, the upload size limit, the version, and whether registration is open (`auth.registrationOpen`). Nothing about anybody's data, and not the super admin's username. |
 | `POST /api/auth/register` | Creating an account. | Rate limit. Refused with `auth.registration_closed` when the super admin has closed registration. |
 | `POST /api/auth/login` | Signing in. | Rate limits. |
+| `GET /api/team-invitations/<token>` and the `/join/<token>` page | Somebody invited to a team has to see what they are joining, before they have signed in. | A 256-bit random token; expiry; a limit on uses; revocation. Shows the team's name, avatar, size, its owner's and inviter's names, when the link expires and how many uses it has left - nothing of what is in the team. Joining itself needs an account. |
+| `POST /api/workflow/<id>/lock/release` | Somebody who closes a tab has to give the edit lock of a team canvas back at once, and a closing page cannot send its session token. | The request has to carry the lock's release token: 256 bits, given to the holder only, good for that one lock and worthless once the lock changes hands. It frees that lock and reads or changes nothing else; a token that does not match is answered exactly like "nothing to release". More than 120 calls a minute from one address are answered without a database lookup. |
 
 Consequences:
 
@@ -175,8 +211,8 @@ The server downloads URLs on behalf of users in several places: "fetch from URL"
 Three things are deliberately **not** behind the guard:
 
 - **A provider's base URL.** It defaults to the vendor's official address. It can be changed in the provider's advanced settings, and pointing it at a server on your own network that speaks the same API is legitimate. Every account has its own providers, so every account can make the server send requests to internal addresses. With registration open, that is anyone who can reach the instance. This is one more reason to close registration unless you trust who registers.
-- **The S3 endpoint and the public base URL of the storage settings.** They are set by the super admin under **Settings → Storage** (or by the operator in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. Only the super admin can do this. The guard for URLs that users and upstreams supply is unchanged.
-- **Hosts in `SSRF_ALLOW_HOSTS`.** Use it only when an upstream on your own network returns result links that point at itself. Every host you list becomes reachable for all the download features above. List exact host names or IPs, as few as possible, and never in a deployment where people you do not trust have accounts.
+- **The S3 endpoint and the public base URL of the storage settings.** They are set by the super admin under **Settings → Storage** (or by the operator in the environment), and a MinIO on your own network is a legitimate target. The server sends its storage requests to the endpoint, and the connection test makes it contact both addresses with whatever was typed into the form. Only the super admin can do this. The guard for URLs that users and upstreams supply is unchanged. (The endpoint for signed URLs is never contacted by the server at all.) An internal endpoint does not leak to upstream models: the address of a bucket that is not reachable from the internet is never handed to one, see [Storage](storage.md#what-counts-as-reachable).
+- **Hosts in `SSRF_ALLOW_HOSTS`.** Use it only when an upstream on your own network returns result links that point at itself. Every host you list becomes reachable for all the download features above. List exact host names or IPs, as few as possible, and never in a deployment where people you do not trust have accounts. The list only concerns what the server downloads; it does not make a host count as reachable for upstream models.
 
 ## Upload validation
 
@@ -184,7 +220,7 @@ Three things are deliberately **not** behind the guard:
 - Images are opened to read their dimensions; a file that claims to be an image but cannot be decoded is rejected. Images above 120 megapixels are refused.
 - The storage key and the extension are chosen by the server. Nothing from the upload's name ends up in a path.
 - Size is capped by `MAX_UPLOAD_MB`. Uploads are held in memory, so the cap also bounds memory use per upload.
-- Request bodies of protected endpoints are parsed only after authentication. The account endpoints (`/api/auth`, registration and sign-in included) and the share-link endpoints accept at most 64 KB of JSON; a canvas save 6 MB; everything else 1 MB.
+- Request bodies of protected endpoints are parsed only after authentication. The account endpoints (`/api/auth`, registration and sign-in included), the share-link endpoints and the invite-link endpoints (`/api/team-invitations`) accept at most 64 KB of JSON; a canvas save 6 MB; everything else 1 MB.
 - A zip export holds at most 100 items, 1 GiB per item and 4 GiB in total. Items whose size no longer fits are replaced by a `NN-<type>-skipped.txt` note in the archive.
 - One account may have at most `userQueueLimit` unfinished runs (queued, running or archiving; 200 by default), and the instance as a whole 500; further ones are refused with `run.queue_full` (HTTP 429).
 - Malformed requests (bad percent-encoding in the path, an unsupported charset…) are answered with a 4xx and the code `common.bad_request`, not a 500. Unknown settings keys, including names such as `constructor` or `__proto__`, are rejected with `settings.unknown_key`.
@@ -198,6 +234,7 @@ There is no malware scanning and no content inspection beyond the format check.
 | Account passwords | scrypt hashes with a per-account salt. Never returned by any endpoint. |
 | Session tokens | Only their SHA-256. A token cannot be recovered from the database. |
 | Usernames, email addresses, the user agent and client address of each session | Plain, in MongoDB. |
+| Team invite links | The SHA-256 of the token, and the token encrypted with AES-256-GCM so the team's managers can copy the link again. |
 | Provider API keys | Encrypted with AES-256-GCM. Never returned by any endpoint; the interface shows whether a key is set and its last four characters. |
 | The S3 secret access key saved under **Settings → Storage**, and those of earlier buckets | Encrypted the same way. Never returned; the interface shows that one is set and its last four characters. The endpoint, bucket and Access Key ID are stored and returned in plain. |
 | Canvases, prompts, settings, usage records | Plain, in MongoDB. |
@@ -206,6 +243,7 @@ There is no malware scanning and no content inspection beyond the format check.
 
 Other things done to keep keys from leaking:
 
+- **A stored key is only ever sent to the address it was saved with.** Changing a provider's address while a key is stored - in a personal space or in a team - needs that key again in the same request, or the stored key has to be given up; the vendor, which also decides where a key goes, cannot be changed at all; and "Test connection" tests the provider as it is saved, whatever the request says. The same goes for the storage settings: a saved secret access key is reused only while the endpoint and the access key id are the ones it was saved with. In the interface: changing **Base URL** on a provider that has a saved key makes the form ask for the API key again, and changing the endpoint or the Access Key ID under **Settings → Storage** makes it ask for the secret again. (Before this rule, a request could keep a stored key and move the provider to an address of its own choosing.)
 - Requests to an upstream do not follow redirects, so the `Authorization` header cannot be carried to another host.
 - If an upstream echoes the credentials of the request in an error message, they are replaced by `***` before the message is shown or stored.
 - If an upstream quotes a presigned storage URL back in an error, the values of its `X-Amz-*` query parameters (the signature among them) are replaced by `***` before the error is shown or stored.
@@ -227,13 +265,13 @@ The stock Compose file runs MongoDB without authentication, reachable only from 
 ## What LoomCanvas does not do
 
 - **Content moderation.** Prompts and results are not screened. Whatever filtering exists is the upstream's. You are responsible for what you generate and publish, and for complying with your provider's terms and local law.
-- **Hardened multi-tenant isolation.** Accounts are kept apart by the API on every query, but they share one process, one database, one storage area and one queue, and file URLs and share links are public. It is not a base for a service for mutually untrusted tenants without your own isolation layer.
-- **Teams, shared workspaces, roles other than super admin and user.**
+- **Hardened multi-tenant isolation.** Accounts and teams are kept apart by the API on every query, but they share one process, one database, one storage area and one queue, and file URLs and share links are public. It is not a base for a service for mutually untrusted tenants without your own isolation layer.
+- **Real-time collaboration, comments, presence.** Teams share a space and take turns on a canvas; see [Teams](#teams). There is no per-member choice of models and no per-member key.
 - **Email verification, password reset by email, single sign-on, two-factor authentication.**
-- **Audit logging.**
+- **Audit logging of the site.** Each team has an activity log of its own management actions; the site has none.
 - **Private or expiring file URLs.** A bucket can be private, but `/files/<key>` in front of it is public and does not expire.
 - **Encryption of files or of the database** (beyond provider keys and the storage secret). Encryption at rest in a bucket is the storage vendor's feature.
-- **Spending limits and storage quotas.** An account can start as many runs as its queue allows (`userQueueLimit`, 200 unfinished by default) and store as many files as the disk or bucket holds. Each account spends at the providers it added itself. To cap spending, use a [billing hook](billing-hook.md), which is told the account of every run, and the limits your upstream provider offers.
+- **Storage quotas, and spending limits outside teams.** An account can start as many runs as its queue allows (`userQueueLimit`, 200 unfinished by default) and store as many files as the disk or bucket holds. In its personal space each account spends at the providers it added itself. A team can cap its members and itself per month, in runs and in estimated money - an estimate from the prices the team entered, not the upstream's bill. For anything else use a [billing hook](billing-hook.md), which is told the account and the space of every run, and the limits your upstream provider offers.
 - **Protection against a malicious upstream**, beyond the download guard and content checks. Whatever you send to a provider (prompts, reference media) is in that provider's hands.
 
 ## Related

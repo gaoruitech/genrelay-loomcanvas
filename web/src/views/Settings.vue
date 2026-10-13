@@ -1,10 +1,10 @@
 <template>
-  <div ref="pageEl" class="lc-page">
+  <div ref="pageEl" class="lc-page set-page" :style="barSpace ? { scrollPaddingBottom: (barSpace + 12) + 'px' } : undefined">
     <div class="lc-page-inner">
       <div class="lc-page-head">
         <div class="lc-sp">
           <h1 class="lc-ph1">{{ t('settings.title') }}</h1>
-          <p class="lc-ph-sub">{{ app.isOwner ? t('settings.subOwner') : t('settings.sub') }}</p>
+          <p class="lc-ph-sub" data-testid="settings-lead">{{ lead }}</p>
         </div>
       </div>
 
@@ -27,7 +27,7 @@
           </div>
         </nav>
 
-        <div class="set-main" :class="{ wide: current === 'users' }">
+        <div class="set-main" :class="{ wide: current === 'users' || current === 'teams' }">
           <!-- 一次只有一个分区；换分区就是换地址 -->
           <component :is="SECTIONS[current]" :key="current" />
           <p v-if="app.bootstrap?.version" class="version">LoomCanvas {{ app.bootstrap.version }}</p>
@@ -36,16 +36,16 @@
     </div>
 
     <!-- 有没保存的修改就离开 -->
-    <div v-if="asking" class="lc-mask" @click.self="answer(false)">
-      <div class="lc-dialog leave" role="alertdialog" aria-modal="true" aria-labelledby="set-leave-h" data-testid="settings-leave">
-        <div class="lc-dialog-head"><span id="set-leave-h">{{ t('settings.leave.title') }}</span></div>
-        <div class="lc-dialog-body"><p>{{ t('settings.leave.text', { section: t('settings.nav.' + current) }) }}</p></div>
-        <div class="lc-dialog-foot">
-          <button ref="stayBtn" class="lc-btn" data-testid="settings-leave-stay" @click="answer(false)">{{ t('settings.leave.stay') }}</button>
-          <button class="lc-btn danger" data-testid="settings-leave-discard" @click="answer(true)">{{ t('settings.leave.discard') }}</button>
-        </div>
-      </div>
-    </div>
+    <TeamDialog
+      v-if="asking" :title="t('settings.leave.title')" :width="440" role="alertdialog" data-testid="settings-leave"
+      @close="answer(false)" @submit="answer(false)"
+    >
+      <p>{{ t('settings.leave.text', { section: t('settings.nav.' + current) }) }}</p>
+      <template #foot>
+        <button class="lc-btn" type="submit" data-autofocus data-testid="settings-leave-stay">{{ t('settings.leave.stay') }}</button>
+        <button class="lc-btn danger" type="button" data-testid="settings-leave-discard" @click="answer(true)">{{ t('settings.leave.discard') }}</button>
+      </template>
+    </TeamDialog>
   </div>
 </template>
 
@@ -60,24 +60,40 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import LcIcon from '@/components/LcIcon.vue'
+import TeamDialog from '@/components/team/TeamDialog.vue'
 import StorageSection from '@/components/settings/StorageSection.vue'
 import LimitsSection from '@/components/settings/LimitsSection.vue'
 import AppearanceSection from '@/components/settings/AppearanceSection.vue'
 import AccountSection from '@/components/settings/AccountSection.vue'
 import SiteSection from '@/components/settings/SiteSection.vue'
 import UsersSection from '@/components/settings/UsersSection.vue'
-import { provideSectionDirty } from '@/components/settings/dirty'
-import { resolveSettingsSection, settingsGroups, type SettingsSectionId } from '@/components/settings/sections'
+import TeamsSection from '@/components/settings/TeamsSection.vue'
+import { provideSaveBarSpace, provideSectionDirty } from '@/components/settings/dirty'
+import { resolveSettingsSection, settingsGroups, settingsLeadKey, type SettingsSectionId } from '@/components/settings/sections'
+import { joinSentences } from '@/components/settings/sentences'
+import { useEmbed } from '@/embed/context'
+import { isPageOpen } from '@/embed/options'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const app = useAppStore()
+const embed = useEmbed()
+
+/**
+ * 页头下面那一句只说这个人在这里看得到的东西：宿主管登录时没有「账号」，语言 / 主题 / 节点布局都被关掉时没有「界面」，
+ * 「模型管理」那一页不存在时不指过去。
+ */
+const lead = computed(() => joinSentences([
+  t('settings.lead.' + settingsLeadKey(app.isOwner, embed.features)),
+  isPageOpen(embed, 'models') && t('settings.lead.models'),
+], locale.value))
 
 const SECTIONS: Record<SettingsSectionId, Component> = {
   account: AccountSection,
   appearance: AppearanceSection,
   site: SiteSection,
   users: UsersSection,
+  teams: TeamsSection,
   storage: StorageSection,
   limits: LimitsSection,
 }
@@ -105,10 +121,12 @@ watch(current, () => {
 })
 onMounted(() => void nextTick(revealNav))
 
+/** 贴在视口底部的保存栏挡住多高（没有保存栏的分区是 0）：滚动容器按它留出 scroll-padding-bottom，见模板 */
+const barSpace = provideSaveBarSpace()
+
 // ---- 没保存就离开 ----
 const { isDirty } = provideSectionDirty()
 const asking = ref(false)
-const stayBtn = ref<HTMLButtonElement | null>(null)
 let settle: ((leave: boolean) => void) | null = null
 
 function answer(leave: boolean) {
@@ -123,26 +141,20 @@ function confirmLeave(): boolean | Promise<boolean> {
   // 上一次还没答就又来了一次导航（比如连按后退）：前一次算「留下」
   settle?.(false)
   asking.value = true
-  void nextTick(() => stayBtn.value?.focus())
   return new Promise<boolean>((resolve) => { settle = resolve })
 }
 
 onBeforeRouteUpdate((to, from) => (to.params.section === from.params.section ? true : confirmLeave()))
 onBeforeRouteLeave(() => confirmLeave())
 
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && asking.value) answer(false)
-}
 /** 关标签页 / 刷新：只能交给浏览器自己的提示 */
 function onBeforeUnload(e: BeforeUnloadEvent) {
   if (isDirty()) e.preventDefault()
 }
 onMounted(() => {
-  window.addEventListener('keydown', onKey)
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKey)
   window.removeEventListener('beforeunload', onBeforeUnload)
   settle?.(true)
 })
@@ -169,15 +181,18 @@ onBeforeUnmount(() => {
 .item.on { color: var(--text); background: rgb(var(--c-blue) / .14); border-left-color: var(--cyan); }
 .item.on :deep(.lc-ic) { color: var(--cyan); }
 
-/* 表单不跟着宽屏无限拉长；用户表格多给一点 */
+/* 表单不跟着宽屏无限拉长；用户和团队的表格多给一点 */
 .set-main { min-width: 0; max-width: 880px; }
-.set-main.wide { max-width: 960px; }
+.set-main.wide { max-width: none; }
 .version { margin-top: 32px; font: 12px var(--f-mono); color: var(--text-3); }
 
-.leave { width: 440px; }
-.leave p { line-height: 1.7; color: var(--text-2); }
-
+/* 1100–1320px 的窗口：导航收窄一点，宽度让给右边（用户 / 团队的表格在这个宽度上还是一张表） */
+@media (max-width: 1320px) {
+  .set { grid-template-columns: 188px minmax(0, 1fr); gap: 28px; }
+}
 @media (max-width: 900px) {
+  /* 这个宽度上分区导航贴在顶上（见下面的 .set-nav）：键盘往回走到视口最上面那一格时别停在它后面 */
+  .set-page { scroll-padding-top: 64px; }
   .set { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 16px; }
   /* 导航变成贴在顶上的一排选择条，自己横向滚动，页面不跟着变宽 */
   .set-nav {

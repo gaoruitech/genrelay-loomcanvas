@@ -4,7 +4,7 @@
  * Run executor.
  *
  * An in-process queue with bounded concurrency, shared fairly between the
- * accounts that have work in it (see _pick). It owns the life cycle of a
+ * people who have work in it, with a ceiling per team (see _pick). It owns the life cycle of a
  * run (queued -> running -> archiving -> succeeded | failed | canceled) and
  * nothing else: persistence, provider lookup, result transfer and billing are
  * injected, which is also what makes this file testable without a database.
@@ -30,13 +30,15 @@
  *
  * Injected dependencies:
  *   store    { claim(id), get(id), update(id, patch), cancelQueued(id),
- *              recover() -> { queued: [{ id, userId }], interrupted: run[] } }
+ *              recover() -> { queued: [{ id, userId, groupId }], interrupted: run[] } }
  *   resolve  async (run) -> { provider, cfg, request, sync? }
  *   transfer async (output, { signal, kind, userId }) -> stored output
  *   billing  { beforeRun, afterRun, onFailed }
  *   settings () -> { concurrency, userConcurrency?, submitTimeoutMs,
  *                    pollTimeoutMs:{image,video}, chatTimeoutMs,
  *                    downloadTimeoutMs, retries }
+ *   groupLimit (groupId) -> how many runs of that group (a team) may be in
+ *              flight at once. Optional; without it groups are not limited.
  */
 
 const { LocalizedError, RAW, isMessage, msg, messageOf, storedError } = require('../i18n')
@@ -72,7 +74,11 @@ function failureMessage(err) {
 function billingContext(run) {
   return {
     runId: String(run._id || run.id),
-    userId: run.userId,
+    // Who started the run. For a run from before teams that is the space it belongs to.
+    userId: run.createdBy || run.userId,
+    // Where it runs: the space whose providers and keys it uses, and the team when that space is one.
+    spaceId: run.userId,
+    teamId: run.teamId || '',
     kind: run.kind,
     model: run.modelId,
     providerType: run.providerType,
@@ -128,17 +134,18 @@ async function withDeadline(fn, ms, parent, timeoutKey) {
 }
 
 class Runner {
-  constructor({ store, resolve, transfer, billing, settings, logger = console, now = () => Date.now(), pollIntervalMs = [2000, 8000] }) {
+  constructor({ store, resolve, transfer, billing, settings, groupLimit = null, logger = console, now = () => Date.now(), pollIntervalMs = [2000, 8000] }) {
     this.store = store
     this.resolve = resolve
     this.transfer = transfer
     this.billing = billing
     this.settings = settings
+    this.groupLimit = groupLimit
     this.log = logger
     this.now = now
     this.pollIntervalMs = pollIntervalMs
-    this.queue = [] // { id, userId }, oldest first
-    this.active = new Map() // runId -> { ctl, reason, promise, sent, userId }
+    this.queue = [] // { id, userId, groupId }, oldest first
+    this.active = new Map() // runId -> { ctl, reason, promise, sent, userId, groupId }
     this.lastTurn = new Map() // userId -> when that account last got a slot (a counter, not a time)
     this.turns = 0
     this.stopping = false
@@ -162,18 +169,22 @@ class Runner {
       })
     }
     for (const q of queued) {
-      if (q && typeof q === 'object') this.enqueue(q.id, q.userId)
+      if (q && typeof q === 'object') this.enqueue(q.id, q.userId, q.groupId)
       else this.enqueue(q)
     }
     return queued.length
   }
 
-  /** `userId` is whose run it is: the queue is shared out between accounts by it. */
-  enqueue(id, userId = '') {
+  /**
+   * `userId` is who started the run: the queue is shared out between people by it.
+   * `groupId` is the team the run belongs to ('' for a personal space): a team's
+   * runs in flight are capped together, whoever started them.
+   */
+  enqueue(id, userId = '', groupId = '') {
     if (this.stopping) return
     const key = String(id)
     if (this.active.has(key) || this.queue.some((q) => q.id === key)) return
-    this.queue.push({ id: key, userId: String(userId || '') })
+    this.queue.push({ id: key, userId: String(userId || ''), groupId: String(groupId || '') })
     this._pump()
   }
 
@@ -183,17 +194,32 @@ class Runner {
    * longest ago; within an account, its oldest run. An account at its own limit
    * waits. So one account with a hundred queued runs does not keep everybody
    * else waiting behind them, and with a single account this is plain FIFO.
+   *
+   * A run of a team is also skipped while that team has as many runs in flight
+   * as it may (groupLimit): the slot then goes to the next person in line, so a
+   * big team cannot fill the instance, and its members still take turns.
    */
   _pick(perUser) {
     const busy = new Map()
-    for (const e of this.active.values()) busy.set(e.userId, (busy.get(e.userId) || 0) + 1)
+    const busyGroup = new Map()
+    for (const e of this.active.values()) {
+      busy.set(e.userId, (busy.get(e.userId) || 0) + 1)
+      if (e.groupId) busyGroup.set(e.groupId, (busyGroup.get(e.groupId) || 0) + 1)
+    }
+    const groupFull = new Map()
+    const full = (groupId) => {
+      if (!groupId || !this.groupLimit) return false
+      if (!groupFull.has(groupId)) groupFull.set(groupId, (busyGroup.get(groupId) || 0) >= Math.max(1, Number(this.groupLimit(groupId)) || 1))
+      return groupFull.get(groupId)
+    }
     let best = -1
     let bestBusy = Infinity
     let bestTurn = Infinity
     for (let i = 0; i < this.queue.length; i++) {
-      const { userId } = this.queue[i]
+      const { userId, groupId } = this.queue[i]
       const n = busy.get(userId) || 0
       const turn = this.lastTurn.get(userId) || 0
+      if (full(groupId)) continue
       if (n >= perUser || n > bestBusy || (n === bestBusy && turn >= bestTurn)) continue
       best = i
       bestBusy = n
@@ -208,12 +234,12 @@ class Runner {
     const perUser = Math.max(1, Number(s.userConcurrency) || limit)
     while (!this.stopping && this.active.size < limit && this.queue.length) {
       const at = this._pick(perUser)
-      if (at < 0) break // everything queued belongs to accounts that are at their limit
-      const [{ id, userId }] = this.queue.splice(at, 1)
+      if (at < 0) break // everything queued belongs to accounts or teams that are at their limit
+      const [{ id, userId, groupId }] = this.queue.splice(at, 1)
       if (this.lastTurn.size > 10000) this.lastTurn.clear()
       this.lastTurn.set(userId, ++this.turns)
       // `sent`: something of this run may have reached the upstream in this process.
-      const entry = { ctl: new AbortController(), reason: null, promise: null, sent: false, userId }
+      const entry = { ctl: new AbortController(), reason: null, promise: null, sent: false, userId, groupId }
       this.active.set(id, entry)
       entry.promise = this._execute(id, entry)
         .catch((err) => this.log.error(`[runner] run ${id} crashed:`, err))
@@ -239,6 +265,22 @@ class Runner {
     const idx = this.queue.findIndex((q) => q.id === key)
     if (idx >= 0) this.queue.splice(idx, 1)
     await this.store.cancelQueued(key, { status: STATUS.CANCELED, ...storedError(CANCELED), finishedAt: new Date(this.now()) })
+    return this.store.get(key)
+  }
+
+  /**
+   * Cancel a run only if it has not started: one that is in flight is left to
+   * finish. Resolves the run as stored afterwards (still running, or canceled).
+   * `why`: a catalog message saying why it was canceled, kept with the run in
+   * place of the plain "Canceled" - nobody pressed cancel on such a run, so
+   * whoever reads its record later is told what happened.
+   */
+  async cancelIfQueued(id, why = null) {
+    const key = String(id)
+    if (this.active.has(key)) return this.store.get(key)
+    const idx = this.queue.findIndex((q) => q.id === key)
+    if (idx >= 0) this.queue.splice(idx, 1)
+    await this.store.cancelQueued(key, { status: STATUS.CANCELED, ...storedError(why || CANCELED), finishedAt: new Date(this.now()) })
     return this.store.get(key)
   }
 

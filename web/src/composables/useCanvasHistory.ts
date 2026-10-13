@@ -54,9 +54,14 @@ const MAX_TOTAL_CHARS = 12_000_000
 interface Options {
   nodes: Ref<any[]>
   edges: Ref<any[]>
+  /**
+   * 节点和连线之外、也要跟着撤销 / 重做走的画布级状态（这张画布套用的品牌包）。
+   * get 给出一份可 JSON 化的值，set 把它放回去。老快照里没有这一项时不调 set。
+   */
+  extra?: { get: () => unknown; set: (value: any) => void }
 }
 
-export function useCanvasHistory({ nodes, edges }: Options) {
+export function useCanvasHistory({ nodes, edges, extra }: Options) {
   const past = ref<string[]>([])
   const future = ref<string[]>([])
 
@@ -72,7 +77,7 @@ export function useCanvasHistory({ nodes, edges }: Options) {
   function snapshot(): string {
     // 与 buildSavePayload 同一套序列化路径（那条链路每 1.5 秒在生产上跑一次，
     // 能确认这些对象是可 JSON 化的、没有循环引用）
-    return JSON.stringify({ nodes: nodes.value, edges: edges.value })
+    return JSON.stringify({ nodes: nodes.value, edges: edges.value, ...(extra ? { extra: extra.get() } : {}) })
   }
 
   /** 掉队的老快照先走，直到总量回到阀门以下 */
@@ -108,7 +113,7 @@ export function useCanvasHistory({ nodes, edges }: Options) {
   }
 
   function apply(raw: string) {
-    let parsed: { nodes?: any[]; edges?: any[] }
+    let parsed: { nodes?: any[]; edges?: any[]; extra?: unknown }
     try {
       parsed = JSON.parse(raw)
     } catch {
@@ -134,6 +139,7 @@ export function useCanvasHistory({ nodes, edges }: Options) {
     applying = true
     nodes.value = next
     edges.value = parsed.edges || []
+    if (extra && parsed.extra !== undefined) extra.set(parsed.extra)
     // 同步解锁：nodes/edges 是同一个 tick 内赋值的，watch 回调在之后跑但不会
     // 再调 record（record 只由用户操作显式触发），这里不需要 nextTick
     applying = false

@@ -1,9 +1,9 @@
 <template>
   <div v-if="modelValue" class="lc-mask" @click.self="close">
-    <div class="lc-dialog cnd" role="dialog" aria-modal="true" :aria-label="title">
+    <div v-dialog="{ onEscape: close, busy }" class="lc-dialog cnd" role="dialog" aria-modal="true" :aria-label="title">
       <div class="lc-dialog-head">
         <span>{{ title }}</span>
-        <button class="lc-x" :title="t('common.close')" :aria-label="t('common.close')" @click="close">
+        <button class="lc-x" :aria-label="t('common.close')" @click="close">
           <LcIcon name="x" size="s" />
         </button>
       </div>
@@ -19,7 +19,6 @@
             maxlength="80"
             autocomplete="off"
             @keydown.enter="submit"
-            @keydown.escape="close"
           />
         </div>
       </div>
@@ -33,6 +32,7 @@
 
 <script setup lang="ts">
 /** 给画布起名的小弹窗：新建和重命名共用。名字为空时自己提示，不往外抛 */
+import { vDialog } from '@/directives/dialog'
 import { ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from '@/utils/feedback'

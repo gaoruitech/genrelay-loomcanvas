@@ -1,9 +1,10 @@
 # LoomCanvas server
 
-Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Accounts (the super admin is created by the server at start-up; everyone who registers is an ordinary user), each with its own canvases, files and model API keys.
+Backend of LoomCanvas: Node.js 20.9+, Express, Mongoose. Accounts (the super admin is created by the server at start-up; everyone who registers is an ordinary user), each with its own personal space: its own canvases, files and model API keys. Several accounts can share a team space, with roles, invite links, an edit lock per canvas and monthly limits.
 
-The HTTP API is documented in [`../docs/api.md`](../docs/api.md) (reference, English) and
-[`../docs/architecture.md`](../docs/architecture.md) (design contract, Chinese).
+The HTTP API reference is [`../docs/api.md`](../docs/api.md) (English) and
+[`../docs/api.zh-CN.md`](../docs/api.zh-CN.md) (Chinese, the same content); the design contract behind it is
+[`../docs/architecture.md`](../docs/architecture.md) (Chinese).
 All documentation: [`../docs/README.md`](../docs/README.md).
 
 ## Run
@@ -18,6 +19,10 @@ npm start                 # or: npm run dev  (restarts on file changes)
 The server refuses to start without a `SECRET_KEY` of at least 16 characters.
 It never invents one: provider API keys are encrypted with it, so it has to stay the same across restarts.
 
+The first start creates the super admin: username `ADMIN_USERNAME` (default `admin`), password `ADMIN_PASSWORD`.
+Without `ADMIN_PASSWORD` a random password is generated and shown once in the start-up log; it has to be replaced
+at the first sign-in. There is no access password and no mode without accounts.
+
 ## Environment
 
 | Variable | Default | Meaning |
@@ -29,12 +34,15 @@ It never invents one: provider API keys are encrypted with it, so it has to stay
 | `MAX_UPLOAD_MB` | `50` | Upload size limit (1 to 2048). Uploads are buffered in memory. |
 | `STORAGE_DRIVER` | `local` | `local` or `s3`. A bootstrap default: a configuration saved under Settings → Storage takes precedence. |
 | `STORAGE_LOCAL_DIR` | `./data/files` | Where the local disk backend keeps files. |
-| `S3_*` | | Settings of the S3-compatible backend, see `.env.example`. |
+| `S3_*` | | Settings of the S3-compatible backend, see `.env.example`. `S3_PRESIGN_ENDPOINT` is the public address of the S3 service when `S3_ENDPOINT` only works inside the deployment. |
 | `WEB_DIST` | empty | Built frontend to serve from this process (with SPA fallback). |
 | `BILLING_HOOK` | empty | Path to a custom billing module, relative to the directory the server is started from. |
 | `CORS_ORIGIN` | empty | Extra browser origins allowed to call the API (comma separated). |
 | `TRUST_PROXY` | empty | Behind a reverse proxy: the number of proxies in front (`1` to `10`), or a comma-separated list of their addresses (IP, CIDR, `loopback`, `linklocal`, `uniquelocal`). `true` and host names are rejected at startup. |
 | `SSRF_ALLOW_HOSTS` | empty | Hosts exempt from the private-address download block. |
+| `BUDGET_CHAT_RESERVE_OUTPUT_TOKENS` | `8192` | Teams with a money limit: how many output tokens a chat run priced per token reserves of the limit while it runs (1 to 1000000). |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL` | `admin`, empty, empty | The super admin account, created at start-up when there is none. `ADMIN_PASSWORD` is 8 to 128 characters; empty means a generated one, shown once in the log. See [Accounts](#accounts). |
+| `REGISTRATION_OPEN` | empty | The first value of the registration setting; ignored once the setting has been saved. |
 
 The complete table, with every `S3_*` variable, is in
 [`../docs/configuration.md`](../docs/configuration.md#environment-variables).
@@ -60,21 +68,26 @@ services. Everything else is in [`../docs/storage.md`](../docs/storage.md).
 ### Reference media and `PUBLIC_URL`
 
 A file in a bucket is handed to an upstream model as a presigned URL that is valid for one hour (or as the bucket's
-public address). A file on the local disk needs a public `PUBLIC_URL` for that.
+public address). When the bucket's endpoint is an internal one (`http://minio:9000`), set `S3_PRESIGN_ENDPOINT`, or
+"Endpoint for signed URLs" under Settings → Storage, to the address the service has from the internet: presigned URLs
+are made for it. A file on the local disk needs a public `PUBLIC_URL` instead.
 When there is no publicly reachable address, images are sent inline (base64) to providers that accept it, and
 inputs that must be a URL (a source video for video editing, some image-to-video models) fail.
 
 ## Layout
 
-```
+```text
 src/
   index.js        boot and shutdown        app.js      Express wiring
   config.js       environment              constants.js
   routes/         HTTP endpoints           models/     Mongoose models
   providers/      vendor modules, catalogs runner/     run queue, polling, transfer, pricing
   storage/        local disk + S3 buckets  billing/    billing hook (no-op by default)
-  services/       settings, storage settings, media, image tools, seed, retention, provider migration
+  services/       accounts, spaces, teams, permissions, budget (monthly limits), activity, space copy, zip export,
+                  settings, storage settings, media, image tools, seed, retention, provider migration
   middleware/     auth, errors, headers    utils/      crypto, safeFetch, validation
+  i18n/           en.js, zh-CN.js messages cli/        reset-password.js
+test/             node:test suites (unit and end-to-end)
 ```
 
 ## Writing a provider
@@ -141,7 +154,7 @@ When each function is called, and what is not guaranteed after a crash, is in
 
 ## Accounts
 
-Signing in is always required. `POST /api/auth/register` creates an ordinary user, never the super admin. The super admin (role `owner` in the API: site settings, storage, registration, user list; in the web app the "Site management" group of the Settings page) is created by the server at start-up from the `ADMIN_*` variables. Each account sees only its own data, and another account's resource answers 404. Sessions are stored in the database (hashed token, 12 hours, or 30 days with `remember`) and travel as `Authorization: Bearer <token>`. Changing the password ends every session of the account and returns a fresh token to the caller. `ACCESS_PASSWORD` of earlier versions is ignored.
+Signing in is always required. `POST /api/auth/register` creates an ordinary user, never the super admin. The super admin (role `owner` in the API: site settings, storage, registration, user list; in the web app the "Site management" group of the Settings page) is created by the server at start-up from the `ADMIN_*` variables. In its personal space each account sees only its own data, and a resource of another space answers 404. Sessions are stored in the database (hashed token, 12 hours, or 30 days with `remember`) and travel as `Authorization: Bearer <token>`. Changing the password ends every session of the account and returns a fresh token to the caller. `ACCESS_PASSWORD` of earlier versions is ignored.
 
 Sign-in attempts are rate limited in memory, per 10 minutes: 10 per account name and client address, 30 per client address, 100 per account name and 3000 in total; the last two are not applied to an address the account is known at, so guessing at a name does not lock its holder out. Registration: 20 per address per hour. Profile changes: 20 per account per hour. Details: [`../docs/security.md`](../docs/security.md#rate-limits).
 
@@ -151,7 +164,9 @@ Forgotten password (no email is sent):
 node src/cli/reset-password.js <username-or-email>   # prints a temporary password, signs the account out everywhere
 ```
 
-Code that adds a per-account collection must add it to `OWNED` in `src/services/accounts.js`, and every query on such a collection must carry `userId`. `test/accounts.e2e.test.js` is the isolation suite.
+Teams: several accounts share one space, named per request by the `X-Space` header (or by the team id in `/api/teams/:id/...`); membership is looked up on every request. The contract - roles and the permission matrix, invite links, canvas visibility, the edit lock (one editing session at a time; 36 s lifetime, 12 s heartbeat), saving and conflicts, monthly limits, usage, the activity log, copying between spaces and what the super admin may do with a team - is in [`../docs/api.md`](../docs/api.md#spaces-and-teams) ([Chinese](../docs/api.zh-CN.md#空间与团队)); the reasons behind it are in section 12 of [`../docs/architecture.md`](../docs/architecture.md).
+
+Code that adds a per-space collection must add it to `OWNED` in `src/services/accounts.js`, and every query on such a collection must carry `userId: req.spaceId` - the space the request acts in: the caller's personal space, or a team named by the `X-Space` header (`src/services/spaces.js`). What a team role may do is one table, `src/services/permissions.js`. `test/accounts.e2e.test.js` and `test/teams.e2e.test.js` are the isolation suites; `test/teams.matrix.e2e.test.js` walks the permission table; `test/locks.e2e.test.js`, `test/budget.e2e.test.js` and `test/teamdata.e2e.test.js` cover the edit lock, the monthly limits and what team pages read.
 
 ## Tests
 

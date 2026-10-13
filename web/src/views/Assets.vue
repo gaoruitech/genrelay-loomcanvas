@@ -7,7 +7,7 @@
       <div class="lc-page-head">
         <div class="as-head-text">
           <h1 class="lc-ph1">{{ t('assetsPage.title') }}</h1>
-          <p class="lc-ph-sub">{{ t('assetsPage.sub') }}</p>
+          <p class="lc-ph-sub">{{ space.isTeam ? t('assetsPage.team.sub', { team: space.name }) : t('assetsPage.sub') }}</p>
         </div>
         <span class="lc-sp" />
         <button class="lc-btn primary as-upload-btn" type="button" :disabled="uploading" @click="pickFiles">
@@ -17,6 +17,11 @@
       </div>
 
       <AssetsTabs current="assets" />
+
+      <!-- 团队里：这是全队共用的一个库，谁能动什么先说清楚 -->
+      <p v-if="space.isTeam" class="as-rule" data-testid="as-team-rule"><LcIcon name="users" size="s" />{{ t('assetsPage.team.rule') }}</p>
+      <!-- 个人空间里、而人又在某个团队里：这里的素材团队里看不到，要用得复制过去 -->
+      <p v-else-if="inTeams" class="as-rule" data-testid="as-personal-hint"><LcIcon name="info" size="s" />{{ t('assetsPage.team.personalHint') }}</p>
 
       <div class="lc-fbar as-fbar">
         <div class="lc-seg" role="group" :aria-label="t('assetsPage.filter.kind')">
@@ -30,9 +35,13 @@
         <div class="as-sel">
           <LcSelect v-model="type" :options="typeOptions" size="sm" :aria-label="t('assetsPage.filter.type')" />
         </div>
-        <div v-if="folders.length || folder" class="as-sel wide">
-          <LcSelect v-model="folder" :options="folderOptions" size="sm" :aria-label="t('assetsPage.filter.folder')" />
+        <div v-if="folderList.length || folder" class="as-sel wide">
+          <LcSelect v-model="folder" :options="folderOptions" :searchable="folderOptions.length > 9" size="sm" :aria-label="t('assetsPage.filter.folder')" data-testid="as-folder-filter" />
         </div>
+        <!-- 分组：新建、看数量、删空的。一个分组都没有时这颗按钮直接叫「新建分组」 -->
+        <button class="lc-btn sm as-folders-btn" type="button" data-act="folders" @click="foldersOpen = true">
+          <LcIcon :name="folderList.length ? 'folder' : 'plus'" size="s" />{{ folderList.length ? t('assetsPage.folders.manage') : t('assetsPage.folders.create') }}
+        </button>
         <label class="lc-inp sm grow">
           <LcIcon name="search" size="s" />
           <input v-model="searchText" type="search" :placeholder="t('assetsPage.filter.search')" :aria-label="t('assetsPage.filter.search')" />
@@ -44,17 +53,20 @@
       <div v-if="selectedItems.length" class="as-selbar">
         <button
           class="lc-cb" :class="{ on: allSelected }" type="button" role="checkbox" :aria-checked="allSelected"
-          :title="allSelected ? t('assetsPage.sel.cancel') : t('common.all')" @click="toggleAll"
+          v-tip="allSelected ? t('assetsPage.sel.cancel') : t('common.all')"
+          :aria-label="allSelected ? t('assetsPage.sel.cancel') : t('common.all')" @click="toggleAll"
         />
         <b>{{ t('assetsPage.sel.count', { n: selectedItems.length }) }}</b>
         <span class="lc-t2 as-selbar-sub">{{ t('assetsPage.sel.breakdown', selBreakdown) }}</span>
+        <span v-if="lockedCount" class="as-selbar-lock" data-testid="as-locked"><LcIcon name="lock" size="s" />{{ t('assetsPage.team.locked', { n: lockedCount }) }}</span>
         <span class="lc-sp" />
         <div class="as-selbar-acts">
           <button class="lc-btn sm" type="button" :disabled="busy" @click="downloadSelected"><LcIcon name="download" size="s" />{{ t('assetsPage.sel.download') }}</button>
-          <button class="lc-btn sm" type="button" :disabled="busy" @click="openMove"><LcIcon name="folder" size="s" />{{ t('assetsPage.sel.move') }}</button>
-          <button v-if="selectedItems.length === 1" class="lc-btn sm" type="button" :disabled="busy" @click="openRename"><LcIcon name="edit" size="s" />{{ t('assetsPage.sel.rename') }}</button>
+          <button v-if="canManageSel" class="lc-btn sm" type="button" :disabled="busy" data-act="move" @click="openMove"><LcIcon name="folder" size="s" />{{ t('assetsPage.sel.move') }}</button>
+          <button v-if="canManageSel && selectedItems.length === 1" class="lc-btn sm" type="button" :disabled="busy" data-act="rename" @click="openRename"><LcIcon name="edit" size="s" />{{ t('assetsPage.sel.rename') }}</button>
           <button v-if="selectedItems.length === 1" class="lc-btn sm" type="button" @click="copyLink"><LcIcon name="copy" size="s" />{{ t('assetsPage.sel.copyLink') }}</button>
-          <button class="lc-btn sm danger" type="button" :disabled="busy" @click="removeOpen = true"><LcIcon name="trash" size="s" />{{ t('assetsPage.sel.delete') }}</button>
+          <button v-if="canCopyOut && selectedItems.length === 1" class="lc-btn sm" type="button" :disabled="busy" data-act="copy-to" @click="copyTo = selectedItems[0]"><LcIcon name="arrow" size="s" />{{ t('assetsPage.team.copyTo') }}</button>
+          <button v-if="canManageSel" class="lc-btn sm danger" type="button" :disabled="busy" data-act="delete" @click="removeOpen = true"><LcIcon name="trash" size="s" />{{ t('assetsPage.sel.delete') }}</button>
           <button class="lc-btn sm text" type="button" @click="clearSelection">{{ t('assetsPage.sel.cancel') }}</button>
         </div>
       </div>
@@ -68,8 +80,8 @@
       <!-- 一张都没有：整块空态，不摆网格 -->
       <div v-else-if="!loading && !items.length && !filtered && !uploading" class="lc-card as-empty">
         <span class="as-ti"><LcIcon name="assets" size="l" /></span>
-        <h2>{{ t('assetsPage.empty') }}</h2>
-        <p>{{ t('assetsPage.emptyHint') }}</p>
+        <h2>{{ space.isTeam ? t('assetsPage.team.empty') : t('assetsPage.empty') }}</h2>
+        <p>{{ space.isTeam ? t('assetsPage.team.emptyHint') : t('assetsPage.emptyHint') }}</p>
         <button class="lc-btn primary" type="button" @click="pickFiles"><LcIcon name="upload" />{{ t('assetsPage.upload') }}</button>
         <small>{{ limitText }}</small>
       </div>
@@ -99,25 +111,47 @@
           <div
             v-for="it in shown" :key="it.id" class="lc-card as" :class="{ on: selected.has(it.id) }"
           >
-            <button class="lc-thumb as-thumb" type="button" :title="selected.size ? t('assetsPage.select') : t('assetsPage.preview')" @click="onCardClick(it)">
+            <button
+              class="lc-thumb as-thumb" type="button"
+              v-tip="selected.size ? t('assetsPage.select') : t('assetsPage.preview')"
+              :aria-label="(selected.size ? t('assetsPage.select') : t('assetsPage.preview')) + ' ' + nameOf(it)"
+              @click="onCardClick(it)"
+            >
               <img v-if="it.nodeType === 'IMAGE' || hasOwnPoster(it)" :src="ensureHttps(it.thumbnailUrl || it.mediaUrl)" alt="" loading="lazy" />
               <video v-else :src="ensureHttps(it.mediaUrl)" muted playsinline preload="metadata" />
               <span class="lc-bd tag" :class="it.nodeType === 'VIDEO' ? 'vid' : 'img'">{{ t('assetsPage.types.' + (it.nodeType === 'VIDEO' ? 'video' : 'image')) }}</span>
             </button>
             <button
               class="as-pick" type="button" role="checkbox" :aria-checked="selected.has(it.id)"
-              :title="selected.has(it.id) ? t('assetsPage.deselect') : t('assetsPage.select')"
+              v-tip="selected.has(it.id) ? t('assetsPage.deselect') : t('assetsPage.select')"
               :aria-label="(selected.has(it.id) ? t('assetsPage.deselect') : t('assetsPage.select')) + ' ' + nameOf(it)"
               @click="toggle(it)"
             ><LcIcon v-if="selected.has(it.id)" name="check" size="s" /></button>
             <div class="meta">
-              <b :title="nameOf(it)">{{ nameOf(it) }}</b>
-              <small :title="metaOf(it)">{{ metaOf(it) }}</small>
+              <b v-tip="{ text: nameOf(it), clipped: true }">{{ nameOf(it) }}</b>
+              <small v-tip="{ text: metaOf(it), clipped: true }">{{ metaOf(it) }}</small>
+              <!-- 团队里：谁加的 -->
+              <small v-if="it.scope === 'team'" class="as-by">
+                <template v-if="it.mine">
+                  <SpaceAvatar shape="round" :size="16" :name="personName(uploaderOf(it))" :seed="it.createdBy?.id" />
+                  <span>{{ t('assetsPage.team.byMe') }}</span>
+                </template>
+                <PersonName v-else :person="uploaderOf(it)" :avatar="16" />
+              </small>
             </div>
           </div>
         </div>
 
-        <div v-if="!loading && !shown.length" class="lc-empty as-none">
+        <!-- 选中的分组是空的：说清楚它是空的（而不是「没有符合条件的」），并且可以就地删掉 -->
+        <div v-if="!loading && !shown.length && emptyFolder" class="lc-empty as-none" data-testid="as-empty-folder">
+          <p>{{ t('assetsPage.folders.emptyHere', { name: emptyFolder.name }) }}</p>
+          <small>{{ t('assetsPage.folders.emptyHereHint') }}</small>
+          <div class="as-none-ops">
+            <button class="lc-btn sm" type="button" @click="resetFilters">{{ t('assetsPage.filter.reset') }}</button>
+            <button v-if="emptyFolder.canDelete" class="lc-btn sm danger" type="button" :disabled="busy" data-act="folder-delete-here" @click="removeEmptyFolder(emptyFolder.name)">{{ t('assetsPage.folders.delete') }}</button>
+          </div>
+        </div>
+        <div v-else-if="!loading && !shown.length" class="lc-empty as-none">
           <p>{{ filtered && !(kind && !type && !folder && !search) ? t('assetsPage.emptyFiltered') : t('assetsPage.emptyKind') }}</p>
           <button v-if="filtered" class="lc-btn sm" type="button" @click="resetFilters">{{ t('assetsPage.filter.reset') }}</button>
         </div>
@@ -138,8 +172,8 @@
 
     <!-- 重命名 -->
     <div v-if="renameOpen" class="lc-mask" @click.self="closeDialogs">
-      <form class="lc-dialog as-dialog" role="dialog" aria-modal="true" :aria-label="t('assetsPage.renameDialog.title')" @submit.prevent="confirmRename">
-        <div class="lc-dialog-head"><span>{{ t('assetsPage.renameDialog.title') }}</span><button class="lc-x" type="button" :title="t('common.close')" @click="closeDialogs">×</button></div>
+      <form v-dialog="closeDialogs" class="lc-dialog as-dialog" role="dialog" aria-modal="true" :aria-label="t('assetsPage.renameDialog.title')" @submit.prevent="confirmRename">
+        <div class="lc-dialog-head"><span>{{ t('assetsPage.renameDialog.title') }}</span><button class="lc-x" type="button" :aria-label="t('common.close')" @click="closeDialogs">×</button></div>
         <div class="lc-dialog-body">
           <div class="lc-field as-last">
             <label for="as-rename">{{ t('assetsPage.renameDialog.label') }}</label>
@@ -153,10 +187,10 @@
       </form>
     </div>
 
-    <!-- 移动到文件夹：文件夹没有单独的「新建」，素材写上名字它就存在 -->
+    <!-- 移动到分组：写一个新名字，移过去时分组就建好了（也可以先在「分组」里建一个空的） -->
     <div v-if="moveOpen" class="lc-mask" @click.self="closeDialogs">
-      <form class="lc-dialog as-dialog" role="dialog" aria-modal="true" :aria-label="t('assetsPage.moveDialog.title')" @submit.prevent="confirmMove(moveText)">
-        <div class="lc-dialog-head"><span>{{ t('assetsPage.moveDialog.title') }}</span><button class="lc-x" type="button" :title="t('common.close')" @click="closeDialogs">×</button></div>
+      <form v-dialog="closeDialogs" class="lc-dialog as-dialog" role="dialog" aria-modal="true" :aria-label="t('assetsPage.moveDialog.title')" @submit.prevent="confirmMove(moveText)">
+        <div class="lc-dialog-head"><span>{{ t('assetsPage.moveDialog.title') }}</span><button class="lc-x" type="button" :aria-label="t('common.close')" @click="closeDialogs">×</button></div>
         <div class="lc-dialog-body">
           <div class="lc-field">
             <label for="as-move">{{ t('assetsPage.moveDialog.label') }}</label>
@@ -165,10 +199,12 @@
               <input id="as-move" ref="moveInput" v-model.trim="moveText" maxlength="120" autocomplete="off" :placeholder="t('assetsPage.moveDialog.placeholder')" />
             </label>
           </div>
-          <template v-if="folders.length">
+          <template v-if="folderList.length">
             <div class="lc-label">{{ t('assetsPage.moveDialog.existing') }}</div>
             <div class="as-folders">
-              <button v-for="f in folders" :key="f" class="lc-chip o" :class="{ on: moveText === f }" type="button" @click="moveText = f"><LcIcon name="folder" size="s" />{{ f }}</button>
+              <button v-for="f in folderList" :key="f.name" class="lc-chip o" :class="{ on: moveText === f.name }" type="button" :aria-pressed="moveText === f.name" @click="moveText = f.name">
+                <LcIcon name="folder" size="s" /><span>{{ f.name }}</span><i>{{ formatInt(f.count) }}</i>
+              </button>
             </div>
           </template>
           <p v-else class="lc-help">{{ t('assetsPage.moveDialog.none') }}</p>
@@ -183,8 +219,8 @@
 
     <!-- 删除确认 -->
     <div v-if="removeOpen" class="lc-mask" @click.self="closeDialogs">
-      <div class="lc-dialog as-dialog" role="alertdialog" aria-modal="true" :aria-label="t('assetsPage.removeDialog.title')">
-        <div class="lc-dialog-head"><span>{{ t('assetsPage.removeDialog.title') }}</span><button class="lc-x" type="button" :title="t('common.close')" @click="closeDialogs">×</button></div>
+      <div v-dialog="closeDialogs" class="lc-dialog as-dialog" role="alertdialog" aria-modal="true" :aria-label="t('assetsPage.removeDialog.title')">
+        <div class="lc-dialog-head"><span>{{ t('assetsPage.removeDialog.title') }}</span><button class="lc-x" type="button" :aria-label="t('common.close')" @click="closeDialogs">×</button></div>
         <div class="lc-dialog-body">
           <p class="as-confirm">{{ selectedItems.length === 1
             ? t('assetsPage.removeDialog.one', { name: nameOf(selectedItems[0]) })
@@ -197,11 +233,16 @@
       </div>
     </div>
 
+    <CopyToSpaceDialog v-if="copyTo" kind="asset" :id="copyTo.id" :name="nameOf(copyTo)" :asset-kind="copyTo.kind" @close="copyTo = null" />
+
+    <AssetFolderDialog v-if="foldersOpen" :folders="folderList" @close="foldersOpen = false" @changed="onFoldersChanged" @view="viewFolder" />
+
     <MediaLightbox :open="lightbox.open" :url="lightbox.url" :type="lightbox.type" @close="lightbox.open = false" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { vDialog } from '@/directives/dialog'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from '@/utils/feedback'
@@ -209,12 +250,21 @@ import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
 import AssetsTabs from '@/components/AssetsTabs.vue'
 import MediaLightbox from '@/components/canvas/MediaLightbox.vue'
-import { filesApi, userAssetApi, unwrap, apiErrorMessage } from '@/utils/api'
+import SpaceAvatar from '@/components/space/SpaceAvatar.vue'
+import PersonName from '@/components/PersonName.vue'
+import { personName } from '@/utils/person'
+import CopyToSpaceDialog from '@/components/space/CopyToSpaceDialog.vue'
+import AssetFolderDialog from '@/components/assets/AssetFolderDialog.vue'
+import { formatInt } from '@/components/space/format'
+import { filesApi, userAssetApi, unwrap, apiErrorMessage, apiErrorCode, SPACE_GONE_CODES } from '@/utils/api'
 import { assertImageFile, assertVideoFile } from '@/utils/canvasUpload'
 import { fetchMediaBlob } from '@/utils/canvasDownload'
 import { ensureHttps } from '@/utils/mediaUrl'
+import { pixelSize } from '@/utils/pixelSize'
 import { writeClipboard } from '@/utils/clipboard'
 import { useAppStore } from '@/stores/app'
+import { useSpaceStore } from '@/stores/space'
+import type { AssetFolder, Person } from '@/types'
 
 /** /api/user-asset 返回的一项（只列这一页用到的字段） */
 interface AssetItem {
@@ -228,11 +278,25 @@ interface AssetItem {
   width: number
   height: number
   source: 'upload' | 'generated' | string
+  /** 这条在哪个库里：团队的，还是个人空间的 */
+  scope?: 'team' | 'personal'
+  /** 是不是调用者自己加的（个人空间里恒为 true） */
+  mine?: boolean
+  /** 调用者能不能改、能不能删：自己加的可以，团长和管理员都可以 */
+  canManage?: boolean
+  uploaderName?: string
+  /** 团队里：谁加的；个人空间为 null */
+  createdBy?: Person | null
 }
 type AssetKind = 'product' | 'brand' | 'reference' | 'output'
 
 const { t } = useI18n()
 const app = useAppStore()
+const space = useSpaceStore()
+/** 人在个人空间，同时又是某个团队的成员 */
+const inTeams = computed(() => !space.isTeam && space.teams.length > 0)
+/** 有没有别的空间可以复制过去：团队里总有个人空间；个人空间里得先在某个团队里 */
+const canCopyOut = computed(() => space.teamsEnabled && (space.isTeam || space.teams.length > 0))
 
 const KINDS: AssetKind[] = ['product', 'brand', 'reference', 'output']
 const PAGE_SIZE = 60
@@ -255,12 +319,56 @@ const typeOptions = computed(() => [
   { value: 'IMAGE' as '' | 'IMAGE' | 'VIDEO', label: t('assetsPage.filter.typeImage') },
   { value: 'VIDEO' as '' | 'IMAGE' | 'VIDEO', label: t('assetsPage.filter.typeVideo') },
 ])
-const folders = ref<string[]>([])
+/**
+ * 分组。分组是独立存在的：里面的素材都移走了它也还在（空的），不用了要手动删。
+ * 数量是分组里所有种类的素材数，不受上面的筛选影响。
+ */
+const folderList = ref<AssetFolder[]>([])
 const folderOptions = computed(() => {
-  const list = [...folders.value]
-  if (folder.value && !list.includes(folder.value)) list.push(folder.value)
-  return [{ value: '', label: t('assetsPage.filter.folderAll') }, ...list.map(f => ({ value: f, label: f }))]
+  const list = folderList.value.map(f => ({ value: f.name, label: f.name, desc: f.empty ? t('assetsPage.folders.isEmpty') : t('assetsPage.folders.count', { n: formatInt(f.count) }, f.count) }))
+  // 地址里带着一个已经不存在的分组（刚被删了）：照样显示出来，人才知道自己筛的是什么
+  if (folder.value && !list.some(f => f.value === folder.value)) list.push({ value: folder.value, label: folder.value, desc: '' })
+  return [{ value: '', label: t('assetsPage.filter.folderAll'), desc: '' }, ...list]
 })
+/** 老服务端只给名字（folders），没有数量：当成「不知道是不是空的、也删不了」 */
+function readFolders(data: any): AssetFolder[] {
+  if (Array.isArray(data?.folderList)) return data.folderList
+  return (Array.isArray(data?.folders) ? data.folders : []).map((name: string) => ({ name, count: 0, empty: false, canDelete: false }))
+}
+/** 现在筛的这个分组，而且它是空的 */
+const emptyFolder = computed(() => (folder.value && !kind.value && !type.value && !search.value ? folderList.value.find(f => f.name === folder.value && f.empty) || null : null))
+
+const foldersOpen = ref(false)
+function onFoldersChanged(what: { created?: string; removed?: string }) {
+  // 正筛着的分组被删了 / 解散了：筛选回到全部（watch 会重取）；否则原地重取，数量跟着变
+  if (what.removed && what.removed === folder.value) folder.value = ''
+  else void load(true)
+}
+function viewFolder(name: string) {
+  foldersOpen.value = false
+  kind.value = ''
+  type.value = ''
+  searchText.value = ''
+  search.value = ''
+  folder.value = name
+}
+/** 空态里的「删除分组」：这个分组此刻是空的 */
+async function removeEmptyFolder(name: string) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await userAssetApi.removeFolder(name)
+    MessagePlugin.success(t('assetsPage.folders.deleted', { name }))
+    if (folder.value === name) folder.value = ''
+    else void load(true)
+  } catch (err) {
+    // 刚有人往里放了东西（409）、不是自己建的（403）、已经被删了（404）：服务端的话说得清楚，列表重取
+    MessagePlugin.error(apiErrorMessage(err, t('common.operationFailed')))
+    void load(true)
+  } finally {
+    busy.value = false
+  }
+}
 const filtered = computed(() => !!(kind.value || type.value || folder.value || searchText.value.trim()))
 function resetFilters() {
   kind.value = ''
@@ -294,7 +402,7 @@ async function load(reset: boolean) {
     const list: AssetItem[] = (data?.list || []).map((d: any) => ({ ...d, id: String(d.id || d._id) }))
     items.value = reset ? list : [...items.value, ...list.filter(n => !items.value.some(o => o.id === n.id))]
     total.value = Number(data?.pagination?.total) || 0
-    folders.value = Array.isArray(data?.folders) ? data.folders : []
+    folderList.value = readFolders(data)
     // 列表换了：不在里面的选中项一起丢掉
     if (reset && selected.value.size) {
       const ids = new Set(list.map(i => i.id))
@@ -342,11 +450,13 @@ const footText = computed(() => {
 })
 
 const nameOf = (it: AssetItem) => it.name || t('assetsPage.unnamed')
+/** 谁加的（老数据只有 uploaderName）。怎么写见 components/PersonName.vue */
+const uploaderOf = (it: AssetItem): Partial<Person> => it.createdBy || { name: it.uploaderName || '' }
 /** 视频资产有没有一张真正的封面图（而不是被填成了视频地址本身） */
 const hasOwnPoster = (it: AssetItem) => !!it.thumbnailUrl && it.thumbnailUrl !== it.mediaUrl
 function metaOf(it: AssetItem): string {
   return [
-    it.width && it.height ? `${it.width} × ${it.height}` : '',
+    pixelSize(it.width, it.height),
     it.source === 'generated' ? t('assetsPage.source.generated') : t('assetsPage.source.upload'),
     it.folder,
   ].filter(Boolean).join(' · ')
@@ -453,6 +563,12 @@ function onDrop(e: DragEvent) {
 // ---- 选择 ----
 const selected = ref<Set<string>>(new Set())
 const selectedItems = computed(() => items.value.filter(i => selected.value.has(i.id)))
+/** 选中的里面有几条是别人加的、自己动不了（只有团队里的成员会遇到） */
+const lockedCount = computed(() => selectedItems.value.filter(i => i.canManage === false).length)
+/** 改名、移动、删除：选中的每一条都得是自己能管的 */
+const canManageSel = computed(() => selectedItems.value.length > 0 && !lockedCount.value)
+/** 「复制到…」针对哪一条 */
+const copyTo = ref<AssetItem | null>(null)
 const allSelected = computed(() => shown.value.length > 0 && shown.value.every(i => selected.value.has(i.id)))
 const selBreakdown = computed(() => ({
   image: selectedItems.value.filter(i => i.nodeType !== 'VIDEO').length,
@@ -479,6 +595,22 @@ function onCardClick(it: AssetItem) {
 
 // ---- 批量操作 ----
 const busy = ref(false)
+
+/**
+ * 改、删被拒绝：这一条不是自己的，或者角色刚被改了（team.forbidden）。
+ * 把服务端的那句话说出来，再重新拉一遍，让按钮跟上现在的权限。空间没了由外壳统一处理，这里不出声。
+ */
+function reportFailure(err: unknown, fallback: string) {
+  const code = apiErrorCode(err)
+  if ((SPACE_GONE_CODES as readonly string[]).includes(code)) return
+  MessagePlugin.error(apiErrorMessage(err, fallback))
+  if (code === 'team.forbidden') {
+    closeDialogs()
+    clearSelection()
+    reloadAll()
+    void space.refresh()
+  }
+}
 
 function extOf(it: AssetItem): string {
   const m = it.mediaUrl.split('?')[0].match(/\.([a-zA-Z0-9]{2,5})$/)
@@ -547,7 +679,8 @@ async function confirmRename() {
     renameOpen.value = false
     MessagePlugin.success(t('assetsPage.renameDialog.done'))
   } catch (err) {
-    MessagePlugin.error(apiErrorMessage(err, t('common.operationFailed')))
+    busy.value = false
+    reportFailure(err, t('common.operationFailed'))
   } finally {
     busy.value = false
   }
@@ -571,7 +704,8 @@ async function confirmMove(name: string) {
     const res = await Promise.allSettled(list.map(it => userAssetApi.update(it.id, { folder: name }).then(unwrap)))
     const ok = res.filter(r => r.status === 'fulfilled').length
     const failed = res.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
-    if (failed) MessagePlugin.error(apiErrorMessage(failed.reason, t('common.operationFailed')))
+    busy.value = false
+    if (failed) reportFailure(failed.reason, t('common.operationFailed'))
     if (ok) MessagePlugin.success(t(name ? 'assetsPage.moveDialog.done' : 'assetsPage.moveDialog.doneOut', { n: ok }))
     moveOpen.value = false
     clearSelection()
@@ -590,7 +724,12 @@ async function confirmRemove() {
     const res = await Promise.allSettled(list.map(it => userAssetApi.remove(it.id).then(unwrap)))
     const ok = res.filter(r => r.status === 'fulfilled').length
     const fail = res.length - ok
-    if (fail) MessagePlugin.error(t('assetsPage.removeDialog.partial', { ok, fail }))
+    // 被拒绝的（不是自己的）把服务端的原因说出来，别的失败只报个数
+    const denied = res.find(r => r.status === 'rejected' && apiErrorCode((r as PromiseRejectedResult).reason) === 'team.forbidden') as PromiseRejectedResult | undefined
+    const gone = res.some(r => r.status === 'rejected' && (SPACE_GONE_CODES as readonly string[]).includes(apiErrorCode((r as PromiseRejectedResult).reason)))
+    if (gone) return
+    if (denied) { MessagePlugin.error(apiErrorMessage(denied.reason, t('common.operationFailed'))); void space.refresh() }
+    else if (fail) MessagePlugin.error(t('assetsPage.removeDialog.partial', { ok, fail }))
     else MessagePlugin.success(t('assetsPage.removeDialog.done', { n: ok }))
     removeOpen.value = false
     clearSelection()
@@ -608,9 +747,9 @@ function closeDialogs() {
   removeOpen.value = false
 }
 function onKeydown(e: KeyboardEvent) {
+  // 弹窗自己的 Esc 归 v-dialog 管（那一下不会传到这里）；这里只剩「取消选择」
   if (e.key !== 'Escape' || lightbox.value.open) return
-  if (renameOpen.value || moveOpen.value || removeOpen.value) closeDialogs()
-  else if (selected.value.size) clearSelection()
+  if (selected.value.size) clearSelection()
 }
 
 onMounted(() => {
@@ -630,6 +769,8 @@ onBeforeUnmount(() => {
 .as-upload-btn { height: 40px; padding: 0 20px; }
 .as-file { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 
+.as-rule { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; font-size: 13px; line-height: 1.6; color: var(--text-3); }
+.as-rule :deep(svg) { flex: none; margin-top: 3px; color: var(--text-3); }
 .as-fbar { margin-top: 16px; }
 .as-fbar .lc-seg .n { font: 500 11px var(--f-mono); color: var(--text-3); }
 .as-fbar .lc-seg .on .n { color: var(--cyan-soft); }
@@ -648,6 +789,7 @@ onBeforeUnmount(() => {
 .as-selbar .lc-cb { cursor: pointer; }
 .as-selbar b { font-weight: 600; }
 .as-selbar-sub { font-size: 13px; }
+.as-selbar-lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .as-selbar-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ---- 网格 ---- */
@@ -659,6 +801,9 @@ onBeforeUnmount(() => {
 .as .meta { padding: 10px 12px 12px; }
 .as .meta b { display: block; font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as .meta small { display: block; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as .meta small.as-by { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--text-2); }
+.as .meta small.as-by > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.as .meta small.as-by :deep(.pn-tag) { height: 18px; padding: 0 6px; font-size: 11px; }
 .as-pick {
   position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
   border: 1.5px solid var(--on-scrim-line-2); background: rgb(var(--c-scrim) / .45);
@@ -717,6 +862,11 @@ onBeforeUnmount(() => {
 .as-last { margin-bottom: 0; }
 .as-folders { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .as-folders .lc-chip { height: 28px; padding: 0 10px; gap: 6px; border: 0; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.as-folders .lc-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.as-folders .lc-chip i { flex: none; font-style: normal; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.as-none small { display: block; margin-top: 4px; color: var(--text-3); font-size: 12px; }
+.as-none-ops { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.as-folders-btn { flex: none; }
 .as-folders .lc-chip:hover { color: var(--text); box-shadow: 0 0 0 1px var(--line-3) inset; }
 .as-folders .lc-chip.on { color: var(--cyan-soft); background: rgb(var(--c-cyan) / .1); box-shadow: 0 0 0 1px var(--cyan) inset; }
 .as-out { margin-right: auto; }

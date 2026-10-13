@@ -2,11 +2,16 @@
   <div class="shell" :class="{ mini, immersive: hidden }">
     <header v-if="!hidden" class="shell-top">
       <LcLogo v-if="embed.brand !== false" to="/app" />
-      <span v-if="embed.brand === undefined" class="tagline">{{ t('shell.tagline') }}</span>
+      <!-- 空间切换器占的是原来那句标语的位置；没有团队这回事时（宿主管登录而后端不认识这个人）还是标语 -->
+      <SpaceSwitcher v-if="showSwitcher" />
+      <span v-else-if="embed.brand === undefined" class="tagline">{{ t('shell.tagline') }}</span>
       <span class="lc-sp" />
+      <!-- 窄于 760px 顶栏放不下这么多：有用户菜单时语言收进菜单里（见下面的 um-lang），产品名才写得全；
+           没有用户菜单时（宿主管登录）换成一颗图标钮（LangSwitch） -->
       <LcSelect
         v-if="embed.features.localeSwitch"
         class="lang"
+        :class="embed.features.account ? 'in-menu' : 'to-icon'"
         size="sm"
         auto-width
         :model-value="app.locale"
@@ -14,6 +19,7 @@
         :aria-label="t('shell.language')"
         @update:model-value="app.setLocale"
       />
+      <LangSwitch v-if="embed.features.localeSwitch && !embed.features.account" class="lang-icon" />
       <ThemeSwitch v-if="embed.features.themeSwitch" />
       <div v-if="embed.features.account" ref="userEl" class="user-wrap">
         <button class="user" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
@@ -28,6 +34,16 @@
           <div class="um-head">
             <b>{{ app.user?.username }}</b>
             <small>{{ app.user?.email }}</small>
+          </div>
+          <!-- 语言：只在窄于 760px 时出现（顶栏上的那个下拉这时收起来了） -->
+          <div v-if="embed.features.localeSwitch" class="um-lang" role="group" :aria-label="t('shell.language')" data-testid="user-menu-language">
+            <span class="um-lab"><LcIcon name="globe" size="s" />{{ t('shell.language') }}</span>
+            <span class="lc-seg">
+              <button
+                v-for="l in LOCALE_OPTIONS" :key="l.value" type="button" role="menuitemradio" :class="{ on: l.value === app.locale }"
+                :aria-checked="l.value === app.locale" :lang="l.value" :data-locale-opt="l.value" @click="app.setLocale(l.value)"
+              >{{ l.label }}</button>
+            </span>
           </div>
           <router-link class="lc-menu-item" role="menuitem" :to="{ name: 'settings', params: { section: 'account' } }" @click="menuOpen = false">
             <LcIcon name="shield" size="s" />{{ t('shell.account') }}
@@ -54,11 +70,12 @@
         <router-link
           :to="n.to"
           class="nav"
-          :class="{ on: route.meta.nav === n.key }"
-          :title="t('shell.nav.' + n.key)"
+          :class="{ on: route.meta.nav === n.key, 'nav-team': n.key === 'team', 'has-short': !!navShort(n.key) }"
+          v-tip="{ text: iconOnly ? navLabel(n.key) : '', placement: 'right' }"
+          :aria-label="navLabel(n.key)"
           :aria-current="route.meta.nav === n.key ? 'page' : undefined"
         >
-          <LcIcon :name="n.icon" /><span>{{ t('shell.nav.' + n.key) }}</span>
+          <LcIcon :name="n.icon" /><span>{{ navLabel(n.key) }}</span><span v-if="navShort(n.key)" class="nav-short" aria-hidden="true">{{ navShort(n.key) }}</span>
         </router-link>
       </template>
       <div v-if="embed.features.externalLinks" class="side-foot">
@@ -82,19 +99,27 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useSpaceStore } from '@/stores/space'
 import { LOCALE_OPTIONS } from '@/locales'
 import { LINKS } from '@/utils/links'
 import LcSelect from '@/components/LcSelect.vue'
 import LcIcon from '@/components/LcIcon.vue'
 import LcLogo from '@/components/LcLogo.vue'
 import ThemeSwitch from '@/components/ThemeSwitch.vue'
+import LangSwitch from '@/components/LangSwitch.vue'
+import SpaceSwitcher from '@/components/space/SpaceSwitcher.vue'
 import { useEmbed } from '@/embed/context'
-import { isPageAllowed } from '@/embed/options'
+import { isPageOpen } from '@/embed/options'
+import { isSettingsOpen } from '@/embed/links'
 
 const { t } = useI18n()
 const route = useRoute()
 const app = useAppStore()
+const space = useSpaceStore()
 const embed = useEmbed()
+
+/** 有空间可说（后端认识这个人），并且要么能换、要么正待在某个团队里（空间被集成方定死时只显示在哪儿） */
+const showSwitcher = computed(() => space.teamsEnabled && !!app.bootstrap?.spaces?.length && (space.canSwitch || space.isTeam))
 
 const NAV = [
   { key: 'home', to: '/app', icon: 'home' },
@@ -102,17 +127,61 @@ const NAV = [
   { key: 'assets', to: '/assets', icon: 'assets' },
   { key: 'models', to: '/models', icon: 'models' },
   { key: 'history', to: '/history', icon: 'history' },
+  { key: 'team', to: '/team', icon: 'users' },
   { key: 'settings', to: '/settings', icon: 'settings' },
 ] as const
+type NavKey = typeof NAV[number]['key']
 
-/** 侧栏里只列集成方开放的页面（独立应用里是全部） */
-const NAV_PAGE = { home: 'home', canvases: 'canvases', assets: 'assets', models: 'models', history: 'history', settings: 'settings' } as const
-const nav = computed(() => NAV.filter((n) => isPageAllowed(embed.pages, NAV_PAGE[n.key])))
+/**
+ * 侧栏里只列这次挂载里存在的页面（独立应用里是全部）：集成方没列进 pages 的、所属功能被关掉的
+ * （features.assetLibrary / brandKit / modelManagement / teamAdmin，见 embed/options.ts 的 isPageOpen）都不列。
+ * 「团队」只在团队空间里有；「设置」里一个能看的分区都没有时也不列。
+ */
+const NAV_PAGE = { home: 'home', canvases: 'canvases', assets: 'assets', models: 'models', history: 'history', team: 'team', settings: 'settings' } as const
+/** 素材库关了、品牌包还开着：「素材」那一项换成直接去品牌包（它本来是素材库的第二个页签） */
+const kitsOnly = computed(() => !isPageOpen(embed, 'assets') && isPageOpen(embed, 'brand-kits'))
+interface NavItem { key: NavKey; to: string; icon: string }
+const nav = computed<NavItem[]>(() => NAV.flatMap((n): NavItem[] => {
+  if (n.key === 'assets' && kitsOnly.value) return [{ ...n, to: '/assets/brand-kits' }]
+  if (n.key === 'team') return space.isTeam && isPageOpen(embed, 'team') ? [n] : []
+  if (n.key === 'settings') return isSettingsOpen(embed, app.isOwner) ? [n] : []
+  return isPageOpen(embed, NAV_PAGE[n.key]) ? [n] : []
+}))
+/** 团队空间里「工作台」叫「团队首页」 */
+const navLabel = (key: NavKey) => {
+  if (key === 'assets' && kitsOnly.value) return t('brandKit.page.tabKits')
+  return t(key === 'home' && space.isTeam ? 'shell.nav.teamHome' : 'shell.nav.' + key)
+}
+/**
+ * 手机底部导航一格只有五六十像素：「Team home」「Workbench」放不下，那里用短的叫法（读屏读的仍是全称）。
+ * 短叫法和全称一样（中文的「工作台」）就不另起。
+ */
+const navShort = (key: NavKey) => {
+  if (key !== 'home') return ''
+  const short = t(space.isTeam ? 'shell.nav.teamHomeShort' : 'shell.nav.homeShort')
+  return short !== navLabel(key) ? short : ''
+}
 
 /** 画布编辑器里侧栏收成图标栏，把宽度让给画布 */
 const mini = computed(() => route.meta.shell === 'mini')
-/** 编辑器的「沉浸模式」：外壳整个收起 */
-const hidden = computed(() => mini.value && app.immersive)
+/** 编辑器的「沉浸模式」：外壳整个收起。集成方关了这个功能（features.immersive）时，上次记下的「沉浸」不算数 —— 不然外壳收着，却没有把它叫回来的开关 */
+const hidden = computed(() => mini.value && app.immersive && embed.features.immersive)
+
+/**
+ * 侧栏只剩图标的时候（编辑器里，或者窗口不够宽 —— 和下面样式里的断点是同一组数），导航项的名字靠悬停提示（v-tip）给；
+ * 名字本来就摆着的时候不重复一遍。
+ */
+const narrowSide = ref(false)
+let sideMq: MediaQueryList | null = null
+const onSideMq = () => { narrowSide.value = !!sideMq?.matches }
+onMounted(() => {
+  if (typeof window.matchMedia !== 'function') return
+  sideMq = window.matchMedia('(min-width: 641px) and (max-width: 1100px)')
+  onSideMq()
+  sideMq.addEventListener('change', onSideMq)
+})
+onBeforeUnmount(() => sideMq?.removeEventListener('change', onSideMq))
+const iconOnly = computed(() => mini.value || narrowSide.value)
 
 const initial = computed(() => (app.user?.username || '?').slice(0, 1).toUpperCase())
 
@@ -156,6 +225,8 @@ async function logout() {
 }
 .tagline { font-size: 12px; color: var(--text-3); padding-left: 16px; border-left: 1px solid var(--line-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lang :deep(.lcs-trigger) { background: rgb(var(--c-film) / .05); border-color: var(--line); height: 36px; border-radius: 10px; }
+/* 图标钮版的语言切换：只在窄屏、没有用户菜单时出现（见下面 760px 那一段） */
+.lang-icon { display: none; }
 
 .user-wrap { position: relative; flex: none; }
 .user {
@@ -177,6 +248,11 @@ async function logout() {
 .user-menu .lc-menu-item { gap: 10px; width: 100%; border: 0; background: none; text-decoration: none; text-align: left; }
 .user-menu .lc-menu-item.danger { color: var(--err-soft); }
 .user-menu .lc-menu-item.danger:hover { background: rgb(var(--c-err) / .12); }
+/* 菜单里的语言：桌面宽度上顶栏有下拉，这里不出现 */
+.um-lang { display: none; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.um-lab { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.um-lang .lc-seg > button { height: 30px; padding: 0 10px; }
+.um-lang .lc-seg > button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .shell-side {
   border-right: 1px solid var(--line); background: rgb(var(--c-chrome) / .55);
@@ -210,6 +286,7 @@ async function logout() {
 /* 图标栏：编辑器里，或者窗口窄于 1100 */
 .shell.mini .shell-side { padding: 16px 8px; align-items: center; }
 .shell.mini .nav { width: 44px; padding: 0; justify-content: center; }
+.nav .nav-short { display: none; }
 .shell.mini .nav span, .shell.mini .side-foot, .shell.mini .tagline { display: none; }
 .shell.mini .shell-side hr { align-self: stretch; }
 @media (max-width: 1100px) {
@@ -219,7 +296,15 @@ async function logout() {
   .nav span, .side-foot { display: none; }
   .shell-side hr { align-self: stretch; }
 }
-@media (max-width: 760px) { .tagline { display: none; } }
+/* 顶栏放不下这么多的宽度（手机，以及刚过手机断点的那一段）：标语不要，语言收进用户菜单 ——
+   顶栏只剩 Logo + 名称、空间、主题、头像，产品名写得全，语言下拉也不会被挤扁 */
+@media (max-width: 760px) {
+  .tagline { display: none; }
+  .lang.in-menu, .lang.to-icon { display: none; }
+  .lang-icon { display: block; }
+  .um-lang { display: flex; }
+  .user-menu { min-width: 248px; }
+}
 
 /* 手机：侧栏变成底部导航；编辑器里不显示（画布要用整屏，顶栏的 Logo 可以回工作台） */
 @media (max-width: 640px) {
@@ -236,10 +321,18 @@ async function logout() {
     background: rgb(var(--c-chrome) / .92); overflow: visible;
   }
   .shell-side hr { display: none; }
-  .nav { flex: 1 1 0; width: auto; min-width: 0; height: 50px; flex-direction: column; gap: 3px; padding: 0 2px; border-radius: 10px; font-size: 10.5px; }
+  .nav { flex: 1 1 0; width: auto; min-width: 0; height: 50px; flex-direction: column; gap: 3px; padding: 0; border-radius: 10px; font-size: 10.5px; }
   .nav span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
+  .nav.has-short span:not(.nav-short) { display: none; }
+  .nav .nav-short { display: block; }
   .nav.on { box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .12) inset; }
+  /* 底部导航保持六项：「团队」的入口在空间切换器的菜单里 */
+  .nav.nav-team { display: none; }
   .shell.mini .shell-side { display: none; }
   .shell.mini:not(.immersive) { grid-template-rows: var(--shell-top) minmax(0, 1fr); }
+}
+/* 宿主管登录时右上角那一块只是「现在是谁」（没有菜单）：手机宽度上把位置让给宿主的 Logo 和名称 */
+@media (max-width: 480px) {
+  .user.host-user { display: none; }
 }
 </style>

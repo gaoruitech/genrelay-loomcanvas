@@ -16,31 +16,23 @@
         aria-haspopup="dialog"
         :aria-expanded="open"
         :aria-label="t('queue.title') + ' · ' + summary + (unseen.n ? ' · ' + t('queue.unseen', { n: unseen.n }) : '')"
+        v-tip="{ text: open || dragging ? '' : (active ? summary : t('queue.title') + ' · ' + summary), placement: onLeft ? 'right' : 'left' }"
         @pointerdown="onDown"
         @mousedown.prevent
         @pointermove="onMove"
         @pointerup="onUp($event, true)"
         @pointercancel="onUp($event, false)"
         @click="onClick"
-        @dblclick="resetPos"
       >
-        <!-- 进度环：上游报了进度就画汇总（各运行中任务的平均），没报就转一段弧，不编数字 -->
-        <svg class="qf-ring" viewBox="0 0 52 52" aria-hidden="true">
-          <defs>
-            <!-- 整个环转了 -90°：这里的「右」是屏幕上的 12 点，弧从青色起步 -->
-            <linearGradient id="qf-grad" x1="1" y1="0" x2="0" y2="0">
-              <stop offset="0" class="s0" /><stop offset=".55" class="s1" /><stop offset="1" class="s2" />
-            </linearGradient>
-          </defs>
-          <circle class="qf-track" cx="26" cy="26" r="24" />
-          <circle
-            v-if="running.length"
-            class="qf-arc"
-            :class="{ spin: !hasProgress }"
-            cx="26" cy="26" r="24" pathLength="100"
-            :stroke-dasharray="(hasProgress ? Math.max(4, progress) : 26) + ' 100'"
-          />
-        </svg>
+        <!-- 进度环：这一批任务的整体进度（结束的算满、排队的算零、运行中的按上游报的数），只往前走；
+             一个数都还没有就转一段弧，不编数字。
+             颜色沿着弧从青到蓝到紫一路走到头，不回头：走得越远颜色越深，一眼看得出哪头是起点 -->
+        <span
+          class="qf-ring"
+          :class="{ on: running.length > 0, spin: running.length > 0 && !hasProgress }"
+          :style="{ '--lc-qf-p': hasProgress ? Math.max(4, progress) : 0 }"
+          aria-hidden="true"
+        />
         <span class="qf-core">
           <Transition name="qf-swap" mode="out-in">
             <!-- 还有别的任务没完：中间一直是数量（它自己会滚），结束的那一下只在外圈闪一道光 -->
@@ -59,23 +51,48 @@
           <i v-if="unseen.n" class="qf-badge" :class="{ bad: unseen.bad }" aria-hidden="true">{{ unseen.n > 9 ? '9+' : unseen.n }}</i>
         </Transition>
       </button>
-      <span class="qf-tip" role="tooltip">{{ active ? summary : t('queue.title') + ' · ' + summary }}</span>
     </div>
 
-    <!-- 清单：贴着圆钮弹出的一张卡片，朝有地方的那边开 -->
-    <Transition name="qp-in">
+    <!-- 清单：宽屏是贴着圆钮弹出的一张卡片，朝有地方的那边开；手机宽度是贴底的通栏面板（挂到弹层那一层去，
+         不会被画布上别的悬浮块压住），里面自己滚，往下划、点遮罩、Esc 都能收起 -->
+    <Teleport :to="$lcPortal" :disabled="!sheet">
+    <Transition name="qp-in" @after-leave="sheetDy = 0">
+      <!-- 遮罩上的 mousedown 拦掉默认行为：手指点开面板之后，浏览器还会在同一个点上补发一组鼠标事件，
+           这时候那个点已经是遮罩了，不拦的话焦点会被它从面板里带走 -->
+      <div v-if="open" class="qp-wrap" :class="sheet ? 'lc-mask lc-sheet sheet' : 'pop'" @mousedown.self.prevent>
+      <!-- 键盘和焦点归 v-dialog：打开时焦点进清单，Tab 在里面转，Esc 收起，收起后焦点回到圆钮（或者打开前所在的地方）。
+           贴底面板是模态的；宽屏那张卡片不挡画布（modal: false），人点了别处焦点就留在别处 -->
       <section
-        v-if="open"
         ref="popRef"
+        v-dialog="{ onEscape: close, modal: sheet, fallbackFocus: () => btnRef }"
         class="qp"
+        :class="{ 'lc-dialog sheet': sheet, pull: pulling }"
         role="dialog"
+        :aria-modal="sheet ? 'true' : undefined"
         :aria-label="t('queue.title')"
-        :style="popStyle"
+        tabindex="-1"
+        :style="sheet ? { '--qp-dy': sheetDy + 'px' } : popStyle"
         @wheel.stop
       >
-        <header class="qp-hd">
+        <!-- 面板顶上那道短横：按住往下划收起 -->
+        <div
+          v-if="sheet"
+          class="qp-grip"
+          aria-hidden="true"
+          @pointerdown="onPullDown"
+          @pointermove="onPullMove"
+          @pointerup="onPullUp($event, true)"
+          @pointercancel="onPullUp($event, false)"
+        ><i /></div>
+        <header
+          class="qp-hd"
+          @pointerdown="onPullDown"
+          @pointermove="onPullMove"
+          @pointerup="onPullUp($event, true)"
+          @pointercancel="onPullUp($event, false)"
+        >
           <b>{{ t('queue.title') }}</b>
-          <span class="qp-sum" :class="{ on: active }" :title="t('queue.slotsTip', { max: MAX_CONCURRENT })">{{ active ? summary : t('queue.idle') }}</span>
+          <span v-tip="t('queue.slotsTip', { max: MAX_CONCURRENT })" class="qp-sum" :class="{ on: active }">{{ active ? summary : t('queue.idle') }}</span>
           <span class="lc-sp" />
           <ConfirmPop
             v-if="cancelableIds.length"
@@ -86,10 +103,21 @@
           >
             <button type="button" class="qc-link danger">{{ t('queue.cancelAll') }}</button>
           </ConfirmPop>
-          <button v-if="pos" type="button" class="qc-link qp-reset" :title="t('queue.resetTip')" @click="resetPos">{{ t('queue.reset') }}</button>
+          <!-- 圆钮被挪走之后才有：放回默认的右下角 -->
+          <button v-if="pos" v-tip="t('queue.resetTip')" type="button" class="qc-link qp-reset" data-testid="queue-reset" @click="resetPos">
+            <LcIcon name="undo" size="s" />{{ t('queue.reset') }}
+          </button>
+          <button v-if="sheet" type="button" class="lc-x qp-x" :aria-label="t('common.close')" @click="close">×</button>
         </header>
 
+        <!-- 表头下面整块一起滚：正在跑的排最前（开清单就是来看它们的），本月上限跟在后面，再往下是已结束的。
+             以前上限那一块固定在上面、清单自己另滚 —— 两个上限都设了的话，清单只剩两行半的地方 -->
         <div class="qc-bd">
+          <!-- 现在再提交会被拦下：先说清楚是哪一项、找谁，省得一个个点了才知道 -->
+          <BudgetNotice
+            v-if="budgetBlock" tight tone="warn" :refusal="budgetBlock"
+            :can-set-limits="budgetApi?.canSetLimits.value" :limits-to="budgetApi?.limitsTo.value"
+          />
           <p v-if="isIdle" class="qp-empty">{{ t('queue.empty') }}<small>{{ t('queue.dragHint') }}</small></p>
 
           <div v-if="running.length || queued.length" class="qc-live">
@@ -100,7 +128,7 @@
               class="qt act"
               role="button"
               tabindex="0"
-              :title="t('queue.locate')"
+              v-tip="t('queue.locate')"
               @click="focus(it.nodeId)"
               @keydown.enter="focus(it.nodeId)"
             >
@@ -112,7 +140,7 @@
                 <small v-if="it.sub || it.params">{{ [it.sub, it.params].filter(Boolean).join(' · ') }}</small>
                 <small>
                   <span class="qt-run">{{ it.local ? t('queue.processing') : t('queue.generating') }}</span>
-                  <template v-if="it.startedAt"> · <span class="lc-mono">{{ t('queue.elapsed', { time: clock(now - it.startedAt) }) }}</span></template>
+                  <template v-if="it.startedAt"> · <span class="lc-mono">{{ t('queue.elapsed', { time: spanText(now - it.startedAt, 'floor') }) }}</span></template>
                 </small>
               </div>
               <button
@@ -120,7 +148,7 @@
                 type="button"
                 class="lc-tb sm qt-x"
                 :disabled="canceling.has(it.nodeId)"
-                :title="t('queue.cancel')"
+                v-tip="t('queue.cancel')"
                 :aria-label="t('queue.cancel')"
                 @click.stop="cancelOne(it.nodeId)"
               ><LcIcon name="stop" size="s" /></button>
@@ -133,7 +161,7 @@
               class="qt"
               role="button"
               tabindex="0"
-              :title="t('queue.locate')"
+              v-tip="t('queue.locate')"
               @click="focus(it.nodeId)"
               @keydown.enter="focus(it.nodeId)"
             >
@@ -156,15 +184,28 @@
               :key="'b-' + b.nodeId"
               type="button"
               class="qdone error"
-              :title="t('queue.locate')"
+              v-tip="t('queue.locate')"
               @click="focus(b.nodeId)"
             >
               <span class="thumb lc-thumb"><LcIcon name="warn" size="s" /></span>
               <span class="qdone-txt">
                 <b>{{ b.title }}</b>
-                <small class="qdone-err" :title="b.reason">{{ b.reason }}</small>
+                <small v-tip="{ text: b.reason, clipped: true }" class="qdone-err">{{ b.reason }}</small>
               </span>
             </button>
+          </section>
+
+          <!-- 团队空间：我这个月还能跑多少（有上限才显示）；团长还看得到团队的合计 -->
+          <section v-if="budgetRows.length" class="qp-budget" data-testid="queue-budget">
+            <div v-for="g in budgetRows" :key="g.key" class="qp-bg">
+              <div class="qp-bh">
+                <b>{{ g.title }}</b>
+                <small v-if="g.key === budgetRows[0].key && resetWhen">{{ t('spaces.limits.resetsAt', { when: resetWhen }) }}</small>
+              </div>
+              <LimitBar v-for="m in g.meters" :key="m.unit" compact :meter="m.meter" :unit="m.unit" :currency="budget!.currency" :label="g.title" />
+              <small class="qp-bn">{{ g.counted }}</small>
+            </div>
+            <small v-if="budget!.member.uncounted" class="qp-bn warn">{{ unknownText(budget!.member.uncounted) }}</small>
           </section>
 
           <!-- 已结束：成功的带真实产物缩略图，失败的带后端给的原因。只摆最近几条，其余就地展开 -->
@@ -172,17 +213,17 @@
             <div class="qlab">
               <span>{{ t('queue.finished') }}</span><i>{{ finished.length }}</i>
               <span class="lc-sp" />
-              <button type="button" class="qc-link" :title="t('queue.clearTip')" @click="clearFinished">{{ t('queue.clear') }}</button>
+              <button v-tip="t('queue.clearTip')" type="button" class="qc-link" @click="clearFinished">{{ t('queue.clear') }}</button>
             </div>
             <button
               v-for="f in shownFinished"
               :key="f.key"
               type="button"
               class="qdone"
-              :class="f.status"
-              :disabled="!f.alive"
-              :title="f.alive ? t('queue.locate') : t('queue.nodeGone')"
-              @click="focus(f.nodeId)"
+              :class="[f.status, { gone: !f.alive }]"
+              :aria-disabled="!f.alive || undefined"
+              v-tip="f.alive ? t('queue.locate') : t('queue.nodeGone')"
+              @click="f.alive && focus(f.nodeId)"
             >
               <span class="thumb lc-thumb">
                 <img v-if="f.thumb && f.media === 'image'" :src="$src(f.thumb)" alt="" loading="lazy" />
@@ -193,11 +234,13 @@
                 <b>{{ f.title }}</b>
                 <small>
                   <span class="lc-mono">{{ hhmm(f.at) }}</span>
-                  <template v-if="f.status === 'done' && f.durationMs != null"> · {{ t('queue.took', { time: span(f.durationMs) }) }}</template>
+                  <template v-if="f.status === 'done' && f.durationMs != null"> · {{ t('queue.took', { time: spanText(f.durationMs) }) }}</template>
                   <template v-else-if="f.status === 'canceled'"> · {{ t('queue.canceled') }}</template>
-                  <template v-else-if="f.status === 'error'"> · {{ t('queue.failed') }}</template>
+                  <template v-else-if="f.status === 'error'"> · {{ f.refused ? t('spaces.refusal.status') : t('queue.failed') }}</template>
                 </small>
-                <small v-if="f.status === 'error' && f.error" class="qdone-err" :title="f.error">{{ f.error }}</small>
+                <small v-if="f.status === 'error' && f.error" v-tip="{ text: f.error, clipped: true }" class="qdone-err">{{ f.error }}</small>
+                <!-- 不是人点的取消：写明原因（发起人被移出团队、账号被停用、团队关了） -->
+                <small v-else-if="f.status === 'canceled' && f.error" v-tip="{ text: f.error, clipped: true }" class="qdone-err why" data-testid="queue-cancel-why">{{ f.error }}</small>
               </span>
             </button>
             <button v-if="finished.length > FINISHED_CAP" type="button" class="qc-more" :aria-expanded="showAll" @click="showAll = !showAll">
@@ -206,12 +249,19 @@
           </section>
         </div>
       </section>
+      </div>
     </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { lcLocal } from '@/utils/storage'
+import LimitBar from '@/components/space/LimitBar.vue'
+import BudgetNotice from '@/components/space/BudgetNotice.vue'
+import { CANVAS_BUDGET_KEY } from '@/composables/canvasBudgetKey'
+import { countedText, nodeErrorText, preflight, resetText, storedRefusal, unknownText } from '@/utils/budget'
+import type { LimitSide, TeamLimits } from '@/types'
 /**
  * 生成队列：这张画布上正在跑、在排队、跑完了的节点。
  *
@@ -223,13 +273,15 @@ import { lcLocal } from '@/utils/storage'
  *                   那次运行的 startedAt，问不到就不显示用时
  * 没有剩余时间：上游不给，前端也不猜。
  *
- * 形态：一颗浮在画布上的圆钮，默认在右下角，可以拖到别处（松手吸到左 / 右边，位置记在浏览器里）。
- * 圆钮本身就是状态：空闲是一个安静的图标；有任务时边上一圈进度环、中间是未完成的数量；
+ * 形态：一颗浮在画布上的圆钮，默认在右下角，可以拖到别处（松手吸到左 / 右边，位置记在浏览器里；
+ * 挪走之后清单表头里多一个「复位」。连点两下不是复位 —— 手指点得快一点就会误触，那只是开了又关）。
+ * 圆钮本身就是状态：空闲是一个安静的图标；有任务时边上一圈进度环（这一批任务的整体进度，只往前走）、中间是未完成的数量；
  * 上次看过清单之后又有任务结束，右上角亮一个角标。点一下才弹出清单卡片 —— 运行开始时
  * 不会自己弹出来，圆钮的动画就是提示。已完成只列「这次打开画布以来」结束的那些：
  * 更早的版本都在各自节点的历史里，不该每次进画布都摆一长列出来。
+ * 清单的键盘和焦点交给 v-dialog：宽屏那张卡片不挡画布（modal: false），手机上的贴底面板是模态的。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Node } from '@vue-flow/core'
 import LcIcon from '@/components/LcIcon.vue'
@@ -239,7 +291,11 @@ import { ensureHttps } from '@/utils/mediaUrl'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { getAdapter, listChatModels, listVideoChatModels } from '@/utils/canvasModels'
 import { MAX_CONCURRENT, type NodeResultEntry } from '@/composables/useCanvasExecutor'
-import { clampNum, isFree, nearestFree, rectsIn, type Rect } from '@/utils/floatSpot'
+import { clampNum, isFree, nearestFree, rectsIn, watchRects, type Rect } from '@/utils/floatSpot'
+import { frameOf } from '@/utils/frame'
+import { TIP_HOLD_MS } from '@/directives/tip'
+import { clipLength, spanText } from '@/utils/duration'
+import { vDialog } from '@/directives/dialog'
 
 const props = defineProps<{
   nodes: Node[]
@@ -252,13 +308,37 @@ const props = defineProps<{
   rightInset?: number
   /** 工具面板（可以拖到任何地方）眼下占着的矩形，相对编辑区：圆钮找空位时绕开它 */
   avoid?: Rect[]
+  /** 团队空间里这个人本月的上限和用量（没有团队这回事时不给） */
+  budget?: TeamLimits | null
+  /** 画布现在只读（别人正在编辑、只有查看权）：清单照样能看、能定位到节点，「取消」不出现 —— 那是改画布 */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'focus', nodeId: string): void
+  /** 清单打开了：外面可以趁这时候把上限的数字刷新一下 */
+  (e: 'open'): void
 }>()
 
 const { t, locale } = useI18n()
+
+// ---------------- 团队里的每月上限：只列设了上限的那几项 ----------------
+const budgetApi = inject(CANVAS_BUDGET_KEY, undefined)
+const budgetRows = computed(() => {
+  void locale.value
+  const b = props.budget
+  if (!b) return []
+  const meters = (side?: LimitSide) => (side
+    ? (['runs', 'amount'] as const).filter((unit) => side.effective[unit].limit != null).map((unit) => ({ unit, meter: side.effective[unit] }))
+    : [])
+  return [
+    { key: 'member', title: t('spaces.limits.mine'), side: b.member },
+    { key: 'team', title: t('spaces.limits.team'), side: b.team },
+  ].map((g) => ({ key: g.key, title: g.title, meters: meters(g.side), counted: g.side ? countedText(g.side.breakdown) : '' })).filter((g) => g.meters.length)
+})
+/** 现在提交会被哪一项上限拦下（服务端给的 effective.blockedBy）；没有就是 null */
+const budgetBlock = computed(() => (void locale.value, preflight(props.budget)))
+const resetWhen = computed(() => (void locale.value, resetText(props.budget?.resetsAt, props.budget?.timezone, false)))
 
 const GEN_TYPES = new Set(['image-gen', 'image-edit', 'video-gen', 'video-edit'])
 const VIDEO_TYPES = new Set(['video-gen', 'video-edit'])
@@ -275,14 +355,17 @@ function modelLabel(type: string, model: unknown): string {
   return list.find((m) => m.id === model)?.label || ''
 }
 
-/** 节点上真实存着的那几项参数：时长 | 分辨率 | 比例 | 张数。没有的不显示 */
+/**
+ * 节点上真实存着的那几项参数，没有的不显示。顺序和节点上的摘要、参数 chip、生成记录一致：
+ * 比例 · 分辨率 · 时长（· 张数）—— 同一个任务在节点上和在队列里读出来的是同一句话。
+ */
 function paramText(type: string, d: Record<string, any>): string {
   if (!GEN_TYPES.has(type)) return ''
   const out: string[] = []
-  if (VIDEO_TYPES.has(type) && Number(d.duration) > 0) out.push(t('models.seconds', { n: Number(d.duration) }))
+  if (d.aspectRatio) out.push(d.aspectRatio === 'auto' ? t('models.auto') : String(d.aspectRatio))
   if (d.resolution) out.push(String(d.resolution))
-  if (d.aspectRatio) out.push(String(d.aspectRatio))
-  if (Number(d.count) > 1) out.push(t('queue.count', { n: Number(d.count) }))
+  if (VIDEO_TYPES.has(type) && Number(d.duration) > 0) out.push(clipLength(Number(d.duration)))
+  if (Number(d.count) > 1) out.push(`×${Number(d.count)}`)
   return out.join(' · ')
 }
 
@@ -318,7 +401,7 @@ function liveItem(n: Node): LiveItem {
     progress: Math.max(0, Math.min(99, Math.round(Number(d.progress) || 0))),
     startedAt: s && s.known ? s.at : null,
     // 取消只对已经提交到后端的运行有意义（执行器里也是这么判的）
-    cancelable: d.runPending === true && taskIdsOf(d).length > 0,
+    cancelable: !props.readOnly && d.runPending === true && taskIdsOf(d).length > 0,
     local,
   }
 }
@@ -339,12 +422,16 @@ interface SessionEnd {
   at: number
   durationMs: number | null
   error: string
+  /** 不是失败：被团队的每月上限拦下，没有运行 */
+  refused?: boolean
   /** 成功且留了版本历史时，对应 data.results 里那一条的 id —— 用来把用时挂上去，避免重复列一遍 */
   resultId: string
   thumb: string
   media: 'image' | 'video' | ''
 }
 const session = ref<SessionEnd[]>([])
+/** 这一批（从空闲转入有任务，到再次空闲）里已经结束的个数：圆钮的进度环用 */
+const batchEnded = ref(0)
 const prevStatus = new Map<string, string>()
 let seq = 0
 
@@ -387,6 +474,8 @@ function sync() {
     }
     if (prev !== 'running') continue
     asked.delete(n.id)
+    // 重新排回队里的（等上游节点）不算结束
+    if (cur !== 'queued') batchEnded.value++
 
     // 刚结束
     const s = starts.get(n.id)
@@ -408,7 +497,8 @@ function sync() {
       status,
       at: fresh ? top!.at : now,
       durationMs: s && s.known ? Math.max(0, now - s.at) : null,
-      error: status === 'error' ? String(d.errorMsg || '') : '',
+      error: status === 'error' ? nodeErrorText(d) : status === 'canceled' ? String(d.cancelNote || '') : '',
+      refused: status === 'error' && !!storedRefusal(d.refusal),
       resultId: fresh ? top!.id : '',
       thumb: url,
       media: (url ? (isVideo ? 'video' : 'image') : '') as SessionEnd['media'],
@@ -425,7 +515,7 @@ watch(locale, () => {
     for (const e of session.value) {
       if (e.status !== 'error') continue
       const n = props.nodes.find((x) => x.id === e.nodeId)
-      const msg = n?.data?.status === 'error' ? String(n.data.errorMsg || '') : ''
+      const msg = n?.data?.status === 'error' ? nodeErrorText(n.data) : ''
       if (msg) e.error = msg
     }
   }, 1500)
@@ -462,6 +552,7 @@ interface FinishedItem {
   at: number
   durationMs: number | null
   error: string
+  refused?: boolean
   thumb: string
   media: 'image' | 'video' | ''
   icon: string
@@ -485,7 +576,7 @@ const finished = computed<FinishedItem[]>(() => {
     if (e.resultId) { durByResult.set(e.resultId, e.durationMs); continue }
     out.push({
       key: e.key, nodeId: e.nodeId, title: props.titleOf(e.type), status: e.status, at: e.at,
-      durationMs: e.durationMs, error: e.error, thumb: thumbSrc(e.thumb, e.media), media: e.media,
+      durationMs: e.durationMs, error: e.error, refused: !!e.refused, thumb: thumbSrc(e.thumb, e.media), media: e.media,
       icon: ICONS[e.type] || 'tool', alive: alive.has(e.nodeId),
     })
   }
@@ -516,12 +607,25 @@ const isIdle = computed(() => !active.value && !blocked.value.length && !finishe
 // ---------------- 圆钮上的数字 / 进度 / 角标 ----------------
 /** 还没结束的：进行中 + 排队 */
 const pending = computed(() => running.value.length + queued.value.length)
-/** 有任务报了真实进度才画汇总环；都没报就转弧 */
-const hasProgress = computed(() => running.value.some((i) => i.progress > 0))
-const progress = computed(() => {
-  const list = running.value
-  return list.length ? Math.round(list.reduce((a, i) => a + i.progress, 0) / list.length) : 0
+/**
+ * 环画的是「这一批」的整体进度。一批 = 从空闲转入有任务，到再次空闲：
+ *   (这一批里已经结束的个数 × 100 + 运行中各任务报回来的进度之和) ÷ (已结束 + 运行中 + 排队)
+ * 以前画的是「运行中那几个的平均」：一个 90% 的结束了、或者又开了一个 0% 的，环就缩回去一大截 ——
+ * 数量一变它就来回跳。现在结束的算满、排队的算零，都在分母里；中途又加了任务，算出来的数会变小，
+ * 环不往回退，停在原地等它追上来。回到空闲才清零。数字全是真的：上游报的进度，加上数得出来的个数。
+ */
+const batchRaw = computed(() => {
+  const total = batchEnded.value + running.value.length + queued.value.length
+  return total ? (batchEnded.value * 100 + running.value.reduce((a, i) => a + i.progress, 0)) / total : 0
 })
+const progress = ref(0)
+watch([batchRaw, active], ([raw, on], old) => {
+  // 一批的头和尾都清一次：上一批数过的不带进下一批
+  if (!on || !old?.[1]) { batchEnded.value = 0; progress.value = 0 }
+  if (on) progress.value = Math.max(progress.value, Math.min(100, Math.round(raw)))
+}, { immediate: true })
+/** 这一批还什么数都没有（没有任务报进度，也还没有任务结束）：转弧，不编数字 */
+const hasProgress = computed(() => progress.value > 0)
 /** 数字变化时的滚动方向：变多往上滚，变少往下滚 */
 const rollDir = ref<'qf-up' | 'qf-down'>('qf-up')
 watch(pending, (n, o) => { rollDir.value = n >= o ? 'qf-up' : 'qf-down' })
@@ -556,6 +660,7 @@ watch(() => session.value[0]?.key, (key, old) => {
 
 // ---------------- 清单的开合、没看过的结果 ----------------
 const open = ref(false)
+watch(open, (v) => { if (v) emit('open') })
 /** 上一次看清单的时刻：之后结束的算「没看过」，在圆钮右上角亮角标 */
 const seenAt = ref(Date.now())
 const seenBlocked = reactive(new Set<string>())
@@ -565,6 +670,7 @@ function markSeen() {
 }
 // 打开和关上各记一次：开着的那段时间里结束的，都算看过了
 watch(open, (v) => { markSeen(); if (v) layout() })
+function close() { open.value = false }
 // 输入补齐后节点不再「没能开始」；下次又没过，要重新提醒
 watch(blocked, (list) => {
   const ids = new Set(list.map((b) => b.nodeId))
@@ -590,15 +696,6 @@ function onOutside(e: PointerEvent) {
   if (popRef.value?.contains(el) || btnRef.value?.contains(el) || el.closest?.('.cp-pop')) return
   open.value = false
 }
-/** Esc：收起清单；焦点原本在清单里的话还给圆钮。确认气泡开着时 Esc 先归它 */
-function onEsc(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !open.value || document.querySelector('.cp-pop')) return
-  const a = document.activeElement
-  const within = !!a && (!!popRef.value?.contains(a) || btnRef.value === a)
-  open.value = false
-  if (within) btnRef.value?.focus()
-}
-
 // ---------------- 位置：默认右下角，可拖动，松手吸到左 / 右边 ----------------
 /**
  * 记的是「贴哪条边 + 竖直方向的比例」，不是像素 —— 窗口变大变小、侧栏收起展开之后
@@ -630,6 +727,9 @@ const box = reactive({ w: 0, h: 0 })
 const xy = reactive({ x: -200, y: -200 })
 const ready = ref(false)
 const dragging = ref(false)
+/** 手机宽度（和 base.css 里 .lc-sheet 的断点是同一个数）：清单改成贴底的通栏面板 */
+const SHEET_MAX = 600
+const sheet = ref(false)
 
 /** 圆钮直径（和样式里的 --qf 是同一个数） */
 const SIZE = 52
@@ -638,9 +738,14 @@ const margin = () => (box.w <= 640 ? 12 : 20)
 const clamp = clampNum
 const onLeft = computed(() => xy.x + SIZE / 2 < box.w / 2)
 
-/** 画布上别的固定悬浮块（标题、底部工具条、属性面板、小地图）相对这一层的位置；工具面板的位置由父级给 */
+/**
+ * 圆钮要绕开的：画布上别的固定悬浮块（标题、只读提示条、底部工具条和它上面的小条、属性面板、小地图），相对这一层的位置；
+ * 工具面板和贴底的抽屉（输入条 / 属性面板在窄窗口里的形态）由父级给（avoid）。
+ * 多选工具条、浮着的输入条不在里面：它们是贴着节点找位置的，由它们来绕开圆钮 —— 两边互相绕会来回跳。
+ */
+const FIXED = '.ed-title, .clb, .ed-tools, .ed-undo, .ed-insp:not(.sheet), .vue-flow__minimap'
 function obstacles(): Rect[] {
-  return [...rectsIn(layerRef.value?.parentElement, '.ed-title, .ed-tools, .ed-insp, .vue-flow__minimap'), ...(props.avoid || [])]
+  return [...rectsIn(layerRef.value?.parentElement, FIXED), ...(props.avoid || [])]
 }
 /** 贴着某条边、想放在 wantY：要是压着别的悬浮块，就挪到离得最近的那块空地 */
 function settle(edge: 'l' | 'r', wantY: number): { x: number; y: number } {
@@ -661,6 +766,8 @@ function layout() {
   const el = layerRef.value
   if (!el || dragging.value) return
   box.w = el.clientWidth; box.h = el.clientHeight
+  // 看的是整个产品占的宽度（嵌进别人页面时是根元素的宽度），不是编辑区这一层的
+  sheet.value = frameOf(el).w <= SHEET_MAX
   if (!box.w || !box.h) return
   const m = margin()
   const minY = m, maxY = box.h - SIZE - m
@@ -674,10 +781,10 @@ function layout() {
 // 「可拖的东西」，把底下节点里的图片当成拖拽源拖走（松手就往画布上多加一个图片节点）。
 // 拦掉 mousedown 的默认行为就不会起原生拖拽；事件照常冒泡，画布「点别处收菜单」不受影响。
 const DRAG_START = 6
-let grab: { id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null = null
+let grab: { id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean; at: number } | null = null
 function onDown(e: PointerEvent) {
   if (e.pointerType === 'mouse' && e.button !== 0) return
-  grab = { id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: xy.x, oy: xy.y, moved: false }
+  grab = { id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: xy.x, oy: xy.y, moved: false, at: Date.now() }
   try { btnRef.value?.setPointerCapture(e.pointerId) } catch { /* 抓不住指针也能拖，只是出了圆钮就断 */ }
 }
 function onMove(e: PointerEvent) {
@@ -696,11 +803,13 @@ function onMove(e: PointerEvent) {
 function onUp(e: PointerEvent, released: boolean) {
   if (!grab || e.pointerId !== grab.id) return
   const moved = grab.moved
+  // 手指 / 笔按住不动：那是在看提示（v-tip 的长按），松手不算点
+  const held = e.pointerType !== 'mouse' && !open.value && Date.now() - grab.at >= TIP_HOLD_MS
   grab = null
   try { btnRef.value?.releasePointerCapture(e.pointerId) } catch { /* 已经放开了 */ }
   if (!moved) {
     // 没挪动 = 点了一下。开合在这里做，不等 click：手指点的时候稍微一抖，有的浏览器就不发 click 了
-    if (released) open.value = !open.value
+    if (released && !held) open.value = !open.value
     return
   }
   dragging.value = false
@@ -717,14 +826,49 @@ function onUp(e: PointerEvent, released: boolean) {
 function onClick(e: MouseEvent) {
   if (e.detail === 0) open.value = !open.value
 }
-/** 回到默认的右下角（双击圆钮，或清单表头里的「复位」） */
+/** 回到默认的右下角：清单表头里的「复位」（圆钮被挪走之后才有） */
 function resetPos() {
-  // 本来就在默认位置：没什么可复位的。这时的双击只是连点两下（开了又关），不去动它
   if (!pos.value) return
   open.value = false
   pos.value = null
   savePos()
   layout()
+  // 点的那颗「复位」跟着清单一起没了：焦点交给圆钮（等清单卸掉、v-dialog 还完焦点之后）
+  void nextTick(() => btnRef.value?.focus({ preventScroll: true }))
+}
+
+// ---------------- 贴底面板：按住表头往下划收起 ----------------
+/** 划过这么远松手就收起；不够就弹回去 */
+const PULL_CLOSE = 72
+const sheetDy = ref(0)
+const pulling = ref(false)
+let pull: { id: number; sy: number; moved: boolean; el: HTMLElement } | null = null
+function onPullDown(e: PointerEvent) {
+  if (!sheet.value || (e.pointerType === 'mouse' && e.button !== 0)) return
+  pull = { id: e.pointerId, sy: e.clientY, moved: false, el: e.currentTarget as HTMLElement }
+}
+function onPullMove(e: PointerEvent) {
+  if (!pull || e.pointerId !== pull.id) return
+  const dy = e.clientY - pull.sy
+  if (!pull.moved) {
+    if (Math.abs(dy) < DRAG_START) return
+    pull.moved = true
+    pulling.value = true
+    // 挪动了才抓指针：只是点一下表头里的按钮，click 照常发给按钮
+    try { pull.el.setPointerCapture(e.pointerId) } catch { /* 抓不住也能划，只是出了表头就断 */ }
+  }
+  // 只能往下拉；往上不跟
+  sheetDy.value = Math.max(0, dy)
+}
+function onPullUp(e: PointerEvent, released: boolean) {
+  if (!pull || e.pointerId !== pull.id) return
+  const moved = pull.moved
+  try { pull.el.releasePointerCapture(e.pointerId) } catch { /* 已经放开了 */ }
+  pull = null
+  if (!moved) return
+  pulling.value = false
+  if (released && sheetDy.value >= PULL_CLOSE) open.value = false
+  else sheetDy.value = 0
 }
 
 /** 清单卡片放哪：贴着圆钮，上下哪边地方大朝哪边开；上下都局促就开在圆钮旁边 */
@@ -732,7 +876,7 @@ const popStyle = computed<Record<string, string>>(() => {
   const W = box.w, H = box.h, GAP = 10, EDGE = 8
   const width = Math.min(328, W - EDGE * 2)
   const above = xy.y - GAP - EDGE, below = H - (xy.y + SIZE) - GAP - EDGE
-  const cap = Math.min(480, Math.max(260, Math.round(H * 0.64)))
+  const cap = Math.min(520, Math.max(260, Math.round(H * 0.7)))
   const up = above >= below
   const st: Record<string, string> = { width: width + 'px' }
   const sideRoom = onLeft.value ? W - (xy.x + SIZE) - GAP - EDGE : xy.x - GAP - EDGE
@@ -756,8 +900,12 @@ const popStyle = computed<Record<string, string>>(() => {
 
 let ro: ResizeObserver | null = null
 let settleTimer: number | null = null
+let stopRects: (() => void) | null = null
 onMounted(() => {
   layout()
+  // 那几块固定的悬浮块各有各的变法（标题跟着名字变宽、只读提示条时有时无、工具条跟着语言变宽、小地图会被收起）：
+  // 没有一个事件能全盖住，隔一会儿量一次，变了才重新找位置。它们都不绕圆钮，所以不会来回跳
+  stopRects = watchRects(() => layerRef.value?.parentElement, FIXED, () => { if (ready.value) layout() }, 400)
   // 窗口大小、侧栏收起展开都会改这一层的尺寸
   if (layerRef.value && typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => layout())
@@ -765,15 +913,14 @@ onMounted(() => {
   }
   window.addEventListener('resize', layout)
   window.addEventListener('pointerdown', onOutside, true)
-  window.addEventListener('keydown', onEsc)
   // 工具条的宽度要等字体和文案就位才定；定下来之后再摆一次，然后才开过渡动画
   settleTimer = window.setTimeout(() => { layout(); ready.value = true; settleTimer = null }, 350)
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
+  stopRects?.(); stopRects = null
   window.removeEventListener('resize', layout)
   window.removeEventListener('pointerdown', onOutside, true)
-  window.removeEventListener('keydown', onEsc)
   if (settleTimer !== null) clearTimeout(settleTimer)
 })
 // 换语言会改工具条的宽度
@@ -786,7 +933,7 @@ watch(() => (props.avoid || []).map((r) => `${r.l},${r.t},${r.r},${r.b}`).join('
 // ---------------- 取消 ----------------
 const canceling = reactive(new Set<string>())
 async function cancelOne(nodeId: string) {
-  if (canceling.has(nodeId)) return
+  if (props.readOnly || canceling.has(nodeId)) return
   canceling.add(nodeId)
   try { await props.cancelNode(nodeId) } finally { canceling.delete(nodeId) }
 }
@@ -808,19 +955,8 @@ watch(() => running.value.length > 0, (on) => {
 }, { immediate: true })
 onBeforeUnmount(() => { if (timer !== null) clearInterval(timer) })
 
+// 用时、已用时的写法全站一份：utils/duration.ts（42 秒 / 1 分 05 秒；正在走的那个往下取整，不提前跳秒）
 const pad = (n: number) => String(n).padStart(2, '0')
-/** 0:42 / 12:05 / 1:02:03 */
-function clock(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
-  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`
-}
-/** 24 秒 / 1 分 52 秒 */
-function span(ms: number): string {
-  const s = Math.max(1, Math.round(ms / 1000))
-  const m = Math.floor(s / 60)
-  return m ? t('queue.minSec', { m, s: s % 60 }) : t('queue.sec', { s })
-}
 function hhmm(at: number): string {
   const d = new Date(at)
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -844,20 +980,21 @@ function hhmm(at: number): string {
 .qf.ready { transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
 .qf.drag { transition: none; }
 
+/* 圆钮是一块实心的小牌子，不是半透明玻璃：底下压着什么都看得清 —— 密密麻麻的节点、
+   用户自己挑的画布底色（深色皮肤配白底、浅色皮肤配黑底都行）。牌子的底色和上面的字都是本皮肤自己的一对 */
 .qf-btn {
   position: relative; width: 100%; height: 100%; padding: 0; border-radius: 50%;
   display: grid; place-items: center;
-  border: 0; background: rgb(var(--c-glass) / .78); color: var(--text-3);
-  box-shadow: var(--sh-1);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 0; background: var(--pop); color: var(--text-2);
+  box-shadow: 0 0 0 1px var(--line-2), var(--sh-1);
   cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
   transition: background .15s, color .15s, transform .15s, box-shadow .15s;
 }
-.qf-btn:hover, .qf.open .qf-btn { background: rgb(var(--c-glass-hov) / .94); color: var(--text); }
-.qf-btn:focus-visible { outline: none; box-shadow: var(--sh-1), var(--ring); }
-.qf.drag .qf-btn { cursor: grabbing; transform: scale(1.06); box-shadow: var(--sh-2); }
-.qf.run .qf-btn { color: var(--text); background: rgb(var(--c-glass) / .92); }
+.qf-btn:hover, .qf.open .qf-btn { background: var(--pop-hover); color: var(--text); box-shadow: 0 0 0 1px var(--line-3), var(--sh-1); }
+.qf-btn:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--cyan), var(--sh-1), var(--ring); }
+.qf.drag .qf-btn { cursor: grabbing; transform: scale(1.06); box-shadow: 0 0 0 1px var(--line-3), var(--sh-2); }
+.qf.run .qf-btn { color: var(--text); }
 
 /* 运行时外面那圈柔光：平时就是静止的一圈，动画只是让它呼吸 */
 .qf-btn::after {
@@ -868,27 +1005,31 @@ function hhmm(at: number): string {
 .qf.run .qf-btn::after { opacity: .75; animation: qf-breathe 2.4s ease-in-out infinite; }
 @keyframes qf-breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 
-/* 环：平时是一圈细边；运行时上面叠进度弧 */
-.qf-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; overflow: visible; }
-.qf-ring .s0 { stop-color: var(--cyan); }
-.qf-ring .s1 { stop-color: var(--blue); }
-.qf-ring .s2 { stop-color: var(--violet); }
-.qf-track { fill: none; stroke: var(--line-2); stroke-width: 1; transition: stroke .2s, stroke-width .2s; }
-.qf-btn:hover .qf-track, .qf.open .qf-track { stroke: var(--line-3); }
-.qf.run .qf-track { stroke: rgb(var(--c-film) / .2); stroke-width: 3; }
-/* 只有排队、还没有任务开跑：虚线环（和清单里排队那一行同一个意思） */
-.qf.wait .qf-track { stroke: var(--line-3); stroke-width: 2; stroke-dasharray: 3 4; }
-.qf-arc {
-  fill: none; stroke: url(#qf-grad); stroke-width: 3; stroke-linecap: round;
-  transform-origin: 26px 26px;
-  transition: stroke-dasharray .6s cubic-bezier(.3, .7, .2, 1);
+/* 进度环：从 12 点顺时针走。颜色跟着弧走（青 → 蓝 → 紫），到弧的末端为止，后面是底槽 ——
+   和清单里每一行的 .lc-ring 是同一个画法。中间那块实心的圆把它盖成一个环 */
+@property --lc-qf-p { syntax: '<number>'; inherits: false; initial-value: 0; }
+.qf-ring {
+  --lc-qf-p: 0;
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: conic-gradient(from 0deg, var(--cyan), var(--blue) calc(var(--lc-qf-p) * .6%), var(--violet) calc(var(--lc-qf-p) * 1%), rgb(var(--c-film) / .2) 0);
+  transition: --lc-qf-p .6s cubic-bezier(.3, .7, .2, 1), opacity .2s;
 }
-.qf-arc.spin { animation: qf-spin 1.3s linear infinite; transition: none; }
+.qf-ring::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--pop); transition: background .15s; }
+.qf-btn:hover .qf-ring::after, .qf.open .qf-ring::after { background: var(--pop-hover); }
+.qf-ring.on { opacity: 1; }
+/* 上游没报进度：一段弧绕着转，尾巴淡出去 */
+.qf-ring.spin {
+  background: conic-gradient(from 0deg, rgb(var(--c-film) / .2) 0 55%, var(--blue) 80%, var(--cyan) 100%);
+  animation: qf-spin 1.3s linear infinite; transition: opacity .2s;
+}
 @keyframes qf-spin { to { transform: rotate(360deg); } }
+/* 只有排队、还没有任务开跑：虚线环（和清单里排队那一行同一个意思） */
+.qf.wait .qf-btn { box-shadow: var(--sh-1); }
+.qf.wait .qf-btn::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 2px dashed var(--line-3); pointer-events: none; }
 
 /* 中间：空闲是队列图标，有任务是未完成数量，刚结束的那一下闪对勾 / 警告 */
-/* 里面的图标和数字不接事件：按下、松开、双击的目标永远是圆钮自己 */
-.qf-core { position: relative; display: grid; place-items: center; width: 30px; height: 30px; pointer-events: none; }
+/* 里面的图标和数字不接事件：按下、松开的目标永远是圆钮自己 */
+.qf-core { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; pointer-events: none; }
 .qf-core :deep(.lc-ic) { width: 22px; height: 22px; }
 .qf-num { position: relative; display: block; width: 30px; height: 22px; overflow: hidden; }
 .qf-num b {
@@ -916,7 +1057,7 @@ function hhmm(at: number): string {
 .qf-badge {
   position: absolute; right: -3px; top: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   display: grid; place-items: center; font: 600 11px/1 var(--f-body); font-style: normal; font-variant-numeric: tabular-nums;
-  pointer-events: none;
+  pointer-events: none; z-index: 2;
   background: var(--cyan); color: var(--text-inv);
   box-shadow: 0 0 0 2px var(--bg-1), 0 0 12px rgb(var(--g-cyan) / .55);
 }
@@ -924,20 +1065,6 @@ function hhmm(at: number): string {
 .qf-pop-enter-active { transition: transform .22s cubic-bezier(.3, 1.5, .5, 1), opacity .15s; }
 .qf-pop-leave-active { transition: transform .12s, opacity .12s; }
 .qf-pop-enter-from, .qf-pop-leave-to { transform: scale(.3); opacity: 0; }
-
-/* 悬停提示：只报数量 */
-.qf-tip {
-  position: absolute; top: 50%; right: calc(100% + 10px); transform: translateY(-50%) translateX(4px);
-  padding: 6px 10px; border-radius: 8px; white-space: nowrap; pointer-events: none;
-  font-size: 12px; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums;
-  background: var(--pop); border: 1px solid var(--line-2); box-shadow: var(--sh-1);
-  opacity: 0; visibility: hidden; transition: opacity .12s, transform .12s, visibility 0s .12s;
-}
-.qf.left .qf-tip { right: auto; left: calc(100% + 10px); transform: translateY(-50%) translateX(-4px); }
-@media (hover: hover) {
-  .qf:not(.open):not(.drag) .qf-btn:hover + .qf-tip { opacity: 1; visibility: visible; transform: translateY(-50%); transition-delay: .25s, .25s, .25s; }
-}
-.qf:not(.open):not(.drag) .qf-btn:focus-visible + .qf-tip { opacity: 1; visibility: visible; transform: translateY(-50%); }
 
 /* ---------- 清单卡片 ---------- */
 .qp {
@@ -947,9 +1074,36 @@ function hhmm(at: number): string {
   background: rgb(var(--c-glass) / .95); box-shadow: var(--sh-2);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
-.qp-in-enter-active { transition: transform .16s cubic-bezier(.2, .8, .2, 1), opacity .14s; }
-.qp-in-leave-active { transition: transform .1s, opacity .1s; }
-.qp-in-enter-from, .qp-in-leave-to { transform: scale(.94); opacity: 0; }
+.qp:focus { outline: none; }
+/* 宽屏：这一层只是清单的定位基准，自己不接事件 */
+.qp-wrap.pop { position: absolute; inset: 0; pointer-events: none; }
+.qp-in-enter-active { transition: opacity .16s; }
+.qp-in-leave-active { transition: opacity .12s; }
+.qp-in-enter-from, .qp-in-leave-to { opacity: 0; }
+.qp-in-enter-active .qp { transition: transform .16s cubic-bezier(.2, .8, .2, 1); }
+.qp-in-leave-active .qp { transition: transform .12s; }
+.qp-in-enter-from .qp, .qp-in-leave-to .qp { transform: scale(.94); }
+
+/* 手机宽度：贴底的通栏面板（遮罩和面板的骨架是 base.css 的 .lc-mask.lc-sheet > .lc-dialog） */
+.qp-wrap.sheet { z-index: 3000; }
+.qp.sheet {
+  position: relative; width: 100%; max-width: 100%; border-radius: var(--r-lg) var(--r-lg) 0 0; border-bottom: 0;
+  background: var(--pop); -webkit-backdrop-filter: none; backdrop-filter: none;
+  transform: translateY(var(--qp-dy, 0px)); transition: transform .2s cubic-bezier(.2, .8, .2, 1);
+}
+/* 跟着手指走的时候不能有过渡 */
+.qp.sheet.pull { transition: none; }
+.qp-in-enter-active .qp.sheet { transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
+.qp-in-leave-active .qp.sheet { transition: transform .16s ease-in; }
+.qp-in-enter-from .qp.sheet, .qp-in-leave-to .qp.sheet { transform: translateY(100%); }
+.qp-grip { flex: none; display: grid; place-items: center; height: 18px; margin-bottom: -6px; touch-action: none; cursor: grab; }
+.qp-grip i { width: 36px; height: 4px; border-radius: 2px; background: var(--line-3); }
+.qp.sheet .qp-hd { min-height: 48px; padding: 0 10px 0 16px; touch-action: none; }
+.qp.sheet .qp-hd b { font-size: 15px; }
+.qp.sheet .qc-link { height: 32px; padding: 0 10px; font-size: 13px; }
+.qp.sheet .qc-bd { padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); border-radius: 0; }
+.qp.sheet .qp-empty { padding: 28px 12px 32px; }
+.qp-x { width: 32px; height: 32px; }
 
 .qp-hd { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 8px 0 14px; flex: none; min-width: 0; }
 .qp-hd b { font: 600 13px/1.4 var(--f-disp); color: var(--text); white-space: nowrap; }
@@ -958,6 +1112,7 @@ function hhmm(at: number): string {
 .qp-sum.on { color: var(--cyan); }
 .qc-link:focus-visible, .qc-more:focus-visible { outline: none; box-shadow: var(--ring); }
 .qc-link {
+  display: inline-flex; align-items: center; gap: 4px;
   border: 0; background: none; height: 24px; padding: 0 6px; border-radius: 6px; font-size: 12px; flex: none;
   color: var(--text-3); white-space: nowrap; transition: background .12s, color .12s;
 }
@@ -972,7 +1127,7 @@ function hhmm(at: number): string {
 .qc-bd > section { display: grid; min-width: 0; }
 .qc-live { display: grid; gap: 6px; min-width: 0; }
 .qp-empty { margin: 0; padding: 14px 8px 12px; font-size: 13px; line-height: 1.6; color: var(--text-2); text-align: center; }
-.qp-empty small { display: block; margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.qp-empty small { display: block; margin-top: 4px; font-size: 12px; color: var(--text-3); text-wrap: balance; }
 
 .qt {
   display: flex; gap: 10px; align-items: center; min-width: 0;
@@ -997,8 +1152,11 @@ function hhmm(at: number): string {
   display: flex; gap: 10px; align-items: center; padding: 5px 6px; border: 0; border-radius: 8px;
   background: none; text-align: left; min-width: 0; width: 100%; color: inherit;
 }
-.qdone:hover:not(:disabled) { background: rgb(var(--c-film) / .08); }
-.qdone:disabled { cursor: default; }
+.qdone:hover:not(.gone) { background: rgb(var(--c-film) / .08); }
+/* 节点已经删了：还列着（那次运行是真的），但点不了 */
+.qdone.gone { cursor: default; }
+.qdone.gone b { color: var(--text-3); }
+.qdone.gone .thumb { opacity: .6; }
 .qdone:focus-visible { outline: none; box-shadow: var(--ring); }
 .qdone .thumb {
   width: 40px; height: 30px; border-radius: 6px; flex: none; display: grid; place-items: center;
@@ -1012,6 +1170,8 @@ function hhmm(at: number): string {
   color: var(--err-soft); white-space: normal; line-height: 1.5;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
 }
+/* 不是人点的取消（发起人被移出团队、账号被停用、团队关了）：是一句说明，不是报错，不用报错色 */
+.qdone small.qdone-err.why { color: var(--text-2); }
 .qc-more {
   height: 26px; margin-top: 2px; border: 0; border-radius: 8px; background: none;
   font-size: 12px; color: var(--text-3); text-align: center; transition: background .12s, color .12s;
@@ -1021,7 +1181,17 @@ function hhmm(at: number): string {
 /* 系统开了「减少动态效果」：环不转、光不呼吸、数字直接换。全局规则已经把时长压到近零，
    这里再把会循环的动画彻底关掉，免得停在半截的样子 */
 @media (prefers-reduced-motion: reduce) {
-  .qf-arc.spin, .qf.run .qf-btn::after, .qf.ok::before, .qf.bad::before { animation: none; }
-  .qf.ready { transition: none; }
+  .qf-ring.spin, .qf.run .qf-btn::after, .qf.ok::before, .qf.bad::before { animation: none; }
+  .qf.ready, .qp.sheet, .qf-ring { transition: none; }
 }
+
+/* 团队空间里的每月上限：清单里的一段，上下各一道细线和别的段分开 */
+.qc-bd > section.qp-budget { padding: 10px 6px; border-block: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.qc-bd > section.qp-budget:first-child { border-top: 0; padding-top: 4px; }
+.qc-bd > section.qp-budget:last-child { border-bottom: 0; padding-bottom: 4px; }
+.qp-bg { display: flex; flex-direction: column; gap: 6px; }
+.qp-bh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.qp-bh b { font-size: 12px; font-weight: 500; color: var(--text-2); }
+.qp-bh small, .qp-bn { font-size: 11px; color: var(--text-3); line-height: 1.5; }
+.qp-bn.warn { color: var(--warn); }
 </style>

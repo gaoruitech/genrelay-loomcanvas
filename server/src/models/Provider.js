@@ -9,6 +9,9 @@ const mongoose = require('mongoose')
  */
 const providerSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
+  // The account that made it. `userId` is the SPACE it belongs to (an account's personal
+  // space, or a team); rows from before teams have no createdBy and read as userId.
+  createdBy: { type: String, default: '' },
   // Vendor id: gaorui | openai | gemini (see providers/index.js).
   type: { type: String, required: true },
   name: { type: String, required: true, maxlength: 60 },
@@ -20,6 +23,24 @@ const providerSchema = new mongoose.Schema({
   apiKeyEnc: { type: String, default: '', select: false },
   keyTail: { type: String, default: '' },
   hasKey: { type: Boolean, default: false },
+  // The account that entered the current key. In a team: who to think of when that person leaves.
+  keySetBy: { type: String, default: '' },
+  // The account that last changed the provider (name, address, key, switch, custom models):
+  // its maintainer, the person to ask about it. '' on rows from before this was kept.
+  updatedBy: { type: String, default: '' },
+  // The result of the last connection test of the provider as it is saved; null = never tested,
+  // or the key or address changed since. The message is kept as a catalog message (see ../i18n).
+  lastTest: {
+    type: new mongoose.Schema({
+      ok: { type: Boolean, required: true },
+      at: { type: Date, required: true },
+      by: { type: String, default: '' },
+      error: { type: String, default: '' },
+      errorCode: { type: String, default: '' },
+      errorParams: { type: mongoose.Schema.Types.Mixed, default: {} },
+    }, { _id: false, minimize: false }),
+    default: null,
+  },
   // Models outside the vendor's catalog. `id` is the upstream model name; the
   // kind is chosen by the user and never derived from the name.
   customModels: {

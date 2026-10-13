@@ -127,9 +127,10 @@ export default {
       meta4: '可集成进你的产品',
       hero: {
         alt: '产品示意：三个素材节点连到图生视频节点，右侧是视频预览和生成队列',
+        altMid: '产品示意：三个素材节点连到图生视频节点',
         title: '夜雨街头 · 角色短片',
         saved: '已保存',
-        nodes: '6 个节点',
+        nodes: '{n} 个节点',
         refChar: '参考图 · 角色',
         refScene: '参考图 · 场景',
         prompt: '提示词 · 指令',
@@ -353,9 +354,10 @@ export default {
       meta4: 'Can be built into your product',
       hero: {
         alt: 'Product illustration: three source nodes wired into an image-to-video node, with a video preview and a run queue on the right',
+        altMid: 'Product illustration: three source nodes wired into an image-to-video node',
         title: 'Rainy street · character short',
         saved: 'Saved',
-        nodes: '6 nodes',
+        nodes: '{n} nodes',
         refChar: 'Reference · character',
         refScene: 'Reference · scene',
         prompt: 'Prompt',

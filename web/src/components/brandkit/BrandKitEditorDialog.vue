@@ -1,25 +1,31 @@
 <template>
   <Teleport :to="$lcPortal">
     <div v-if="open && form" class="lc-mask lc-sheet bke-mask" @click.self="close">
-      <form class="lc-dialog bke" role="dialog" aria-modal="true" :aria-label="title" data-testid="kit-editor" @submit.prevent="save">
+      <form v-dialog="close" class="lc-dialog bke" role="dialog" aria-modal="true" :aria-label="title" data-testid="kit-editor" @submit.prevent="save">
         <div class="lc-dialog-head">
           <span>{{ title }}</span>
-          <button class="lc-x" type="button" :title="t('common.close')" :aria-label="t('common.close')" @click="close">×</button>
+          <button class="lc-x" type="button" v-tip="t('common.close')" :aria-label="t('common.close')" @click="close">×</button>
         </div>
 
-        <div class="lc-dialog-body bke-body">
+        <!-- 成员想新建：团队里建不了，说清楚该找谁 -->
+        <div v-if="!editable && !form.id" class="lc-dialog-body">
+          <div class="lc-alert info" data-testid="kit-readonly"><LcIcon name="lock" /><span>{{ t('brandKit.team.cannotCreate') }}</span></div>
+        </div>
+
+        <div v-else class="lc-dialog-body bke-body">
+          <div v-if="!editable" class="lc-alert info bke-ro" data-testid="kit-readonly"><LcIcon name="lock" /><span>{{ t('brandKit.team.readonlyEditor') }}</span></div>
           <div class="srow">
-            <div class="k"><label for="bke-name">{{ t('brandKit.editor.name') }}<span class="lc-required">*</span></label></div>
+            <div class="k"><label for="bke-name">{{ t('brandKit.editor.name') }}<span v-if="editable" class="lc-required">*</span></label></div>
             <div class="v">
-              <input id="bke-name" ref="nameInput" v-model="form.name" class="lc-input" maxlength="40" autocomplete="off" :placeholder="t('brandKit.editor.namePlaceholder')" :disabled="saving" />
-              <span class="lc-help">{{ t('brandKit.editor.nameHelp') }}</span>
+              <input id="bke-name" ref="nameInput" v-model="form.name" class="lc-input" maxlength="40" autocomplete="off" :placeholder="editable ? t('brandKit.editor.namePlaceholder') : ''" :disabled="saving" :readonly="!editable" />
+              <span v-if="editable" class="lc-help">{{ shared ? t('brandKit.team.nameHelp') : t('brandKit.editor.nameHelp') }}</span>
             </div>
           </div>
 
           <div class="srow">
             <div class="k"><label for="bke-prefix">{{ t('brandKit.editor.promptPrefix') }}</label></div>
             <div class="v">
-              <textarea id="bke-prefix" v-model="form.promptPrefix" class="lc-textarea" rows="3" maxlength="1000" :placeholder="t('brandKit.editor.promptPrefixPlaceholder')" :disabled="saving"></textarea>
+              <textarea id="bke-prefix" v-model="form.promptPrefix" class="lc-textarea" rows="3" maxlength="1000" :placeholder="editable ? t('brandKit.editor.promptPrefixPlaceholder') : ''" :disabled="saving" :readonly="!editable"></textarea>
               <span class="lc-help">{{ t('brandKit.editor.promptPrefixHelp') }}</span>
             </div>
           </div>
@@ -27,7 +33,7 @@
           <div class="srow">
             <div class="k"><label for="bke-neg">{{ t('brandKit.editor.negative') }}</label></div>
             <div class="v">
-              <textarea id="bke-neg" v-model="form.negativePrompt" class="lc-textarea bke-sm" rows="2" maxlength="500" :placeholder="t('brandKit.editor.negativePlaceholder')" :disabled="saving"></textarea>
+              <textarea id="bke-neg" v-model="form.negativePrompt" class="lc-textarea bke-sm" rows="2" maxlength="500" :placeholder="editable ? t('brandKit.editor.negativePlaceholder') : ''" :disabled="saving" :readonly="!editable"></textarea>
               <span class="lc-help">{{ t('brandKit.editor.negativeHelp', { lead: t('brandKit.negativeLead') }) }}</span>
             </div>
           </div>
@@ -38,18 +44,19 @@
               <div class="bke-thumbs">
                 <div v-for="(u, i) in form.refImages" :key="u + i" class="bke-thumb">
                   <img :src="canvasImageThumb(u, 96)" alt="" />
-                  <button class="bke-thumb-x" type="button" :title="t('common.remove')" :aria-label="t('common.remove')" :disabled="saving" @click="form.refImages.splice(i, 1)"><LcIcon name="x" size="s" /></button>
+                  <button v-if="editable" class="bke-thumb-x" type="button" v-tip="t('common.remove')" :aria-label="t('common.remove')" :disabled="saving" @click="form.refImages.splice(i, 1)"><LcIcon name="x" size="s" /></button>
                 </div>
                 <button
-                  v-if="form.refImages.length < BRAND_KIT_MAX_REFS"
+                  v-if="editable && form.refImages.length < BRAND_KIT_MAX_REFS"
                   class="bke-thumb add" type="button"
                   :disabled="uploading || saving"
-                  :title="t('common.upload')" :aria-label="t('common.upload')"
+                  v-tip="t('common.upload')" :aria-label="t('common.upload')"
                   @click="fileInput?.click()"
                 ><span v-if="uploading" class="lc-ring spin sm" aria-hidden="true" /><LcIcon v-else name="plus" /></button>
                 <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles" />
+                <span v-if="!editable && !form.refImages.length" class="lc-help">{{ t('brandKit.page.noRefs') }}</span>
               </div>
-              <span class="lc-help">{{ t('brandKit.editor.refImagesHelp', { max: BRAND_KIT_MAX_REFS }) }}</span>
+              <span v-if="editable" class="lc-help">{{ t('brandKit.editor.refImagesHelp', { max: BRAND_KIT_MAX_REFS }) }}</span>
             </div>
           </div>
 
@@ -58,15 +65,19 @@
             <div class="v">
               <button
                 type="button" class="lc-switch" :class="{ on: form.isDefault }" role="switch"
-                :aria-checked="form.isDefault" aria-labelledby="bke-default-lbl" :disabled="saving"
+                :aria-checked="form.isDefault" aria-labelledby="bke-default-lbl" :disabled="saving || !editable"
                 data-testid="kit-default" @click="form.isDefault = !form.isDefault"
               />
-              <span class="lc-help">{{ t('brandKit.editor.isDefaultHelp') }}</span>
+              <span class="lc-help">{{ shared ? t('brandKit.team.isDefaultHelp') : t('brandKit.editor.isDefaultHelp') }}</span>
             </div>
           </div>
         </div>
 
-        <div class="lc-dialog-foot bke-foot">
+        <div v-if="!editable" class="lc-dialog-foot bke-foot">
+          <span class="lc-sp" />
+          <button class="lc-btn" type="button" data-testid="kit-close" @click="close">{{ t('common.close') }}</button>
+        </div>
+        <div v-else class="lc-dialog-foot bke-foot">
           <ConfirmPop
             v-if="form.id"
             :text="t('brandKit.editor.removeConfirm', { name: kit?.name || form.name })"
@@ -91,24 +102,33 @@
  * 品牌包的编辑表单，一个弹窗：素材库的「品牌包」页和画布顶栏的选择器共用。
  * 在画布里改品牌包不用离开画布。
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { vDialog } from '@/directives/dialog'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from '@/utils/feedback'
 import LcIcon from '@/components/LcIcon.vue'
 import ConfirmPop from '@/components/ConfirmPop.vue'
-import { brandKitApi, apiErrorMessage } from '@/utils/canvasBackend'
+import { brandKitApi, apiErrorMessage, apiErrorCode } from '@/utils/canvasBackend'
 import { canvasImageThumb } from '@/utils/canvasMedia'
 import { uploadCanvasImage } from '@/utils/canvasUpload'
-import { BRAND_KIT_MAX_REFS, type BrandKit } from '@/composables/useBrandKits'
+import { useSpaceStore } from '@/stores/space'
+import { BRAND_KIT_MAX_REFS, canManageBrandKit, type BrandKit } from '@/composables/useBrandKits'
 
 const { t } = useI18n()
 
-/** kit 为 null = 新建 */
-const props = defineProps<{ open: boolean; kit: BrandKit | null }>()
+/**
+ * kit 为 null = 新建。
+ * canManage：调用者能不能改。不传就自己判断（品牌包自己带的 canManage，或当前空间的权限）——
+ * 画布顶栏那边不传，成员从那里点进来看到的是只读的一份。
+ */
+const props = withDefaults(defineProps<{ open: boolean; kit: BrandKit | null; canManage?: boolean }>(), { canManage: undefined })
+const space = useSpaceStore()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved', kit: BrandKit, created: boolean): void
   (e: 'removed', id: string): void
+  /** 保存 / 删除被服务端拒绝了（不再是团长或管理员）：调用方该重取一遍权限和列表 */
+  (e: 'denied'): void
 }>()
 
 interface Form { id: string; name: string; refImages: string[]; promptPrefix: string; negativePrompt: string; isDefault: boolean }
@@ -118,11 +138,25 @@ const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const nameInput = ref<HTMLInputElement | null>(null)
 
-const title = computed(() => (form.value?.id ? t('brandKit.editor.editTitle') : t('brandKit.editor.createTitle')))
+/** 服务端拒绝过一次之后，这一次打开就按只读处理 */
+const denied = ref(false)
+/**
+ * 能不能改。团队里品牌包由团长和管理员维护，成员只能看、只能在画布上选用。
+ * 调用方传了 canManage 就听它的；没传（undefined）就看 kit 自带的 canManage，再不行看当前空间的权限。
+ */
+const editable = computed(() => !denied.value && (props.canManage === undefined ? canManageBrandKit(props.kit) : props.canManage))
+/** 团队的品牌包：全队都看得到它的名字，默认也是给全队新建的画布 */
+const shared = computed(() => (props.kit ? !!props.kit.shared : space.isTeam))
+
+const title = computed(() => {
+  if (!form.value?.id) return t('brandKit.editor.createTitle')
+  return editable.value ? t('brandKit.editor.editTitle') : t('brandKit.team.viewTitle')
+})
 
 // 每次打开都从传进来的那份重新拷一份：直接改列表里的对象，取消时就回不去了
 watch(() => props.open, (v) => {
   if (!v) { form.value = null; return }
+  denied.value = false
   const k = props.kit
   form.value = {
     id: k?.id || '',
@@ -132,16 +166,11 @@ watch(() => props.open, (v) => {
     negativePrompt: k?.negativePrompt || '',
     isDefault: !!k?.isDefault,
   }
-  if (!k) void nextTick(() => nameInput.value?.focus())
+  if (!k && editable.value) void nextTick(() => nameInput.value?.focus())
 }, { immediate: true })
 
 function close() { if (!saving.value) emit('close') }
 
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) { e.stopPropagation(); close() }
-}
-window.addEventListener('keydown', onKey, true)
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 
 async function onFiles(e: Event) {
   const input = e.target as HTMLInputElement
@@ -168,7 +197,7 @@ async function onFiles(e: Event) {
 
 async function save() {
   const k = form.value
-  if (!k || saving.value) return
+  if (!k || saving.value || !editable.value) return
   if (!k.name.trim()) {
     MessagePlugin.warning(t('brandKit.editor.nameRequired'))
     nameInput.value?.focus()
@@ -189,7 +218,7 @@ async function save() {
       MessagePlugin.error(res.data.message || t('brandKit.editor.saveFailed'))
     }
   } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('brandKit.editor.saveFailed')))
+    onFailure(err, t('brandKit.editor.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -209,9 +238,18 @@ async function remove() {
       MessagePlugin.error(res.data.message || t('brandKit.editor.removeFailed'))
     }
   } catch (err: any) {
-    MessagePlugin.error(apiErrorMessage(err, t('brandKit.editor.removeFailed')))
+    onFailure(err, t('brandKit.editor.removeFailed'))
   } finally {
     saving.value = false
+  }
+}
+
+/** 被拒绝（不是团长或管理员了）：说出服务端的那句话，表单就地变成只读，并告诉调用方重取权限 */
+function onFailure(err: unknown, fallback: string) {
+  MessagePlugin.error(apiErrorMessage(err, fallback))
+  if (apiErrorCode(err) === 'team.forbidden') {
+    denied.value = true
+    emit('denied')
   }
 }
 </script>
@@ -221,6 +259,7 @@ async function remove() {
 
 .bke { width: 640px; }
 .bke-body { padding-top: 4px; padding-bottom: 12px; }
+.bke-ro { margin: 12px 0 4px; }
 /* 弹窗比设置页窄：标签列收到 132px，控件占满剩下的 */
 .bke-body .srow { grid-template-columns: 132px minmax(0, 1fr); gap: 8px 20px; }
 .bke-body .srow > .v > .lc-input { max-width: none; }
@@ -245,7 +284,8 @@ async function remove() {
   display: grid; place-items: center;
   border: 0; border-radius: 6px; background: rgb(var(--c-scrim) / .72); color: var(--on-scrim); cursor: pointer;
 }
-.bke-thumb-x:hover { background: rgb(var(--c-scrim) / .92); }
+.bke-thumb-x:hover { background: var(--scrim-danger); color: var(--on-scrim-max); }
+.bke-thumb-x:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--on-scrim-line-2); }
 .bke-foot { align-items: center; }
 
 @media (max-width: 720px) {

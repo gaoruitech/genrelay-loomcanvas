@@ -23,6 +23,8 @@ let lc2 = null
 let theme = 'dark'
 let locale = 'en'
 let currentPage = ''
+/** The LoomCanvas space the embedded app is pinned to: 'personal' or the id of a team the user is in. */
+let space = QUERY.get('space') || 'personal'
 
 /**
  * The host's sign-in.
@@ -44,6 +46,16 @@ async function hostSignIn(user, password) {
   return { token: body.data.token, name: body.data.user.username }
 }
 
+/**
+ * The teams the signed-in account is a member of. In a real product you would map YOUR organisations /
+ * workspaces to LoomCanvas teams on your server; the page only needs the id of the one to work in.
+ */
+async function hostTeams() {
+  const res = await fetch(`${API}/teams`, { headers: { Authorization: `Bearer ${session.token}` } })
+  const body = await res.json()
+  return body.result === 0 ? body.data.teams.filter((t) => t.status === 'active') : []
+}
+
 const options = () => ({
   apiBase: API,
   // Your authentication: called before every request, may be async (refresh a token here).
@@ -57,7 +69,11 @@ const options = () => ({
   shell: 'none',
   // Only these pages exist for the user of this product.
   pages: ['canvases', 'canvas', 'assets', 'brand-kits'],
-  features: { share: false, guide: false, themeSwitch: false, localeSwitch: false, nodeLayoutSwitch: false },
+  // Pin the app to one space: canvases, assets, models and keys are that space's. Without `space`
+  // (and with LoomCanvas' own shell) the user would switch spaces in the top bar.
+  space,
+  // Membership is managed elsewhere in this product: no Team page inside the embedded app.
+  features: { share: false, guide: false, themeSwitch: false, localeSwitch: false, nodeLayoutSwitch: false, teamAdmin: false },
   theme,
   locale,
   brand: { name: 'Acme Boards' },
@@ -72,7 +88,7 @@ function mount() {
   $('acme-nav').hidden = false
   $('acme-canvas').hidden = false
   lc = mountLoomCanvas($('acme-canvas'), options())
-  for (const name of ['ready', 'canvas:saved', 'run:started', 'run:finished', 'run:failed', 'result', 'error']) {
+  for (const name of ['ready', 'space', 'canvas:saved', 'run:started', 'run:finished', 'run:failed', 'result', 'error']) {
     lc.on(name, (payload) => log(`${name} ${JSON.stringify(payload).slice(0, 160)}`))
   }
   // For the test script and for poking around in the console.
@@ -95,6 +111,11 @@ $('acme-login').addEventListener('submit', async (e) => {
   $('acme-login-msg').textContent = ''
   try {
     session = await hostSignIn($('acme-user').value, $('acme-pass').value)
+    // Offer the user's teams in the host's own navigation.
+    const teams = await hostTeams().catch(() => [])
+    $('acme-space').replaceChildren(new Option('Personal', 'personal'), ...teams.map((t) => new Option(`Team: ${t.name}`, t.id)))
+    if (space !== 'personal' && !teams.some((t) => t.id === space)) space = 'personal'
+    $('acme-space').value = space
     mount()
   } catch (err) {
     $('acme-login-msg').textContent = err.message
@@ -105,6 +126,14 @@ $('acme-nav').addEventListener('click', (e) => {
   const page = e.target.dataset?.go
   // navigate() to a page outside `pages` is cancelled: the user stays where they are.
   if (page) lc.navigate(page).catch((err) => log(`navigate failed: ${err.message}`))
+})
+$('acme-space').addEventListener('change', (e) => {
+  // The space is fixed per mount: to work in another one, mount again.
+  space = e.target.value
+  log(`space -> ${space}`)
+  lc?.unmount(); lc2?.unmount(); lc2 = null
+  $('acme-canvas-2').hidden = true
+  mount()
 })
 $('acme-theme').addEventListener('click', () => {
   theme = theme === 'dark' ? 'light' : 'dark'

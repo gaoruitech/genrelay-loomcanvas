@@ -75,24 +75,17 @@
       <template v-else>{{ t('auth.login.closed') }}</template>
     </div>
 
-    <Teleport :to="$lcPortal">
-      <div v-if="forgotOpen" class="lc-mask" @mousedown.self="forgotOpen = false">
-        <div class="lc-dialog forgot" role="dialog" aria-modal="true" aria-labelledby="forgot-title">
-          <div class="lc-dialog-head">
-            <span id="forgot-title">{{ t('auth.forgotDialog.title') }}</span>
-            <button class="lc-x" :aria-label="t('common.close')" @click="forgotOpen = false">×</button>
-          </div>
-          <div class="lc-dialog-body">
-            <p class="fg-lead">{{ t('auth.forgotDialog.lead') }}</p>
-            <div class="fg-item"><LcIcon name="users" /><div><b>{{ t('auth.forgotDialog.memberTitle') }}</b><p>{{ t('auth.forgotDialog.memberBody') }}</p></div></div>
-            <div class="fg-item"><LcIcon name="server" /><div><b>{{ t('auth.forgotDialog.cliTitle') }}</b><p>{{ t('auth.forgotDialog.cliBody') }} <a :href="LINKS.faq" target="_blank" rel="noopener">{{ t('auth.forgotDialog.faq') }}</a></p></div></div>
-          </div>
-          <div class="lc-dialog-foot">
-            <button class="lc-btn primary quiet" @click="forgotOpen = false">{{ t('auth.forgotDialog.ok') }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <TeamDialog
+      v-if="forgotOpen" :title="t('auth.forgotDialog.title')" :width="480" data-testid="login-forgot-dialog"
+      @close="forgotOpen = false" @submit="forgotOpen = false"
+    >
+      <p class="fg-lead">{{ t('auth.forgotDialog.lead') }}</p>
+      <div class="fg-item"><LcIcon name="users" /><div><b>{{ t('auth.forgotDialog.memberTitle') }}</b><p>{{ t('auth.forgotDialog.memberBody') }}</p></div></div>
+      <div class="fg-item"><LcIcon name="server" /><div><b>{{ t('auth.forgotDialog.cliTitle') }}</b><p>{{ t('auth.forgotDialog.cliBody') }} <a v-if="$feat.externalLinks" :href="LINKS.faq" target="_blank" rel="noopener">{{ t('auth.forgotDialog.faq') }}</a></p></div></div>
+      <template #foot>
+        <button class="lc-btn primary quiet" type="submit" data-autofocus>{{ t('auth.forgotDialog.ok') }}</button>
+      </template>
+    </TeamDialog>
   </AuthLayout>
 </template>
 
@@ -106,6 +99,7 @@ import { describeAuthError } from '@/utils/authErrors'
 import { LINKS } from '@/utils/links'
 import AuthLayout from '@/components/auth/AuthLayout.vue'
 import LcIcon from '@/components/LcIcon.vue'
+import TeamDialog from '@/components/team/TeamDialog.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -167,6 +161,8 @@ async function submit() {
     credsWrong.value = f.code === 'auth.invalid_credentials'
     if (f.retryAfterSeconds) startWait(f.retryAfterSeconds)
   } finally {
+    // 账号上的主题是跟着这次导航上色的（App.vue）；导航没发生（出错了）也别一直拿着
+    app.applyHeldTheme()
     busy.value = false
   }
 }
@@ -176,7 +172,6 @@ async function submit() {
 .between { justify-content: space-between; flex-wrap: wrap; }
 .linkish { border: 0; background: none; color: var(--cyan-soft); padding: 0; font-size: 14px; }
 .linkish:hover { text-decoration: underline; }
-.forgot { width: 480px; }
 .fg-lead { color: var(--text-2); line-height: 1.7; margin-bottom: 16px; }
 .fg-item { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); }
 .fg-item > svg { color: var(--cyan); margin-top: 2px; }
