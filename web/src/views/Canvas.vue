@@ -156,6 +156,8 @@
         :delete-key-code="null"
         :nodes-draggable="!readOnly"
         :nodes-connectable="!readOnly"
+        :node-drag-threshold="touchFirst ? 6 : 1"
+        :connection-radius="touchFirst ? 36 : 20"
         :elements-selectable="true"
         :selection-mode="SelectionMode.Partial"
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
@@ -858,6 +860,7 @@ import { canvasImageThumb } from '@/utils/canvasMedia'
 // SelectionMode.Partial：框选判定放宽成「碰到就算」。vue-flow 默认的 Full 要求
 // 节点被完整框住，压到一半不算选中 —— 用户会以为框选坏了。同类画布工具普遍用 Partial。
 import { VueFlow, useVueFlow, SelectionMode, type Node, type Edge, type Connection, addEdge } from '@vue-flow/core'
+import { installPinchRouter, coarsePointer } from '@/composables/canvasTouch'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
 import { MessagePlugin, DialogPlugin } from '@/utils/feedback'
@@ -1068,8 +1071,30 @@ const {
   onNodesInitialized, zoomIn, zoomOut, zoomTo, findNode,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
-  onNodeClick,
+  onNodeClick, connectionStartHandle,
 } = useVueFlow()
+
+/* ==================== 触屏 ==================== */
+/**
+ * 画布上的手指手势（都是有意定下的，改之前先看 composables/canvasTouch.ts；docs/user-guide「基础操作」里的「触屏上」一条写的是同一套）：
+ *   · 单指拖空白处 = 平移；双指 = 缩放 / 平移，落在节点上也一样（installPinchRouter）；双击空白处 = 放大一档（d3-zoom 自带，和鼠标双击一致）
+ *   · 单指拖节点 = 挪节点（只读时节点不可拖，这一下平移画布）；轻点节点 = 选中；轻点空白 = 取消选中；节点里能滚的长文本单指滚它自己
+ *   · 长按 = 右键菜单，全靠浏览器在长按时发 contextmenu，这里没有自己的长按计时；不发这个事件的浏览器上就没有这个菜单（还没在真机上逐个确认）
+ *   · 框选仍然只有鼠标 + Shift；触屏上目前没有多选的入口
+ * 主设备是手指时（手机、平板）：手指落下总会抖几个像素，节点要拖过 6px 才算拖（否则一碰就成了「挪了一下」，还会把面板点出来）；
+ * 拉线时离端口 36px 以内就吸附（鼠标是 20px）。主设备是鼠标的机器这两个数不变。
+ */
+const touchFirst = coarsePointer()
+let stopPinchRouter: (() => void) | null = null
+onMounted(() => {
+  const wrap = edRef.value?.querySelector<HTMLElement>('.vf-wrap')
+  if (!wrap) return
+  stopPinchRouter = installPinchRouter(wrap, {
+    viewport: () => wrap.querySelector<HTMLElement>('.vue-flow__viewport'),
+    busy: () => connectionStartHandle.value !== null,
+  })
+})
+onBeforeUnmount(() => { stopPinchRouter?.(); stopPinchRouter = null })
 
 /* ==================== 生成节点的布局 ==================== */
 /**
@@ -5572,6 +5597,8 @@ onBeforeUnmount(() => {
   inset: 0;
   overflow: hidden;
   color: var(--text);
+  /* 编辑器里不让浏览器自己缩放页面（双指、双击）：悬浮的工具条、面板上的手势只剩「滚动」这一种，滚的也只是它们自己里面 */
+  touch-action: pan-x pan-y;
 }
 
 /* ---------- 画布 ---------- */

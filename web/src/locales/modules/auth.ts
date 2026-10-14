@@ -195,6 +195,7 @@ export default {
         phone: {
           title: '手机和触屏',
           desc: '每个页面都有手机上的排法：导航在屏幕底部，生成记录一条一张卡片。编辑器里，输入条和属性面板变成贴底的抽屉，生成队列是一块通栏面板。',
+          b0: '画布单指拖动平移，双指缩放',
           b1: '生成队列的面板往下一划就收起',
           b2: '工具栏和队列圆钮可以用手指或手写笔拖动；手机上工具栏固定成一横条',
           b3: '按住按钮不放，会显示它的说明',
@@ -490,6 +491,7 @@ export default {
         phone: {
           title: 'Phones and touch',
           desc: 'Every page has a phone layout: navigation at the bottom of the screen, run history as one card per run. In the editor the input bar and the side panel become a bottom sheet, and the queue opens as a full-width sheet.',
+          b0: 'Drag the canvas with one finger, pinch to zoom',
           b1: 'Swipe the queue sheet down to close it',
           b2: 'Move the palette and the queue button with a finger or a pen; on a phone the palette is a fixed strip',
           b3: 'Press and hold a button to see what it does',

@@ -48,6 +48,7 @@ In the editor the sidebar shrinks to icons, to leave the width to the canvas. On
 Basics:
 
 - **Pan** by dragging the empty canvas with the left mouse button. **Zoom** with the mouse wheel.
+- **On a touch screen**: drag the empty canvas with one finger to pan, and pinch with two fingers to zoom. The pinch works wherever the fingers land, on nodes too. Dragging a node with one finger moves it; on a read-only canvas nodes do not move, so that drag pans. Tap a node to select it, tap the empty canvas to clear the selection, and double-tap the empty canvas to zoom in one step. To connect two nodes, drag from one port to the other; zoom in first if the ports are too small to grab. Selecting several nodes at once still needs a mouse or a keyboard.
 - **Select several nodes** by holding Shift and dragging a box around them, by Ctrl-clicking them one after another, or with Ctrl+A. Alignment guides appear while you move a node.
 - **Drop files**: drag images or videos from your computer onto the canvas, several at once if you like. A node is created at the pointer and the file is uploaded.
 - **Paste an image** with Ctrl+V. Pasting text into an input works as usual.

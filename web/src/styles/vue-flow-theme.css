@@ -42,6 +42,11 @@
 /* 视口框的描边按屏幕像素算：小地图的 viewBox 跟着内容缩放，不固定的话线会细到看不见 */
 .vue-flow .vue-flow__minimap-mask { vector-effect: non-scaling-stroke; }
 
+/* ---------- 触屏 ----------
+   画布上的手势全归画布自己（d3-zoom / d3-drag，编辑页另有 composables/canvasTouch.ts）：浏览器不滚页面、不缩放页面、不下拉刷新。
+   节点里能滚的框（长文本）照常滚 —— touch-action 对「滚动」只管到最近的那个滚动容器为止。编辑页和分享页共用这一条 */
+.vue-flow { touch-action: none; }
+
 /* ---------- 端口（节点上的圆点） ----------
    实心底（--port-bg，深色主题深蓝、浅色主题白）+ 类型色描边：图片青、视频紫、文本蓝。尾帧口是实心的，和首帧区分。 */
 .vue-flow .vue-flow__handle {
@@ -55,6 +60,10 @@
 /* 透明扩展点击区，让小目标更易命中 */
 .vue-flow .vue-flow__handle::before {
   content: ''; position: absolute; inset: -9px; border-radius: 50%;
+}
+/* 手指：点击区从 30px 放到 44px（按 100% 缩放算；画布缩小了就先放大再拉线） */
+@media (pointer: coarse) {
+  .vue-flow .vue-flow__handle::before { inset: -16px; }
 }
 .vue-flow .vue-flow__handle.h-text { background: var(--port-bg); border-color: var(--port-text); }
 .vue-flow .vue-flow__handle.h-image { background: var(--port-bg); border-color: var(--cyan); }

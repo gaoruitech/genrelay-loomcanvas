@@ -3,6 +3,9 @@
    文件头那行注释让 scopeToRoot 插件跳过它。 */
 html, body, #app { height: 100%; width: 100%; }
 html { -webkit-text-size-adjust: 100%; }
+/* 画布编辑页开着的时候，整页不回弹、不下拉刷新：在工具条上往下划一下不该把没保存的画布刷掉。
+   只能写在文档根上（下拉刷新看的是根滚动容器），所以只有独立应用管；嵌进别人页面时由宿主决定 */
+html:has(.ed .vf-wrap) { overscroll-behavior: none; }
 
 /* 换主题时的整页交叉淡入（composables/useTheme.ts 里的 View Transitions 那条路） */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: ease; }

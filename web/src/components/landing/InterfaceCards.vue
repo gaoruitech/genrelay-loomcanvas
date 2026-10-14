@@ -178,7 +178,7 @@ const SIDES = ['dark', 'light'] as const
 const MODES = [{ k: 'dark', icon: 'moon' }, { k: 'light', icon: 'sun' }, { k: 'system', icon: 'monitor' }] as const
 const PAL = ['plus', 'text', 'image', 'video'] as const
 const PAL_PHONE = ['plus', 'text', 'image', 'video', 'chat', 'more'] as const
-const PHONE_POINTS = ['b1', 'b2', 'b3'] as const
+const PHONE_POINTS = ['b0', 'b1', 'b2', 'b3'] as const
 /** 和 docs/user-guide 的「快捷键」一章对得上 */
 const SHORTCUTS = [
   { k: 'undo', keys: ['Ctrl', 'Z'] },
