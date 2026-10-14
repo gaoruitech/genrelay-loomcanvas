@@ -30,7 +30,7 @@
 | [集成](integration.zh-CN.md) | 把 LoomCanvas 集成进自己的产品：把整个应用挂进宿主页面，或者只嵌画布编辑器、后端由你提供的适配器对接。选项、事件、文档格式、样式隔离、认证的接法、兼容性、协议。示例在 [`examples/`](../examples/README.zh-CN.md)。 |
 | [编写服务商模块](writing-a-provider.zh-CN.md) | 服务商模块的接口和模型清单文件的格式，附完整示例和测试。 |
 | [计费钩子](billing-hook.zh-CN.md) | 用自己的模块对运行做计量或限额。 |
-| [HTTP 接口](api.zh-CN.md) | 「空间与团队」的完整约定，加上其余接口的索引；其余接口的逐项说明见英文版 [api.md](api.md)。 |
+| [HTTP 接口](api.zh-CN.md) | 全部接口的逐项说明：请求、响应、错误码，含「空间与团队」的完整约定。 |
 | [架构与接口约定](architecture.md) | 前后端共同遵守的设计约定。 |
 
 ## 项目

@@ -35,6 +35,7 @@
       <div class="lp-meta">
         <span><LcIcon name="check" size="s" />{{ t('landing.meta1') }}</span>
         <span><LcIcon name="check" size="s" />{{ t('landing.meta2') }}</span>
+        <span><LcIcon name="check" size="s" />{{ t('landing.metaTeam') }}</span>
         <span><LcIcon name="check" size="s" />{{ t('landing.meta3') }}</span>
         <span><LcIcon name="check" size="s" />{{ t('landing.meta4') }}</span>
       </div>
@@ -49,12 +50,12 @@
           <span class="ti"><LcIcon :name="f.icon" size="l" /></span>
           <div><h3>{{ t(`landing.feats.${f.k}T`) }}</h3><p>{{ t(`landing.feats.${f.k}D`) }}</p></div>
         </div>
-        <!-- 第七块横跨整行：六块正好排满三列 / 两列，这一块单独一行，不留孤块 -->
-        <div class="tile lc-glass wide">
-          <span class="ti"><LcIcon name="panel" size="l" /></span>
-          <div><h3>{{ t('landing.feats.embedT') }}</h3><p>{{ t('landing.feats.embedD') }}</p></div>
-          <a class="lc-btn" href="#integration">{{ t('landing.feats.embedLink') }}<LcIcon name="arrow" /></a>
-        </div>
+      </div>
+      <!-- 八块正好排满四列 / 两列 / 一列，哪个宽度都不留孤块；「可集成」在它们下面单独占一整行 -->
+      <div class="tile lc-glass wide">
+        <span class="ti"><LcIcon name="panel" size="l" /></span>
+        <div><h3>{{ t('landing.feats.embedT') }}</h3><p>{{ t('landing.feats.embedD') }}</p></div>
+        <a class="lc-btn" href="#integration">{{ t('landing.feats.embedLink') }}<LcIcon name="arrow" /></a>
       </div>
     </section>
 
@@ -153,9 +154,10 @@ const { t } = useI18n()
 const app = useAppStore()
 const embed = useEmbed()
 
+/** 八块：4 / 2 / 1 列都能排满。加减一块之前先想好孤块怎么办 */
 const FEATS = [
-  { k: 'canvas', icon: 'infinite' }, { k: 'key', icon: 'key' }, { k: 'gen', icon: 'video' },
-  { k: 'queue', icon: 'queue' }, { k: 'tool', icon: 'tool' }, { k: 'host', icon: 'server' },
+  { k: 'canvas', icon: 'infinite' }, { k: 'key', icon: 'key' }, { k: 'gen', icon: 'video' }, { k: 'team', icon: 'users' },
+  { k: 'queue', icon: 'queue' }, { k: 'tool', icon: 'tool' }, { k: 'look', icon: 'settings' }, { k: 'host', icon: 'server' },
 ] as const
 const YEAR = new Date().getFullYear()
 
@@ -220,15 +222,18 @@ function goSection(id: string) {
 .lp-sec h2 { font: 600 34px/1.3 var(--f-disp); margin-top: 12px; color: var(--text); }
 .sub { color: var(--text-2); font-size: 16px; margin-top: 12px; max-width: 640px; }
 
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 48px; }
-.tile { display: flex; gap: 16px; padding: 24px; min-height: 152px; }
+/* 八块：宽屏四列两排，≤1100px 两列四排，手机一列。grid-auto-rows 让每一排一样高 */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 24px; margin-top: 48px; }
+/* 四列时一块不到 290px 宽：图标放在文字上面，文字用满整块的宽度；两列、一列时图标回到左边 */
+.tile { display: flex; flex-direction: column; gap: 16px; padding: 24px; }
+.tile > div { min-width: 0; }
 .ti {
   width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; color: var(--cyan);
   background: linear-gradient(135deg, rgb(var(--c-cyan) / .18), rgb(var(--c-violet) / .22)); box-shadow: 0 0 0 1px rgb(var(--c-cyan) / .35) inset;
 }
 .tile h3 { font: 600 17px/1.4 var(--f-disp); color: var(--text); }
 .tile p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin-top: 6px; }
-.tile.wide { grid-column: 1 / -1; min-height: 0; align-items: center; }
+.tile.wide { flex-direction: row; align-items: center; margin-top: 24px; }
 .tile.wide > div { flex: 1; min-width: 0; }
 .tile.wide .lc-btn { flex: none; }
 
@@ -274,6 +279,7 @@ function goSection(id: string) {
 @media (max-width: 1100px) {
   .lp-hero h1 { font-size: 46px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { flex-direction: row; }
   .oss { grid-template-columns: 1fr 1fr; }
   .oss > :first-child { grid-column: 1 / -1; }
   .lp-links { margin-left: 16px; gap: 20px; }
@@ -297,11 +303,13 @@ function goSection(id: string) {
   .lead { font-size: 15px; margin-top: 16px; }
   .lp-cta { margin-top: 28px; gap: 12px; }
   .lp-cta .lc-btn { flex: 1 1 100%; }
+  /* 五项在手机上折成两三行：列间距收一点，中文正好 3 + 2 */
+  .lp-meta { column-gap: 16px; }
   .lp-sec { padding: 56px 16px 0; }
   .lp-sec h2 { font-size: 24px; }
-  .tiles { grid-template-columns: 1fr; gap: 12px; margin-top: 28px; }
-  .tile { min-height: 0; padding: 18px; }
-  .tile.wide { flex-wrap: wrap; align-items: flex-start; }
+  .tiles { grid-template-columns: 1fr; grid-auto-rows: auto; gap: 12px; margin-top: 28px; }
+  .tile { padding: 18px; }
+  .tile.wide { flex-wrap: wrap; align-items: flex-start; margin-top: 12px; }
   .tile.wide > div { flex: 1 1 0; }
   .tile.wide .lc-btn { flex: 1 1 100%; }
   .steps { margin-top: 28px; }
