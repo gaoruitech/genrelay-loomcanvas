@@ -92,16 +92,18 @@
           <span class="no">1</span>
           <div class="lc-glass card">
             <h3>{{ t('landing.steps.t1') }}</h3><p>{{ t('landing.steps.d1') }}</p>
-            <div class="code"><span class="c">$</span> docker compose up -d<br /><span class="c">{{ t('landing.steps.open') }}</span></div>
+            <div class="slot"><div class="code"><span class="c">$</span> docker compose up -d<br /><span class="c">{{ t('landing.steps.open') }}</span></div></div>
           </div>
         </div>
         <div class="step">
           <span class="no">2</span>
           <div class="lc-glass card">
             <h3>{{ t('landing.steps.t2') }}</h3><p>{{ t('landing.steps.d2') }}</p>
-            <div class="lc-row demo" aria-hidden="true">
-              <div class="lc-inp fake"><LcIcon name="key" /><span class="lc-mono">sk-··············1234</span></div>
-              <span class="lc-st ok">{{ t('landing.steps.keyOk') }}</span>
+            <div class="slot">
+              <div class="lc-row demo" aria-hidden="true">
+                <div class="lc-inp fake"><LcIcon name="key" /><span class="lc-mono keytxt"><span>sk-</span><span class="dots">··············</span><span>1234</span></span></div>
+                <span class="lc-st ok">{{ t('landing.steps.keyOk') }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -109,12 +111,14 @@
           <span class="no">3</span>
           <div class="lc-glass card">
             <h3>{{ t('landing.steps.t3') }}</h3><p>{{ t('landing.steps.d3') }}</p>
-            <div class="lc-row demo chain" aria-hidden="true">
-              <span class="lc-chip o"><LcIcon name="text" size="s" />{{ t('landing.steps.chipPrompt') }}</span>
-              <LcIcon name="arrow" size="s" class="arr" />
-              <span class="lc-chip o"><LcIcon name="image" size="s" />{{ t('landing.steps.chipImage') }}</span>
-              <LcIcon name="arrow" size="s" class="arr" />
-              <span class="lc-chip o"><LcIcon name="video" size="s" />{{ t('landing.steps.chipVideo') }}</span>
+            <div class="slot">
+              <div class="lc-row demo chain" aria-hidden="true">
+                <span class="lc-chip o"><LcIcon name="text" size="s" />{{ t('landing.steps.chipPrompt') }}</span>
+                <LcIcon name="arrow" size="s" class="arr" />
+                <span class="lc-chip o"><LcIcon name="image" size="s" />{{ t('landing.steps.chipImage') }}</span>
+                <LcIcon name="arrow" size="s" class="arr" />
+                <span class="lc-chip o"><LcIcon name="video" size="s" />{{ t('landing.steps.chipVideo') }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -264,18 +268,28 @@ function goSection(id: string) {
 
 .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 48px; position: relative; }
 .steps::before { content: ''; position: absolute; left: 44px; right: 44px; top: 20px; height: 2px; background: var(--grad); opacity: .5; }
-.step { min-width: 0; }
+/* The three cards share one height, and their example blocks share one slot at
+   the bottom of the card, so the code box, the key field and the chips line up
+   whatever length the description above them has. */
+.step { min-width: 0; display: flex; flex-direction: column; }
 .no {
   position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
   font: 600 15px var(--f-disp); background: var(--port-bg); border: 1px solid var(--cyan); color: var(--cyan-soft); box-shadow: 0 0 16px rgb(var(--g-cyan) / .35);
 }
-.step .card { margin-top: 20px; padding: 24px; min-height: 176px; border-radius: var(--r-md); }
+.step .card { flex: 1; display: flex; flex-direction: column; margin-top: 20px; padding: 24px; min-height: 176px; border-radius: var(--r-md); }
+.step .slot { margin-top: auto; padding-top: 16px; min-height: 88px; display: flex; align-items: center; }
+.step .slot > * { width: 100%; margin-top: 0; }
 .step h3 { font: 600 18px/1.4 var(--f-disp); color: var(--text); }
 .step p { color: var(--text-2); margin-top: 6px; }
 .code { margin-top: 16px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); padding: 12px 14px; font: 13px/1.7 var(--f-mono); color: var(--cyan-soft); overflow-x: auto; white-space: nowrap; }
 .code .c { color: var(--text-3); }
 .demo { margin-top: 16px; flex-wrap: wrap; }
 .fake { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* when the field gets narrow the dots give way, so the last four characters stay visible */
+.keytxt { display: flex; min-width: 0; }
+.keytxt > span { white-space: nowrap; }
+.keytxt .dots { min-width: 0; overflow: hidden; }
+.demo .lc-st { flex: none; }
 .chain { gap: 10px; }
 .arr { color: var(--cyan); }
 
@@ -319,6 +333,9 @@ function goSection(id: string) {
 @media (max-width: 820px) {
   .lp-nav .lp-links, .lp-nav .src, .lp-nav .lp-lang, .lp-nav .lp-theme { display: none; }
   .steps { grid-template-columns: 1fr; }
+  /* one card per row: nothing to line up with, so no reserved space */
+  .step .card { min-height: 0; }
+  .step .slot { min-height: 0; margin-top: 0; }
   .steps::before { display: none; }
   .lp-sec { padding-top: 72px; }
   .lp-foot { grid-template-columns: 1fr 1fr 1fr; margin-top: 72px; }
