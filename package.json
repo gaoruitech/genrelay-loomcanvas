@@ -1,7 +1,35 @@
 {
   "name": "loomcanvas",
   "version": "0.1.0",
-  "description": "Self-hosted infinite canvas for AI image and video creation",
+  "description": "Open-source, self-hosted node-based AI canvas for image and video generation: visual workflows for text-to-image, image editing and image-to-video, with your own API keys",
+  "keywords": [
+    "ai-canvas",
+    "node-editor",
+    "node-based",
+    "ai-workflow",
+    "visual-workflow",
+    "infinite-canvas",
+    "text-to-image",
+    "image-to-video",
+    "video-generation",
+    "ai-image-generator",
+    "self-hosted",
+    "byok",
+    "nano-banana",
+    "gemini",
+    "veo",
+    "gpt-image",
+    "deepseek",
+    "vue-flow"
+  ],
+  "homepage": "https://gitee.com/jishulin/loomcanvas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/jishulin/loomcanvas.git"
+  },
+  "bugs": {
+    "url": "https://gitee.com/jishulin/loomcanvas/issues"
+  },
   "license": "AGPL-3.0-or-later",
   "private": true,
   "engines": {

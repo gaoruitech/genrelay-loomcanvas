@@ -1,7 +1,34 @@
 {
   "name": "loomcanvas-server",
   "version": "0.1.0",
-  "description": "LoomCanvas backend: self-hosted infinite canvas for AI image and video generation",
+  "description": "LoomCanvas server: Node.js + Express + MongoDB back end of the self-hosted AI canvas; runs image, video and chat models with your own API keys (Gaorui, OpenAI, Google Gemini)",
+  "keywords": [
+    "ai-canvas",
+    "ai-workflow",
+    "image-generation",
+    "video-generation",
+    "text-to-image",
+    "image-to-video",
+    "self-hosted",
+    "byok",
+    "nano-banana",
+    "veo",
+    "gpt-image",
+    "gemini",
+    "openai",
+    "deepseek",
+    "express",
+    "mongodb"
+  ],
+  "homepage": "https://gitee.com/jishulin/loomcanvas/tree/master/server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/jishulin/loomcanvas.git",
+    "directory": "server"
+  },
+  "bugs": {
+    "url": "https://gitee.com/jishulin/loomcanvas/issues"
+  },
   "license": "AGPL-3.0-or-later",
   "private": true,
   "main": "src/index.js",

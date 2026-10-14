@@ -1,7 +1,32 @@
 {
   "name": "loomcanvas-web",
   "version": "0.1.0",
-  "description": "LoomCanvas web app",
+  "description": "LoomCanvas web app: Vue 3 + Vue Flow node editor of the AI canvas, also buildable as an embeddable app and canvas editor",
+  "keywords": [
+    "ai-canvas",
+    "node-editor",
+    "node-based",
+    "visual-workflow",
+    "workflow-editor",
+    "infinite-canvas",
+    "vue",
+    "vue3",
+    "vue-flow",
+    "embeddable",
+    "text-to-image",
+    "image-to-video",
+    "self-hosted",
+    "byok"
+  ],
+  "homepage": "https://gitee.com/jishulin/loomcanvas/tree/master/web",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/jishulin/loomcanvas.git",
+    "directory": "web"
+  },
+  "bugs": {
+    "url": "https://gitee.com/jishulin/loomcanvas/issues"
+  },
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
