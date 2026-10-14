@@ -4,6 +4,7 @@
       <LcLogo to="/" />
       <nav class="lp-links" :aria-label="t('shell.navLabel')">
         <a href="#features">{{ t('landing.nav.features') }}</a>
+        <a href="#teams">{{ t('landing.nav.teams') }}</a>
         <a href="#integration">{{ t('landing.nav.integration') }}</a>
         <a v-if="$feat.externalLinks" :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.nav.docs') }}</a>
         <a href="#open-source">{{ t('landing.nav.open') }}</a>
@@ -48,7 +49,10 @@
       <div class="tiles">
         <div v-for="f in FEATS" :key="f.k" class="tile lc-glass">
           <span class="ti"><LcIcon :name="f.icon" size="l" /></span>
-          <div><h3>{{ t(`landing.feats.${f.k}T`) }}</h3><p>{{ t(`landing.feats.${f.k}D`) }}</p></div>
+          <div>
+            <h3>{{ t(`landing.feats.${f.k}T`) }}</h3><p>{{ t(`landing.feats.${f.k}D`) }}</p>
+            <a v-if="f.to" class="tl" :href="'#' + f.to">{{ t(`landing.feats.${f.k}Link`) }}<LcIcon name="arrow" size="s" /></a>
+          </div>
         </div>
       </div>
       <!-- 八块正好排满四列 / 两列 / 一列，哪个宽度都不留孤块；「可集成」在它们下面单独占一整行 -->
@@ -57,6 +61,20 @@
         <div><h3>{{ t('landing.feats.embedT') }}</h3><p>{{ t('landing.feats.embedD') }}</p></div>
         <a class="lc-btn" href="#integration">{{ t('landing.feats.embedLink') }}<LcIcon name="arrow" /></a>
       </div>
+    </section>
+
+    <section id="interface" class="lp-sec" tabindex="-1">
+      <div class="eyebrow">{{ t('landing.ui.eyebrow') }}</div>
+      <h2>{{ t('landing.ui.title') }}</h2>
+      <p class="sub">{{ t('landing.ui.sub') }}</p>
+      <InterfaceCards />
+    </section>
+
+    <section id="teams" class="lp-sec" tabindex="-1">
+      <div class="eyebrow">{{ t('landing.team.eyebrow') }}</div>
+      <h2>{{ t('landing.team.title') }}</h2>
+      <p class="sub">{{ t('landing.team.sub') }}</p>
+      <TeamSpaces />
     </section>
 
     <section id="integration" class="lp-sec" tabindex="-1">
@@ -122,7 +140,7 @@
     <!-- 站外链接关了：页脚只剩页内的那一栏（「资源」「开源」两栏全是站外链接，整栏不出） -->
     <footer class="lp-foot" :class="{ few: !$feat.externalLinks }">
       <div><LcLogo /><p class="blurb">{{ t('landing.foot.blurb') }}</p></div>
-      <div><h4>{{ t('landing.foot.product') }}</h4><a href="#features">{{ t('landing.foot.features') }}</a><a v-if="!$feat.externalLinks" href="#integration">{{ t('landing.nav.integration') }}</a><a v-if="$feat.externalLinks" :href="LINKS.changelog" target="_blank" rel="noopener">{{ t('landing.foot.changelog') }}</a></div>
+      <div><h4>{{ t('landing.foot.product') }}</h4><a href="#features">{{ t('landing.foot.features') }}</a><a href="#interface">{{ t('landing.foot.interface') }}</a><a href="#teams">{{ t('landing.foot.teams') }}</a><a v-if="!$feat.externalLinks" href="#integration">{{ t('landing.nav.integration') }}</a><a v-if="$feat.externalLinks" :href="LINKS.changelog" target="_blank" rel="noopener">{{ t('landing.foot.changelog') }}</a></div>
       <div v-if="$feat.externalLinks"><h4>{{ t('landing.foot.resources') }}</h4><a :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.foot.docs') }}</a><a :href="LINKS.deployment" target="_blank" rel="noopener">{{ t('landing.foot.deploy') }}</a><a :href="LINKS.faq" target="_blank" rel="noopener">{{ t('landing.foot.faq') }}</a></div>
       <div v-if="$feat.externalLinks"><h4>{{ t('landing.foot.open') }}</h4><a :href="LINKS.repo" target="_blank" rel="noopener">{{ t('landing.foot.source') }}</a><a :href="LINKS.license" target="_blank" rel="noopener">{{ t('landing.foot.license') }}</a><a :href="LINKS.commercial" target="_blank" rel="noopener">{{ t('landing.foot.commercial') }}</a></div>
       <div class="copy">
@@ -147,6 +165,8 @@ import LcIcon from '@/components/LcIcon.vue'
 import LcSelect from '@/components/LcSelect.vue'
 import HeroCanvas from '@/components/landing/HeroCanvas.vue'
 import IntegrationCards from '@/components/landing/IntegrationCards.vue'
+import InterfaceCards from '@/components/landing/InterfaceCards.vue'
+import TeamSpaces from '@/components/landing/TeamSpaces.vue'
 import LandingMenu, { type LandingMenuLink } from '@/components/landing/LandingMenu.vue'
 import { useEmbed } from '@/embed/context'
 
@@ -154,19 +174,21 @@ const { t } = useI18n()
 const app = useAppStore()
 const embed = useEmbed()
 
-/** 八块：4 / 2 / 1 列都能排满。加减一块之前先想好孤块怎么办 */
+/** 八块：4 / 2 / 1 列都能排满。加减一块之前先想好孤块怎么办。to = 这一块在下面有自己的一节（块里多一个去那一节的小链接） */
 const FEATS = [
-  { k: 'canvas', icon: 'infinite' }, { k: 'key', icon: 'key' }, { k: 'gen', icon: 'video' }, { k: 'team', icon: 'users' },
-  { k: 'queue', icon: 'queue' }, { k: 'tool', icon: 'tool' }, { k: 'look', icon: 'settings' }, { k: 'host', icon: 'server' },
+  { k: 'canvas', icon: 'infinite', to: '' }, { k: 'key', icon: 'key', to: '' }, { k: 'gen', icon: 'video', to: '' }, { k: 'team', icon: 'users', to: 'teams' },
+  { k: 'queue', icon: 'queue', to: '' }, { k: 'tool', icon: 'tool', to: '' }, { k: 'look', icon: 'settings', to: 'interface' }, { k: 'host', icon: 'server', to: '' },
 ] as const
 const YEAR = new Date().getFullYear()
 
 /** 能注册就去注册，注册关了就去登录 */
 const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 
-/** 窄屏菜单里的入口：和页头那一排是同一组，多一个「源码」。站外的两项听 features.externalLinks */
+/** 窄屏菜单里的入口：页面上的每一节都有（页头那一排放不下「界面」，它在这里和功能区那一块的小链接里），多一个「源码」。站外的两项听 features.externalLinks */
 const menuLinks = computed<LandingMenuLink[]>(() => [
   { key: 'features', label: t('landing.nav.features'), icon: 'bolt', anchor: 'features' },
+  { key: 'interface', label: t('landing.nav.interface'), icon: 'layout', anchor: 'interface' },
+  { key: 'teams', label: t('landing.nav.teams'), icon: 'users', anchor: 'teams' },
   { key: 'integration', label: t('landing.nav.integration'), icon: 'panel', anchor: 'integration' },
   { key: 'open', label: t('landing.nav.open'), icon: 'shield', anchor: 'open-source' },
   ...(embed.features.externalLinks ? [
@@ -233,6 +255,9 @@ function goSection(id: string) {
 }
 .tile h3 { font: 600 17px/1.4 var(--f-disp); color: var(--text); }
 .tile p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin-top: 6px; }
+.tl { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; color: var(--cyan-soft); font-size: 13px; line-height: 20px; border-radius: 4px; }
+.tl:hover { color: var(--cyan); text-decoration: none; }
+.tl:focus-visible { outline: none; box-shadow: var(--ring); }
 .tile.wide { flex-direction: row; align-items: center; margin-top: 24px; }
 .tile.wide > div { flex: 1; min-width: 0; }
 .tile.wide .lc-btn { flex: none; }
@@ -283,6 +308,13 @@ function goSection(id: string) {
   .oss { grid-template-columns: 1fr 1fr; }
   .oss > :first-child { grid-column: 1 / -1; }
   .lp-links { margin-left: 16px; gap: 20px; }
+}
+/* 页头多了「团队」一项：比 1060px 再窄就先收起「源码」按钮（页脚和「开源」一节里都有），链接才不挤 */
+@media (max-width: 1060px) { .lp-nav .src { display: none; } }
+/* 再窄（英文尤其挤）：页头不留「文档」那一项（首屏的「查看文档」和页脚里都有），链接之间收紧一点 */
+@media (max-width: 940px) {
+  .lp-links { margin-left: 12px; gap: 14px; }
+  .lp-links a[target='_blank'] { display: none; }
 }
 @media (max-width: 820px) {
   .lp-nav .lp-links, .lp-nav .src, .lp-nav .lp-lang, .lp-nav .lp-theme { display: none; }

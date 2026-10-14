@@ -18,6 +18,8 @@ export const LINKS = {
   get faq() { return doc('faq') },
   get security() { return doc('security') },
   get integration() { return doc('integration') },
+  /** 使用指南的「团队」一章（两种语言的章节锚点不同；中文锚点按百分号编码写，源码里不留中文字面量） */
+  get teams() { return doc('user-guide') + (currentLocale() === 'zh-CN' ? '#%E5%9B%A2%E9%98%9F' : '#teams') },
   examples: `${REPO}/tree/master/examples`,
   license: `${FILE}/LICENSE`,
   commercial: `${FILE}/COMMERCIAL.md`,
