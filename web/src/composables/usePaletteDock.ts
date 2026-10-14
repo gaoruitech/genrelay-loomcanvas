@@ -58,7 +58,10 @@ export interface PalFit {
 export const PAL_METRICS = {
   normal: { pad: 6, gap: 4, btn: 34, grip: 16, turn: 24, hr: 5 },
   compact: { pad: 4, gap: 2, btn: 30, grip: 12, turn: 20, hr: 3 },
+  /** 手机上那一横条（.ed-pal.phone）：按钮是正常那一档的 34px（手指点的，不往小里缩），边距和间隔紧一点；没有把手和方向开关 */
+  phone: { pad: 5, gap: 2, btn: 34, grip: 0, turn: 0, hr: 3 },
 } as const
+type PalMetrics = (typeof PAL_METRICS)[keyof typeof PAL_METRICS]
 /** 「更多工具」那颗展开钮在分组里的 key */
 export const PAL_OVERFLOW = 'over'
 /** 正常那一档的面板有多粗（垂直于排布方向，含边框） */
@@ -75,7 +78,9 @@ export function budgetSize(orient: PalOrient, size: { w: number; h: number }): {
 
 /** 这样分组、这一档尺寸，面板沿排布方向有多长（含自己的边框）。组与组之间有一条分隔线 */
 export function palLength(groups: PalPart[][], compact: boolean): number {
-  const m = PAL_METRICS[compact ? 'compact' : 'normal']
+  return palLengthWith(groups, PAL_METRICS[compact ? 'compact' : 'normal'])
+}
+function palLengthWith(groups: PalPart[][], m: PalMetrics): number {
   const live = groups.filter((g) => g.length)
   const parts = live.reduce((n, g) => n + g.length, 0) + Math.max(0, live.length - 1)
   const items = live.reduce((sum, g) => sum + g.reduce((s, p) => s + (p.kind === 'grip' ? m.grip : p.kind === 'turn' ? m.turn : m.btn), 0), 0)
@@ -92,6 +97,21 @@ export function palLength(groups: PalPart[][], compact: boolean): number {
 export function fitPalette(groups: PalPart[][], budget: number, overflowAt = 2): PalFit {
   if (!(budget > 0) || !Number.isFinite(budget) || palLength(groups, false) <= budget) return { compact: false, folded: [] }
   if (palLength(groups, true) <= budget) return { compact: true, folded: [] }
+  return { compact: true, folded: foldUntil(groups, budget, PAL_METRICS.compact, overflowAt) }
+}
+
+/**
+ * 手机上那一横条：屏幕多宽它就多长（左右各留 8px），放不下时不缩小按钮（手指要点得着），也不让它横着滚 ——
+ * 横着滚的话最右边的「更多」只露出半颗，看不出后面还有东西。按同一个顺序（PAL_FOLD）把节点类别收进「更多工具」，
+ * 「+」、素材库、分享、多选、更多一直在。
+ */
+export function fitPhoneStrip(groups: PalPart[][], budget: number, overflowAt = 2): PalFit {
+  if (!(budget > 0) || !Number.isFinite(budget) || palLengthWith(groups, PAL_METRICS.phone) <= budget) return { compact: false, folded: [] }
+  return { compact: false, folded: foldUntil(groups, budget, PAL_METRICS.phone, overflowAt) }
+}
+
+/** 按 fold 从大到小一颗颗收，直到这一档尺寸放得下（收了任何一颗，overflowAt 那一组末尾多一颗展开钮） */
+function foldUntil(groups: PalPart[][], budget: number, m: PalMetrics, overflowAt: number): string[] {
   const order = groups.flat().filter((p) => p.fold != null).sort((a, b) => (b.fold as number) - (a.fold as number))
   const folded: string[] = []
   for (const p of order) {
@@ -103,9 +123,9 @@ export function fitPalette(groups: PalPart[][], budget: number, overflowAt = 2):
       const keep = g.filter((x) => !gone.has(x.key))
       return i === overflowAt ? [...keep, { key: PAL_OVERFLOW }] : keep
     })
-    if (palLength(left, true) <= budget) break
+    if (palLengthWith(left, m) <= budget) break
   }
-  return { compact: true, folded }
+  return folded
 }
 
 /**

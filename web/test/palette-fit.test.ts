@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PAL_CROSS, PAL_METRICS, PAL_NEAR, PAL_OVERFLOW, budgetSize, fitPalette, freeSpan, palFloor, palLength, planBudget, type PalPart } from '../src/composables/usePaletteDock'
+import { PAL_CROSS, PAL_METRICS, PAL_NEAR, PAL_OVERFLOW, budgetSize, fitPalette, fitPhoneStrip, freeSpan, palFloor, palLength, planBudget, type PalPart } from '../src/composables/usePaletteDock'
 import { isFree, nearestFree, type Rect } from '../src/utils/floatSpot'
 
 /**
@@ -241,5 +241,33 @@ describe('palFloor: the shortest a horizontal palette is asked to be', () => {
     const ro: PalPart[][] = [[{ key: 'grip', kind: 'grip' }, { key: 'turn', kind: 'turn' }], [{ key: 'ro' }], [], [{ key: 'lib', fold: 2 }], [{ key: 'share', fold: 1 }, { key: 'more' }]]
     expect(palFloor(ro)).toBe(palLength(ro, true))
     expect(fitPalette(ro, palFloor(ro))).toEqual({ compact: true, folded: [] })
+  })
+})
+
+/**
+ * 手机上那一横条（屏幕宽度减 16）：不缩小按钮、不横着滚，放不下就按同一个顺序收进「更多工具」；
+ * 触屏多选开关、素材库、分享、更多一直在。数字和 .ed-pal.phone 的样式量出来的一致（390 宽、没有多选时 349px）。
+ */
+describe('fitPhoneStrip', () => {
+  const PHONE: PalPart[][] = [
+    [],
+    [{ key: 'all' }],
+    [{ key: 'text', fold: 3 }, { key: 'image', fold: 4 }, { key: 'video', fold: 5 }, { key: 'chat', fold: 6 }, { key: 'tools', fold: 7 }],
+    [{ key: 'lib', fold: 2 }],
+    [{ key: 'share', fold: 1 }, { key: 'multi' }, { key: 'more' }],
+  ]
+  const noMulti = PHONE.map((g) => g.filter((p) => p.key !== 'multi'))
+  it('measures like the strip on screen', () => {
+    expect(fitPhoneStrip(noMulti, 374)).toEqual({ compact: false, folded: [] })
+  })
+  it('folds node categories, never the toggle or the last entries, and never shrinks the buttons', () => {
+    expect(fitPhoneStrip(PHONE, 414 - 16)).toEqual({ compact: false, folded: [] })
+    expect(fitPhoneStrip(PHONE, 390 - 16)).toEqual({ compact: false, folded: ['tools', 'chat'] })
+    expect(fitPhoneStrip(PHONE, 375 - 16)).toEqual({ compact: false, folded: ['tools', 'chat'] })
+    expect(fitPhoneStrip(PHONE, 360 - 16)).toEqual({ compact: false, folded: ['tools', 'chat', 'video'] })
+    for (const w of [320, 360, 375, 390, 414]) {
+      const f = fitPhoneStrip(PHONE, w - 16).folded
+      expect(f).not.toContain('multi'); expect(f).not.toContain('more')
+    }
   })
 })

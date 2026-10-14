@@ -420,6 +420,7 @@
           :aria-label="it.title"
           :aria-haspopup="it.popup"
           :aria-expanded="it.popup ? !!it.on : undefined"
+          :aria-pressed="it.pressed === undefined ? undefined : it.pressed"
           :disabled="it.disabled"
           :data-pal="it.key"
           @click="it.run()"
@@ -533,13 +534,19 @@
     </div>
 
     <!-- 整理后的反悔入口：整理是一次性重排全部位置，没有撤销就不敢点 -->
-    <div v-if="layoutUndo.visible" class="fl ed-undo" :style="undoStyle">
+    <!-- 触屏多选开着：说清楚现在点节点是在挑，选了几个，怎么结束 -->
+    <div v-if="touchMultiOn" class="fl ed-undo ed-multi" :style="undoStyle" role="status" data-testid="touch-multi">
+      <span>{{ t('canvas.touchMulti.state', { n: selCount }) }}</span>
+      <button class="lc-btn primary sm" type="button" data-testid="touch-multi-done" @click="endTouchMulti">{{ t('canvas.touchMulti.done') }}</button>
+    </div>
+
+    <div v-if="layoutUndo.visible && !touchMultiOn" class="fl ed-undo" :style="undoStyle">
       <span>{{ layoutUndo.text }}</span>
       <button class="lc-btn text sm" @click="undoLayout">{{ t('canvas.layout.undo') }}</button>
     </div>
 
     <!-- 换了节点布局（或这张画布是在另一种布局下排的）之后节点互相压住：只提示，点了才整理 -->
-    <div v-if="layoutNote.visible && !layoutUndo.visible" class="fl ed-undo ed-note" :style="undoStyle" role="status" data-testid="layout-note">
+    <div v-if="layoutNote.visible && !layoutUndo.visible && !touchMultiOn" class="fl ed-undo ed-note" :style="undoStyle" role="status" data-testid="layout-note">
       <span>{{ layoutNote.text }}</span>
       <!-- 只读：这句话照样说（看的人可以在「更多」里换回原来的布局），「自动整理」是改画布，不出现 -->
       <button v-if="!readOnly" class="lc-btn text sm" data-testid="layout-note-arrange" @click="arrangeFromNote">{{ t('canvas.tools.arrange') }}</button>
@@ -694,6 +701,7 @@
     <!-- 画布空白处右键：添加节点菜单（在光标位置弹出） -->
     <div
       v-if="addMenu.open"
+      data-menu="add"
       class="ed-menu lc-menu"
       role="menu"
       :style="{ left: addMenu.x + 'px', top: addMenu.y + 'px', maxHeight: `calc(calc(100 * var(--lc-vh)) - ${addMenu.y}px - 16px)` }"
@@ -860,7 +868,8 @@ import { canvasImageThumb } from '@/utils/canvasMedia'
 // SelectionMode.Partial：框选判定放宽成「碰到就算」。vue-flow 默认的 Full 要求
 // 节点被完整框住，压到一半不算选中 —— 用户会以为框选坏了。同类画布工具普遍用 Partial。
 import { VueFlow, useVueFlow, SelectionMode, type Node, type Edge, type Connection, addEdge } from '@vue-flow/core'
-import { installPinchRouter, coarsePointer } from '@/composables/canvasTouch'
+import { installPinchRouter, coarsePointer, type LongPressAt } from '@/composables/canvasTouch'
+import { useTouchMultiSelect } from '@/composables/useTouchMultiSelect'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
 import { MessagePlugin, DialogPlugin } from '@/utils/feedback'
@@ -923,7 +932,7 @@ import {
 } from '@/utils/canvasModels'
 import { useAutoLayout, estimateNodeSize, LAYOUT_CONFIRM_THRESHOLD, type AlignMode, type DistributeAxis } from '@/composables/useAutoLayout'
 import { useCanvasHistory } from '@/composables/useCanvasHistory'
-import { usePaletteDock, fitPalette, palFloor, palLength, PAL_OVERFLOW, type PalFit, type PalPart } from '@/composables/usePaletteDock'
+import { usePaletteDock, fitPalette, fitPhoneStrip, palFloor, palLength, PAL_OVERFLOW, type PalFit, type PalPart } from '@/composables/usePaletteDock'
 import { clampNum, fitInArea, rectsIn, watchRects, type Rect } from '@/utils/floatSpot'
 import { libraryGroupLabelKey, shareButtonLabelKey } from '@/utils/canvasLabels'
 import { textareaRangeRects } from '@/utils/textareaRange'
@@ -1071,7 +1080,7 @@ const {
   onNodesInitialized, zoomIn, zoomOut, zoomTo, findNode,
   // 快捷键要用：Delete 删所选、Ctrl+A 全选
   getSelectedNodes, getSelectedEdges, addSelectedNodes, removeSelectedNodes,
-  onNodeClick, connectionStartHandle,
+  onNodeClick, connectionStartHandle, multiSelectionActive,
 } = useVueFlow()
 
 /* ==================== 触屏 ==================== */
@@ -1079,8 +1088,9 @@ const {
  * 画布上的手指手势（都是有意定下的，改之前先看 composables/canvasTouch.ts；docs/user-guide「基础操作」里的「触屏上」一条写的是同一套）：
  *   · 单指拖空白处 = 平移；双指 = 缩放 / 平移，落在节点上也一样（installPinchRouter）；双击空白处 = 放大一档（d3-zoom 自带，和鼠标双击一致）
  *   · 单指拖节点 = 挪节点（只读时节点不可拖，这一下平移画布）；轻点节点 = 选中；轻点空白 = 取消选中；节点里能滚的长文本单指滚它自己
- *   · 长按 = 右键菜单，全靠浏览器在长按时发 contextmenu，这里没有自己的长按计时；不发这个事件的浏览器上就没有这个菜单（还没在真机上逐个确认）
- *   · 框选仍然只有鼠标 + Shift；触屏上目前没有多选的入口
+ *   · 长按 0.5 秒 = 右键菜单（节点上是节点菜单，空白处是加节点菜单），由 installPinchRouter 自己计时，不靠浏览器的 contextmenu
+ *     （iOS Safari 长按不发它；安卓发的那一下被拦掉，免得开两遍）。输入框、按钮、端口、连线上的长按不归它
+ *   · 框选仍然只有鼠标 + Shift；触屏上多选是工具面板里的「多选」开关（useTouchMultiSelect）
  * 主设备是手指时（手机、平板）：手指落下总会抖几个像素，节点要拖过 6px 才算拖（否则一碰就成了「挪了一下」，还会把面板点出来）；
  * 拉线时离端口 36px 以内就吸附（鼠标是 20px）。主设备是鼠标的机器这两个数不变。
  */
@@ -1092,9 +1102,46 @@ onMounted(() => {
   stopPinchRouter = installPinchRouter(wrap, {
     viewport: () => wrap.querySelector<HTMLElement>('.vue-flow__viewport'),
     busy: () => connectionStartHandle.value !== null,
+    longPress: touchFirst ? openMenuByLongPress : undefined,
   })
 })
 onBeforeUnmount(() => { stopPinchRouter?.(); stopPinchRouter = null })
+/** 长按：开和右键同一个菜单，开在手指的位置；开了返回 true */
+function openMenuByLongPress({ x, y, target }: LongPressAt): boolean {
+  const ev = { clientX: x, clientY: y, pointerType: 'touch', target, preventDefault: () => {} }
+  const el = target.closest<HTMLElement>('.vue-flow__node')
+  if (el) {
+    const node = findNode(el.dataset.id || '')
+    if (!node) return false
+    onNodeContextMenu({ event: ev, node })
+    if (contextMenu.value.open) keepMenuInView('.ctx-menu', contextMenu.value)
+    return contextMenu.value.open
+  }
+  if (!target.closest('.vue-flow__pane')) return false
+  onPaneContextMenu(ev as unknown as MouseEvent)
+  if (addMenu.value.open) keepMenuInView('[data-menu=add]', addMenu.value)
+  return addMenu.value.open
+}
+/**
+ * 手机上加节点菜单比手指下面剩的高度还高（按右键的老算法只给它留了 360px）：整块往上挪到底边以内。
+ * 只在长按这条路上做，鼠标右键的位置一点不变
+ */
+function keepMenuInView(sel: string, m: { y: number }) {
+  void nextTick(() => {
+    const el = edRef.value?.querySelector<HTMLElement>(sel)
+    if (!el) return
+    const top = el.getBoundingClientRect().top
+    const h = Math.min(el.scrollHeight, window.innerHeight - 16)
+    const over = top + h - (window.innerHeight - 8)
+    if (over > 0) m.y = Math.max(8, m.y - over)
+  })
+}
+/** 触屏多选：工具面板里的开关，开着时点节点是加入 / 移出选择 */
+const { on: touchMultiOn, toggle: toggleTouchMulti, done: endTouchMulti } = useTouchMultiSelect({
+  enabled: () => touchFirst && !readOnly.value,
+  count: () => getSelectedNodes.value.length,
+  active: multiSelectionActive,
+})
 
 /* ==================== 生成节点的布局 ==================== */
 /**
@@ -1113,7 +1160,8 @@ const soleGenNode = computed<{ id: string; kind: GenNodeKind } | null>(() => {
 const panelDismissedId = ref('')
 const panelNode = computed(() => {
   const n = soleGenNode.value
-  return n && n.id !== panelDismissedId.value && nodeLayout.value !== 'c' ? n : null
+  // 触屏多选开着：点节点是在挑节点，不出面板
+  return n && n.id !== panelDismissedId.value && nodeLayout.value !== 'c' && !touchMultiOn.value ? n : null
 })
 watch(() => soleGenNode.value?.id || '', (id) => { if (id !== panelDismissedId.value) panelDismissedId.value = '' })
 onNodeClick(({ node }) => { if (node.id === panelDismissedId.value) panelDismissedId.value = '' })
@@ -2272,9 +2320,10 @@ const palGroups = computed<PalPart[][]>(() => [
   palReadOnly.value ? [{ key: 'ro' }] : [{ key: 'all' }],
   palReadOnly.value ? [] : palCats.value.map((c) => ({ key: c.key, fold: PAL_FOLD[c.key] })),
   libraryMenuItems.value.length ? [{ key: 'lib', fold: PAL_FOLD.lib }] : [],
-  [...(palShare.value ? [{ key: 'share', fold: PAL_FOLD.share }] : []), { key: 'more' }, ...(palExit.value ? [{ key: 'exit' }] : [])],
+  [...(palShare.value ? [{ key: 'share', fold: PAL_FOLD.share }] : []), ...(touchFirst && !readOnly.value ? [{ key: 'multi' }] : []), { key: 'more' }, ...(palExit.value ? [{ key: 'exit' }] : [])],
 ])
-const palFit = computed<PalFit>(() => (palPhone.value ? { compact: false, folded: [] } : fitPalette(palGroups.value, palBudget.value)))
+// 手机：横条的长度就是编辑区宽度减去两边各 8px（样式里的 max-width），放不下就收几颗进「更多工具」，不横着滚
+const palFit = computed<PalFit>(() => (palPhone.value ? fitPhoneStrip(palGroups.value, paneWidth.value - 16) : fitPalette(palGroups.value, palBudget.value)))
 const palFolded = computed(() => new Set(palFit.value.folded))
 /** 提示朝哪边出：竖排朝右（贴着右边时指令自己会翻到左边），横排 / 手机朝下 */
 const palTipSide = computed(() => (palOrient.value === 'v' ? 'right' as const : 'bottom' as const))
@@ -2292,6 +2341,8 @@ interface PalItem {
   disabled?: boolean
   /** 只读标记：不是工具，点了说明现在能做什么 */
   ro?: boolean
+  /** 开关（触屏多选）：按下 / 没按下 */
+  pressed?: boolean
   run: () => void
 }
 const PAL_OVER_ICON = '<polyline points="7 6 12 11 17 6"/><polyline points="7 13 12 18 17 13"/>'
@@ -2318,6 +2369,7 @@ const palShown = computed<PalItem[]>(() => {
     }
     if (key === 'share') return { key, title: shareButtonLabel.value, icon: 'share', disabled: saving.value || publishing.value, run: openShareFromPal }
     if (key === 'more') return { key, title: t('canvas.topbar.more'), icon: 'more', on: moreMenu.value.open, popup: 'menu', run: toggleMoreMenu }
+    if (key === 'multi') return { key, title: t('canvas.touchMulti.tip'), icon: 'check', on: touchMultiOn.value, pressed: touchMultiOn.value, run: () => { closeMenus(); toggleTouchMulti() } }
     // 沉浸式里没有外壳导航：留一颗看得见的退出钮
     if (key === 'exit') return { key, title: t('canvas.menu.exitImmersive'), svg: MENU_ICONS.exitFull, run: () => appStore.setImmersive(false) }
     const c = cats.find((x) => x.key === key)
@@ -5350,6 +5402,13 @@ function onCanvasKeydownCapture(e: KeyboardEvent) {
       closeMenus()
       stylePanelOpen.value = false
       searchOpen.value = false
+      return
+    }
+    // 触屏多选开着：Esc 先结束它（选中的留着）
+    if (touchMultiOn.value) {
+      e.preventDefault()
+      e.stopPropagation()
+      endTouchMulti()
       return
     }
     if (panelNode.value) {

@@ -64,6 +64,9 @@
 /* 手指：点击区从 30px 放到 44px（按 100% 缩放算；画布缩小了就先放大再拉线） */
 @media (pointer: coarse) {
   .vue-flow .vue-flow__handle::before { inset: -16px; }
+  /* 画布上的长按归我们自己（开节点 / 加节点菜单）：不出系统的「存储图像 / 拷贝」弹层。输入框里照旧 */
+  .vue-flow { -webkit-touch-callout: none; }
+  .vue-flow input, .vue-flow textarea { -webkit-touch-callout: default; }
 }
 .vue-flow .vue-flow__handle.h-text { background: var(--port-bg); border-color: var(--port-text); }
 .vue-flow .vue-flow__handle.h-image { background: var(--port-bg); border-color: var(--cyan); }

@@ -46,6 +46,11 @@ export default {
       myShares: '我的分享',
       switchProject: '切换项目',
     },
+    touchMulti: {
+      tip: '多选：点节点把它加入或移出选择',
+      state: '多选中 · 已选 {n} 个',
+      done: '完成',
+    },
     pal: {
       text: '添加文本节点',
       image: '图片节点',
@@ -407,6 +412,11 @@ export default {
       library: 'Asset library',
       myShares: 'My share links',
       switchProject: 'Switch canvas',
+    },
+    touchMulti: {
+      tip: 'Multi-select: tap nodes to add them to the selection or take them out',
+      state: 'Multi-select · {n} selected',
+      done: 'Done',
     },
     pal: {
       text: 'Add a text node',

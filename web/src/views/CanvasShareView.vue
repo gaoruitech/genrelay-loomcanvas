@@ -18,7 +18,7 @@
 
     <p v-if="detail?.description" class="sv-desc">{{ detail.description }}</p>
 
-    <div class="sv-canvas" :style="flowStyle" :data-ground="groundTone">
+    <div ref="canvasRef" class="sv-canvas" :style="flowStyle" :data-ground="groundTone">
       <div v-if="loading" class="sv-state">
         <span class="lc-ring sm spin" />
         <div class="sv-state-text">{{ t('common.loading') }}</div>
@@ -81,7 +81,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, markRaw } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, markRaw } from 'vue'
+import { installQuietTouchmoves } from '@/composables/canvasTouch'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -237,6 +238,11 @@ async function handleCopy() {
   }
 }
 
+/** 手指平移时 d3 去取消取消不了的 touchmove，Chrome 每一下都报一行：见 installQuietTouchmoves */
+const canvasRef = ref<HTMLElement | null>(null)
+let stopQuiet: (() => void) | null = null
+onMounted(() => { if (canvasRef.value) stopQuiet = installQuietTouchmoves(canvasRef.value) })
+onBeforeUnmount(() => { stopQuiet?.(); stopQuiet = null })
 onMounted(load)
 </script>
 
