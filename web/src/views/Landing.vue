@@ -88,6 +88,7 @@
       <div class="eyebrow">{{ t('landing.stepsEyebrow') }}</div>
       <h2>{{ t('landing.stepsTitle') }}</h2>
       <div class="steps">
+        <span class="no done" aria-hidden="true"><LcIcon name="check" /></span>
         <div class="step">
           <span class="no">1</span>
           <div class="lc-glass card">
@@ -276,6 +277,8 @@ function goSection(id: string) {
   position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
   font: 600 15px var(--f-disp); background: var(--port-bg); border: 1px solid var(--cyan); color: var(--cyan-soft); box-shadow: 0 0 16px rgb(var(--g-cyan) / .35);
 }
+/* the line ends in a "done" mark at the right edge of the last card */
+.no.done { position: absolute; top: 0; right: 0; border: 0; background: var(--grad-btn); color: var(--text-inv); }
 .step .card { flex: 1; display: flex; flex-direction: column; margin-top: 20px; padding: 24px; min-height: 176px; border-radius: var(--r-md); }
 .step .slot { margin-top: auto; padding-top: 16px; min-height: 88px; display: flex; align-items: center; }
 .step .slot > * { width: 100%; margin-top: 0; }
@@ -333,6 +336,7 @@ function goSection(id: string) {
 @media (max-width: 820px) {
   .lp-nav .lp-links, .lp-nav .src, .lp-nav .lp-lang, .lp-nav .lp-theme { display: none; }
   .steps { grid-template-columns: 1fr; }
+  .no.done { display: none; }
   /* one card per row: nothing to line up with, so no reserved space */
   .step .card { min-height: 0; }
   .step .slot { min-height: 0; margin-top: 0; }
