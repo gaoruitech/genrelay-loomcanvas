@@ -2,13 +2,16 @@
 
 **Open-source, self-hosted node-based AI canvas for image and video generation: wire prompts, reference images and models into a visual workflow, run it in one click, and bring your own API keys.**
 
+[![Live demo](https://img.shields.io/badge/live%20demo-loomcanvas.gaorui.cc-22d3ee)](https://loomcanvas.gaorui.cc)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3b7bff)](LICENSE)
 [![Deploy with Docker Compose](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white)](docs/deployment.md)
 [![Node.js ≥ 20.9](https://img.shields.io/badge/node-%E2%89%A5%2020.9-339933?logo=nodedotjs&logoColor=white)](docs/development.md)
 [![Vue 3 + Vue Flow](https://img.shields.io/badge/Vue%203-Vue%20Flow-4FC08D?logo=vuedotjs&logoColor=white)](docs/development.md)
 [![Languages: 中文 | English](https://img.shields.io/badge/languages-%E4%B8%AD%E6%96%87%20%7C%20English-8a5cff)](README.zh-CN.md)
 
-[简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Quick start](#quick-start) · [Supported models](#supported-models) · [Screenshots](#screenshots)
+[Live demo](https://loomcanvas.gaorui.cc) · [简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Quick start](#quick-start) · [Supported models](#supported-models) · [Screenshots](#screenshots)
+
+**Try it online: <https://loomcanvas.gaorui.cc>**. Sign up, add your own API key and start a canvas. One key from [Gaorui](https://gaorui.cc) covers image, video and chat models.
 
 ![LoomCanvas editor: a text node wired to an image generation node](docs/images/11-editor-en.png)
 

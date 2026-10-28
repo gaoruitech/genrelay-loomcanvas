@@ -1795,7 +1795,7 @@ Common query parameters for both `GET` endpoints:
 | Parameter | Meaning |
 | --- | --- |
 | `from`, `to` | Date range on the run's creation time. A bare date (`2026-10-31`) is that calendar day in `tz`: `from` starts at the beginning of the day, `to` runs through the end of it. A full ISO instant or a millisecond timestamp is taken as it is. |
-| `tz` | An IANA time zone name such as `Asia/Shanghai`. Default `UTC`. Decides what day a bare date in `from` and `to` means and, with `groupBy=day`, where one day ends and the next begins. Without it everything is in UTC days, as in earlier versions. |
+| `tz` | An IANA time zone name such as `Asia/Shanghai`, or a fixed offset such as `+08:00` (on Node 20 only whole-hour offsets; a half-hour one such as `+05:30` needs Node 22 or later). Default `UTC`. Decides what day a bare date in `from` and `to` means and, with `groupBy=day`, where one day ends and the next begins. Without it everything is in UTC days, as in earlier versions. |
 | `kind` | `image`, `video` or `chat` |
 | `status` | A run status |
 | `model` | A model id |

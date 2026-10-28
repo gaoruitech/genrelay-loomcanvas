@@ -60,13 +60,26 @@ function parseDate(v, name) {
 
 const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
-/** An IANA time zone name the runtime knows ("Asia/Shanghai"), or 400. Absent -> 'UTC'. */
+const OFFSET_ZONE_RE = /^([+-])(\d{2}):?(\d{2})$/
+
+/**
+ * An IANA time zone name the runtime knows ("Asia/Shanghai") or a fixed offset ("+08:00"), or 400.
+ * Absent -> 'UTC'. Node 22 takes offsets as they are; Node 20's Intl refuses them, so there a
+ * whole-hour offset becomes the equivalent Etc/GMT zone (whose sign is inverted, by POSIX
+ * convention: +08:00 is Etc/GMT-8). Other offsets (+05:30) need Node 22 or later.
+ */
 function parseTimeZone(v, name = 'tz') {
   if (v === undefined || v === null || v === '') return 'UTC'
   if (typeof v !== 'string' || v.length > 64) throw badRequest('validation.invalid', { field: name })
   try {
     return new Intl.DateTimeFormat('en-US', { timeZone: v }).resolvedOptions().timeZone
   } catch {
+    const m = OFFSET_ZONE_RE.exec(v)
+    if (m && m[3] === '00') {
+      const hours = Number(m[2])
+      if (hours === 0) return 'UTC'
+      if (hours <= (m[1] === '+' ? 14 : 12)) return `Etc/GMT${m[1] === '+' ? '-' : '+'}${hours}`
+    }
     throw badRequest('validation.invalid', { field: name })
   }
 }

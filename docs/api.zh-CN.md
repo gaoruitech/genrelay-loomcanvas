@@ -1797,7 +1797,7 @@ curl -X PUT 'http://localhost:3000/api/admin/providers/665f…/models/org%2Fmode
 | 参数 | 含义 |
 | --- | --- |
 | `from`、`to` | 按运行的创建时间筛选的日期范围。只写日期（`2026-10-31`）表示 `tz` 里的那个自然日：`from` 从这一天开始算，`to` 算到这一天结束。完整的 ISO 时刻或毫秒时间戳按原样使用。 |
-| `tz` | IANA 时区名，例如 `Asia/Shanghai`。默认 `UTC`。它决定 `from` 和 `to` 里只写日期时指的是哪一天，以及 `groupBy=day` 时一天在哪里结束、下一天从哪里开始。不带时一切按 UTC 的日子算，和早期版本一样。 |
+| `tz` | IANA 时区名，例如 `Asia/Shanghai`，或固定偏移，例如 `+08:00`（Node 20 上只认整点偏移，半点偏移如 `+05:30` 需要 Node 22 起）。默认 `UTC`。它决定 `from` 和 `to` 里只写日期时指的是哪一天，以及 `groupBy=day` 时一天在哪里结束、下一天从哪里开始。不带时一切按 UTC 的日子算，和早期版本一样。 |
 | `kind` | `image`、`video` 或 `chat` |
 | `status` | 运行的一个状态 |
 | `model` | 一个模型 id |

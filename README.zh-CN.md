@@ -2,13 +2,16 @@
 
 **开源、可自部署的节点式 AI 画布：把提示词、参考图和模型用连线编排成可视化工作流，文生图、图生视频一键跑完，自带 API Key。**
 
+[![在线体验](https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-loomcanvas.gaorui.cc-22d3ee)](https://loomcanvas.gaorui.cc)
 [![协议：AGPL-3.0](https://img.shields.io/badge/%E5%8D%8F%E8%AE%AE-AGPL--3.0-3b7bff)](LICENSE)
 [![用 Docker Compose 部署](https://img.shields.io/badge/%E9%83%A8%E7%BD%B2-Docker%20Compose-2496ED?logo=docker&logoColor=white)](docs/deployment.zh-CN.md)
 [![Node.js ≥ 20.9](https://img.shields.io/badge/node-%E2%89%A5%2020.9-339933?logo=nodedotjs&logoColor=white)](docs/development.zh-CN.md)
 [![Vue 3 + Vue Flow](https://img.shields.io/badge/Vue%203-Vue%20Flow-4FC08D?logo=vuedotjs&logoColor=white)](docs/development.zh-CN.md)
 [![界面语言：中文 | English](https://img.shields.io/badge/%E8%AF%AD%E8%A8%80-%E4%B8%AD%E6%96%87%20%7C%20English-8a5cff)](README.md)
 
-[English](README.md) · [文档](docs/README.zh-CN.md) · [快速开始](#快速开始) · [支持的模型](#支持的模型) · [截图](#截图)
+[在线体验](https://loomcanvas.gaorui.cc) · [English](README.md) · [文档](docs/README.zh-CN.md) · [快速开始](#快速开始) · [支持的模型](#支持的模型) · [截图](#截图)
+
+**在线体验：<https://loomcanvas.gaorui.cc>**。注册一个账号，填入你自己的 API Key，就能开始搭画布。在 [gaorui.cc](https://gaorui.cc) 注册高瑞，一个 Key 可用图片、视频和对话模型。
 
 ![LoomCanvas 编辑器：文本节点连到图片生成节点](docs/images/04-editor.png)
 
