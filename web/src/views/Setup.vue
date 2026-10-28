@@ -44,9 +44,6 @@
           <form v-if="selected" class="su-form" @submit.prevent="submit">
             <div class="su-form-title">
               <span>{{ t('setup.formTitle', { name: vendorLabel(selected) }) }}</span>
-              <a v-if="selected.keyUrl && $feat.externalLinks" :href="selected.keyUrl" target="_blank" rel="noopener noreferrer" class="su-get-key">
-                {{ t('setup.getKey') }}<LcIcon name="external" size="s" />
-              </a>
             </div>
 
             <VendorModels :key="selected.type" :vendor="selected" />
@@ -211,7 +208,6 @@ h1 { font: 600 26px/1.3 var(--f-disp); color: var(--text); margin-top: 16px; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   font: 600 16px/1.4 var(--f-disp); color: var(--text); margin-bottom: 16px;
 }
-.su-get-key { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1.4 var(--f-body); }
 .su-err { margin-bottom: 16px; }
 .su-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
 .su-submit { height: 40px; padding: 0 20px; }

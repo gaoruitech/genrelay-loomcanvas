@@ -1449,7 +1449,7 @@ The super admin's own providers, models and usage are per account like anybody e
 | `type` | The vendor id: `gaorui`, `openai` or `gemini`. Sent as `type` when creating a provider. |
 | `label` | The vendor's name. |
 | `recommended` | `true` for the vendor to offer first (Gaorui). |
-| `keyUrl` | Where to get a key, or `""`. |
+| `keyUrl` | Where to sign up for a key, or `""`. The provider form links to it next to the API key field. |
 | `defaultBaseUrl` | The vendor's official address. |
 | `models[]` | The vendor's catalog. `model` is the upstream model name; the other fields are as in a [ModelSpec](#get-apimodels). `desc` is optional. |
 | `customKinds` | The kinds a custom model of this vendor may have. |

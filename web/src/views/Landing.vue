@@ -4,6 +4,7 @@
       <LcLogo to="/" />
       <nav class="lp-links" :aria-label="t('shell.navLabel')">
         <a href="#features">{{ t('landing.nav.features') }}</a>
+        <a href="#provider" class="nav-opt">{{ t('landing.nav.provider') }}</a>
         <a href="#teams">{{ t('landing.nav.teams') }}</a>
         <a href="#integration">{{ t('landing.nav.integration') }}</a>
         <a v-if="$feat.externalLinks" :href="LINKS.docs" target="_blank" rel="noopener">{{ t('landing.nav.docs') }}</a>
@@ -60,6 +61,32 @@
         <span class="ti"><LcIcon name="panel" size="l" /></span>
         <div><h3>{{ t('landing.feats.embedT') }}</h3><p>{{ t('landing.feats.embedD') }}</p></div>
         <a class="lc-btn" href="#integration">{{ t('landing.feats.embedLink') }}<LcIcon name="arrow" /></a>
+      </div>
+    </section>
+
+    <!-- 内置推荐的服务商：画布本身不带模型，第一件事是有一把 Key。注册按钮会离开本站，听 features.externalLinks -->
+    <section id="provider" class="lp-sec" tabindex="-1">
+      <div class="gr lc-glass lc-gb">
+        <div class="gr-main">
+          <div class="eyebrow">{{ t('landing.gaorui.eyebrow') }}</div>
+          <h2>{{ t('landing.gaorui.title') }}</h2>
+          <p class="sub">{{ t('landing.gaorui.sub') }}</p>
+          <ul class="gr-points">
+            <li v-for="k in GAORUI_POINTS" :key="k"><LcIcon name="check" size="s" />{{ t(`landing.gaorui.${k}`) }}</li>
+          </ul>
+          <div class="lc-row gr-act">
+            <a v-if="$feat.externalLinks" class="lc-btn primary" :href="LINKS.gaorui" target="_blank" rel="noopener" data-role="gaorui-signup">
+              {{ t('landing.gaorui.signup') }}<LcIcon name="external" />
+            </a>
+            <router-link class="lc-btn" :class="{ primary: !$feat.externalLinks }" :to="startTo">{{ t('landing.gaorui.start') }}</router-link>
+          </div>
+        </div>
+        <div class="gr-models">
+          <div v-for="g in GAORUI_MODELS" :key="g.kind" class="gr-grp">
+            <span class="lc-bd" :class="g.kind">{{ t(`landing.gaorui.${g.kind}`) }}</span>
+            <div class="gr-names"><span v-for="m in g.names" :key="m" class="gr-name">{{ m }}</span></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -186,12 +213,24 @@ const FEATS = [
 ] as const
 const YEAR = new Date().getFullYear()
 
+/**
+ * 高瑞一节列出的模型：取自 server/src/providers/catalog/gaorui.json 的 label。
+ * 清单增删模型时这里跟着改（首页只做展示，不参与选模型）。
+ */
+const GAORUI_MODELS = [
+  { kind: 'image', names: ['Nano Banana Pro', 'Nano Banana 2.1', 'Nano Banana 2', 'Nano Banana 2 Lite'] },
+  { kind: 'video', names: ['Veo 3.1', 'Omni Flash', 'Omni Flash Edit', 'Grok Video 1.5', 'Grok Video 1.0'] },
+  { kind: 'chat', names: ['GPT 6 Astra', 'GPT 5.5', 'Gemini 3.5 Flash', 'DeepSeek V4 Pro', 'GLM 5.3'] },
+] as const
+const GAORUI_POINTS = ['p1', 'p2', 'p3'] as const
+
 /** 能注册就去注册，注册关了就去登录 */
 const startTo = computed(() => (app.registrationOpen ? '/register' : '/login'))
 
 /** 窄屏菜单里的入口：页面上的每一节都有（页头那一排放不下「界面」，它在这里和功能区那一块的小链接里），多一个「源码」。站外的两项听 features.externalLinks */
 const menuLinks = computed<LandingMenuLink[]>(() => [
   { key: 'features', label: t('landing.nav.features'), icon: 'bolt', anchor: 'features' },
+  { key: 'provider', label: t('landing.nav.provider'), icon: 'key', anchor: 'provider' },
   { key: 'interface', label: t('landing.nav.interface'), icon: 'layout', anchor: 'interface' },
   { key: 'teams', label: t('landing.nav.teams'), icon: 'users', anchor: 'teams' },
   { key: 'integration', label: t('landing.nav.integration'), icon: 'panel', anchor: 'integration' },
@@ -225,7 +264,9 @@ function goSection(id: string) {
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .lp-links { display: flex; gap: 32px; margin-left: 44px; }
-.lp-links a { color: var(--text-2); font-size: 14px; }
+.lp-links a { color: var(--text-2); font-size: 14px; white-space: nowrap; }
+/* 页头放不下时「服务商」先收起来：它在窄屏菜单里，首页上那一节也一眼可见 */
+@media (max-width: 1280px) { .lp-links .nav-opt { display: none; } }
 .lp-links a:hover { color: var(--text); text-decoration: none; }
 .lp-lang :deep(.lcs-trigger) { background: none; border-color: transparent; color: var(--text-2); }
 
@@ -303,6 +344,17 @@ function goSection(id: string) {
 .lic h3 { font: 600 18px var(--f-disp); margin-top: 12px; color: var(--text); }
 .lic p { color: var(--text-2); font-size: 13px; line-height: 1.7; margin-top: 8px; }
 
+/* 推荐服务商：左边说明和按钮，右边按类型列出这家能用的模型 */
+.gr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; padding: 40px; border-radius: 22px; align-items: center; }
+.gr-points { list-style: none; margin: 20px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.gr-points li { display: flex; align-items: flex-start; gap: 8px; color: var(--text-2); font-size: 14px; line-height: 1.6; }
+.gr-points svg { color: var(--cyan); margin-top: 4px; flex: none; }
+.gr-act { margin-top: 28px; gap: 12px; flex-wrap: wrap; }
+.gr-models { display: flex; flex-direction: column; gap: 16px; }
+.gr-grp { padding: 18px 20px; border-radius: 14px; border: 1px solid var(--line-2); background: rgb(var(--c-well) / .4); }
+.gr-names { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gr-name { font-size: 13px; line-height: 1.4; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--text); background: rgb(var(--c-chrome-0) / .35); }
+
 .lp-foot {
   margin-top: 112px; padding: 48px max(24px, calc((100% - 1200px) / 2)) 40px; border-top: 1px solid var(--line); background: rgb(var(--c-chrome-0) / .6);
   display: grid; grid-template-columns: minmax(0, 1fr) 160px 160px 160px; gap: 32px;
@@ -324,6 +376,7 @@ function goSection(id: string) {
   .tile { flex-direction: row; }
   .oss { grid-template-columns: 1fr 1fr; }
   .oss > :first-child { grid-column: 1 / -1; }
+  .gr { grid-template-columns: 1fr; }
   .lp-links { margin-left: 16px; gap: 20px; }
 }
 /* 页头多了「团队」一项：比 1060px 再窄就先收起「源码」按钮（页脚和「开源」一节里都有），链接才不挤 */
@@ -367,6 +420,8 @@ function goSection(id: string) {
   .tile.wide .lc-btn { flex: 1 1 100%; }
   .steps { margin-top: 28px; }
   .oss { grid-template-columns: 1fr; padding: 24px 20px; }
+  .gr { padding: 24px 20px; gap: 24px; }
+  .gr-act .lc-btn { flex: 1 1 100%; }
   .lp-foot { padding: 32px 16px 28px; grid-template-columns: 1fr 1fr; gap: 24px; }
   .lp-foot.few { grid-template-columns: 1fr; }
 }

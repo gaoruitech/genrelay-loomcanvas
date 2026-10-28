@@ -81,6 +81,7 @@ First version. Nothing has been tagged or released yet; interfaces may still cha
 
 Added
 
+- Signing up with Gaorui is one click away. In the provider form (on the "Add a provider" page and under Models) the API key field has a "No key yet? Sign up at gaorui.cc" link on its right, taken from the vendor's `keyUrl`; it replaces the separate "Get an API key" link. The landing page has a "Recommended provider" section that introduces Gaorui (gaorui.cc), lists the image, video and chat models one Gaorui key covers and links to its sign-up page; the second of the three start steps names it too. Both links follow `features.externalLinks`.
 - Vendors with explicit model catalogs. A provider is now a vendor (Gaorui, OpenAI or Google Gemini) plus your API key. The models each vendor supports are written down in `server/src/providers/catalog/<vendor>.json`, in `image`, `video` and `chat` sections; the section is the kind. Gaorui is listed first and marked as recommended.
 - Custom models: on the Models page a model outside the vendor's catalog can be added to a provider by its upstream name, with a kind chosen by hand (image or chat) and an optional display name. Up to 100 per provider. Custom video models are refused for all three vendors.
 - The Models page shows the providers as cards and the models of the selected provider grouped by type, filtered by type, status, source and price, plus a search over the display name and the model ID. The filters are remembered in the browser.
@@ -346,6 +347,7 @@ Removed (**breaking**)
 
 新增
 
+- 去高瑞注册只要点一下。服务商表单（「添加一个服务商」页和模型管理里）的 API Key 一栏右侧有「没有 Key？去 gaorui.cc 注册申请」的链接，地址取自服务商的 `keyUrl`，取代原来单独的「获取 API Key」链接。首页新增「推荐服务商」一节，介绍高瑞（gaorui.cc），列出一个高瑞 Key 能用的图片、视频和对话模型，并链接到注册页；「三步开始」的第二步也提到了它。两处链接都听 `features.externalLinks`。
 - 服务商和明确写出的模型清单。添加的服务商现在是一家服务商（高瑞、OpenAI 或 Google Gemini）加上你的 API Key。每家支持的模型写在 `server/src/providers/catalog/<服务商标识>.json` 里，分 `image`、`video`、`chat` 三段，写在哪一段就是哪种类型。高瑞排在第一位并带「推荐」标记。
 - 自定义模型：在「模型管理」页，可以按上游的模型名给某个服务商添加清单以外的模型，类型（图片或对话）由你手动选择，显示名称可选。每个服务商最多 100 个。三家服务商都不能添加自定义视频模型。
 - 「模型管理」页把服务商显示成卡片，选中的服务商的模型按类型分组；可以按类型、状态、来源、价格筛选，也可以按显示名称或模型 ID 搜索。筛选条件记在浏览器里。

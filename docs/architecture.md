@@ -278,7 +278,7 @@ module.exports = {
   type: 'gaorui',                       // 服务商标识
   label: 'Gaorui',                      // 自带的名字；语言文件里有 provider.gaorui.label 时用语言文件的
   recommended: true,                    // 可选：排第一的内置服务商带「推荐」标记
-  keyUrl: 'https://gaorui.cc',          // 可选：表单里「获取 API Key」的链接
+  keyUrl: 'https://gaorui.cc',          // 可选：表单里 API Key 旁「没有 Key？去 gaorui.cc 注册申请」的链接
   defaultBaseUrl: 'https://gaorui.cc',  // 官方地址
   catalog: loadCatalog('gaorui'),       // 模型清单，加载时校验，写坏了启动就报错
   customKinds: ['image', 'chat'],       // 用户可以手动添加哪些类型的自定义模型

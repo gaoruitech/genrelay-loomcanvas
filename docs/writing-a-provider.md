@@ -36,7 +36,7 @@ module.exports = {
   customSpec: (kind) => CUSTOM[kind], // required: what a custom model of that kind gets
   sync: false,                        // optional, see "Sync and async"
   recommended: false,                 // optional: shows the "Recommended" badge
-  keyUrl: '',                         // optional: the "Get an API key" link in the form
+  keyUrl: '',                         // optional: the "No key yet? Sign up at …" link next to the API key field
 
   async test(cfg, { signal }) {},
   async submit(cfg, run) {},

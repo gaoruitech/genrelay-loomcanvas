@@ -1451,7 +1451,7 @@ key 的形状是 `<uploads|outputs|tools>/<account id>/<yyyy>/<mm>/<32 hex chara
 | `type` | 服务商标识：`gaorui`、`openai` 或 `gemini`。添加服务商时作为 `type` 传。 |
 | `label` | 这一家的名称。 |
 | `recommended` | 排在最前面推荐的那一家为 `true`（高瑞）。 |
-| `keyUrl` | 去哪里拿 Key，或 `""`。 |
+| `keyUrl` | 去哪里注册申请 Key，或 `""`。服务商表单在 API Key 旁链接到这里。 |
 | `defaultBaseUrl` | 这一家的官方地址。 |
 | `models[]` | 这一家的模型清单。`model` 是上游模型名；其余字段同 [ModelSpec](#get-apimodels)。`desc` 是可选的。 |
 | `customKinds` | 这一家的自定义模型可以是哪些类型。 |

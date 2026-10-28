@@ -36,7 +36,7 @@ module.exports = {
   customSpec: (kind) => CUSTOM[kind], // 必填：这种类型的自定义模型能用什么
   sync: false,                        // 可选，见「同步与异步」
   recommended: false,                 // 可选：显示「推荐」标记
-  keyUrl: '',                         // 可选：表单里「获取 API Key」的链接
+  keyUrl: '',                         // 可选：表单里 API Key 旁「没有 Key？去 … 注册申请」的链接
 
   async test(cfg, { signal }) {},
   async submit(cfg, run) {},

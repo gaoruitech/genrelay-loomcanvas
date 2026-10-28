@@ -24,4 +24,6 @@ export const LINKS = {
   license: `${FILE}/LICENSE`,
   commercial: `${FILE}/COMMERCIAL.md`,
   changelog: `${FILE}/CHANGELOG.md`,
+  /** 内置推荐的服务商高瑞：注册、申请 Key 都在这里 */
+  gaorui: 'https://gaorui.cc',
 }

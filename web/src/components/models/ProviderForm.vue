@@ -1,9 +1,20 @@
 <template>
   <div class="pf">
     <div class="lc-field">
-      <label :for="uid + '-key'">
-        {{ t('modelsPage.provider.apiKey') }}<span v-if="!existing?.hasKey || keyRequired" class="lc-required">*</span>
-      </label>
+      <div class="key-head">
+        <label :for="uid + '-key'">
+          {{ t('modelsPage.provider.apiKey') }}<span v-if="!existing?.hasKey || keyRequired" class="lc-required">*</span>
+        </label>
+        <!-- 去服务商网站注册、申请 Key：会离开本产品，集成方关了站外链接（features.externalLinks）就不出 -->
+        <a
+          v-if="vendor.keyUrl && $feat.externalLinks"
+          class="key-signup"
+          :href="vendor.keyUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-role="key-signup"
+        >{{ t('modelsPage.provider.signupAt', { site: siteName(vendor.keyUrl) }) }}<LcIcon name="external" size="s" /></a>
+      </div>
       <input
         :id="uid + '-key'"
         v-model="form.apiKey"
@@ -25,10 +36,6 @@
       <!-- 存着一把、但服务端解不开了（SECRET_KEY 变了）：不能再说「留空表示不修改」 -->
       <span v-else-if="keyLost" :id="uid + '-key-help'" class="lc-help key-lost" data-role="key-lost">{{ t('modelsPage.provider.keyLost') }}</span>
       <span v-else-if="existing?.hasKey" :id="uid + '-key-help'" class="lc-help">{{ t('modelsPage.provider.secretKeep') }}</span>
-      <!-- 去服务商网站拿 Key 的链接会离开本产品：集成方关了站外链接（features.externalLinks）就不出 -->
-      <span v-else-if="vendor.keyUrl && !compact && $feat.externalLinks" :id="uid + '-key-help'" class="lc-help">
-        <a :href="vendor.keyUrl" target="_blank" rel="noopener noreferrer">{{ t('modelsPage.provider.getKey') }}</a>
-      </span>
     </div>
 
     <div v-if="!compact" class="lc-field">
@@ -90,7 +97,7 @@ const props = withDefaults(defineProps<{
   vendor: Vendor
   /** 编辑已有实例时传入，用于显示 Key 占位 */
   existing?: ProviderInstance | null
-  /** 精简模式（引导页）：不显示名称；「获取 API Key」的链接由引导页自己放在标题旁 */
+  /** 精简模式（引导页）：不显示名称 */
   compact?: boolean
   disabled?: boolean
   /** 后端说「改地址要重新填 Key」时的原话（别人刚改过这个服务商，本地看不出地址变了） */
@@ -113,6 +120,11 @@ const keyRequired = computed(() => !!props.keyError || keyNeededForAddress(props
 /** 存着的 Key 读不出来了：留空保存不会让它恢复 */
 const keyLost = computed(() => !!props.existing?.hasKey && props.existing.keyUnreadable === true)
 
+/** 链接上显示的站点名：去掉协议和 www，比如 https://gaorui.cc → gaorui.cc */
+function siteName(url: string): string {
+  try { return new URL(url).host.replace(/^www\./, '') } catch { return url }
+}
+
 const keyPlaceholder = computed(() => {
   if (!props.existing?.hasKey) return ''
   if (keyRequired.value) return t('modelsPage.provider.keyAgainPlaceholder')
@@ -123,6 +135,11 @@ const keyPlaceholder = computed(() => {
 </script>
 
 <style scoped>
+/* 「API Key」标题和右侧的「去服务商网站注册」同一行；窄了就让链接换到下一行 */
+.key-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+.key-head > label { font-size: 13px; color: var(--text-2); }
+.key-signup { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--cyan-soft); }
+.key-signup:hover { color: var(--cyan); }
 .key-again { display: block; }
 .key-lost { color: var(--warn); }
 .adv { margin-bottom: 16px; }
