@@ -21,7 +21,7 @@ LoomCanvas 本身不带模型。你用自己的 API Key 添加一个服务商，
 ## 2. 启动
 
 ```bash
-git clone https://gitee.com/jishulin/loomcanvas.git
+git clone https://github.com/gaoruitech/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
 ```

@@ -1,7 +1,7 @@
 import { currentLocale } from '@/locales'
 
 /** 项目仓库。换了托管地址只改这一处。 */
-const REPO = 'https://gitee.com/jishulin/loomcanvas'
+const REPO = 'https://github.com/gaoruitech/loomcanvas'
 const FILE = `${REPO}/blob/master`
 
 /** 仓库里的一篇文档；中文界面给中文版 */

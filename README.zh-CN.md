@@ -60,7 +60,7 @@ LoomCanvas 和 ComfyUI 一样是节点式的，但它不在你自己的机器上
 需要 Docker 和 Compose v2。
 
 ```bash
-git clone https://gitee.com/jishulin/loomcanvas.git
+git clone https://github.com/gaoruitech/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
 # 编辑 .env：把 SECRET_KEY 设成一串足够长的随机字符，把 ADMIN_PASSWORD 设成超级管理员的密码

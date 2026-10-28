@@ -21,7 +21,7 @@ To run without Docker, see [Deployment](deployment.md#running-without-docker).
 ## 2. Start the stack
 
 ```bash
-git clone https://gitee.com/jishulin/loomcanvas.git
+git clone https://github.com/gaoruitech/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
 ```

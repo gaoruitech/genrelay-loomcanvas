@@ -22,13 +22,13 @@
     "deepseek",
     "vue-flow"
   ],
-  "homepage": "https://gitee.com/jishulin/loomcanvas",
+  "homepage": "https://github.com/gaoruitech/loomcanvas",
   "repository": {
     "type": "git",
-    "url": "git+https://gitee.com/jishulin/loomcanvas.git"
+    "url": "git+https://github.com/gaoruitech/loomcanvas.git"
   },
   "bugs": {
-    "url": "https://gitee.com/jishulin/loomcanvas/issues"
+    "url": "https://github.com/gaoruitech/loomcanvas/issues"
   },
   "license": "AGPL-3.0-or-later",
   "private": true,

@@ -60,7 +60,7 @@ LoomCanvas is node-based, like ComfyUI, but it does not run models on your own m
 You need Docker with Compose v2.
 
 ```bash
-git clone https://gitee.com/jishulin/loomcanvas.git
+git clone https://github.com/gaoruitech/loomcanvas.git
 cd loomcanvas
 cp .env.example .env
 # edit .env: set SECRET_KEY to a long random string, and ADMIN_PASSWORD to the super admin's password

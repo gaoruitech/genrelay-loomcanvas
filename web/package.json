@@ -18,14 +18,14 @@
     "self-hosted",
     "byok"
   ],
-  "homepage": "https://gitee.com/jishulin/loomcanvas/tree/master/web",
+  "homepage": "https://github.com/gaoruitech/loomcanvas/tree/master/web",
   "repository": {
     "type": "git",
-    "url": "git+https://gitee.com/jishulin/loomcanvas.git",
+    "url": "git+https://github.com/gaoruitech/loomcanvas.git",
     "directory": "web"
   },
   "bugs": {
-    "url": "https://gitee.com/jishulin/loomcanvas/issues"
+    "url": "https://github.com/gaoruitech/loomcanvas/issues"
   },
   "license": "AGPL-3.0-or-later",
   "private": true,
