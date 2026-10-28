@@ -22,13 +22,13 @@
     "deepseek",
     "vue-flow"
   ],
-  "homepage": "https://github.com/gaoruitech/loomcanvas",
+  "homepage": "https://github.com/gaoruitech/genrelay-loomcanvas",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gaoruitech/loomcanvas.git"
+    "url": "git+https://github.com/gaoruitech/genrelay-loomcanvas.git"
   },
   "bugs": {
-    "url": "https://github.com/gaoruitech/loomcanvas/issues"
+    "url": "https://github.com/gaoruitech/genrelay-loomcanvas/issues"
   },
   "license": "AGPL-3.0-or-later",
   "private": true,

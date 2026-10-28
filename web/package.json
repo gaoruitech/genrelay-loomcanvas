@@ -18,14 +18,14 @@
     "self-hosted",
     "byok"
   ],
-  "homepage": "https://github.com/gaoruitech/loomcanvas/tree/master/web",
+  "homepage": "https://github.com/gaoruitech/genrelay-loomcanvas/tree/master/web",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gaoruitech/loomcanvas.git",
+    "url": "git+https://github.com/gaoruitech/genrelay-loomcanvas.git",
     "directory": "web"
   },
   "bugs": {
-    "url": "https://github.com/gaoruitech/loomcanvas/issues"
+    "url": "https://github.com/gaoruitech/genrelay-loomcanvas/issues"
   },
   "license": "AGPL-3.0-or-later",
   "private": true,

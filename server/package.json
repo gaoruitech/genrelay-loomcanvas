@@ -20,14 +20,14 @@
     "express",
     "mongodb"
   ],
-  "homepage": "https://github.com/gaoruitech/loomcanvas/tree/master/server",
+  "homepage": "https://github.com/gaoruitech/genrelay-loomcanvas/tree/master/server",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gaoruitech/loomcanvas.git",
+    "url": "git+https://github.com/gaoruitech/genrelay-loomcanvas.git",
     "directory": "server"
   },
   "bugs": {
-    "url": "https://github.com/gaoruitech/loomcanvas/issues"
+    "url": "https://github.com/gaoruitech/genrelay-loomcanvas/issues"
   },
   "license": "AGPL-3.0-or-later",
   "private": true,

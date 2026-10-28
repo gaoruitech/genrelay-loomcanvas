@@ -179,7 +179,7 @@ Removed (**breaking**)
 - Repository checks for versions, dependency licenses and UI strings; CI workflow.
 - AGPL-3.0 license with a separate commercial license, CLA, trademark policy, third-party notices.
 - Documentation in English and Chinese under `docs/`.
-- The repository moved to GitHub (<https://github.com/gaoruitech/loomcanvas>); there is a public demo at <https://loomcanvas.gaorui.cc>, linked from both READMEs.
+- The repository moved to GitHub (<https://github.com/gaoruitech/genrelay-loomcanvas>); there is a public demo at <https://loomcanvas.gaorui.cc>, linked from both READMEs.
 - A fixed-offset `tz` (`+08:00`) works on Node 20 too: Node 20's `Intl` refuses offsets, so a whole-hour one is taken as the matching `Etc/GMT` zone (the usage and team endpoints failed with `validation.invalid` there; Node 22 was not affected).
 
 **Gaorui models**
@@ -447,7 +447,7 @@ Removed (**breaking**)
 - 仓库级检查：版本号、依赖协议、界面文案；CI 工作流。
 - AGPL-3.0 协议与单独的商业授权、贡献者协议、商标政策、第三方声明。
 - `docs/` 下的中英文文档。
-- 仓库迁到 GitHub（<https://github.com/gaoruitech/loomcanvas>）；在线体验地址 <https://loomcanvas.gaorui.cc>，两份 README 都放了链接。
+- 仓库迁到 GitHub（<https://github.com/gaoruitech/genrelay-loomcanvas>）；在线体验地址 <https://loomcanvas.gaorui.cc>，两份 README 都放了链接。
 - 固定偏移的 `tz`（`+08:00`）在 Node 20 上也能用了：Node 20 的 `Intl` 不认偏移写法，整点偏移现在换成对应的 `Etc/GMT` 时区（此前用量和团队接口在 Node 20 上会报 `validation.invalid`，Node 22 不受影响）。
 
 **高瑞的模型**
